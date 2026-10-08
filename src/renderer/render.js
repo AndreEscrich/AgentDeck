@@ -10,10 +10,71 @@ function el(tag, className, text) {
   return node;
 }
 
-function markdown(text) {
+// ---------- images and videos ----------
+
+const VIDEO_EXT = /\.(mp4|webm|mov|m4v)$/i;
+
+// The address the window loads a file on disk from (see src/media.js).
+function mediaUrl(file) {
+  return 'media://file/?path=' + encodeURIComponent(file);
+}
+
+// A file path from Markdown: absolute, file://, or relative to the agent's folder.
+function resolveMediaPath(src, cwd) {
+  if (!src || /^(https?:|data:|media:|blob:)/i.test(src)) return null;
+  let p = src;
+  if (/^file:/i.test(p)) {
+    try { p = decodeURIComponent(new URL(p).pathname); } catch { return null; }
+  } else {
+    try { p = decodeURIComponent(p); } catch { /* keep as written */ }
+  }
+  if (p.startsWith('/') || /^[a-z]:[\\/]/i.test(p)) return p;
+  if (!cwd) return null;
+  return cwd.replace(/[\\/]$/, '') + '/' + p.replace(/^\.\//, '');
+}
+
+// Full size on click; Esc or another click closes it.
+function openLightbox(file) {
+  const box = el('div', 'lightbox');
+  const img = document.createElement('img');
+  img.src = mediaUrl(file);
+  box.append(img, el('div', 'lightbox-path', file));
+  const close = () => { box.remove(); document.removeEventListener('keydown', onKey, true); };
+  const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+  box.onclick = close;
+  document.addEventListener('keydown', onKey, true);
+  document.body.appendChild(box);
+}
+
+function mediaElement(file, caption) {
+  let node;
+  if (VIDEO_EXT.test(file)) {
+    node = document.createElement('video');
+    node.controls = true;
+    node.preload = 'metadata';
+    node.src = mediaUrl(file);
+  } else {
+    node = document.createElement('img');
+    node.src = mediaUrl(file);
+    node.alt = caption || file.split(/[\\/]/).pop();
+    node.title = 'Click to see it at full size';
+    node.onclick = () => openLightbox(file);
+    node.onerror = () => node.replaceWith(el('div', 'media-missing', `Cannot show ${file.split(/[\\/]/).pop()}`));
+  }
+  node.classList.add('chat-media');
+  node.dataset.path = file;
+  return node;
+}
+
+// Markdown images with a file path show the file; a video path becomes a player.
+function markdown(text, cwd) {
   const div = el('div', 'msg-text');
   div.innerHTML = DOMPurify.sanitize(marked.parse(text), { ADD_ATTR: ['target'] });
   for (const a of div.querySelectorAll('a')) a.target = '_blank';
+  for (const img of div.querySelectorAll('img')) {
+    const file = resolveMediaPath(img.getAttribute('src'), cwd);
+    if (file) img.replaceWith(mediaElement(file, img.getAttribute('alt')));
+  }
   return div;
 }
 
@@ -239,7 +300,7 @@ class Transcript {
         });
       }).catch(() => {});
       for (const node of turn.pendingText) turn.answer.appendChild(node);
-      if (!turn.pendingText.length && result?.result && !result.is_error) turn.answer.appendChild(markdown(result.result));
+      if (!turn.pendingText.length && result?.result && !result.is_error) turn.answer.appendChild(markdown(result.result, this.cwd));
     });
 
     const parts = [`${turn.stepCount} step${turn.stepCount === 1 ? '' : 's'}`];
@@ -328,7 +389,7 @@ class Transcript {
 
       if (block.type === 'text' && block.text.trim()) {
         this.clearDraft();
-        const node = markdown(block.text);
+        const node = markdown(block.text, this.cwd);
         turn.pendingText.push(node);
         this.addStep(node, block.text.split('\n')[0].slice(0, 120));
       } else if (block.type === 'thinking' && block.thinking) {
@@ -456,6 +517,38 @@ class Transcript {
       this.lastTurn.changedFiles = files.length;
       this.onUpdate?.();
     }
+  }
+
+  // ---------- new images and videos ----------
+
+  // Images and videos that appeared or changed in the agent's folder during
+  // the task, in a card next to the code changes. Files the agent already
+  // showed in its message are left out.
+  showMedia(turn, files) {
+    if (!turn || !files?.length) return;
+    const shown = new Set([...turn.el.querySelectorAll('.msg-text .chat-media')].map(n => n.dataset.path));
+    files = files.filter(f => !shown.has(f.path));
+    if (!files.length) return;
+    const card = el('div', 'media-card');
+    const videos = files.filter(f => f.kind === 'video').length;
+    const images = files.length - videos;
+    const parts = [];
+    if (images) parts.push(`${images} new or changed image${images === 1 ? '' : 's'}`);
+    if (videos) parts.push(`${videos} video${videos === 1 ? '' : 's'}`);
+    card.appendChild(el('div', 'changes-head', parts.join(' · ')));
+    const grid = el('div', 'media-grid');
+    for (const f of files) {
+      const item = el('figure', 'media-item');
+      item.append(mediaElement(f.path), el('figcaption', null, this.relativePath(f.path)));
+      grid.appendChild(item);
+    }
+    card.appendChild(grid);
+    this.pinned(() => {
+      turn.el.querySelector('.media-card')?.remove();
+      const changes = turn.answer.querySelector('.changes');
+      if (changes) changes.after(card);
+      else turn.answer.prepend(card);
+    });
   }
 
   // ---------- permission prompts ----------

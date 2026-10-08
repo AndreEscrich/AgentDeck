@@ -9,6 +9,17 @@ const os = require('os');
 const { randomUUID } = require('crypto');
 const { findClaude, spawnClaude, killTree, childEnv } = require('./platform');
 
+// Tells every agent that the chat shows images and videos (see media.js and
+// the Markdown rendering in render.js).
+const MEDIA_PROMPT = [
+  'Your conversation is shown in Agent Hub, a desktop app that renders images and videos in the chat.',
+  'To show the user an image or a video, write a Markdown image with its file path, for example',
+  '![Grass texture](Assets/Textures/Grass.png) or ![Gameplay recording](/Users/name/Movies/clip.mp4).',
+  'Paths can be absolute or relative to your working folder.',
+  'Images (png, jpg, gif, webp, tga, psd, exr, tif) show as pictures; videos (mp4, webm, mov) show as players.',
+  'Whenever you create or change a texture, image or video, show it this way.',
+].join(' ');
+
 class AgentManager {
   constructor({ send, getConfig }) {
     this.send = send;          // send(channel, ...args) to the window
@@ -30,6 +41,7 @@ class AgentManager {
       '--permission-prompt-tool', 'stdio',
       // Without this flag the CLI refuses a later switch to bypass mode.
       '--allow-dangerously-skip-permissions',
+      '--append-system-prompt', MEDIA_PROMPT,
     ];
     if (model && model !== 'default') args.push('--model', model);
     if (effort) args.push('--effort', effort);

@@ -1,10 +1,17 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Notification, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Notification, Menu, protocol, net } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { AgentManager, fetchModels, summarizeTitle } = require('./agents');
 const { listSessions, loadTranscript, PROJECTS_DIR } = require('./sessions');
 const git = require('./git');
 const { repoOf } = require('./repos');
+const media = require('./media');
+
+// The window loads images and videos from disk through media:// (see media.js).
+// "stream" lets video players read a file piece by piece.
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+]);
 
 // Settings you can edit by hand. The app writes this file with the defaults
 // the first time it starts; use "Settings" in the sidebar to open it.
@@ -126,6 +133,8 @@ app.setPath('userData', process.env.AGENTDECK_USER_DATA || path.join(app.getPath
 if (process.platform === 'win32') app.setAppUserModelId('com.agentdeck.app');
 
 app.whenReady().then(() => {
+  media.registerProtocol(protocol, net, path.join(app.getPath('userData'), 'media-previews'));
+  ipcMain.handle('media:recent', (_e, cwd, sinceMs) => media.recentMedia(cwd, sinceMs));
   // Shows the Agent Hub icon in the Dock also when you run `npm start`.
   if (app.dock) app.dock.setIcon(path.join(__dirname, '..', 'build', 'icon.png'));
   configPath = path.join(app.getPath('userData'), 'config.json');
