@@ -45,10 +45,10 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 ## What it does
 
 - **New agent.** ⌘N opens an empty chat with the cursor in the message box. The buttons under the message box set the folder (it starts with the folder of the agent you started last; click it for recent folders or Choose folder…), the group, the permissions and the model. Press ↩ to start the agent.
-- **Hub.** The start screen (⌘0, or Hub at the top of the sidebar) shows every running agent as a tile with a tank of liquid. The color shows the state: blue starting, amber working (waves and bubbles, and the level rises with each step), orange needs your approval (the tile pulses), green done (a burst and a check mark when it finishes), red error (the tile shakes). Each tile shows the task title, its status, how long the task took and how many tokens it used (hover for input, cached context and output). Tokens are what counts against a subscription's limits, so the app shows them instead of Claude Code's API price estimate. Click a tile to open the agent: its tank grows over the window and the chat fades in. After you send a message, the Hub opens and shows the agent's tile springing in (new agent) or hopping back to work (follow-up message); set `hubAfterSend` to `false` to stay in the chat instead. The sidebar shows running agents as a row of small tanks in the same colors.
+- **Hub.** The main screen (⌘0, or ← Hub in an agent) shows every running agent as a tile with a tank of liquid. The color shows the state: blue starting, amber working (waves and bubbles, and the level rises with each step), orange needs your approval (the tile pulses), green done (a burst and a check mark when it finishes), red error (the tile shakes). Each tile shows the task title, its status, how long the task took and how many tokens it used (hover for input, cached context and output). Tokens are what counts against a subscription's limits, so the app shows them instead of Claude Code's API price estimate. Click a tile to open the agent: its tank grows over the window and the chat fades in. After you send a message, the Hub opens and shows the agent's tile springing in (new agent) or hopping back to work (follow-up message); set `hubAfterSend` to `false` to stay in the chat instead.
 - **Hub groups.** Tiles are sorted into one section per group. The group button under the message box opens a panel: type a name and press ↩ to create a group, or pick one from the list. The list only shows groups that agents in the Hub use, with their agent count, so a group disappears from it when its last agent leaves; typing the exact name of such a group picks it again instead of creating a new one. Right-click a tile to move its agent to another group.
 - **The Hub remembers its agents.** After a restart, or when an agent's process ends, its tile stays as a gray "Sleeping" tile with the time and tokens of its last task. Click it to open the session; your next message resumes it. Point at a tile and click × to remove it from the Hub (a working agent is stopped, after you confirm). The session itself stays in History. The Hub also has a message box at the bottom with the same folder, group, permissions and model buttons as a new agent: type a task and press ↩, and the box morphs into the new agent's tile and flies to its place in the grid, while you stay in the Hub.
-- **History sidebar.** It lists every session Claude Code has saved in `~/.claude/projects`. This includes sessions you ran in the terminal or in the Claude desktop app. Click one to read it, and type a message to continue it.
+- **History.** A drawer that slides in from the left (the History button in the Hub, the clock button at the top left, or ⌘\\; Esc closes it). It lists every session Claude Code has saved in `~/.claude/projects`. This includes sessions you ran in the terminal or in the Claude desktop app. Click one to read it, and type a message to continue it.
 - **Groups.** Click ＋ next to History to create a group, for example one per domain. Drag a session onto a group, or right-click a session and choose Move to group. Right-click a group to rename it, move it up or down, or delete it (its sessions become ungrouped). The group button under the message box of a new agent puts it into the right group from the start. Groups are saved in `groups.json` next to `config.json`.
 - **Model menu.** Under the message box, also for a new agent. It lists the same models, with the same descriptions, as the Claude desktop app, because the app asks your installed Claude Code for the list. You can also set the effort level and fast mode. A change applies to the agent on screen from its next message on.
 - **Permission prompts.** When an agent wants to run a command or edit a file that your permission mode and rules don't already allow, an approval card appears in the chat, and the agent's dot turns orange ("Needs approval"). You can allow it once, deny it, or pick one of Claude Code's suggested rules (for example "Always allow Bash(npm start) in this project"). Claude Code saves that rule in the project's `.claude/settings.local.json`, the same file the terminal uses.
@@ -66,7 +66,7 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 | ⌘[ | Back to the Hub (also the ← Hub button in an agent; the chat shrinks back into its tile) |
 | ⌘1 … ⌘9 | Switch to running agent 1–9 |
 | ⌘F | Search history |
-| ⌘\\ | Hide or show the sidebar |
+| ⌘\\ | Open or close History |
 | Esc | Stop the current turn |
 
 ## How it works
@@ -75,18 +75,18 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 | --- | --- |
 | `src/main.js` | Creates the window, reads the settings file, and connects the window to the two modules below. |
 | `src/agents.js` | Starts `claude -p --input-format stream-json --output-format stream-json` for each agent. It writes your messages to the process as JSON lines and forwards every JSON line the process prints back to the window. |
-| `src/sessions.js` | Reads the saved `.jsonl` session files for the sidebar and the history view. |
+| `src/sessions.js` | Reads the saved `.jsonl` session files for the History drawer and the session view. |
 | `src/git.js` | Takes a snapshot before each turn and lists the files that changed during it. |
 | `src/preload.js` | The list of functions the window is allowed to call. |
 | `src/renderer/hub.js` | The Hub: one animated tile per running agent. |
 | `src/renderer/diffview.js` | Draws diffs: line numbers, syntax colors, code files first, and the full-window review view. |
 | `src/renderer/render.js` | Draws each turn: the collapsed steps, the final answer, the Changes card and permission cards. |
-| `src/renderer/app.js` | Window state: the sidebar, switching between agents, and the message box. |
+| `src/renderer/app.js` | Window state: the History drawer, switching between the Hub and agents, and the message box. |
 | `src/renderer/styles.css` | All styling. The colors, fonts and sizes are variables at the top of the file. |
 
 ## Settings
 
-Click **Settings** in the sidebar to open `config.json`, then restart the app after you edit it.
+Click **Settings** in the Hub (or at the bottom of History) to open `config.json`, then restart the app after you edit it.
 
 - `claudePath`: path to the `claude` binary. When it is empty, the app finds every Claude Code installation (Homebrew, `~/.local/bin`, and the copy inside the Claude desktop app) and uses the newest one. A newer Claude Code knows about newer models.
 - `defaultPermissionMode`: `bypassPermissions` (the default), `auto`, `acceptEdits`, `default` or `plan`. You can change the mode of a running agent with the menu under the message box.

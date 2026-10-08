@@ -35,7 +35,7 @@ class Hub {
   // onNew() opens a new agent.
   // onRemove(agentId) removes a tile's agent; onContext(agentId) shows its
   // right-click menu.
-  constructor(container, { onOpen, onNew, onRemove, onContext }) {
+  constructor(container, { onOpen, onNew, onRemove, onContext, onHistory, onSettings }) {
     this.onOpen = onOpen;
     this.onRemove = onRemove;
     this.onContext = onContext;
@@ -49,7 +49,12 @@ class Hub {
     this.counters = el('div', 'hub-counters');
     const newBtn = el('button', 'primary', '+ New agent');
     newBtn.onclick = onNew;
-    head.append(el('h2', null, 'Hub'), this.counters, newBtn);
+    const historyBtn = el('button', null, 'History');
+    historyBtn.title = 'Saved sessions (⌘\\)';
+    historyBtn.onclick = onHistory;
+    const settingsBtn = el('button', null, 'Settings');
+    settingsBtn.onclick = onSettings;
+    head.append(el('h2', null, 'Hub'), this.counters, historyBtn, settingsBtn, newBtn);
 
     // One section per group, each with its own grid of tiles.
     this.grid = el('div', 'hub-board');

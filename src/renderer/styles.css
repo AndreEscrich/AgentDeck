@@ -21,7 +21,6 @@
   --mono: "SF Mono", ui-monospace, Menlo, monospace;
   --font-size: 14px;
   --chat-width: 820px;
-  --sidebar-width: 230px;
 }
 
 * { box-sizing: border-box; }
@@ -61,19 +60,30 @@ input[type=text], input[type=search], select, textarea {
 }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
-/* Sidebar */
-#sidebar {
-  width: var(--sidebar-width);
-  flex-shrink: 0;
-  overflow: hidden;
-  transition: width 0.18s ease, padding 0.18s ease;
+/* History drawer: slides in from the left over the window */
+#sidebar.history-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 40;
+  width: 340px;
+  max-width: 85vw;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
+  box-shadow: 12px 0 40px rgba(0, 0, 0, 0.45);
   display: flex;
   flex-direction: column;
   padding: 0 10px 10px;
+  transform: translateX(-105%);
+  transition: transform 0.22s cubic-bezier(.3,0,.2,1);
 }
-.drag-region { height: 44px; flex-shrink: 0; -webkit-app-region: drag; }
+body.history-open #sidebar.history-drawer { transform: none; }
+#drawer-backdrop { position: fixed; inset: 0; z-index: 39; background: rgba(0, 0, 0, 0.35); opacity: 0; pointer-events: none; transition: opacity 0.22s; }
+body.history-open #drawer-backdrop { opacity: 1; pointer-events: auto; }
+.drawer-head { display: flex; justify-content: space-between; align-items: center; height: 52px; padding: 0 4px 0 80px; flex-shrink: 0; -webkit-app-region: drag; }
+.drawer-head button { -webkit-app-region: no-drag; font-size: 14px; }
+.drawer-title { font-weight: 600; }
 .section-label {
   display: flex;
   justify-content: space-between;
@@ -154,9 +164,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .sidebar-toggle { -webkit-app-region: no-drag; display: flex; align-items: center; padding: 4px; border-radius: 6px; color: var(--text-faint); }
 .sidebar-toggle:hover { background: var(--bg-hover); color: var(--text); }
 
-/* Hidden sidebar. The top bar then leaves room for the window buttons. */
-body.sidebar-collapsed #sidebar { width: 0; padding-left: 0; padding-right: 0; border-right: none; }
-body.sidebar-collapsed #topbar { padding-left: 84px; }
+/* No sidebar: the top bar leaves room for the window buttons. */
+#topbar { padding-left: 84px; }
 #topbar { transition: padding-left 0.18s ease; }
 #view-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #view-subtitle { font-size: 12px; color: var(--text-faint); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -404,7 +413,7 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 #main { position: relative; }
 .review { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column; background: var(--bg); outline: none; }
 .review-bar { height: 52px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 16px; border-bottom: 1px solid var(--border); -webkit-app-region: drag; }
-body.sidebar-collapsed .review-bar { padding-left: 84px; }
+.review-bar { padding-left: 84px; }
 .review-bar button { -webkit-app-region: no-drag; margin-left: auto; }
 .review-title { font-weight: 600; }
 .review-body { flex: 1; display: flex; min-height: 0; }
@@ -423,10 +432,6 @@ body.sidebar-collapsed .review-bar { padding-left: 84px; }
 
 /* ---------- Hub ---------- */
 
-.hub-nav { margin-top: 10px; color: var(--text); }
-.hub-nav-icon { width: 10px; height: 14px; border: 1.5px solid currentColor; border-radius: 3px 3px 4px 4px; position: relative; flex-shrink: 0; margin: 0 1px; }
-.hub-nav-icon::after { content: ""; position: absolute; left: 1px; right: 1px; bottom: 1px; height: 55%; border-radius: 1px 1px 2px 2px; background: var(--accent); }
-.hub-nav.attn .hub-nav-icon::after { animation: pulse 0.8s ease-in-out infinite; }
 
 .hub { padding: 24px 28px 40px; max-width: 1400px; margin: 0 auto; }
 .hub-head { display: flex; align-items: center; gap: 18px; margin-bottom: 22px; }
@@ -562,31 +567,10 @@ body.sidebar-collapsed .review-bar { padding-left: 84px; }
 .view.entering { animation: enter 0.2s ease-out; }
 @keyframes enter { from { opacity: 0; transform: scale(0.985); } to { opacity: 1; transform: none; } }
 
-/* Sidebar: running agents as small tanks */
-.mini-tanks { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 8px 2px; }
-.mini-tank { --c1: #6b708c; --c2: #4a4e66; position: relative; width: 16px; height: 22px; padding: 0;
-  border: 1.5px solid #3a3d4e; border-radius: 4px 4px 6px 6px; background: #0f1016; overflow: hidden; cursor: pointer; }
-.mini-tank:hover { border-color: var(--text-faint); transform: translateY(-1px); }
-.mini-tank.active { border-color: var(--text); }
-.mini-liquid { position: absolute; left: 0; right: 0; bottom: 0; height: 30%; background: linear-gradient(var(--c1), var(--c2)); transition: height 0.6s; }
-.mini-tank.state-starting { --c1: #7fa8f0; --c2: #3d6bc4; }
-.mini-tank.state-working  { --c1: #f2c060; --c2: #c98a1c; }
-.mini-tank.state-waiting  { --c1: #f09a75; --c2: #c4562f; }
-.mini-tank.state-idle     { --c1: #74d39d; --c2: #2f8f5a; }
-.mini-tank.state-error    { --c1: #ef7f7f; --c2: #b33a3a; }
-.mini-tank.state-starting .mini-liquid { height: 35%; }
-.mini-tank.state-working .mini-liquid { height: 60%; animation: mini-slosh 1.2s ease-in-out infinite; }
-.mini-tank.state-waiting .mini-liquid { height: 60%; }
-.mini-tank.state-waiting { animation: pulse 0.8s ease-in-out infinite; }
-.mini-tank.state-idle .mini-liquid { height: 100%; }
-.mini-tank.state-error .mini-liquid { height: 50%; }
-.mini-tank.unread::after { content: ""; position: absolute; top: 1px; right: 1px; width: 5px; height: 5px; border-radius: 50%; background: #fff; }
-@keyframes mini-slosh { 50% { height: 70%; } }
 
-/* A narrower sidebar: smaller text and spacing */
+/* History drawer: list spacing */
 #sidebar .item { padding: 5px 7px; font-size: 13px; }
 #sidebar .section-label { margin: 12px 6px 6px; }
-.hub-nav { margin-top: 8px; }
 
 /* Hub: the message box morphs into a new tile */
 .hub-tile.arriving { opacity: 0; }
@@ -612,7 +596,6 @@ body.sidebar-collapsed .review-bar { padding-left: 84px; }
 .hub-tile.state-sleeping .tank-icon { transform: scale(1); font-size: 34px; color: rgba(255,255,255,0.55); font-style: italic; }
 .hub-tile.state-sleeping .hub-title { color: var(--text-dim); }
 .dot.sleeping { background: var(--text-faint); }
-.mini-tank.state-sleeping { --c1: #8d92ab; --c2: #4f5369; }
 
 /* Remove button on a tile, and the remove animation */
 .tile-remove { position: absolute; top: 6px; right: 6px; z-index: 3; width: 24px; height: 24px; padding: 0;

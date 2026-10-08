@@ -307,6 +307,8 @@ const hub = new Hub($('hub-view'), {
     return state.agents.get(id)?.view;
   },
   onRemove: removeFromHub,
+  onHistory: () => setHistoryOpen(true),
+  onSettings: () => window.deck.openConfig(),
   onContext: id => sessionMenu(id.startsWith('p:') ? id.slice(2) : state.agents.get(id)?.sessionId),
   onNew: () => {
     show('hub');
@@ -325,8 +327,6 @@ function refreshHub() {
     saveHub();
     const agents = items.filter(a => !a.parked);
     const busy = agents.filter(a => ['working', 'starting', 'waiting'].includes(a.status)).length;
-    $('hub-count').textContent = agents.length ? `${busy}/${agents.length}` : '';
-    $('hub-nav').classList.toggle('attn', agents.some(a => a.status === 'waiting'));
   });
 }
 
@@ -470,25 +470,7 @@ function timeAgo(ms) {
 }
 
 function renderSidebar() {
-  // Running agents as a row of small tanks in the agent's state color.
-  const running = $('running-list');
-  running.innerHTML = '';
-  let n = 0;
-  for (const a of state.agents.values()) {
-    n++;
-    const tank = el('button', `mini-tank state-${a.status}`);
-    tank.appendChild(el('span', 'mini-liquid'));
-    if (state.current?.kind === 'agent' && state.current.id === a.id) tank.classList.add('active');
-    if (a.unread) tank.classList.add('unread');
-    tank.title = `${a.title}\n${STATUS_TEXT[a.status] || a.status} · ${shortPath(a.cwd)}\n⌘${n}`;
-    tank.onclick = () => show('agent', a.id);
-    tank.oncontextmenu = e => { e.preventDefault(); sessionMenu(a.sessionId); };
-    running.appendChild(tank);
-  }
-  running.classList.toggle('hidden', !n);
-  $('hub-nav').classList.toggle('active', state.current?.kind === 'hub');
   refreshHub();
-
   renderHistory();
 }
 
@@ -717,6 +699,7 @@ async function openHistory(session) {
     view.scrollTop = view.scrollHeight;
   }
   show('history', session.id);
+  setHistoryOpen(false);
 }
 
 // ---------- agents ----------
@@ -909,8 +892,6 @@ $('input').addEventListener('keydown', e => {
 });
 $('send').onclick = sendFromComposer;
 
-$('new-agent').onclick = () => show('new');
-$('hub-nav').onclick = () => show('hub');
 
 $('btn-interrupt').onclick = () => {
   if (state.current?.kind === 'agent') window.deck.interrupt(state.current.id);
@@ -932,29 +913,38 @@ document.addEventListener('keydown', e => {
     const a = [...state.agents.values()][Number(e.key) - 1];
     if (a) { e.preventDefault(); show('agent', a.id); }
   }
-  if (e.metaKey && e.key === 'f') { e.preventDefault(); $('search').focus(); }
+  if (e.metaKey && e.key === 'f') { e.preventDefault(); setHistoryOpen(true); }
   if (e.key === 'Escape' && state.current?.kind === 'agent') {
     const a = state.agents.get(state.current.id);
     if (a?.status === 'working') window.deck.interrupt(a.id);
   }
 });
 
-// ---------- sidebar toggle ----------
+// ---------- history drawer ----------
 
-function setSidebarCollapsed(collapsed) {
-  document.body.classList.toggle('sidebar-collapsed', collapsed);
-  $('toggle-sidebar').title = collapsed ? 'Show sidebar (⌘\\)' : 'Hide sidebar (⌘\\)';
-  try { localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0'); } catch { /* not important */ }
+// The saved sessions live in a drawer that slides in over the window.
+function setHistoryOpen(open) {
+  document.body.classList.toggle('history-open', open);
+  if (open) {
+    renderHistory();
+    setTimeout(() => $('search').focus(), 50);
+  }
 }
 
-$('toggle-sidebar').onclick = () => setSidebarCollapsed(!document.body.classList.contains('sidebar-collapsed'));
+$('toggle-sidebar').onclick = () => setHistoryOpen(!document.body.classList.contains('history-open'));
+$('close-history').onclick = () => setHistoryOpen(false);
+$('drawer-backdrop').onclick = () => setHistoryOpen(false);
 document.addEventListener('keydown', e => {
   if (e.metaKey && e.key === '\\') {
     e.preventDefault();
     $('toggle-sidebar').click();
   }
-});
-try { setSidebarCollapsed(localStorage.getItem('sidebarCollapsed') === '1'); } catch { /* not important */ }
+  // Esc closes the drawer first; it only stops an agent when the drawer is closed.
+  if (e.key === 'Escape' && document.body.classList.contains('history-open')) {
+    e.stopImmediatePropagation();
+    setHistoryOpen(false);
+  }
+}, true);
 
 // Refresh the "5m ago" labels now and then.
 setInterval(renderSidebar, 60_000);
