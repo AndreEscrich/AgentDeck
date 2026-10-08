@@ -28,7 +28,10 @@ const state = {
   agents: new Map(),       // agent id -> { id, title, cwd, status, sessionId, view, transcript, unread }
   history: new Map(),      // session id -> { session, view, transcript } for opened, not-yet-resumed sessions
   current: null,           // { kind: 'hub' | 'agent' | 'history', id }
-  groups: { groups: [], assignments: {} },  // your session groups, saved in groups.json
+  // Naming: in the code and in groups.json, "groups" are what the app shows as
+  // Categories (labels you give sessions). A Group in the Hub is one Category
+  // plus one folder; its agents share context (see forkSourceFor).
+  groups: { groups: [], assignments: {} },  // your Categories, saved in groups.json
   renamingGroup: null,     // id of the group whose name is being edited
   parked: new Map(),       // session id -> a completed Hub agent that is not running (kept across restarts)
 };
@@ -133,8 +136,13 @@ function renderDraftButtons() {
   folder.title = d.folder ? `Folder: ${d.folder}` : 'Pick the folder the agent works in';
   folder.classList.toggle('danger-text', !d.folder);
   const group = state.groups.groups.find(g => g.id === d.groupId);
-  $('composer-group').textContent = (group ? '# ' + group.name : '# No group') + ' ▾';
-  $('composer-group').title = 'The group the new session goes into';
+  $('composer-group').textContent = (group ? '# ' + group.name : '# No category') + ' ▾';
+  $('composer-group').title = 'The category the new agent goes into. Category and folder together make its Group.';
+  // Which agent the next one continues from (see forkSourceFor).
+  const source = forkSourceFor(d.folder, d.groupId);
+  const fork = $('composer-fork');
+  fork.textContent = source ? `↳ continues from "${source.title}"` : '';
+  fork.title = source ? 'A new agent in this Group starts as a copy of this agent\'s conversation.' : '';
 }
 
 async function chooseFolder() {
@@ -194,13 +202,13 @@ function chooseGroup() {
       .filter(g => !q || g.name.toLowerCase().includes(q))
       .sort((a, b) => (inUse.get(b.id) || 0) - (inUse.get(a.id) || 0));
     if (q && !exactMatch) {
-      const create = el('div', 'group-panel-item create', `+ Create group "${input.value.trim()}"`);
+      const create = el('div', 'group-panel-item create', `+ Create category "${input.value.trim()}"`);
       create.onclick = () => pick(addGroup(input.value.trim()).id);
       list.appendChild(create);
     }
     if (!q) {
       const none = el('div', 'group-panel-item' + (!d.groupId ? ' selected' : ''));
-      none.append(el('span', null, 'No group'));
+      none.append(el('span', null, 'No category'));
       none.onclick = () => pick(null);
       list.appendChild(none);
     }
@@ -250,6 +258,7 @@ function show(kind, id) {
   $('composer').classList.remove('hidden');
   $('composer-folder').classList.toggle('hidden', !startsAgent);
   $('composer-group').classList.toggle('hidden', !startsAgent);
+  $('composer-fork').classList.toggle('hidden', !startsAgent);
 
   if (kind === 'agent') {
     const a = state.agents.get(id);
@@ -319,6 +328,8 @@ function refreshHub() {
     saveHub();
     const agents = items.filter(a => !a.parked);
     const busy = agents.filter(a => ['working', 'starting', 'waiting'].includes(a.status)).length;
+    // Agents finishing or getting their short title change the "continues from" line.
+    if (['new', 'hub'].includes(state.current?.kind)) renderDraftButtons();
   });
 }
 
@@ -341,6 +352,7 @@ function hubInfo(a) {
     lastTurn: a.transcript?.lastTurn ? { durationMs: a.transcript.lastTurn.durationMs, usage: a.transcript.lastTurn.usage } : a.lastTurn || null,
     // Finished while you were not looking, and not opened since.
     unread: !!a.unread,
+    finishedAt: a.finishedAt || 0,
   };
 }
 
@@ -355,9 +367,33 @@ function parkedItem(p) {
     title: p.title,
     cwd: p.cwd,
     groupId: groupOf(p.sessionId) || p.groupId,
+    sessionId: p.sessionId,
+    finishedAt: p.finishedAt || 0,
     unread: !!p.unread,
     transcript: { stepCount: 0, tokens: p.lastTurn?.usage || null, turnStartedAt: null, lastTurn: p.lastTurn },
   };
+}
+
+// ---------- shared context ----------
+
+// A Group is one Category plus one folder. A new agent in a Group always
+// starts as a fork of the Group's most recently finished agent, so it knows
+// what that agent read, did and decided. Agents that are still working are
+// skipped, because their saved conversation ends in the middle of a task.
+// The fork must be in the same folder, because Claude Code keeps sessions per
+// folder. Returns { sessionId, title } or null for the first agent of a Group.
+function forkSourceFor(cwd, categoryId) {
+  if (!cwd) return null;
+  const known = id => state.groups.groups.some(g => g.id === id);
+  const category = known(categoryId) ? categoryId : null;
+  let best = null;
+  for (const item of hubItems()) {
+    const itemCategory = known(item.groupId) ? item.groupId : null;
+    if (itemCategory !== category || item.cwd !== cwd) continue;
+    if (item.status !== 'idle' || !item.sessionId || !item.finishedAt) continue;
+    if (!best || item.finishedAt > best.finishedAt) best = item;
+  }
+  return best ? { sessionId: best.sessionId, title: best.title } : null;
 }
 
 // Running agents first, then the ones that are not running. Agents you removed are left out.
@@ -524,7 +560,7 @@ function addGroup(name) {
 }
 
 function createGroup() {
-  const group = { id: crypto.randomUUID(), name: 'New group', collapsed: false };
+  const group = { id: crypto.randomUUID(), name: 'New category', collapsed: false };
   state.groups.groups.push(group);
   saveGroups();
   state.renamingGroup = group.id;
@@ -558,14 +594,14 @@ async function sessionMenu(sessionId) {
   const current = groupOf(sessionId);
   const items = [
     {
-      label: 'Move to group',
+      label: 'Move to category',
       submenu: [
         ...state.groups.groups.map(g => ({ id: 'g:' + g.id, label: g.name, checked: g.id === current })),
         ...(state.groups.groups.length ? [{ type: 'separator' }] : []),
-        { id: 'new', label: 'New group…' },
+        { id: 'new', label: 'New category…' },
       ],
     },
-    { id: 'remove', label: 'Remove from group', enabled: !!current },
+    { id: 'remove', label: 'Remove from category', enabled: !!current },
   ];
   const picked = await window.deck.popupMenu(items);
   if (!picked) return;
@@ -581,7 +617,7 @@ async function groupMenu(group) {
     { id: 'up', label: 'Move up', enabled: i > 0 },
     { id: 'down', label: 'Move down', enabled: i < state.groups.groups.length - 1 },
     { type: 'separator' },
-    { id: 'delete', label: 'Delete group (its sessions become ungrouped)' },
+    { id: 'delete', label: 'Delete category (its sessions become uncategorized)' },
   ]);
   if (picked === 'rename') { state.renamingGroup = group.id; renderSidebar(); }
   if (picked === 'up') moveGroup(group.id, -1);
@@ -626,7 +662,7 @@ function groupHeader(group, count, collapsed) {
     setTimeout(() => { input.focus(); input.select(); });
     return head;
   }
-  head.append(el('span', 'group-label', group ? group.name : 'Ungrouped'), el('span', 'group-count', count ? String(count) : ''));
+  head.append(el('span', 'group-label', group ? group.name : 'Uncategorized'), el('span', 'group-count', count ? String(count) : ''));
   head.onclick = () => {
     if (group) group.collapsed = !collapsed;
     else state.groups.ungroupedCollapsed = !collapsed;
@@ -688,7 +724,7 @@ function renderHistory() {
   if (ungrouped.length || !state.groups.groups.length) {
     const collapsed = !!state.groups.ungroupedCollapsed && !q;
     const g = el('div', 'group' + (collapsed ? ' collapsed' : ''));
-    // Without any groups yet, the list needs no "Ungrouped" header.
+    // Without any groups yet, the list needs no "Uncategorized" header.
     if (state.groups.groups.length) g.appendChild(groupHeader(null, ungrouped.length, collapsed));
     for (const s of ungrouped) g.appendChild(historyItem(s));
     list.appendChild(g);
@@ -727,7 +763,7 @@ async function openHistory(session) {
 
 // ---------- agents ----------
 
-async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId, fromRect }) {
+async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId, fromRect, forkFrom }) {
   const title = resume ? resume.session.title : prompt.split('\n')[0].slice(0, 80);
   choice = choice || defaultChoice();
   permissionMode = permissionMode || defaultMode();
@@ -737,7 +773,8 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     model: choice.model,
     effort: choice.effort,
     fastMode: choice.fastMode,
-    resumeId: resume?.session.id,
+    resumeId: resume?.session.id || forkFrom?.sessionId,
+    forkSession: !resume && !!forkFrom,
   });
 
   // A resumed session keeps its chat container, so its history stays on screen.
@@ -753,6 +790,10 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     // A resumed session stays in its group. A new one goes to the group picked in the form.
     groupId: resume ? groupOf(resume.session.id) : groupId || null };
   state.agents.set(id, agent);
+  if (forkFrom) {
+    agent.forkedFrom = forkFrom;
+    transcript.note(`Continues from "${forkFrom.title}", so it knows what that agent did.`);
+  }
   transcript.add({ type: 'user', message: { role: 'user', content: prompt } });
   if (!resume) summarizeTitle(agent, prompt);
   if (fromRect) {
@@ -822,6 +863,11 @@ window.deck.onEvent((id, msg) => {
     window.deck.gitChanges(a.cwd, snap)
       .then(diff => a.transcript.showGitChanges(turn, diff, snap.kind === 'folder'))
       .catch(() => {});
+  }
+  if (msg.type === 'result' && !msg.is_error) {
+    // Used to find the most recently finished agent of a Group.
+    a.finishedAt = Date.now();
+    saveHub();
   }
   if (msg.type === 'result') {
     window.deck.notify(a.title, msg.is_error ? 'Stopped with an error' : 'Finished and waiting for you');
@@ -911,7 +957,8 @@ async function sendFromComposer() {
     saveGroups();
     // The next new agent starts with the same folder and group, and the default model.
     state.draft = null;
-    await startAgent({ cwd: d.folder, prompt: text, permissionMode: d.mode, choice: d.choice, groupId: d.groupId, fromRect });
+    const forkFrom = forkSourceFor(d.folder, d.groupId);
+    await startAgent({ cwd: d.folder, prompt: text, permissionMode: d.mode, choice: d.choice, groupId: d.groupId, fromRect, forkFrom });
   } else if (state.current.kind === 'agent') {
     const a = state.agents.get(state.current.id);
     a.transcript.add({ type: 'user', message: { role: 'user', content: text } });

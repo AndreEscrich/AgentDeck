@@ -657,3 +657,6 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 .tile-lid .tank { transform-origin: top center; }
 .tile-lid { will-change: transform, opacity; }
 .tile-lid .tile-remove { display: none; }
+
+/* Under the message box: which agent a new agent continues from */
+.composer-fork { font-size: 12px; color: var(--text-faint); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

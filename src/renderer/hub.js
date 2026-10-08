@@ -187,7 +187,8 @@ class Hub {
       }
     }
 
-    // Panels follow your group order ("No group" last), and within a group the
+    // A panel is a Group: one Category plus one folder; its agents share
+    // context. Panels follow your Category order ("No category" last), and within a Category the
     // repository names in alphabetical order. Empty panels hide.
     const groupOrder = [...groups.map(g => g.id), ''];
     const rank = sec => {
@@ -199,7 +200,7 @@ class Hub {
       const n = counts.get(sec.key) || 0;
       sec.el.classList.toggle('hidden', !n);
       sec.count.textContent = String(n);
-      sec.name.textContent = sec.groupKey ? groups.find(g => g.id === sec.groupKey)?.name || 'Group' : 'No group';
+      sec.name.textContent = sec.groupKey ? groups.find(g => g.id === sec.groupKey)?.name || 'Category' : 'No category';
       sec.repoEl.textContent = sec.repo;
       sec.el.style.order = String(i);
     });
@@ -216,7 +217,7 @@ class Hub {
     this.grid.classList.toggle('hidden', agents.length === 0);
   }
 
-  // A panel's title is "Group — Repository".
+  // A panel's title is "Category — folder".
   section(key, groupKey, repo) {
     let sec = this.sections.get(key);
     if (!sec) {

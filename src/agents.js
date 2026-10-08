@@ -16,7 +16,7 @@ class AgentManager {
     this.agents = new Map();
   }
 
-  start({ cwd, resumeId, permissionMode, model, effort, fastMode, title }) {
+  start({ cwd, resumeId, forkSession, permissionMode, model, effort, fastMode, title }) {
     const config = this.getConfig();
     const id = randomUUID();
     const args = [
@@ -35,6 +35,8 @@ class AgentManager {
     if (effort) args.push('--effort', effort);
     if (fastMode) args.push('--settings', JSON.stringify({ fastMode: true }));
     if (resumeId) args.push('--resume', resumeId);
+    // A fork starts a new session that begins with a copy of resumeId's conversation.
+    if (resumeId && forkSession) args.push('--fork-session');
     args.push(...(config.extraArgs || []));
 
     const proc = spawnClaude(config.claudePath, args, {
@@ -43,7 +45,7 @@ class AgentManager {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
-    const agent = { id, proc, cwd, title, status: 'starting', sessionId: resumeId || null, stderr: '', pending: new Set() };
+    const agent = { id, proc, cwd, title, status: 'starting', sessionId: forkSession ? null : resumeId || null, stderr: '', pending: new Set() };
     this.agents.set(id, agent);
 
     let buffer = '';
