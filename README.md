@@ -17,7 +17,30 @@ You need Claude Code installed and logged in (`claude` in a terminal, then `/log
 npm run make-app
 ```
 
-This builds `~/Applications/AgentDeck.app` with the AgentDeck icon and puts a link to it on your Desktop. The app runs the code in this folder directly, so after you change the code you only quit and reopen it. Run `npm run make-app` again only after `npm install` updates Electron, or after you change the icon (`build/icon.html`, then `npm run icon`).
+Run this in the stable copy (see below). It builds `~/Applications/AgentDeck.app` with the AgentDeck icon and puts a link to it on your Desktop. The app runs the code in that folder directly, so after an update you only quit and reopen it. Run `npm run make-app` again only after `npm install` updates Electron, or after you change the icon (`build/icon.html`, then `npm run icon`).
+
+## Two copies: stable and dev
+
+The app you use every day and the code you change live in two separate folders, so a broken change never breaks the app you are working in. Both folders share one git history (they are git worktrees).
+
+| Folder | Branch | Used for |
+| --- | --- | --- |
+| `~/Repositories/AgentDeck-stable` | `master` | AgentDeck.app runs this code. Don't edit it directly. |
+| `~/Repositories/AgentDeck` | `dev` | Make and commit changes here. Test them with `npm start`, which opens a second window that runs the dev code. |
+
+When a change works, move it to the stable copy from the dev folder:
+
+```bash
+npm run promote
+```
+
+This moves `master` forward to `dev`, installs packages in the stable copy if they changed, and rebuilds AgentDeck.app if the icon or Electron changed. Then quit and reopen AgentDeck. To also set a version number and tag it, and to upload everything to GitHub:
+
+```bash
+npm run promote -- 0.3.0 --push
+```
+
+To go back to an earlier version, check out its tag in the stable copy (`git -C ~/Repositories/AgentDeck-stable checkout v0.2.0`), then reopen the app.
 
 ## What it does
 

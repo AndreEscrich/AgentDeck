@@ -16,6 +16,15 @@ APP="$HOME/Applications/AgentDeck.app"
 ELECTRON_APP="$PROJECT/node_modules/electron/dist/Electron.app"
 PLIST="$APP/Contents/Info.plist"
 
+# The app should run the stable copy (the folder on master), not the folder
+# where you make changes. Pass --force to build from another branch anyway.
+BRANCH="$(git -C "$PROJECT" branch --show-current 2>/dev/null || true)"
+if [ "$BRANCH" != "master" ] && [ "${1:-}" != "--force" ]; then
+  echo "This folder is on the '$BRANCH' branch. Build the app from the stable copy (the folder on master)," >&2
+  echo "or run: npm run make-app -- --force" >&2
+  exit 1
+fi
+
 if [ ! -d "$ELECTRON_APP" ]; then
   echo "Electron is not installed. Run npm install first." >&2
   exit 1
