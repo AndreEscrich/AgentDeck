@@ -35,8 +35,9 @@ class Hub {
   // New agents start only from the message box under the Hub.
   // onRemove(agentId) removes a tile's agent; onContext(agentId) shows its
   // right-click menu.
-  constructor(container, { onOpen, onRemove, onContext, onHistory, onSettings }) {
+  constructor(container, { onOpen, onRemove, onContext, onHistory, onSettings, onLanded }) {
     this.onOpen = onOpen;
+    this.onLanded = onLanded;
     this.onRemove = onRemove;
     this.onContext = onContext;
     this.sections = new Map();       // group id ('' for no group) + repository -> { el, name, repo, count, grid }
@@ -315,6 +316,7 @@ class Hub {
 
     tile.classList.remove('arriving');
     this.replay(tile, 'landed', 600);
+    this.onLanded?.(entry);
     await ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, fill: 'forwards' }).finished.catch(() => {});
     ghost.remove();
   }

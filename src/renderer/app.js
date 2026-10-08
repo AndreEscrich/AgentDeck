@@ -575,6 +575,8 @@ const hub = new Hub($('hub-view'), {
   onRemove: removeFromHub,
   onHistory: () => setHistoryOpen(true),
   onSettings: () => window.deck.openConfig(),
+  // A new agent's message box has flown into its tile.
+  onLanded: () => { if (playSounds()) sounds.brew(); },
   onContext: id => sessionMenu(id.startsWith('p:') ? id.slice(2) : state.agents.get(id)?.sessionId),
 });
 
