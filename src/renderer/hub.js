@@ -71,14 +71,28 @@ class Hub {
     this.empty = el('div', 'hub-empty');
     this.empty.append(el('div', 'hub-empty-tank'), el('p', null, 'No agents yet. Describe a task in the box below to start one.'));
 
-    // Left of the groups: your plan's usage (see setUsage).
+    this.root.append(head, this.grid, this.empty);
+
+    // Your plan's usage (see setUsage): a small tab pinned to the left edge
+    // of the Hub. Clicking it opens the usage card beside it; clicking
+    // anywhere else, or Esc, closes it again.
+    this.rail = el('div', 'usage-rail');
+    this.usageTab = el('button', 'usage-tab');
+    this.usageTab.type = 'button';
+    this.usageTab.title = 'Usage';
     this.usage = el('aside', 'hub-usage');
-    const main = el('div', 'hub-main');
-    main.append(this.grid, this.empty);
-    const body = el('div', 'hub-body');
-    body.append(this.usage, main);
-    this.root.append(head, body);
-    container.appendChild(this.root);
+    this.rail.append(this.usageTab, this.usage);
+    this.usageTab.onclick = () => this.rail.classList.toggle('open');
+    document.addEventListener('pointerdown', e => {
+      if (this.rail.classList.contains('open') && !this.rail.contains(e.target)) this.rail.classList.remove('open');
+    }, true);
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && this.rail.classList.contains('open')) {
+        e.stopImmediatePropagation();
+        this.rail.classList.remove('open');
+      }
+    }, true);
+    container.append(this.rail, this.root);
     this.setUsage(null);
   }
 
@@ -91,6 +105,7 @@ class Hub {
 
   renderUsage() {
     const u = this.usageData;
+    this.renderUsageTab(u?.limits?.unifiedWindows);
     const box = this.usage;
     box.textContent = '';
     box.appendChild(el('div', 'usage-title', 'Usage'));
@@ -124,6 +139,24 @@ class Hub {
       el('span', 'usage-big', tokens ? `${formatTokens(tokens)} tokens` : '—'),
       el('span', 'usage-note', `${u?.tasks || 0} task${u?.tasks === 1 ? '' : 's'}`));
     box.appendChild(since);
+  }
+
+  // The tab shows the session and the week as two small upright meters,
+  // with the session's percentage under them.
+  renderUsageTab(windows) {
+    const tab = this.usageTab;
+    tab.textContent = '';
+    const bars = el('div', 'usage-tab-bars');
+    for (const key of ['five_hour', 'seven_day']) {
+      const pct = windows?.[key] ? Math.max(0, Math.min(100, Math.round((windows[key].utilization || 0) * 100))) : 0;
+      const bar = el('span', `usage-tab-bar ${pct >= 90 ? 'high' : pct >= 70 ? 'mid' : 'low'}`);
+      const fill = el('span');
+      fill.style.height = `${pct}%`;
+      bar.appendChild(fill);
+      bars.appendChild(bar);
+    }
+    const session = windows?.five_hour ? `${Math.round((windows.five_hour.utilization || 0) * 100)}%` : '–';
+    tab.append(bars, el('span', 'usage-tab-pct', session), el('span', 'usage-tab-label', 'Usage'));
   }
 
   // "in 2h 05m", "Fri 18:00" for later than a day.

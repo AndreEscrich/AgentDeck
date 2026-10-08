@@ -459,17 +459,30 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 @keyframes tab-hint { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--next) 18%, transparent); } }
 
 .hub-board { display: flex; flex-direction: column; gap: 18px; }
-/* The usage panel left of the groups; above them in narrow windows. */
-.hub-body { display: flex; gap: 18px; align-items: flex-start; }
-.hub-main { flex: 1; min-width: 0; }
-.hub-usage { position: sticky; top: 0; flex: 0 0 200px; display: flex; flex-direction: column; gap: 14px; padding: 14px;
-  border-radius: 18px; background: linear-gradient(180deg, #1f2230, #15171f); border: 1px solid #2a2d3c;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05); }
-@media (max-width: 900px) {
-  .hub-body { flex-direction: column; align-items: stretch; }
-  .hub-usage { position: static; flex-basis: auto; flex-direction: row; flex-wrap: wrap; }
-  .hub-usage > * { flex: 1 1 160px; }
-}
+/* The groups stay centered: the Hub has the same room on both sides, enough
+   for the usage tab on the left. */
+.hub { padding-left: 64px; padding-right: 64px; }
+/* The usage tab, pinned to the left edge of the Hub while it scrolls (it
+   takes no room itself), and the usage card that opens beside it. */
+.usage-rail { position: sticky; top: 0; height: 0; z-index: 20; }
+.usage-tab { position: absolute; left: 0; top: 84px; width: 40px; padding: 10px 0 12px; display: flex; flex-direction: column; align-items: center; gap: 7px;
+  border-radius: 0 12px 12px 0; border: 1px solid #30344a; border-left: none; background: linear-gradient(180deg, #262938, #1a1c25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 4px 8px 18px -8px rgba(0, 0, 0, 0.7); color: var(--text-dim);
+  transition: width 0.15s, background 0.15s; }
+.usage-tab:hover, .usage-rail.open .usage-tab { width: 44px; color: var(--text); background: linear-gradient(180deg, #2c3043, #1e2029); }
+.usage-tab-bars { display: flex; gap: 4px; height: 34px; }
+.usage-tab-bar { position: relative; width: 6px; height: 100%; border-radius: 99px; background: #0d0e14; overflow: hidden; --meter: var(--ok); }
+.usage-tab-bar.mid { --meter: var(--busy); }
+.usage-tab-bar.high { --meter: var(--err); }
+.usage-tab-bar span { position: absolute; left: 0; right: 0; bottom: 0; border-radius: inherit; background: var(--meter); box-shadow: 0 0 6px var(--meter); transition: height 0.8s cubic-bezier(.3,1.2,.5,1); }
+.usage-tab-pct { font-size: 11px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.usage-tab-label { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+.hub-usage { position: absolute; left: 52px; top: 72px; width: 230px; display: flex; flex-direction: column; gap: 14px; padding: 14px;
+  border-radius: 16px; background: linear-gradient(180deg, #23263a, #17191f); border: 1px solid #343850;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 22px 50px -10px rgba(0, 0, 0, 0.75);
+  opacity: 0; transform: translateX(-10px) scale(0.97); transform-origin: left top; pointer-events: none;
+  transition: opacity 0.18s, transform 0.22s cubic-bezier(.3,1.4,.5,1); }
+.usage-rail.open .hub-usage { opacity: 1; transform: none; pointer-events: auto; }
 .usage-title { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-dim); }
 .usage-meter { display: flex; flex-direction: column; gap: 6px; --meter: var(--ok); }
 .usage-meter.mid { --meter: var(--busy); }
