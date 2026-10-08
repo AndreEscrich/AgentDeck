@@ -35,8 +35,9 @@ class Hub {
   // New agents start only from the message box under the Hub.
   // onRemove(agentId) removes a tile's agent; onContext(agentId) shows its
   // right-click menu.
-  constructor(container, { onOpen, onRemove, onRemoveGroup, onContext, onLanded, onReplay, onTab, onReorder, onDragSound }) {
+  constructor(container, { onOpen, onRemove, onInterrupt, onRemoveGroup, onContext, onLanded, onReplay, onTab, onReorder, onDragSound }) {
     this.onOpen = onOpen;
+    this.onInterrupt = onInterrupt;
     this.onReorder = onReorder;
     this.onDragSound = onDragSound;
     this.onReplay = onReplay;
@@ -188,6 +189,11 @@ class Hub {
     const remove = el('button', 'tile-remove', '×');
     remove.title = 'Remove from the Hub';
     remove.onclick = e => { e.stopPropagation(); this.onRemove?.(agent.id); };
+    // While the agent works: stop its current task (it stays in the Hub).
+    const stop = el('button', 'tile-stop');
+    stop.title = 'Stop the current task';
+    stop.appendChild(el('span'));
+    stop.onclick = e => { e.stopPropagation(); this.onInterrupt?.(agent.id); };
 
     const tank = el('div', 'tank');
     const liquid = el('div', 'liquid');
@@ -220,7 +226,7 @@ class Hub {
     statusRow.append(statusDot, statusText, timer);
     info.append(title, statusRow);
 
-    tile.append(remove, tank, info);
+    tile.append(remove, stop, tank, info);
     const entry = { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, badge, title, statusDot, statusText, timer } };
     this.tiles.set(agent.id, entry);
     return entry;
@@ -422,7 +428,7 @@ class Hub {
   // A press on a tile becomes a drag once the mouse has moved a few pixels;
   // a press without moving stays a click.
   press(e, agentId) {
-    if (e.button !== 0 || e.target.closest('.tile-remove') || this.drag || this.opening) return;
+    if (e.button !== 0 || e.target.closest('.tile-remove, .tile-stop') || this.drag || this.opening) return;
     const entry = this.tiles.get(agentId);
     if (!entry || entry.removing || !entry.el.parentNode) return;
     const sx = e.clientX;

@@ -646,6 +646,7 @@ const hub = new Hub($('hub-view'), {
     return state.agents.get(id)?.view;
   },
   onRemove: removeFromHub,
+  onInterrupt: id => interruptAgent(id),
   onRemoveGroup: removeGroupFromHub,
   onTab: () => checkNext(),
   onReorder: ids => saveTileOrder(ids),
@@ -985,6 +986,7 @@ function setHeader(title, subtitle, agent) {
     pill.classList.add('hidden');
   }
   $('btn-interrupt').classList.toggle('hidden', !agent || agent.status !== 'working');
+  $('composer-stop').classList.toggle('hidden', !agent || agent.status !== 'working');
   $('btn-close').classList.toggle('hidden', !agent || agent.status === 'exited');
 }
 
@@ -1747,13 +1749,17 @@ $('input').addEventListener('keydown', e => {
 $('send').onclick = sendFromComposer;
 
 
-$('btn-interrupt').onclick = () => {
-  if (state.current?.kind !== 'agent') return;
+// Stops an agent's current task; the agent stays, ready for your next
+// message. From the top bar, the message box, or its tile in the Hub.
+function interruptAgent(id) {
+  const a = state.agents.get(id);
+  if (!a || a.status !== 'working') return;
   // A task you stop yourself ends without the error sound.
-  const a = state.agents.get(state.current.id);
-  if (a) a.stopping = true;
-  window.deck.interrupt(state.current.id);
-};
+  a.stopping = true;
+  window.deck.interrupt(id);
+}
+$('btn-interrupt').onclick = () => { if (state.current?.kind === 'agent') interruptAgent(state.current.id); };
+$('composer-stop').onclick = () => { if (state.current?.kind === 'agent') interruptAgent(state.current.id); };
 $('btn-close').onclick = async () => {
   if (state.current?.kind !== 'agent') return;
   const id = state.current.id;

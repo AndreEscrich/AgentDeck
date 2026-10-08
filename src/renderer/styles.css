@@ -711,6 +711,21 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
   font-size: 16px; line-height: 1; opacity: 0; transform: scale(0.8); transition: opacity 0.15s, transform 0.15s; }
 .hub-tile:hover .tile-remove { opacity: 1; transform: scale(1); }
 .tile-remove:hover { background: var(--err); border-color: var(--err); color: #fff; }
+/* Stop the current task: a square next to the ×, only on a working tile. */
+.tile-stop { position: absolute; top: 6px; right: 36px; z-index: 3; width: 24px; height: 24px; padding: 0;
+  display: none; align-items: center; justify-content: center;
+  border-radius: 50%; border: 1px solid var(--border); background: var(--bg-sidebar);
+  opacity: 0; transform: scale(0.8); transition: opacity 0.15s, transform 0.15s; }
+.tile-stop span { width: 8px; height: 8px; border-radius: 2px; background: var(--text-dim); }
+.hub-tile.state-working .tile-stop { display: flex; }
+.hub-tile.state-working:hover .tile-stop { opacity: 1; transform: scale(1); }
+.tile-stop:hover { background: var(--busy); border-color: var(--busy); }
+.tile-stop:hover span { background: #1a150f; }
+/* The same in the message box of a working agent, next to Send. */
+.composer-stop { display: inline-flex; align-items: center; gap: 7px; padding: 4px 12px; border-radius: 8px; margin-right: 6px; }
+.composer-stop.hidden { display: none; }
+.composer-stop span { width: 8px; height: 8px; border-radius: 2px; background: currentColor; }
+.composer-stop:hover { background: var(--busy); border-color: var(--busy); color: #1a150f; }
 .hub-tile.removing { pointer-events: none; animation: remove-tile 0.65s cubic-bezier(.5,0,.75,0) forwards; }
 .hub-tile.removing .liquid { transition: height 0.35s ease-in; }
 .hub-tile.removing .burst span { background: var(--text-faint); animation: fly 0.6s ease-out forwards; animation-delay: 0.25s; }
