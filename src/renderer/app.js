@@ -171,7 +171,7 @@ function chooseGroup() {
   document.querySelector('.group-panel')?.remove();
   const panel = el('div', 'group-panel');
   const input = document.createElement('input');
-  input.placeholder = 'Type a new group, or search…';
+  input.placeholder = 'Type a new category, or search…';
   const list = el('div', 'group-panel-list');
   panel.append(input, list);
   $('composer-group').parentNode.appendChild(panel);
