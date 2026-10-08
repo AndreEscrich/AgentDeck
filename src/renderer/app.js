@@ -1680,7 +1680,9 @@ function playSounds() {
 function autosize() {
   const input = $('input');
   input.style.height = 'auto';
-  input.style.height = Math.min(input.scrollHeight, 240) + 'px';
+  // scrollHeight leaves out the border, which the height includes.
+  const border = input.offsetHeight - input.clientHeight;
+  input.style.height = Math.min(input.scrollHeight + border, 240) + 'px';
 }
 
 $('input').addEventListener('input', autosize);

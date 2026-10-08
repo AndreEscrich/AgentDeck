@@ -251,17 +251,20 @@ details.thinking pre { font-family: var(--font); color: var(--text-dim); }
   padding: 10px 24px 18px;
 }
 .composer-box {
-  /* Sunken, like the Hub's groups: a dark well with an inner shadow and a
-     faintly lit lower edge. */
-  background: #110d0a;
-  border: 1px solid #0a0806;
-  border-radius: 12px;
-  padding: 8px 8px 6px 12px;
-  box-shadow: inset 0 3px 10px rgba(0, 0, 0, 0.7), 0 1px 0 rgba(255, 236, 210, 0.05);
+  /* Two parts: the text field is a sunken well (like the Hub's groups), set
+     into a raised tray (like the tiles) that holds the agent's options and
+     Send below it. */
+  background: #2a221b;
+  border: 1px solid #3d3329;
+  border-radius: 14px;
+  padding: 6px;
+  box-shadow: inset 0 1px 0 rgba(255, 236, 210, 0.07), 0 8px 18px -8px rgba(0, 0, 0, 0.9);
 }
-.composer-box:focus-within { border-color: var(--accent); }
-#input { width: 100%; resize: none; max-height: 240px; padding: 2px 0; border: none; background: none; }
-.composer-bar { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+#input { display: block; width: 100%; resize: none; max-height: 240px; padding: 9px 12px;
+  background: #110d0a; border: 1px solid #0a0806; border-radius: 10px;
+  box-shadow: inset 0 3px 10px rgba(0, 0, 0, 0.7), 0 1px 0 rgba(255, 236, 210, 0.05); }
+#input:focus { outline: none; border-color: var(--accent); }
+.composer-bar { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; padding: 0 2px 0 4px; }
 #send { padding: 4px 14px; border-radius: 8px; }
 
 /* Model menu */
