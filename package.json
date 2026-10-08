@@ -5,7 +5,9 @@
   "main": "src/main.js",
   "private": true,
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "icon": "electron scripts/render-icon.js",
+    "make-app": "bash scripts/make-app.sh"
   },
   "devDependencies": {
     "electron": "^38.0.0"

@@ -78,10 +78,25 @@ function findClaude(configured) {
 }
 
 // An app started from Finder gets a short PATH, so agents could not find
-// node, git or brew tools. We add the usual install folders. When the app is
+// node, git or brew tools. We ask your login shell for your real PATH once,
+// and also add the usual install folders. When the app is
 // itself started from inside a Claude Code session, that session's variables
 // (proxy URL, session ids) would make the child talk to the wrong endpoint,
 // so we remove them.
+let cachedLoginPath = null;
+function loginShellPath() {
+  if (cachedLoginPath !== null) return cachedLoginPath;
+  try {
+    // The markers let us find PATH even when shell startup files print text.
+    const out = execFileSync(process.env.SHELL || '/bin/zsh', ['-ilc', 'printf "__PATH__%s__END__" "$PATH"'],
+      { timeout: 5000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    cachedLoginPath = out.match(/__PATH__(.*)__END__/)?.[1] || '';
+  } catch {
+    cachedLoginPath = '';
+  }
+  return cachedLoginPath;
+}
+
 function childEnv(extra) {
   const env = { ...process.env, ...extra };
   if (env.CLAUDECODE) {
@@ -92,7 +107,8 @@ function childEnv(extra) {
     }
   }
   const extraPath = ['/opt/homebrew/bin', '/usr/local/bin', path.join(os.homedir(), '.local/bin')];
-  env.PATH = [...extraPath, env.PATH || '/usr/bin:/bin'].join(':');
+  const parts = [...loginShellPath().split(':'), ...extraPath, ...(env.PATH || '/usr/bin:/bin').split(':')];
+  env.PATH = [...new Set(parts.filter(Boolean))].join(':');
   return env;
 }
 

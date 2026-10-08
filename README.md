@@ -11,6 +11,14 @@ npm start
 
 You need Claude Code installed and logged in (`claude` in a terminal, then `/login`).
 
+### As a Mac app
+
+```bash
+npm run make-app
+```
+
+This builds `~/Applications/AgentDeck.app` with the AgentDeck icon and puts a link to it on your Desktop. The app runs the code in this folder directly, so after you change the code you only quit and reopen it. Run `npm run make-app` again only after `npm install` updates Electron, or after you change the icon (`build/icon.html`, then `npm run icon`).
+
 ## What it does
 
 - **History sidebar.** It lists every session Claude Code has saved in `~/.claude/projects`, grouped by project folder. This includes sessions you ran in the terminal or in the Claude desktop app. Click one to read it, and type a message to continue it.

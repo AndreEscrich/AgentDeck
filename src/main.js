@@ -72,6 +72,8 @@ function watchSessions() {
 }
 
 app.whenReady().then(() => {
+  // Shows the AgentDeck icon in the Dock also when you run `npm start`.
+  if (app.dock) app.dock.setIcon(path.join(__dirname, '..', 'build', 'icon.png'));
   configPath = path.join(app.getPath('userData'), 'config.json');
   if (!fs.existsSync(configPath)) fs.writeFileSync(configPath, JSON.stringify(DEFAULT_CONFIG, null, 2));
 
