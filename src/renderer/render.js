@@ -69,7 +69,17 @@ function mediaElement(file, caption) {
 // Markdown images with a file path show the file; a video path becomes a player.
 function markdown(text, cwd) {
   const div = el('div', 'msg-text');
-  div.innerHTML = DOMPurify.sanitize(marked.parse(text), { ADD_ATTR: ['target'] });
+  // Text boxes drawn with ╔═╗ characters become cards (see boxcard.js).
+  const { text: rest, boxes } = extractBoxes(text);
+  div.innerHTML = DOMPurify.sanitize(marked.parse(rest), { ADD_ATTR: ['target'] });
+  for (const slot of div.querySelectorAll('[data-boxcard]')) {
+    const lines = boxes[Number(slot.dataset.boxcard)];
+    try {
+      slot.replaceWith(renderBoxCard(lines));
+    } catch {
+      slot.replaceWith(el('pre', null, lines.join('\n')));
+    }
+  }
   for (const a of div.querySelectorAll('a')) a.target = '_blank';
   for (const img of div.querySelectorAll('img')) {
     const file = resolveMediaPath(img.getAttribute('src'), cwd);
