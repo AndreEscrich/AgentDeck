@@ -26,8 +26,15 @@ function repoOf(cwd) {
     }
     dir = path.dirname(dir);
   }
-  root = root || path.resolve(cwd);
-  const result = { root, name: path.basename(root) };
+  const folder = path.resolve(cwd);
+  // The repository's name plus the folder inside it, for example
+  // "MergeTavern/Unity" when .svn is in MergeTavern and the agent works in
+  // MergeTavern/Unity. Without a repository: the folder's last two parts.
+  const name = root
+    ? [path.basename(root), path.relative(root, folder)].filter(Boolean).join('/')
+    : folder.split(path.sep).filter(Boolean).slice(-2).join('/');
+  root = root || folder;
+  const result = { root, name };
   cache.set(cwd, result);
   return result;
 }

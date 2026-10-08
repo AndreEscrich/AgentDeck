@@ -129,7 +129,7 @@ function ensureDraft() {
 function renderDraftButtons() {
   const d = ensureDraft();
   const folder = $('composer-folder');
-  folder.textContent = (d.folder ? '📁 ' + (d.folder.split(SEP).filter(Boolean).pop() || d.folder) : '📁 Choose folder') + ' ▾';
+  folder.textContent = (d.folder ? '📁 ' + shortPath(d.folder) : '📁 Choose folder') + ' ▾';
   folder.title = d.folder ? `Folder: ${d.folder}` : 'Pick the folder the agent works in';
   folder.classList.toggle('danger-text', !d.folder);
   const group = state.groups.groups.find(g => g.id === d.groupId);
@@ -378,7 +378,7 @@ const repoNames = new Map();   // folder -> repository name
 function repoName(cwd) {
   if (!cwd) return '';
   if (!repoNames.has(cwd)) {
-    repoNames.set(cwd, cwd.split('/').filter(Boolean).pop() || cwd);
+    repoNames.set(cwd, shortPath(cwd));
     window.deck.repoOf(cwd).then(r => {
       if (r && r.name !== repoNames.get(cwd)) {
         repoNames.set(cwd, r.name);
