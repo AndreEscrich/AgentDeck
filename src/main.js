@@ -4,6 +4,7 @@ const path = require('path');
 const { AgentManager, fetchModels, summarizeTitle } = require('./agents');
 const { listSessions, loadTranscript, PROJECTS_DIR } = require('./sessions');
 const git = require('./git');
+const { repoOf } = require('./repos');
 
 // Settings you can edit by hand. The app writes this file with the defaults
 // the first time it starts; use "Settings" in the sidebar to open it.
@@ -126,6 +127,7 @@ app.whenReady().then(() => {
   ipcMain.handle('sessions:list', () => listSessions());
   ipcMain.handle('git:snapshot', (_e, cwd) => git.snapshot(cwd, path.join(app.getPath('userData'), 'snapshots')));
   ipcMain.handle('git:changes', (_e, cwd, snap) => git.changesSince(cwd, snap));
+  ipcMain.handle('repo:of', (_e, cwd) => repoOf(cwd));
   ipcMain.handle('groups:get', () => readGroups());
   ipcMain.handle('groups:save', (_e, data) => fs.writeFileSync(groupsPath, JSON.stringify(data, null, 2)));
   ipcMain.handle('menu:popup', (_e, items) => popupMenu(items));

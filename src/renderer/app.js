@@ -366,7 +366,27 @@ function hubItems() {
   for (const a of live) a.groupId = groupOf(a.sessionId) || a.groupId || null;
   const liveSessions = new Set(live.map(a => a.sessionId).filter(Boolean));
   const parked = [...state.parked.values()].filter(p => !liveSessions.has(p.sessionId)).map(parkedItem);
-  return [...live, ...parked];
+  const items = [...live, ...parked];
+  for (const item of items) item.repo = repoName(item.cwd);
+  return items;
+}
+
+// The Hub has one panel per group and repository. The main process finds the
+// repository (the nearest folder with .git or .svn); until it answers, the
+// agent's folder name is used.
+const repoNames = new Map();   // folder -> repository name
+function repoName(cwd) {
+  if (!cwd) return '';
+  if (!repoNames.has(cwd)) {
+    repoNames.set(cwd, cwd.split('/').filter(Boolean).pop() || cwd);
+    window.deck.repoOf(cwd).then(r => {
+      if (r && r.name !== repoNames.get(cwd)) {
+        repoNames.set(cwd, r.name);
+        refreshHub();
+      }
+    }).catch(() => {});
+  }
+  return repoNames.get(cwd);
 }
 
 // Saved in the window's local storage, which survives restarts. Running

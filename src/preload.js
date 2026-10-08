@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('deck', {
   platform: process.platform,   // 'darwin' on macOS, 'win32' on Windows
   getConfig: () => ipcRenderer.invoke('config:get'),
   openConfig: () => ipcRenderer.invoke('config:open'),
+  repoOf: cwd => ipcRenderer.invoke('repo:of', cwd),
   getGroups: () => ipcRenderer.invoke('groups:get'),
   saveGroups: data => ipcRenderer.invoke('groups:save', data),
   popupMenu: items => ipcRenderer.invoke('menu:popup', items),

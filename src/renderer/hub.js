@@ -38,7 +38,7 @@ class Hub {
     this.onOpen = onOpen;
     this.onRemove = onRemove;
     this.onContext = onContext;
-    this.sections = new Map();       // group id ('' for no group) -> { el, name, count, grid }
+    this.sections = new Map();       // group id ('' for no group) + repository -> { el, name, repo, count, grid }
     this.tiles = new Map();          // agent id -> { el, parts, status }
     this.arrivals = new Map();       // agent id -> where its message box was, for the morph animation
     this.completed = 0;              // agents that finished a task this session
@@ -125,7 +125,8 @@ class Hub {
     }
   }
 
-  // groups: [{ id, name }] in display order. Each agent has a groupId (or null).
+  // groups: [{ id, name }] in display order. Each agent has a groupId (or
+  // null) and a repo name; there is one panel per group and repository.
   update(agents, currentId, groups = []) {
     const seen = new Set();
     const counts = new Map();
@@ -136,9 +137,10 @@ class Hub {
       if (entry.removing) continue;
       const { el: tile, parts } = entry;
       tile.style.order = String(order++);
-      const key = groups.some(g => g.id === agent.groupId) ? agent.groupId : '';
+      const groupKey = groups.some(g => g.id === agent.groupId) ? agent.groupId : '';
+      const key = `${groupKey}\n${agent.repo || ''}`;
       counts.set(key, (counts.get(key) || 0) + 1);
-      const grid = this.section(key, groups).grid;
+      const grid = this.section(key, groupKey, agent.repo || '').grid;
       if (tile.parentNode !== grid) grid.appendChild(tile);
       if (entry.arrival) {
         const info = entry.arrival;
@@ -185,15 +187,22 @@ class Hub {
       }
     }
 
-    // Sections follow your group order, "No group" last; empty ones hide.
-    const keys = [...groups.map(g => g.id), ''];
-    for (const [key, sec] of this.sections) {
-      const n = counts.get(key) || 0;
+    // Panels follow your group order ("No group" last), and within a group the
+    // repository names in alphabetical order. Empty panels hide.
+    const groupOrder = [...groups.map(g => g.id), ''];
+    const rank = sec => {
+      const i = groupOrder.indexOf(sec.groupKey);
+      return i < 0 ? groupOrder.length : i;
+    };
+    const sorted = [...this.sections.values()].sort((a, b) => rank(a) - rank(b) || a.repo.localeCompare(b.repo));
+    sorted.forEach((sec, i) => {
+      const n = counts.get(sec.key) || 0;
       sec.el.classList.toggle('hidden', !n);
       sec.count.textContent = String(n);
-      sec.name.textContent = key ? groups.find(g => g.id === key)?.name || 'Group' : 'No group';
-      sec.el.style.order = String(keys.indexOf(key) < 0 ? keys.length : keys.indexOf(key));
-    }
+      sec.name.textContent = sec.groupKey ? groups.find(g => g.id === sec.groupKey)?.name || 'Group' : 'No group';
+      sec.repoEl.textContent = sec.repo;
+      sec.el.style.order = String(i);
+    });
 
     const count = s => agents.filter(a => a.status === s).length;
     const parts = [];
@@ -207,18 +216,20 @@ class Hub {
     this.grid.classList.toggle('hidden', agents.length === 0);
   }
 
-  section(key, groups) {
+  // A panel's title is "Group — Repository".
+  section(key, groupKey, repo) {
     let sec = this.sections.get(key);
     if (!sec) {
       const elSec = el('section', 'hub-section');
       const head = el('div', 'hub-section-head');
       const name = el('span', 'hub-section-name');
+      const repoEl = el('span', 'hub-section-repo');
       const count = el('span', 'hub-section-count');
-      head.append(name, count);
+      head.append(name, repoEl, count);
       const grid = el('div', 'hub-grid');
       elSec.append(head, grid);
       this.grid.appendChild(elSec);
-      sec = { el: elSec, name, count, grid };
+      sec = { key, groupKey, repo, el: elSec, name, repoEl, count, grid };
       this.sections.set(key, sec);
     }
     return sec;

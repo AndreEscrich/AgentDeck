@@ -450,6 +450,9 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 .hub-section-name { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-dim); }
 .hub-section-name::before { content: "# "; color: var(--text-faint); }
 .hub-section-count { font-size: 12px; color: var(--text-faint); }
+.hub-section-repo { font-size: 13px; font-weight: 600; color: var(--text); font-family: var(--mono); }
+.hub-section-repo:empty { display: none; }
+.hub-section-repo::before { content: "— "; color: var(--text-faint); font-family: var(--font); }
 .hub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px; }
 /* Inside a group, all tiles stay on one row: they share its width equally and
    get smaller the more there are, up to 240px wide each. */
