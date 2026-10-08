@@ -152,7 +152,7 @@ async function chooseFolder() {
 }
 
 // The group button opens a panel: type a name to create a group, or pick
-// one from the list. Groups that agents in the Hub use come first.
+// one from the list. The list only shows groups that agents in the Hub use.
 function chooseGroup() {
   const d = ensureDraft();
   document.querySelector('.group-panel')?.remove();
@@ -181,11 +181,14 @@ function chooseGroup() {
   function render() {
     const q = input.value.trim().toLowerCase();
     list.innerHTML = '';
-    const groups = [...state.groups.groups]
+    // Only groups that agents in the Hub use, plus the group picked right
+    // now. A group without agents disappears from the list.
+    const exactMatch = state.groups.groups.find(g => g.name.toLowerCase() === q);
+    const groups = state.groups.groups
+      .filter(g => inUse.get(g.id) || g.id === d.groupId || g === exactMatch)
       .filter(g => !q || g.name.toLowerCase().includes(q))
       .sort((a, b) => (inUse.get(b.id) || 0) - (inUse.get(a.id) || 0));
-    const exact = state.groups.groups.some(g => g.name.toLowerCase() === q);
-    if (q && !exact) {
+    if (q && !exactMatch) {
       const create = el('div', 'group-panel-item create', `+ Create group "${input.value.trim()}"`);
       create.onclick = () => pick(addGroup(input.value.trim()).id);
       list.appendChild(create);
@@ -196,11 +199,8 @@ function chooseGroup() {
       none.onclick = () => pick(null);
       list.appendChild(none);
     }
-    let shownInUse = false;
     for (const g of groups) {
       const n = inUse.get(g.id) || 0;
-      if (!n && shownInUse && !list.querySelector('.group-panel-sep')) list.appendChild(el('div', 'group-panel-sep', 'Other groups'));
-      if (n) shownInUse = true;
       const row = el('div', 'group-panel-item' + (g.id === d.groupId ? ' selected' : ''));
       row.append(el('span', null, '# ' + g.name), el('span', 'group-panel-count', n ? `${n} agent${n === 1 ? '' : 's'}` : ''));
       row.onclick = () => pick(g.id);
