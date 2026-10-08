@@ -654,7 +654,6 @@ const hub = new Hub($('hub-view'), {
   onTab: () => checkNext(),
   onReorder: ids => saveTileOrder(ids),
   onDragSound: kind => { if (playSounds()) sounds[kind]?.(); },
-  onSettings: () => window.deck.openConfig(),
   // A new agent's message box has flown into its tile.
   onLanded: () => { if (playSounds()) sounds.brew(); },
   // Catching up after the app was in the background: each tile that changed

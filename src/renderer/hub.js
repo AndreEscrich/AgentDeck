@@ -35,7 +35,7 @@ class Hub {
   // New agents start only from the message box under the Hub.
   // onRemove(agentId) removes a tile's agent; onContext(agentId) shows its
   // right-click menu.
-  constructor(container, { onOpen, onRemove, onRemoveGroup, onContext, onSettings, onLanded, onReplay, onTab, onReorder, onDragSound }) {
+  constructor(container, { onOpen, onRemove, onRemoveGroup, onContext, onLanded, onReplay, onTab, onReorder, onDragSound }) {
     this.onOpen = onOpen;
     this.onReorder = onReorder;
     this.onDragSound = onDragSound;
@@ -52,17 +52,6 @@ class Hub {
     this.root = el('div', 'hub');
     const head = el('div', 'hub-head');
     this.counters = el('div', 'hub-counters');
-    // Settings sits in the floating bar on the left (see below). History has
-    // its own button in the top bar.
-    const navButton = (cls, title, svg, onclick) => {
-      const b = el('button', `nav-btn ${cls}`);
-      b.type = 'button';
-      b.title = title;
-      b.innerHTML = svg;
-      b.onclick = () => { this.rail.classList.remove('open'); onclick?.(); };
-      return b;
-    };
-    const settingsBtn = navButton('nav-settings', 'Settings', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>', onSettings);
     // Shown when Tab has agents to check: the key, how many, and the first one.
     this.tabHint = el('button', 'hub-tab-hint hidden');
     this.tabHint.type = 'button';
@@ -88,9 +77,9 @@ class Hub {
     this.usageTab.type = 'button';
     this.usageTab.title = 'Usage';
     this.usage = el('aside', 'hub-usage');
-    // The floating bar on the left edge: usage and Settings.
+    // The floating bar on the left edge (only the usage tab for now).
     const nav = el('nav', 'hub-nav');
-    nav.append(this.usageTab, settingsBtn);
+    nav.append(this.usageTab);
     this.rail.append(nav, this.usage);
     this.usageTab.onclick = () => this.rail.classList.toggle('open');
     document.addEventListener('pointerdown', e => {
