@@ -580,3 +580,16 @@ body.sidebar-collapsed .review-bar { padding-left: 84px; }
 #sidebar .item { padding: 5px 7px; font-size: 13px; }
 #sidebar .section-label { margin: 12px 6px 6px; }
 .hub-nav { margin-top: 8px; }
+
+/* Hub: the message box morphs into a new tile */
+.hub-tile.arriving { opacity: 0; }
+.morph-ghost { border: 2px solid #2c2f3d; z-index: 60; }
+.morph-text { position: absolute; inset: 0; padding: 10px 14px; font-size: var(--font-size); color: var(--text);
+  white-space: pre-wrap; overflow: hidden; }
+.morph-ghost .liquid { height: 0; }
+.hub-tile.landed { animation: landed 0.6s cubic-bezier(.3,1.5,.5,1); }
+@keyframes landed {
+  0% { transform: scale(1.05, 0.94); }
+  45% { transform: scale(0.97, 1.04); }
+  100% { transform: none; }
+}

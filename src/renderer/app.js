@@ -46,7 +46,7 @@ const composerPicker = new ModelPicker($('composer-picker'), {
       a.transcript.note(`Switched to ${composerPicker.button.textContent.replace(' ▾', '')} from the next message on.`);
     } else if (cur?.kind === 'history') {
       state.history.get(cur.id).choice = choice;
-    } else if (cur?.kind === 'new') {
+    } else if (cur?.kind === 'new' || cur?.kind === 'hub') {
       ensureDraft().choice = choice;
     }
   },
@@ -68,7 +68,7 @@ const composerModePicker = new ModePicker($('composer-mode-picker'), {
       a.transcript.note(`Permissions switched to ${composerModePicker.mode.label}.`);
     } else if (cur?.kind === 'history') {
       state.history.get(cur.id).mode = mode;
-    } else if (cur?.kind === 'new') {
+    } else if (cur?.kind === 'new' || cur?.kind === 'hub') {
       ensureDraft().mode = mode;
     }
   },
@@ -178,10 +178,11 @@ function show(kind, id) {
   state.current = { kind, id };
   for (const v of $('views').children) v.classList.add('hidden');
 
-  const isChat = kind === 'agent' || kind === 'history' || kind === 'new';
-  $('composer').classList.toggle('hidden', !isChat);
-  $('composer-folder').classList.toggle('hidden', kind !== 'new');
-  $('composer-group').classList.toggle('hidden', kind !== 'new');
+  // The Hub also has the message box: a message there starts a new agent.
+  const startsAgent = kind === 'new' || kind === 'hub' || !['agent', 'history'].includes(kind);
+  $('composer').classList.remove('hidden');
+  $('composer-folder').classList.toggle('hidden', !startsAgent);
+  $('composer-group').classList.toggle('hidden', !startsAgent);
 
   if (kind === 'new') {
     const d = ensureDraft();
@@ -213,6 +214,11 @@ function show(kind, id) {
     state.current = { kind: 'hub' };
     $('hub-view').classList.remove('hidden');
     setHeader('Hub', 'All running agents', null);
+    const d = ensureDraft();
+    composerPicker.setValue(d.choice);
+    composerModePicker.setValue(d.mode);
+    renderDraftButtons();
+    $('input').placeholder = 'Start a new agent… (↩ to start)';
   }
   renderSidebar();
 }
@@ -224,7 +230,10 @@ const hub = new Hub($('hub-view'), {
     show('agent', id);
     return state.agents.get(id)?.view;
   },
-  onNew: () => show('new'),
+  onNew: () => {
+    show('hub');
+    $('input').focus();
+  },
 });
 
 // Many events can arrive in one frame, so the Hub redraws at most once per frame.
@@ -525,7 +534,7 @@ async function openHistory(session) {
 
 // ---------- agents ----------
 
-async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId }) {
+async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId, fromRect }) {
   const title = resume ? resume.session.title : prompt.split('\n')[0].slice(0, 80);
   choice = choice || defaultChoice();
   permissionMode = permissionMode || defaultMode();
@@ -549,7 +558,13 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     groupId: resume ? groupOf(resume.session.id) : groupId || null };
   state.agents.set(id, agent);
   transcript.add({ type: 'user', message: { role: 'user', content: prompt } });
-  afterSend(agent, false);
+  if (fromRect) {
+    // Started from the Hub: stay there and watch the message box become the tile.
+    hub.expectArrival(id, fromRect, prompt);
+    show('hub');
+  } else {
+    afterSend(agent, false);
+  }
   await sendToAgent(agent, prompt);
 }
 
@@ -657,7 +672,9 @@ async function sendFromComposer() {
   input.value = '';
   autosize();
 
-  if (state.current.kind === 'new') {
+  if (state.current.kind === 'new' || state.current.kind === 'hub') {
+    // From the Hub, the message box morphs into the new agent's tile.
+    const fromRect = state.current.kind === 'hub' ? document.querySelector('.composer-box').getBoundingClientRect() : null;
     const d = ensureDraft();
     if (!d.folder) {
       input.value = text;
@@ -669,7 +686,7 @@ async function sendFromComposer() {
     saveGroups();
     // The next new agent starts with the same folder and group, and the default model.
     state.draft = null;
-    await startAgent({ cwd: d.folder, prompt: text, permissionMode: d.mode, choice: d.choice, groupId: d.groupId });
+    await startAgent({ cwd: d.folder, prompt: text, permissionMode: d.mode, choice: d.choice, groupId: d.groupId, fromRect });
   } else if (state.current.kind === 'agent') {
     const a = state.agents.get(state.current.id);
     a.transcript.add({ type: 'user', message: { role: 'user', content: text } });

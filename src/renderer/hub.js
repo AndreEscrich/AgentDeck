@@ -39,6 +39,7 @@ class Hub {
   constructor(container, { onOpen, onNew }) {
     this.onOpen = onOpen;
     this.tiles = new Map();          // agent id -> { el, parts, status }
+    this.arrivals = new Map();       // agent id -> where its message box was, for the morph animation
     this.completed = 0;              // agents that finished a task this session
 
     this.root = el('div', 'hub');
@@ -59,8 +60,11 @@ class Hub {
   }
 
   createTile(agent) {
-    // A new tile springs in; the class is removed when that animation ends.
-    const tile = el('div', 'hub-tile spawn');
+    // A new tile springs in, or, when it was started from the Hub's message
+    // box, stays hidden until the box has morphed into it (see morph()).
+    const arrival = this.arrivals.get(agent.id);
+    this.arrivals.delete(agent.id);
+    const tile = el('div', arrival ? 'hub-tile arriving' : 'hub-tile spawn');
     tile.addEventListener('animationend', e => { if (e.animationName === 'spawn') tile.classList.remove('spawn'); });
     tile.onclick = () => this.open(agent.id);
 
@@ -97,7 +101,7 @@ class Hub {
     info.append(title, meta, statusRow, activity, stats);
 
     tile.append(tank, info);
-    const entry = { el: tile, status: null, fresh: true, level: 0, parts: { liquid, icon, title, meta, statusDot, statusText, timer, activity, stats } };
+    const entry = { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, title, meta, statusDot, statusText, timer, activity, stats } };
     this.tiles.set(agent.id, entry);
     return entry;
   }
@@ -125,6 +129,11 @@ class Hub {
       const { el: tile, parts } = entry;
       tile.style.order = String(order++);
       if (!tile.parentNode) this.grid.appendChild(tile);
+      if (entry.arrival) {
+        const info = entry.arrival;
+        entry.arrival = null;
+        requestAnimationFrame(() => this.morph(entry, info));
+      }
 
       // Play the one-time animations when the state changes.
       const before = entry.status;
@@ -209,6 +218,52 @@ class Hub {
       const entry = this.tiles.get(agent.id);
       if (entry) this.updateTimer(agent, entry.parts.timer);
     }
+  }
+
+  // Call before the agent's tile exists: its tile will grow out of the
+  // message box at rect (with the typed text) instead of springing in.
+  expectArrival(agentId, rect, text) {
+    this.arrivals.set(agentId, { rect, text });
+  }
+
+  // The message box lifts, shrinks to the size of a tank while the text fades
+  // and the liquid starts to fill, then flies to the tile's place in the grid.
+  async morph(entry, { rect: from, text }) {
+    const tile = entry.el;
+    // Without a visible Hub there is nowhere to fly to.
+    if (!tile.offsetParent) {
+      tile.classList.remove('arriving');
+      return;
+    }
+    tile.scrollIntoView({ block: 'nearest' });
+    const to = tile.querySelector('.tank').getBoundingClientRect();
+
+    const ghost = el('div', 'zoom-ghost morph-ghost state-starting');
+    const label = el('div', 'morph-text', text);
+    const liquid = el('div', 'liquid');
+    ghost.append(liquid, label);
+    Object.assign(ghost.style, { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px` });
+    document.body.appendChild(ghost);
+
+    const lift = {
+      left: from.left + (from.width - to.width) / 2,
+      top: Math.max(to.top + 40, from.top - to.height - 30),
+    };
+    const duration = 950;
+    const box = r => ({ left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+    const flight = ghost.animate([
+      { ...box(from), borderRadius: '12px', backgroundColor: '#1e2028', borderColor: '#d97757', easing: 'cubic-bezier(.3,0,.2,1)' },
+      { ...box({ ...lift, width: to.width, height: to.height }), borderRadius: '14px 14px 22px 22px', backgroundColor: '#0f1016', borderColor: '#2c2f3d', offset: 0.38, easing: 'cubic-bezier(.55,0,.25,1)' },
+      { ...box(to), borderRadius: '14px 14px 22px 22px', backgroundColor: '#0f1016', borderColor: '#2c2f3d' },
+    ], { duration, fill: 'forwards' });
+    label.animate([{ opacity: 1 }, { opacity: 0, offset: 0.3 }, { opacity: 0 }], { duration, fill: 'forwards' });
+    liquid.animate([{ height: '0%' }, { height: '0%', offset: 0.25 }, { height: `${Math.max(entry.level, 22)}%` }], { duration, fill: 'forwards', easing: 'ease-out' });
+    await flight.finished.catch(() => {});
+
+    tile.classList.remove('arriving');
+    this.replay(tile, 'landed', 600);
+    await ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, fill: 'forwards' }).finished.catch(() => {});
+    ghost.remove();
   }
 
   // "Back to work": the tile hops and its tank flashes when you send a
