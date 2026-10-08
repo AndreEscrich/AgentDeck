@@ -578,13 +578,14 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
   0%, 100% { transform: scale(0.97); filter: brightness(0.8); }
   50% { transform: scale(1.03) translateY(2px); filter: brightness(1.25); }
 }
-/* A working tile floats very slightly. It moves with translate and rotate,
+/* A working tile bobs and rocks gently while it works. It moves with translate and rotate,
    so the hover lift (transform) still works on top of it. */
-.hub-tile.state-working { animation: work-float 3.6s ease-in-out infinite; animation-delay: var(--phase, 0s); }
+.hub-tile.state-working { animation: work-float 3s ease-in-out infinite; animation-delay: var(--phase, 0s); }
 @keyframes work-float {
   0%, 100% { translate: 0 0; rotate: 0deg; }
-  30% { translate: 0 -2px; rotate: -0.35deg; }
-  70% { translate: 0 1px; rotate: 0.35deg; }
+  25% { translate: -1px -6px; rotate: -1.2deg; }
+  50% { translate: 0 -2px; rotate: 0deg; }
+  75% { translate: 1px 3px; rotate: 1.1deg; }
 }
 .hub-tile.state-waiting { animation: attention 1.4s ease-in-out infinite; }
 @keyframes attention { 50% { box-shadow: 0 0 0 4px var(--glow), 0 6px 30px -4px var(--glow); } }
