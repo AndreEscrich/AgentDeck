@@ -65,6 +65,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 #sidebar {
   width: var(--sidebar-width);
   flex-shrink: 0;
+  overflow: hidden;
+  transition: width 0.18s ease, padding 0.18s ease;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   display: flex;
@@ -147,7 +149,15 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   -webkit-app-region: drag;
 }
 #topbar button, #topbar .status-pill { -webkit-app-region: no-drag; }
-.titles { min-width: 0; }
+.titles { min-width: 0; flex: 1; }
+#topbar { justify-content: flex-start; }
+.sidebar-toggle { -webkit-app-region: no-drag; display: flex; align-items: center; padding: 4px; border-radius: 6px; color: var(--text-faint); }
+.sidebar-toggle:hover { background: var(--bg-hover); color: var(--text); }
+
+/* Hidden sidebar. The top bar then leaves room for the window buttons. */
+body.sidebar-collapsed #sidebar { width: 0; padding-left: 0; padding-right: 0; border-right: none; }
+body.sidebar-collapsed #topbar { padding-left: 84px; }
+#topbar { transition: padding-left 0.18s ease; }
 #view-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #view-subtitle { font-size: 12px; color: var(--text-faint); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }

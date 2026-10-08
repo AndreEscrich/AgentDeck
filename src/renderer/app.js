@@ -581,6 +581,23 @@ document.addEventListener('keydown', e => {
   }
 });
 
+// ---------- sidebar toggle ----------
+
+function setSidebarCollapsed(collapsed) {
+  document.body.classList.toggle('sidebar-collapsed', collapsed);
+  $('toggle-sidebar').title = collapsed ? 'Show sidebar (⌘\\)' : 'Hide sidebar (⌘\\)';
+  try { localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0'); } catch { /* not important */ }
+}
+
+$('toggle-sidebar').onclick = () => setSidebarCollapsed(!document.body.classList.contains('sidebar-collapsed'));
+document.addEventListener('keydown', e => {
+  if (e.metaKey && e.key === '\\') {
+    e.preventDefault();
+    $('toggle-sidebar').click();
+  }
+});
+try { setSidebarCollapsed(localStorage.getItem('sidebarCollapsed') === '1'); } catch { /* not important */ }
+
 // Refresh the "5m ago" labels now and then.
 setInterval(renderSidebar, 60_000);
 

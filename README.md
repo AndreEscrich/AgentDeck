@@ -35,6 +35,7 @@ This builds `~/Applications/AgentDeck.app` with the AgentDeck icon and puts a li
 | ⌘N | New agent |
 | ⌘1 … ⌘9 | Switch to running agent 1–9 |
 | ⌘F | Search history |
+| ⌘\\ | Hide or show the sidebar |
 | Esc | Stop the current turn |
 | ⌘↩ | Start agent (in the New agent form) |
 
