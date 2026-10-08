@@ -476,7 +476,7 @@ function show(kind, id) {
   } else {
     state.current = { kind: 'hub' };
     $('hub-view').classList.remove('hidden');
-    setHeader('Hub', 'All running agents', null);
+    setHeader('Hub', reviewHint(), null);
     const d = ensureDraft();
     composerPicker.setValue(d.choice);
     composerModePicker.setValue(d.mode);
@@ -495,14 +495,74 @@ function show(kind, id) {
 
 // From an agent, the view shrinks back into its tile; from anywhere else the
 // Hub simply opens.
+// The Hub's subtitle tells you how many agents wait for you to look at them.
+function reviewHint() {
+  const n = reviewQueue().length;
+  return n ? `All running agents · ↩ to review ${n}` : 'All running agents';
+}
+
 function backToHub() {
   const cur = state.current;
   show('hub');
+  let back = null;
   if (cur?.kind === 'agent' && state.agents.has(cur.id)) {
-    hub.returnTo(cur.id, state.agents.get(cur.id).view);
+    back = hub.returnTo(cur.id, state.agents.get(cur.id).view);
   } else if (cur?.kind === 'history' && state.parked.has(cur.id)) {
-    hub.returnTo('p:' + cur.id, state.history.get(cur.id)?.view);
+    back = hub.returnTo('p:' + cur.id, state.history.get(cur.id)?.view);
   }
+  continueReview(cur, back);
+}
+
+// ---------- review queue ----------
+
+// Enter in the Hub (with the message box not active) opens the next agent
+// that needs you: first the agents waiting for your input (approval or a
+// question), the one that has waited longest first; then completed agents you
+// have not looked at yet, newest first. Closing an agent the queue opened, or
+// answering it, opens the next one. Opening another agent yourself ends it.
+function reviewQueue() {
+  const items = hubItems();
+  const waiting = items.filter(i => i.status === 'waiting')
+    .sort((a, b) => (a.waitingSince || 0) - (b.waitingSince || 0));
+  const unseen = items.filter(i => i.unread && i.status === 'idle')
+    .sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
+  return [...waiting, ...unseen];
+}
+
+// A new press of Enter starts a round. Within a round, agents already opened
+// are skipped: an agent that still waits for your answer would otherwise come
+// first again right after you close it.
+function reviewNext(continuing = false) {
+  if (!continuing || !state.reviewed) state.reviewed = new Set();
+  const next = reviewQueue().find(i => !state.reviewed.has(i.id));
+  state.reviewing = next ? next.id : null;
+  if (next) {
+    state.reviewed.add(next.id);
+    hub.open(next.id);
+  }
+  return !!next;
+}
+
+// The Hub id of what is on screen: an agent's id, or "p:<session>" for a
+// completed agent that is not running.
+function hubIdOf(view) {
+  if (view?.kind === 'agent') return view.id;
+  if (view?.kind === 'history') return 'p:' + view.id;
+  return null;
+}
+
+// Called when you leave an agent (closing it or answering it). If the queue
+// opened that agent, the next one opens once the closing animation is over.
+function continueReview(left, closing) {
+  if (!state.reviewing || hubIdOf(left) !== state.reviewing) {
+    state.reviewing = null;
+    return;
+  }
+  Promise.resolve(closing).then(() => {
+    // Only if you are still in the Hub and did not open something else.
+    if (state.current?.kind === 'hub') setTimeout(() => { if (state.current?.kind === 'hub') reviewNext(true); }, 250);
+    else state.reviewing = null;
+  });
 }
 $('back-to-hub').onclick = backToHub;
 
@@ -540,6 +600,7 @@ function refreshHub() {
     updateAttention();
     const agents = items.filter(a => !a.parked);
     const busy = agents.filter(a => ['working', 'starting', 'waiting'].includes(a.status)).length;
+    if (state.current?.kind === 'hub') $('view-subtitle').textContent = reviewHint();
     // Agents finishing or getting their short title change the "continues from" line.
     if (['new', 'hub'].includes(state.current?.kind)) renderDraftButtons();
   });
@@ -1097,7 +1158,8 @@ function afterSend(agent, wake) {
   if (fromChat && agent.view) {
     // The tile of a continued session is new: draw it now, not in the next frame.
     hub.update(hubItems(), null, state.groups.groups);
-    hub.returnTo(agent.id, agent.view).then(() => { if (wake) hub.wake(agent.id); });
+    const back = hub.returnTo(agent.id, agent.view).then(() => { if (wake) hub.wake(agent.id); });
+    continueReview(cur, back);
     return;
   }
   if (wake) requestAnimationFrame(() => requestAnimationFrame(() => hub.wake(agent.id)));
@@ -1154,6 +1216,9 @@ window.deck.onStatus((id, status) => {
   if (!a) return;
   a.status = status;
   if (status !== 'waiting') a.attention = null;
+  // Used by the review queue: the agent that has waited longest goes first.
+  if (status === 'waiting') a.waitingSince = a.waitingSince || Date.now();
+  else a.waitingSince = null;
   const viewing = state.current?.kind === 'agent' && state.current.id === id;
   if ((status === 'idle' || status === 'error' || status === 'waiting') && !viewing) a.unread = true;
   refreshHeaderIfCurrent(id);
@@ -1230,6 +1295,11 @@ window.deck.onExit((id, { code, stderr }) => {
 async function sendFromComposer() {
   const input = $('input');
   const text = input.value.trim();
+  // Enter in the Hub's empty message box also opens the next agent that needs you.
+  if (!text && state.current?.kind === 'hub') {
+    reviewNext();
+    return;
+  }
   if (!text || !state.current) return;
   input.value = '';
   autosize();
@@ -1321,6 +1391,13 @@ document.addEventListener('keydown', e => {
     if (a) { e.preventDefault(); show('agent', a.id); }
   }
   if (isMod(e) && e.key === 'f') { e.preventDefault(); setHistoryOpen(true); }
+  // Enter in the Hub, with no text field active: open the next agent that needs you.
+  const typing = e.target.closest?.('input, textarea, select, [contenteditable="true"]');
+  if (e.key === 'Enter' && !e.shiftKey && !isMod(e) && !e.altKey && !typing && state.current?.kind === 'hub'
+      && !document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .review')) {
+    e.preventDefault();
+    reviewNext();
+  }
   // Esc leaves an agent (or a saved session, or a new agent) for the Hub.
   // The Stop button in the top bar stops a running turn.
   if (e.key === 'Escape' && !e.popupWasOpen && ['agent', 'history', 'new'].includes(state.current?.kind)) {
