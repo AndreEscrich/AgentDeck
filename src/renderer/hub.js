@@ -241,9 +241,7 @@ class Hub {
     statusRow.append(statusDot, statusText, timer);
     info.append(title, statusRow);
 
-    // The tile is drawn as a floating tank: a lid on top, two metal bands
-    // around it and its shadow on the floor (see "Floating tanks" in styles.css).
-    tile.append(el('div', 'barrel-shadow'), el('div', 'barrel-lid'), el('div', 'barrel-band top'), remove, tank, info, el('div', 'barrel-band bottom'));
+    tile.append(remove, tank, info);
     const entry = { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, badge, title, statusDot, statusText, timer } };
     this.tiles.set(agent.id, entry);
     return entry;
