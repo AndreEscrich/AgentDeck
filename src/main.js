@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, Notification, Menu } = require('electron');
 const fs = require('fs');
 const path = require('path');
-const { AgentManager, fetchModels } = require('./agents');
+const { AgentManager, fetchModels, summarizeTitle } = require('./agents');
 const { listSessions, loadTranscript, PROJECTS_DIR } = require('./sessions');
 const git = require('./git');
 
@@ -18,6 +18,7 @@ const DEFAULT_CONFIG = {
   env: {},                              // extra environment variables for every agent
   notifyWhenDone: true,
   hubAfterSend: true,                   // show the Hub after you send a message
+  summarizeTitles: true,                // title new agents with a short summary of your message
 };
 
 let win;
@@ -145,6 +146,7 @@ app.whenReady().then(() => {
   ipcMain.handle('agent:setPermissionMode', (_e, id, mode) => agents.setPermissionMode(id, mode));
   ipcMain.handle('agent:interrupt', (_e, id) => agents.interrupt(id));
   ipcMain.handle('agent:close', (_e, id) => agents.close(id));
+  ipcMain.handle('agent:title', (_e, text) => (getConfig().summarizeTitles ? summarizeTitle(getConfig(), text) : null));
   ipcMain.handle('notify', (_e, title, body) => {
     if (getConfig().notifyWhenDone && !win.isFocused()) {
       const n = new Notification({ title, body });

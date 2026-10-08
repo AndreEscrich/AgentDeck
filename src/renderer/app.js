@@ -680,6 +680,8 @@ function renderHistory() {
 
 async function loadSessions() {
   state.sessions = await window.deck.listSessions();
+  const titles = savedTitles();
+  for (const s of state.sessions) if (titles[s.id]) s.title = titles[s.id];
   renderSidebar();
 }
 
@@ -732,6 +734,7 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     groupId: resume ? groupOf(resume.session.id) : groupId || null };
   state.agents.set(id, agent);
   transcript.add({ type: 'user', message: { role: 'user', content: prompt } });
+  if (!resume) summarizeTitle(agent, prompt);
   if (fromRect) {
     // Started from the Hub: stay there and watch the message box become the tile.
     hub.expectArrival(id, fromRect, prompt);
@@ -740,6 +743,32 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     afterSend(agent, false);
   }
   await sendToAgent(agent, prompt);
+}
+
+// ---------- titles ----------
+
+// Titles that summarize what you asked for, by session id. Saved in local
+// storage, because Claude Code's own session files keep your first message.
+function savedTitles() {
+  try { return JSON.parse(localStorage.getItem('sessionTitles') || '{}'); } catch { return {}; }
+}
+
+function rememberTitle(agent) {
+  if (!agent.sessionId || !agent.summaryTitle) return;
+  const titles = savedTitles();
+  titles[agent.sessionId] = agent.summaryTitle;
+  try { localStorage.setItem('sessionTitles', JSON.stringify(titles)); } catch { /* not important */ }
+}
+
+// Until the summary arrives, the agent keeps your message as its title.
+async function summarizeTitle(agent, prompt) {
+  const title = await window.deck.summarizeTitle(prompt).catch(() => null);
+  if (!title) return;
+  agent.title = title;
+  agent.summaryTitle = title;
+  rememberTitle(agent);
+  refreshHeaderIfCurrent(agent.id);
+  refreshHub();
 }
 
 // After you send a message, the Hub shows the agent going (back) to work.
@@ -811,6 +840,7 @@ window.deck.onSession((id, sessionId) => {
   const a = state.agents.get(id);
   if (!a) return;
   a.sessionId = sessionId;
+  rememberTitle(a);
   // The CLI reports the session id once the session exists. That is when we
   // can save the group, and it also covers a resume that got a new id.
   if (a.groupId && groupOf(sessionId) !== a.groupId) assignGroup(sessionId, a.groupId);

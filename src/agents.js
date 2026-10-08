@@ -236,4 +236,37 @@ function fetchModels(config) {
   });
 }
 
-module.exports = { AgentManager, fetchModels, findClaude };
+// Asks Claude Code (on Haiku, the fastest model) for a short title that
+// summarizes a task, at most 5 words. It runs without MCP servers and tools,
+// which makes it start faster, and saves no session, so it does not show up
+// in History. Resolves with the title, or null.
+function summarizeTitle(config, text) {
+  return new Promise(resolve => {
+    const proc = spawnClaude(config.claudePath,
+      ['-p', '--model', 'haiku', '--output-format', 'json', '--strict-mcp-config', '--tools', '', '--no-session-persistence'],
+      { cwd: os.tmpdir(), env: childEnv(config.env), stdio: ['pipe', 'pipe', 'ignore'] });
+    helperProcesses.add(proc);
+    let out = '';
+    const timer = setTimeout(() => { killTree(proc); }, 30000);
+    proc.stdout.on('data', d => { out += d; });
+    proc.on('error', () => resolve(null));
+    proc.on('close', () => {
+      clearTimeout(timer);
+      helperProcesses.delete(proc);
+      try {
+        const result = JSON.parse(out);
+        if (result.is_error || typeof result.result !== 'string') return resolve(null);
+        // One line, no quotes or end punctuation, at most 5 words.
+        const title = result.result.split('\n')[0].replace(/^["'`*#\s]+|["'`*.!?\s]+$/g, '').split(/\s+/).slice(0, 5).join(' ');
+        resolve(title || null);
+      } catch {
+        resolve(null);
+      }
+    });
+    proc.stdin.end(
+      'Summarize this task as a short title of at most 5 words. Reply with only the title, no quotes, no punctuation at the end.\n\n'
+      + 'Task: ' + text.slice(0, 2000));
+  });
+}
+
+module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle };
