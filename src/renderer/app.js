@@ -524,7 +524,9 @@ function leaveToHub() {
 // The agents to check, in order: first the ones waiting for your input
 // (a question or an approval) that you have not opened since, the one that
 // has waited longest first; then completed agents you have not opened since
-// they finished, the latest first.
+// they finished, the latest first; and last the agents that still wait for
+// your answer although you have looked at them, so they come back once
+// nothing else is left.
 //
 // Tab (anywhere in the app) opens the first one: from the Hub it zooms out
 // of its tile; from an agent, the next one slides in from the right.
@@ -536,7 +538,9 @@ function reviewQueue() {
     .sort((a, b) => (a.waitingSince || 0) - (b.waitingSince || 0));
   const unseen = items.filter(i => i.unread && i.status === 'idle')
     .sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
-  return [...waiting, ...unseen];
+  const unanswered = items.filter(i => i.status === 'waiting' && !i.unread)
+    .sort((a, b) => (a.waitingSince || 0) - (b.waitingSince || 0));
+  return [...waiting, ...unseen, ...unanswered];
 }
 
 // A new press of Enter starts a round. Within a round, agents already opened
