@@ -109,9 +109,22 @@ function lastFolder() {
 
 // Folders you used lately: running agents first, then saved sessions, newest
 // first. Temporary folders (from scratchpads) are left out.
+// Folders you removed from the folder menu. They come back when you pick
+// them again with Choose folder… or start an agent in them.
+function hiddenFolders() {
+  try { return JSON.parse(localStorage.getItem('hiddenFolders') || '[]'); } catch { return []; }
+}
+
+function setFolderHidden(folder, hidden) {
+  const list = hiddenFolders().filter(f => f !== folder);
+  if (hidden) list.push(folder);
+  try { localStorage.setItem('hiddenFolders', JSON.stringify(list)); } catch { /* not important */ }
+}
+
 function recentFolders() {
   const list = [];
-  const add = f => { if (f && !list.includes(f) && !/\/private\/tmp\/|scratch-workspaces/.test(f)) list.push(f); };
+  const hidden = new Set(hiddenFolders());
+  const add = f => { if (f && !list.includes(f) && !hidden.has(f) && !/\/private\/tmp\/|scratch-workspaces/.test(f)) list.push(f); };
   try { add(localStorage.getItem('lastFolder')); } catch { /* not important */ }
   for (const a of state.agents.values()) add(a.cwd);
   for (const s of state.sessions) add(s.cwd);
@@ -147,23 +160,64 @@ function renderDraftButtons() {
   fork.title = source ? 'A new agent in this Group starts as a copy of this agent\'s conversation.' : '';
 }
 
-async function chooseFolder() {
+// The folder menu: recent folders, each with ✕ to remove it from the list,
+// and Choose folder… at the bottom. It opens above the folder button, like
+// the Category panel.
+function chooseFolder() {
   const d = ensureDraft();
-  const folders = recentFolders();
-  const items = folders.map(f => ({ id: 'f:' + f, label: homePath(f), checked: f === d.folder }));
-  if (items.length) items.push({ type: 'separator' });
-  items.push({ id: 'choose', label: 'Choose folder…' });
-  const picked = await window.deck.popupMenu(items);
-  if (!picked) return;
-  if (picked === 'choose') {
-    const dir = await window.deck.pickFolder();
-    if (!dir) return;
-    d.folder = dir;
-  } else {
-    d.folder = picked.slice(2);
+  const open = document.querySelector('.folder-panel');
+  document.querySelector('.group-panel')?.remove();
+  if (open) return; // a second click on the button closes it
+  const panel = el('div', 'group-panel folder-panel');
+  const list = el('div', 'group-panel-list');
+  panel.appendChild(list);
+  $('composer-folder').parentNode.appendChild(panel);
+
+  const close = () => {
+    panel.remove();
+    document.removeEventListener('mousedown', outside, true);
+    document.removeEventListener('keydown', onKey, true);
+  };
+  const outside = e => { if (!panel.contains(e.target) && e.target !== $('composer-folder')) close(); };
+  const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+  const pick = folder => {
+    d.folder = folder;
+    setFolderHidden(folder, false);
+    close();
+    renderDraftButtons();
+    $('input').focus();
+  };
+
+  function render() {
+    list.innerHTML = '';
+    for (const f of recentFolders()) {
+      const row = el('div', 'group-panel-item folder-row' + (f === d.folder ? ' selected' : ''));
+      row.title = f;
+      const remove = el('button', 'folder-remove', '✕');
+      remove.title = 'Remove from this list (the folder itself stays)';
+      remove.onclick = e => {
+        e.stopPropagation();
+        setFolderHidden(f, true);
+        try { if (localStorage.getItem('lastFolder') === f) localStorage.removeItem('lastFolder'); } catch { /* not important */ }
+        render();
+      };
+      row.append(el('span', 'folder-name', homePath(f)), remove);
+      row.onclick = () => pick(f);
+      list.appendChild(row);
+    }
+    if (!list.children.length) list.appendChild(el('div', 'group-panel-sep', 'No recent folders'));
+    const choose = el('div', 'group-panel-item create', 'Choose folder…');
+    choose.onclick = async () => {
+      close();
+      const dir = await window.deck.pickFolder();
+      if (dir) pick(dir);
+    };
+    list.appendChild(choose);
   }
-  renderDraftButtons();
-  $('input').focus();
+
+  render();
+  document.addEventListener('mousedown', outside, true);
+  document.addEventListener('keydown', onKey, true);
 }
 
 // The group button opens a panel: type a name to create a group, or pick
@@ -1072,6 +1126,7 @@ async function sendFromComposer() {
       return;
     }
     try { localStorage.setItem('lastFolder', d.folder); } catch { /* not important */ }
+    setFolderHidden(d.folder, false);
     state.groups.lastGroupId = d.groupId || undefined;
     saveGroups();
     // The next new agent starts with the same folder and group, and the default model.
