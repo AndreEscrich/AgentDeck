@@ -214,6 +214,58 @@ class Transcript {
     this.tools = new Map();         // tool_use id -> { card, name, input }
     this.draft = null;              // text streaming in before the full message arrives
     this.turn = null;               // the turn in progress
+    this.prompts = [];              // your messages: { el, text }, in order
+    this.createPromptPin(container);
+  }
+
+  // ---------- which message the output on screen answers ----------
+
+  // A bar at the top of the chat with your message for the output on screen,
+  // shown once that message has scrolled out of view. Clicking it scrolls back
+  // to the message. It has no height of its own, so showing and hiding it does
+  // not move the chat.
+  createPromptPin(container) {
+    this.pin = el('div', 'prompt-pin');
+    const bar = el('button', 'prompt-pin-bar');
+    bar.type = 'button';
+    bar.title = 'Scroll to your message';
+    this.pinText = el('span', 'prompt-pin-text');
+    bar.append(el('span', 'prompt-pin-label', 'You asked'), this.pinText);
+    bar.onclick = () => {
+      const target = this.pinTarget?.el;
+      if (!target) return;
+      const top = this.scroller.scrollTop + target.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top - 12;
+      this.scroller.scrollTo({ top, behavior: 'smooth' });
+    };
+    this.pin.appendChild(bar);
+    container.insertBefore(this.pin, this.root);
+    let frame = 0;
+    container.addEventListener('scroll', () => {
+      if (!frame) frame = requestAnimationFrame(() => { frame = 0; this.updatePromptPin(); });
+    }, { passive: true });
+  }
+
+  updatePromptPin() {
+    const top = this.scroller.getBoundingClientRect().top + 4;
+    // The last message that starts above the top edge is the one the output
+    // on screen belongs to.
+    let index = -1;
+    for (let i = 0; i < this.prompts.length; i++) {
+      if (this.prompts[i].el.getBoundingClientRect().top < top) index = i;
+      else break;
+    }
+    const current = this.prompts[index];
+    const next = this.prompts[index + 1];
+    // No bar while that message is still (partly) on screen, or while the
+    // next message is right at the top, where the bar would cover it.
+    const show = !!current && current.el.getBoundingClientRect().bottom < top
+      && !(next && next.el.getBoundingClientRect().top < top + 90);
+    this.pin.classList.toggle('show', show);
+    if (show && this.pinTarget !== current) {
+      this.pinTarget = current;
+      this.pinText.textContent = current.text;
+      this.pinText.title = current.text;
+    }
   }
 
   // Keep the view pinned to the bottom only when the person has not scrolled up.
@@ -375,7 +427,9 @@ class Transcript {
     if (texts.length) {
       // Your message starts a new turn.
       this.finishTurn();
-      for (const t of texts) this.append(el('div', 'msg-user', t));
+      const bubbles = texts.map(t => el('div', 'msg-user', t));
+      for (const b of bubbles) this.append(b);
+      this.prompts.push({ el: bubbles[0], text: texts.join('\n').trim() });
       this.startTurn();
     }
     if (Array.isArray(content)) {
