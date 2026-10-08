@@ -1,6 +1,6 @@
 /* Change these variables to restyle the whole app. */
 :root {
-  --bg: #18140f;
+  --bg: #1f1913;
   --bg-sidebar: #120f0b;
   --bg-panel: #221c16;
   --bg-hover: #2c241d;
@@ -502,8 +502,9 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 .usage-since { display: flex; flex-direction: column; gap: 2px; padding-top: 12px; border-top: 1px solid var(--border); }
 .usage-big { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
 /* Each group is a panel that holds its agents. */
-.hub-section { background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 18px; padding: 12px 14px 14px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03); }
+.hub-section { background: #110d0a; border: 1px solid #0a0806; border-radius: 18px; padding: 12px 14px 14px;
+  /* Sunken: the group is a dark well set into the page, lit at its lower edge. */
+  box-shadow: inset 0 3px 10px rgba(0, 0, 0, 0.7), 0 1px 0 rgba(255, 236, 210, 0.05); }
 .hub-section-head { display: flex; align-items: baseline; gap: 8px; margin: 0 2px 12px; }
 .hub-section-name { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-dim); }
 .hub-section-name::before { content: "# "; color: var(--text-faint); }
@@ -545,7 +546,7 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
 /* Colors per state: --c1 top of the liquid, --c2 bottom, --glow the tile glow. */
 .hub-tile { --c1: #6b708c; --c2: #4a4e66; --glow: transparent; --wave-speed: 9s;
   position: relative; display: flex; flex-direction: column; gap: 10px;
-  padding: 10px; border-radius: 16px; background: var(--bg-panel); border: 1px solid var(--border);
+  padding: 10px; border-radius: 16px; background: #2a221b; border: 1px solid #3d3329;
   /* Sizes inside the tile (cqw) follow the tile's width. */
   container-type: inline-size;
   cursor: pointer; transition: border-color 0.3s, box-shadow 0.4s, transform 0.15s; }
@@ -556,7 +557,7 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
 .hub-tile.state-waiting  { --c1: #f09a75; --c2: #c4562f; --glow: rgba(217, 119, 87, 0.45); --wave-speed: 6s; }
 .hub-tile.state-idle     { --c1: #74d39d; --c2: #2f8f5a; --glow: rgba(76, 175, 122, 0.22); --wave-speed: 12s; }
 .hub-tile.state-error    { --c1: #ef7f7f; --c2: #b33a3a; --glow: rgba(224, 90, 90, 0.3); --wave-speed: 14s; }
-.hub-tile { box-shadow: 0 0 0 0 var(--glow); }
+.hub-tile { box-shadow: inset 0 1px 0 rgba(255, 236, 210, 0.07), 0 8px 18px -8px rgba(0, 0, 0, 0.9); }
 /* The light behind a tile is its own layer, so it can breathe slowly while
    the tile itself plays its other animations. Each tile starts at a random
    point (--phase), so they do not pulse together. Working tiles breathe a
@@ -808,7 +809,10 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
   88% { transform: none; }
 }
 /* Choppy liquid: it sloshes from side to side and bubbles fast. */
-.hub-tile.state-waiting .liquid { animation: slosh 0.9s ease-in-out infinite; transform-origin: 50% 100%; }
+.hub-tile.state-waiting .liquid { animation: slosh 0.9s ease-in-out infinite; transform-origin: 50% 100%;
+  /* The liquid continues below its bottom edge (in its own color), so lifting
+     and tilting never shows the dark tank under it. */
+  box-shadow: 0 14px 0 0 var(--c2); }
 @keyframes slosh { 0%, 100% { transform: skewY(0deg); } 25% { transform: skewY(3deg) translateY(-2px); } 75% { transform: skewY(-3deg) translateY(-2px); } }
 .hub-tile.state-waiting .bubbles { opacity: 1; }
 .hub-tile.state-waiting .bubbles span { animation-duration: 1.3s; }
