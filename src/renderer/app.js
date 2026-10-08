@@ -331,6 +331,8 @@ function hubInfo(a) {
     choice: a.choice,
     mode: a.mode,
     lastTurn: a.transcript?.lastTurn ? { durationMs: a.transcript.lastTurn.durationMs, usage: a.transcript.lastTurn.usage } : a.lastTurn || null,
+    // Finished while you were not looking, and not opened since.
+    unread: !!a.unread,
   };
 }
 
@@ -345,6 +347,7 @@ function parkedItem(p) {
     title: p.title,
     cwd: p.cwd,
     groupId: groupOf(p.sessionId) || p.groupId,
+    unread: !!p.unread,
     transcript: { stepCount: 0, tokens: p.lastTurn?.usage || null, turnStartedAt: null, lastTurn: p.lastTurn },
   };
 }
@@ -377,6 +380,7 @@ function loadHub() {
 // Opens the session of an agent that is not running; your next message there resumes it.
 async function openParked(sessionId) {
   const p = state.parked.get(sessionId);
+  if (p) p.unread = false;
   let session = state.sessions.find(s => s.id === sessionId);
   if (!session) {
     await loadSessions();
@@ -674,6 +678,9 @@ async function loadSessions() {
 // ---------- history ----------
 
 async function openHistory(session) {
+  // Opening a completed agent's session from History also counts as seeing it.
+  const parked = state.parked.get(session.id);
+  if (parked) parked.unread = false;
   if (!state.history.has(session.id)) {
     const view = makeChatView();
     const data = await window.deck.loadTranscript(session.file);

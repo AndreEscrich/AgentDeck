@@ -636,3 +636,13 @@ details.other-files details.change-file > summary { padding-left: 24px; }
   .hub-timer { margin-left: 0; }
   .tank-badge { width: 18px; height: 18px; font-size: 11px; top: 5px; right: 5px; }
 }
+
+/* Finished, and not opened since: the tank glows and breathes until you open
+   the agent. Opening it removes the "unread" mark, and the tile stays calm. */
+.hub-tile.state-idle.unread .tank { animation: done-unseen 1.8s ease-in-out infinite; }
+@keyframes done-unseen {
+  0%, 100% { box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.6), 0 0 0 0 rgba(116, 211, 157, 0); transform: scale(1); }
+  50% { box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.6), 0 0 0 5px rgba(116, 211, 157, 0.35), 0 0 26px 4px rgba(116, 211, 157, 0.4); transform: scale(1.025); }
+}
+.hub-tile.state-idle.unread .tank-icon { animation: done-unseen-icon 1.8s ease-in-out infinite; }
+@keyframes done-unseen-icon { 50% { transform: scale(1.12); } }
