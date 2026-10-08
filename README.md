@@ -41,6 +41,8 @@ The app you use every day and the code you change live in two separate folders, 
 | `~/Repositories/AgentDeck-stable` | `master` | Agent Hub.app runs this code. Don't edit it directly. |
 | `~/Repositories/AgentDeck` | `dev` | Make and commit changes here. Test them with `npm start`, which opens a second window that runs the dev code. |
 
+The version next to the title tells the two apart. The stable copy shows the version from `package.json` (`v0.3.0`). The dev copy shows master's major and minor version, with the number of commits it is ahead of master as the patch number, in amber: `v0.3.4 dev`.
+
 When a change works, move it to the stable copy from the dev folder:
 
 ```bash

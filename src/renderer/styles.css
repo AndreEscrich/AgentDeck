@@ -170,6 +170,9 @@ body.history-open #drawer-backdrop { opacity: 1; pointer-events: auto; }
 .platform-win32 #topbar { padding-right: 150px; }
 #topbar { transition: padding-left 0.18s ease; }
 #view-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.title-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+#app-version { flex-shrink: 0; font-size: 11px; color: var(--text-faint); font-family: var(--mono); }
+#app-version.dev { color: var(--busy); }
 #view-subtitle { font-size: 12px; color: var(--text-faint); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
 .status-pill { font-size: 12px; padding: 2px 10px; border-radius: 99px; background: var(--bg-panel); color: var(--text-dim); display: flex; align-items: center; gap: 6px; }

@@ -1469,6 +1469,11 @@ setInterval(renderSidebar, 60_000);
 
 (async () => {
   state.config = await window.deck.getConfig();
+  // The version next to the title; the dev copy says "dev" after it.
+  window.deck.appVersion().then(({ version, dev }) => {
+    $('app-version').textContent = `v${version}${dev ? ' dev' : ''}`;
+    $('app-version').classList.toggle('dev', dev);
+  }).catch(() => {});
   loadModels().then(renderSettingsButton);
   try { setSettingsOpen(localStorage.getItem('composerSettingsOpen') === '1'); } catch { setSettingsOpen(false); }
   state.groups = { groups: [], assignments: {}, ...(await window.deck.getGroups()) };

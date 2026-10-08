@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('deck', {
   platform: process.platform,   // 'darwin' on macOS, 'win32' on Windows
   getConfig: () => ipcRenderer.invoke('config:get'),
   openConfig: () => ipcRenderer.invoke('config:open'),
+  appVersion: () => ipcRenderer.invoke('app:version'),
   repoOf: cwd => ipcRenderer.invoke('repo:of', cwd),
   existingFiles: paths => ipcRenderer.invoke('fs:existing', paths),
   getGroups: () => ipcRenderer.invoke('groups:get'),

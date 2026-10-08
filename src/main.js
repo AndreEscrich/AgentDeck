@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, Notification, Menu, protocol, net, nativeImage } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const { execFile } = require('child_process');
 const { AgentManager, fetchModels, summarizeTitle } = require('./agents');
 const { listSessions, loadTranscript, PROJECTS_DIR } = require('./sessions');
 const git = require('./git');
@@ -66,6 +67,31 @@ function getConfig() {
   } catch {
     return { ...DEFAULT_CONFIG };
   }
+}
+
+// The version shown in the top bar. The stable copy (on master) shows the
+// version from package.json. The dev copy shows master's major.minor version
+// and, as the patch number, how many commits it is ahead of master, so
+// 0.3.4 dev is master 0.3.x plus four commits.
+function appVersion() {
+  const dir = app.getAppPath();
+  const run = args => new Promise(resolve => {
+    execFile('git', ['-C', dir, ...args], { timeout: 10000 }, (err, out) => resolve(err ? null : out.trim()));
+  });
+  const stable = { version: app.getVersion(), dev: false };
+  return (async () => {
+    const branch = await run(['rev-parse', '--abbrev-ref', 'HEAD']);
+    if (!branch || branch === 'master') return stable;
+    const pkg = await run(['show', 'master:package.json']);
+    const ahead = await run(['rev-list', '--count', 'master..HEAD']);
+    if (!pkg || ahead == null) return stable;
+    try {
+      const [major, minor] = JSON.parse(pkg).version.split('.');
+      return { version: `${major}.${minor}.${ahead}`, dev: true };
+    } catch {
+      return stable;
+    }
+  })();
 }
 
 function send(channel, ...args) {
@@ -172,6 +198,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('config:get', () => ({ ...getConfig(), home: require('os').homedir() }));
   ipcMain.handle('config:open', () => shell.openPath(configPath));
+  ipcMain.handle('app:version', () => appVersion());
   ipcMain.handle('sessions:list', () => listSessions());
   ipcMain.handle('git:snapshot', (_e, cwd) => git.snapshot(cwd, path.join(app.getPath('userData'), 'snapshots')));
   ipcMain.handle('git:changes', (_e, cwd, snap) => git.changesSince(cwd, snap));
