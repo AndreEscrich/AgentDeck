@@ -855,18 +855,39 @@ function hubItems() {
   const parked = [...state.parked.values()].filter(p => !liveSessions.has(p.sessionId)).map(parkedItem);
   const items = [...live, ...parked];
   for (const item of items) item.repo = repoName(item.cwd);
-  // The order you dragged the tiles into; tiles not sorted yet come after.
+  // Every tile has a lasting place: a new agent gets the next place at the
+  // end, so it shows right of the others in its group (and a new group shows
+  // below the others). Dragging tiles swaps places (see saveTileOrder).
+  let changed = false;
+  for (const item of items) {
+    const key = orderKey(item);
+    if (tileOrder.includes(key)) continue;
+    // An agent keeps its place when its session id arrives.
+    const old = tileOrder.indexOf(item.id);
+    if (old >= 0) tileOrder[old] = key;
+    else tileOrder.push(key);
+    changed = true;
+  }
+  // Places of tiles that are gone (removed from the Hub) are dropped.
+  const present = new Set(items.map(orderKey));
+  if (tileOrder.some(k => !present.has(k))) { tileOrder = tileOrder.filter(k => present.has(k)); changed = true; }
+  if (changed) {
+    try { localStorage.setItem('hubOrder', JSON.stringify(tileOrder)); } catch { /* not important */ }
+  }
   const rank = new Map(tileOrder.map((key, i) => [key, i]));
-  return items.map((item, i) => [item, rank.has(orderKey(item)) ? rank.get(orderKey(item)) : 1e6 + i])
-    .sort((a, b) => a[1] - b[1]).map(([item]) => item);
+  return items.sort((a, b) => rank.get(orderKey(a)) - rank.get(orderKey(b)));
 }
 
 function orderKey(item) {
   return item.sessionId || item.id;
 }
+// After a drag, the group's tiles take the places they had between them, in
+// the new order; tiles of other groups, and the group itself, stay put.
 function saveTileOrder(ids) {
   const keys = ids.map(id => (id.startsWith('p:') ? id.slice(2) : orderKey(state.agents.get(id) || { id })));
-  tileOrder = [...tileOrder.filter(k => !keys.includes(k)), ...keys];
+  const places = tileOrder.map((k, i) => (keys.includes(k) ? i : -1)).filter(i => i >= 0);
+  if (places.length === keys.length) keys.forEach((k, n) => { tileOrder[places[n]] = k; });
+  else tileOrder = [...tileOrder.filter(k => !keys.includes(k)), ...keys];
   try { localStorage.setItem('hubOrder', JSON.stringify(tileOrder)); } catch { /* not important */ }
   refreshHub();
 }

@@ -300,6 +300,7 @@ class Hub {
   render(agents, currentId, groups = []) {
     const seen = new Set();
     const counts = new Map();
+    const firstAt = new Map();   // panel key -> place of its first agent
     let order = 0;
     for (const agent of agents) {
       seen.add(agent.id);
@@ -310,6 +311,7 @@ class Hub {
       const groupKey = groups.some(g => g.id === agent.groupId) ? agent.groupId : '';
       const key = `${groupKey}\n${agent.repo || ''}`;
       counts.set(key, (counts.get(key) || 0) + 1);
+      if (!firstAt.has(key)) firstAt.set(key, order);
       const grid = this.section(key, groupKey, agent.repo || '').grid;
       if (tile.parentNode !== grid) grid.appendChild(tile);
       if (entry.arrival) {
@@ -365,14 +367,11 @@ class Hub {
     }
 
     // A panel is a Group: one Category plus one folder; its agents share
-    // context. Panels follow your Category order ("No category" last), and within a Category the
-    // repository names in alphabetical order. Empty panels hide.
-    const groupOrder = [...groups.map(g => g.id), ''];
-    const rank = sec => {
-      const i = groupOrder.indexOf(sec.groupKey);
-      return i < 0 ? groupOrder.length : i;
-    };
-    const sorted = [...this.sections.values()].sort((a, b) => rank(a) - rank(b) || a.repo.localeCompare(b.repo));
+    // context. Panels stand in the order their first agent came (agents
+    // arrive in the order they started, see hubItems in app.js), so a new
+    // group appears below the others. Empty panels hide.
+    const rank = sec => (firstAt.has(sec.key) ? firstAt.get(sec.key) : Infinity);
+    const sorted = [...this.sections.values()].sort((a, b) => rank(a) - rank(b));
     sorted.forEach((sec, i) => {
       const n = counts.get(sec.key) || 0;
       sec.el.classList.toggle('hidden', !n);
