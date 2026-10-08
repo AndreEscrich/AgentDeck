@@ -12,6 +12,9 @@ function on(channel, fn) {
 contextBridge.exposeInMainWorld('deck', {
   getConfig: () => ipcRenderer.invoke('config:get'),
   openConfig: () => ipcRenderer.invoke('config:open'),
+  getGroups: () => ipcRenderer.invoke('groups:get'),
+  saveGroups: data => ipcRenderer.invoke('groups:save', data),
+  popupMenu: items => ipcRenderer.invoke('menu:popup', items),
   listSessions: () => ipcRenderer.invoke('sessions:list'),
   loadTranscript: file => ipcRenderer.invoke('sessions:load', file),
   pickFolder: () => ipcRenderer.invoke('dialog:pickFolder'),

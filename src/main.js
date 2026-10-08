@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Notification, Menu } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { AgentManager, fetchModels } = require('./agents');
@@ -20,6 +20,34 @@ const DEFAULT_CONFIG = {
 
 let win;
 let configPath;
+let groupsPath;
+
+// Your session groups: { groups: [{ id, name, collapsed }], assignments: { sessionId: groupId } }.
+function readGroups() {
+  try {
+    return JSON.parse(fs.readFileSync(groupsPath, 'utf8'));
+  } catch {
+    return { groups: [], assignments: {} };
+  }
+}
+
+// Shows a native right-click menu and resolves with the id of the item you
+// picked, or null when you close the menu without picking anything.
+function popupMenu(items) {
+  return new Promise(resolve => {
+    let done = false;
+    const pick = id => { if (!done) { done = true; resolve(id); } };
+    const build = list => list.map(item => item.type === 'separator' ? { type: 'separator' } : {
+      label: item.label,
+      enabled: item.enabled !== false,
+      type: item.checked != null ? 'checkbox' : 'normal',
+      checked: !!item.checked,
+      submenu: item.submenu ? build(item.submenu) : undefined,
+      click: item.submenu ? undefined : () => pick(item.id),
+    });
+    Menu.buildFromTemplate(build(items)).popup({ window: win, callback: () => setTimeout(() => pick(null), 100) });
+  });
+}
 
 function getConfig() {
   try {
@@ -75,11 +103,15 @@ app.whenReady().then(() => {
   // Shows the AgentDeck icon in the Dock also when you run `npm start`.
   if (app.dock) app.dock.setIcon(path.join(__dirname, '..', 'build', 'icon.png'));
   configPath = path.join(app.getPath('userData'), 'config.json');
+  groupsPath = path.join(app.getPath('userData'), 'groups.json');
   if (!fs.existsSync(configPath)) fs.writeFileSync(configPath, JSON.stringify(DEFAULT_CONFIG, null, 2));
 
   ipcMain.handle('config:get', () => getConfig());
   ipcMain.handle('config:open', () => shell.openPath(configPath));
   ipcMain.handle('sessions:list', () => listSessions());
+  ipcMain.handle('groups:get', () => readGroups());
+  ipcMain.handle('groups:save', (_e, data) => fs.writeFileSync(groupsPath, JSON.stringify(data, null, 2)));
+  ipcMain.handle('menu:popup', (_e, items) => popupMenu(items));
   ipcMain.handle('sessions:load', (_e, file) => loadTranscript(file));
   ipcMain.handle('dialog:pickFolder', async () => {
     const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] });

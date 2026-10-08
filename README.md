@@ -21,7 +21,8 @@ This builds `~/Applications/AgentDeck.app` with the AgentDeck icon and puts a li
 
 ## What it does
 
-- **History sidebar.** It lists every session Claude Code has saved in `~/.claude/projects`, grouped by project folder. This includes sessions you ran in the terminal or in the Claude desktop app. Click one to read it, and type a message to continue it.
+- **History sidebar.** It lists every session Claude Code has saved in `~/.claude/projects`. This includes sessions you ran in the terminal or in the Claude desktop app. Click one to read it, and type a message to continue it.
+- **Groups.** Click ＋ next to History to create a group, for example one per domain. Drag a session onto a group, or right-click a session and choose Move to group. Right-click a group to rename it, move it up or down, or delete it (its sessions become ungrouped). The New agent form has a Group menu, so a new agent goes into the right group from the start. Groups are saved in `groups.json` next to `config.json`.
 - **Model menu.** Under the message box and in the New agent form. It lists the same models, with the same descriptions, as the Claude desktop app, because the app asks your installed Claude Code for the list. You can also set the effort level and fast mode. A change applies to the agent on screen from its next message on.
 - **Permission prompts.** When an agent wants to run a command or edit a file that your permission mode and rules don't already allow, an approval card appears in the chat, and the agent's dot turns orange ("Needs approval"). You can allow it once, deny it, or pick one of Claude Code's suggested rules (for example "Always allow Bash(npm start) in this project"). Claude Code saves that rule in the project's `.claude/settings.local.json`, the same file the terminal uses.
 - **Chat.** Replies stream in as Claude writes them. Each tool call shows as a card that you can open to see its input and its result.

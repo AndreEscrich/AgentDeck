@@ -15,7 +15,10 @@
     <ul id="running-list" class="list"></ul>
 
     <div class="section-label">History
-      <button id="refresh" class="icon" title="Reload history">↻</button>
+      <span>
+        <button id="new-group-btn" class="icon" title="New group">＋</button>
+        <button id="refresh" class="icon" title="Reload history">↻</button>
+      </span>
     </div>
     <input id="search" type="search" placeholder="Search sessions…">
     <div id="history-list" class="list scroll"></div>
@@ -63,6 +66,9 @@
               <div id="new-model-picker"></div>
             </div>
           </div>
+          <label>Group
+            <select id="new-group"></select>
+          </label>
           <label>First message
             <textarea id="new-prompt" rows="6" placeholder="What should this agent do?" required></textarea>
           </label>

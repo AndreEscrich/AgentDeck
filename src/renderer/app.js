@@ -20,7 +20,8 @@ const state = {
   agents: new Map(),       // agent id -> { id, title, cwd, status, sessionId, view, transcript, unread }
   history: new Map(),      // session id -> { session, view, transcript } for opened, not-yet-resumed sessions
   current: null,           // { kind: 'agent' | 'history' | 'new', id }
-  collapsed: new Set(),    // project folders collapsed in the sidebar
+  groups: { groups: [], assignments: {} },  // your session groups, saved in groups.json
+  renamingGroup: null,     // id of the group whose name is being edited
 };
 
 // ---------- model menu ----------
@@ -165,46 +166,219 @@ function renderSidebar() {
     li.title = `${a.title}\n${a.cwd}\n⌘${n}`;
     li.append(el('span', `dot ${a.status}`), el('span', 'label', a.title), el('span', 'meta', shortPath(a.cwd).split('/').pop()));
     li.onclick = () => show('agent', a.id);
+    li.oncontextmenu = e => { e.preventDefault(); sessionMenu(a.sessionId); };
     running.appendChild(li);
   }
   $('running-count').textContent = n ? String(n) : '';
   if (!n) running.appendChild(el('li', 'note', 'No agents running'));
 
+  renderHistory();
+}
+
+// ---------- groups ----------
+
+function saveGroups() {
+  window.deck.saveGroups(state.groups);
+}
+
+function groupOf(sessionId) {
+  const gid = state.groups.assignments[sessionId];
+  return state.groups.groups.some(g => g.id === gid) ? gid : null;
+}
+
+function assignGroup(sessionId, groupId) {
+  if (!sessionId) return;
+  for (const a of state.agents.values()) if (a.sessionId === sessionId) a.groupId = groupId;
+  if (groupId) state.groups.assignments[sessionId] = groupId;
+  else delete state.groups.assignments[sessionId];
+  saveGroups();
+  renderSidebar();
+}
+
+function createGroup() {
+  const group = { id: crypto.randomUUID(), name: 'New group', collapsed: false };
+  state.groups.groups.push(group);
+  saveGroups();
+  state.renamingGroup = group.id;
+  renderSidebar();
+  return group;
+}
+
+function deleteGroup(groupId) {
+  state.groups.groups = state.groups.groups.filter(g => g.id !== groupId);
+  for (const [sid, gid] of Object.entries(state.groups.assignments)) {
+    if (gid === groupId) delete state.groups.assignments[sid];
+  }
+  if (state.groups.lastGroupId === groupId) delete state.groups.lastGroupId;
+  saveGroups();
+  renderSidebar();
+  fillGroupSelect();
+}
+
+function moveGroup(groupId, delta) {
+  const list = state.groups.groups;
+  const i = list.findIndex(g => g.id === groupId);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= list.length) return;
+  [list[i], list[j]] = [list[j], list[i]];
+  saveGroups();
+  renderSidebar();
+}
+
+// The menu shown when you right-click a session in History or Running.
+async function sessionMenu(sessionId) {
+  if (!sessionId) return;
+  const current = groupOf(sessionId);
+  const items = [
+    {
+      label: 'Move to group',
+      submenu: [
+        ...state.groups.groups.map(g => ({ id: 'g:' + g.id, label: g.name, checked: g.id === current })),
+        ...(state.groups.groups.length ? [{ type: 'separator' }] : []),
+        { id: 'new', label: 'New group…' },
+      ],
+    },
+    { id: 'remove', label: 'Remove from group', enabled: !!current },
+  ];
+  const picked = await window.deck.popupMenu(items);
+  if (!picked) return;
+  if (picked === 'remove') assignGroup(sessionId, null);
+  else if (picked === 'new') assignGroup(sessionId, createGroup().id);
+  else assignGroup(sessionId, picked.slice(2));
+}
+
+async function groupMenu(group) {
+  const i = state.groups.groups.indexOf(group);
+  const picked = await window.deck.popupMenu([
+    { id: 'rename', label: 'Rename' },
+    { id: 'up', label: 'Move up', enabled: i > 0 },
+    { id: 'down', label: 'Move down', enabled: i < state.groups.groups.length - 1 },
+    { type: 'separator' },
+    { id: 'delete', label: 'Delete group (its sessions become ungrouped)' },
+  ]);
+  if (picked === 'rename') { state.renamingGroup = group.id; renderSidebar(); }
+  if (picked === 'up') moveGroup(group.id, -1);
+  if (picked === 'down') moveGroup(group.id, 1);
+  if (picked === 'delete') deleteGroup(group.id);
+}
+
+// A group header accepts sessions that you drag onto it.
+function makeDropTarget(node, groupId) {
+  node.addEventListener('dragover', e => {
+    if (!e.dataTransfer.types.includes('text/x-session-id')) return;
+    e.preventDefault();
+    node.classList.add('drop');
+  });
+  node.addEventListener('dragleave', () => node.classList.remove('drop'));
+  node.addEventListener('drop', e => {
+    e.preventDefault();
+    node.classList.remove('drop');
+    assignGroup(e.dataTransfer.getData('text/x-session-id'), groupId);
+  });
+}
+
+function groupHeader(group, count, collapsed) {
+  const head = el('div', 'group-name');
+  if (group && state.renamingGroup === group.id) {
+    const input = document.createElement('input');
+    input.className = 'group-rename';
+    input.value = group.name;
+    const finish = commit => {
+      if (state.renamingGroup !== group.id) return;
+      state.renamingGroup = null;
+      if (commit && input.value.trim()) group.name = input.value.trim();
+      saveGroups();
+      renderSidebar();
+      fillGroupSelect();
+    };
+    input.onkeydown = e => {
+      if (e.key === 'Enter') finish(true);
+      if (e.key === 'Escape') finish(false);
+    };
+    input.onblur = () => finish(true);
+    head.appendChild(input);
+    setTimeout(() => { input.focus(); input.select(); });
+    return head;
+  }
+  head.append(el('span', 'group-label', group ? group.name : 'Ungrouped'), el('span', 'group-count', count ? String(count) : ''));
+  head.onclick = () => {
+    if (group) group.collapsed = !collapsed;
+    else state.groups.ungroupedCollapsed = !collapsed;
+    saveGroups();
+    renderSidebar();
+  };
+  if (group) {
+    head.oncontextmenu = e => { e.preventDefault(); groupMenu(group); };
+    head.ondblclick = () => { state.renamingGroup = group.id; renderSidebar(); };
+  }
+  makeDropTarget(head, group ? group.id : null);
+  return head;
+}
+
+function historyItem(s) {
+  const item = el('div', 'item');
+  if (state.current?.kind === 'history' && state.current.id === s.id) item.classList.add('active');
+  item.title = `${s.title}\n${s.cwd || ''}`;
+  item.append(el('span', 'label', s.title), el('span', 'meta', timeAgo(s.updatedAt)));
+  item.onclick = () => openHistory(s);
+  item.oncontextmenu = e => { e.preventDefault(); sessionMenu(s.id); };
+  item.draggable = true;
+  item.ondragstart = e => {
+    e.dataTransfer.setData('text/x-session-id', s.id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+  return item;
+}
+
+function renderHistory() {
   // Hide history entries that a running agent has taken over.
   const liveSessions = new Set([...state.agents.values()].map(a => a.sessionId).filter(Boolean));
   const q = $('search').value.trim().toLowerCase();
-  const groups = new Map();
+  const byGroup = new Map(state.groups.groups.map(g => [g.id, []]));
+  const ungrouped = [];
   for (const s of state.sessions) {
     if (liveSessions.has(s.id)) continue;
     if (q && !s.title.toLowerCase().includes(q) && !(s.cwd || '').toLowerCase().includes(q)) continue;
-    const key = s.cwd || 'Unknown folder';
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(s);
+    const gid = groupOf(s.id);
+    (gid ? byGroup.get(gid) : ungrouped).push(s);
   }
 
   const list = $('history-list');
   list.innerHTML = '';
-  for (const [cwd, sessions] of groups) {
-    const g = el('div', 'group');
-    if (state.collapsed.has(cwd) && !q) g.classList.add('collapsed');
-    const name = el('div', 'group-name', shortPath(cwd));
-    name.title = cwd;
-    name.onclick = () => {
-      state.collapsed.has(cwd) ? state.collapsed.delete(cwd) : state.collapsed.add(cwd);
-      g.classList.toggle('collapsed');
-    };
-    g.appendChild(name);
-    for (const s of sessions) {
-      const item = el('div', 'item');
-      if (state.current?.kind === 'history' && state.current.id === s.id) item.classList.add('active');
-      item.title = s.title;
-      item.append(el('span', 'label', s.title), el('span', 'meta', timeAgo(s.updatedAt)));
-      item.onclick = () => openHistory(s);
-      g.appendChild(item);
-    }
+  let shown = 0;
+  for (const group of state.groups.groups) {
+    const sessions = byGroup.get(group.id);
+    // While searching, only groups with matches are shown.
+    if (q && !sessions.length) continue;
+    const collapsed = group.collapsed && !q;
+    const g = el('div', 'group' + (collapsed ? ' collapsed' : ''));
+    g.appendChild(groupHeader(group, sessions.length, collapsed));
+    for (const s of sessions) g.appendChild(historyItem(s));
+    if (!sessions.length && !collapsed) g.appendChild(el('div', 'group-empty', 'Drag sessions here'));
     list.appendChild(g);
+    shown += sessions.length;
   }
-  if (!groups.size) list.appendChild(el('div', 'note', q ? 'No matches' : 'No saved sessions'));
+
+  if (ungrouped.length || !state.groups.groups.length) {
+    const collapsed = !!state.groups.ungroupedCollapsed && !q;
+    const g = el('div', 'group' + (collapsed ? ' collapsed' : ''));
+    // Without any groups yet, the list needs no "Ungrouped" header.
+    if (state.groups.groups.length) g.appendChild(groupHeader(null, ungrouped.length, collapsed));
+    for (const s of ungrouped) g.appendChild(historyItem(s));
+    list.appendChild(g);
+    shown += ungrouped.length;
+  }
+  if (!shown && (q || !state.groups.groups.length)) list.appendChild(el('div', 'note', q ? 'No matches' : 'No saved sessions'));
+}
+
+// The Group menu in the New agent form.
+function fillGroupSelect() {
+  const select = $('new-group');
+  const keep = select.value || state.groups.lastGroupId || '';
+  select.innerHTML = '';
+  select.appendChild(new Option('No group', ''));
+  for (const g of state.groups.groups) select.appendChild(new Option(g.name, g.id));
+  select.value = state.groups.groups.some(g => g.id === keep) ? keep : '';
 }
 
 async function loadSessions() {
@@ -229,7 +403,7 @@ async function openHistory(session) {
 
 // ---------- agents ----------
 
-async function startAgent({ cwd, prompt, permissionMode, choice, resume }) {
+async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId }) {
   const title = resume ? resume.session.title : prompt.split('\n')[0].slice(0, 80);
   choice = choice || defaultChoice();
   permissionMode = permissionMode || defaultMode();
@@ -247,7 +421,9 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume }) {
   const transcript = resume ? resume.transcript : new Transcript(view);
   if (resume) state.history.delete(resume.session.id);
 
-  const agent = { id, title, cwd, status: 'starting', sessionId: resume?.session.id || null, view, transcript, unread: false, choice, mode: permissionMode };
+  const agent = { id, title, cwd, status: 'starting', sessionId: resume?.session.id || null, view, transcript, unread: false, choice, mode: permissionMode,
+    // A resumed session stays in its group. A new one goes to the group picked in the form.
+    groupId: resume ? groupOf(resume.session.id) : groupId || null };
   state.agents.set(id, agent);
   transcript.add({ type: 'user', message: { role: 'user', content: prompt } });
   await window.deck.sendMessage(id, prompt);
@@ -293,7 +469,11 @@ window.deck.onPermissionCancel((id, requestId) => {
 
 window.deck.onSession((id, sessionId) => {
   const a = state.agents.get(id);
-  if (a) a.sessionId = sessionId;
+  if (!a) return;
+  a.sessionId = sessionId;
+  // The CLI reports the session id once the session exists. That is when we
+  // can save the group, and it also covers a resume that got a new id.
+  if (a.groupId && groupOf(sessionId) !== a.groupId) assignGroup(sessionId, a.groupId);
 });
 
 window.deck.onModel((id, model) => {
@@ -367,7 +547,10 @@ $('new-form').addEventListener('submit', async e => {
   const prompt = $('new-prompt').value.trim();
   if (!cwd || !prompt) return;
   $('new-prompt').value = '';
-  await startAgent({ cwd, prompt, permissionMode: newModePicker.value, choice: newPicker.value });
+  const groupId = $('new-group').value || null;
+  state.groups.lastGroupId = groupId || undefined;
+  saveGroups();
+  await startAgent({ cwd, prompt, permissionMode: newModePicker.value, choice: newPicker.value, groupId });
 });
 $('new-prompt').addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.metaKey) $('new-form').requestSubmit();
@@ -381,6 +564,7 @@ $('btn-close').onclick = () => {
 };
 $('search').addEventListener('input', renderSidebar);
 $('refresh').onclick = loadSessions;
+$('new-group-btn').onclick = () => createGroup();
 $('open-settings').onclick = () => window.deck.openConfig();
 window.deck.onSessionsChanged(loadSessions);
 
@@ -406,6 +590,8 @@ setInterval(renderSidebar, 60_000);
   newPicker.setValue(defaultChoice());
   loadModels();
   if (state.config.defaultFolder) $('new-cwd').value = state.config.defaultFolder;
+  state.groups = { groups: [], assignments: {}, ...(await window.deck.getGroups()) };
+  fillGroupSelect();
   await loadSessions();
   show('empty');
 })();
