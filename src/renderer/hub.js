@@ -250,13 +250,13 @@ class Hub {
   // null) and a repo name; there is one panel per group and repository.
   update(agents, currentId, groups = []) {
     this.latest = [agents, currentId, groups];
-    // While the app is in the background (or replaying), the tiles keep the
+    // While the app is minimized (or replaying), the tiles keep the
     // state you last saw; thaw() catches them up.
     if (this.frozen || this.replaying || this.drag) return;
     this.render(agents, currentId, groups);
   }
 
-  // The app went to the background: tiles stop changing until thaw().
+  // The app was minimized: tiles stop changing until thaw().
   freeze() {
     this.frozen = true;
   }

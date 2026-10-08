@@ -1774,12 +1774,17 @@ document.addEventListener('keydown', e => {
   }
 }, true);
 
-// While the app is in the background, the Hub's tiles stay as you left them.
-// When it comes back in front, the changes play one tile after another, so
-// you see what happened while you were away. (Only when the Hub is on screen;
-// otherwise the tiles simply catch up.)
-window.addEventListener('blur', () => hub.freeze());
-window.addEventListener('focus', () => hub.thaw({ instant: state.current?.kind !== 'hub' }));
+// While the window is on screen, the Hub animates live, also when another
+// app has the focus. While it is minimized (or fully hidden), the tiles stay
+// as you left them; when you bring it back and it has the focus, the changes
+// play one tile after another, so you see what happened while you were away.
+// (Only when the Hub is on screen; otherwise the tiles simply catch up.)
+const catchUp = () => hub.thaw({ instant: state.current?.kind !== 'hub' });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') hub.freeze();
+  else if (document.hasFocus()) catchUp();
+});
+window.addEventListener('focus', catchUp);
 
 // Refresh the "5m ago" labels now and then.
 setInterval(renderSidebar, 60_000);
