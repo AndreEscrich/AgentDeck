@@ -1,0 +1,17 @@
+{
+  "name": "agentdeck",
+  "version": "0.1.0",
+  "description": "A customizable desktop app for running and managing Claude Code agents",
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^38.0.0"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.16",
+    "marked": "^15.0.12"
+  }
+}

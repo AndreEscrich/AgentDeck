@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:">
+  <title>AgentDeck</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <aside id="sidebar">
+    <div class="drag-region"></div>
+    <button id="new-agent" class="primary wide" title="New agent (⌘N)">+ New agent</button>
+
+    <div class="section-label">Running <span id="running-count"></span></div>
+    <ul id="running-list" class="list"></ul>
+
+    <div class="section-label">History
+      <button id="refresh" class="icon" title="Reload history">↻</button>
+    </div>
+    <input id="search" type="search" placeholder="Search sessions…">
+    <div id="history-list" class="list scroll"></div>
+
+    <div class="sidebar-footer">
+      <button id="open-settings" class="link">Settings</button>
+    </div>
+  </aside>
+
+  <main id="main">
+    <header id="topbar">
+      <div class="titles">
+        <div id="view-title">AgentDeck</div>
+        <div id="view-subtitle"></div>
+      </div>
+      <div class="actions">
+        <span id="view-status" class="status-pill hidden"></span>
+        <button id="btn-interrupt" class="hidden" title="Stop the current turn (Esc)">Stop</button>
+        <button id="btn-close" class="hidden" title="End this agent's process">Close agent</button>
+      </div>
+    </header>
+
+    <section id="views">
+      <div id="empty-view" class="view">
+        <div class="empty">
+          <h1>AgentDeck</h1>
+          <p>Start a new agent, or pick a session from History to read it and continue it.</p>
+        </div>
+      </div>
+
+      <div id="new-view" class="view hidden">
+        <form id="new-form" class="new-form">
+          <h2>New agent</h2>
+          <label>Folder
+            <div class="row">
+              <input id="new-cwd" type="text" placeholder="/path/to/project" required>
+              <button type="button" id="pick-folder">Choose…</button>
+            </div>
+          </label>
+          <div class="row">
+            <label class="grow">Permissions
+              <select id="new-permission">
+                <option value="acceptEdits">Accept edits: may edit files, asks nothing else</option>
+                <option value="default">Default: tools that need approval are refused</option>
+                <option value="plan">Plan: read-only, proposes a plan</option>
+                <option value="bypassPermissions">Bypass: may do anything without asking</option>
+              </select>
+            </label>
+            <label class="grow">Model
+              <select id="new-model">
+                <option value="">Claude Code default</option>
+                <option value="opus">Opus</option>
+                <option value="sonnet">Sonnet</option>
+                <option value="haiku">Haiku</option>
+              </select>
+            </label>
+          </div>
+          <label>First message
+            <textarea id="new-prompt" rows="6" placeholder="What should this agent do?" required></textarea>
+          </label>
+          <div class="row end">
+            <span class="hint">⌘↩ to start</span>
+            <button type="submit" class="primary">Start agent</button>
+          </div>
+        </form>
+      </div>
+      <!-- One .view.chat per agent or opened history session is added here by app.js -->
+    </section>
+
+    <footer id="composer" class="hidden">
+      <textarea id="input" rows="1" placeholder="Message the agent… (↩ to send, ⇧↩ for a new line)"></textarea>
+      <button id="send" class="primary">Send</button>
+    </footer>
+  </main>
+
+  <script src="../../node_modules/marked/lib/marked.umd.js"></script>
+  <script src="../../node_modules/dompurify/dist/purify.min.js"></script>
+  <script src="render.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
