@@ -45,7 +45,7 @@ You need Claude Code installed and logged in (`claude` in a terminal, then `/log
 
 Click **Settings** in the sidebar to open `config.json`, then restart the app after you edit it.
 
-- `claudePath`: path to the `claude` binary. When it is empty, the app looks in `/opt/homebrew/bin`, `/usr/local/bin` and `~/.local/bin`.
+- `claudePath`: path to the `claude` binary. When it is empty, the app finds every Claude Code installation (Homebrew, `~/.local/bin`, and the copy inside the Claude desktop app) and uses the newest one. A newer Claude Code knows about newer models.
 - `defaultPermissionMode`: `acceptEdits`, `default`, `plan` or `bypassPermissions`.
 - `defaultModel`: a model value from the model menu, for example `default`, `opus[1m]` or `sonnet`.
 - `defaultEffort`: `low`, `medium`, `high`, `xhigh` or `max`. Empty means the model's own default.

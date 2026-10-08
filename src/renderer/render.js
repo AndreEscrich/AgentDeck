@@ -86,7 +86,7 @@ class Transcript {
       case 'stream_event': return this.addStreamEvent(msg.event);
       case 'result': return this.addResult(msg);
       case 'system':
-        if (msg.subtype === 'init') this.note(`Session ready · ${msg.model} · ${msg.permissionMode}`);
+        if (msg.subtype === 'init') this.note(`Session ready · ${msg.model} · ${msg.permissionMode} · Claude Code ${msg.claude_code_version || ''}`);
         else if (msg.subtype === 'api_retry' && msg.attempt === 1) this.note(`API error (${msg.error}), retrying…`, true);
         return;
       case 'app_error': return this.note(msg.message, true);

@@ -5,7 +5,7 @@
 // (assistant text, tool calls, tool results, end-of-turn results) to stdout
 // as JSON lines. We forward those events to the window unchanged.
 
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -18,9 +18,63 @@ const CLAUDE_CANDIDATES = [
   path.join(os.homedir(), '.claude/local/claude'),
 ];
 
+// The Claude desktop app keeps its own copy of Claude Code here, one folder
+// per version, and updates it automatically. That copy is often newer than a
+// Homebrew or npm install, and a newer copy knows about newer models.
+const DESKTOP_DIR = path.join(os.homedir(), 'Library/Application Support/Claude/claude-code');
+
+function desktopCandidates() {
+  const found = [];
+  let versions = [];
+  try { versions = fs.readdirSync(DESKTOP_DIR); } catch { return found; }
+  for (const version of versions) {
+    let builds = [];
+    try { builds = fs.readdirSync(path.join(DESKTOP_DIR, version)); } catch { continue; }
+    for (const build of builds) {
+      found.push(path.join(DESKTOP_DIR, version, build, 'claude.app/Contents/MacOS/claude'));
+    }
+  }
+  return found;
+}
+
+// Install paths contain the version (".../claude-code/2.1.293/...",
+// ".../Caskroom/claude-code/2.1.176/..."). When a path does not, we ask the
+// binary itself.
+function versionOf(binary) {
+  const fromPath = binary.match(/\/(\d+\.\d+\.\d+)\//);
+  if (fromPath) return fromPath[1];
+  try {
+    const out = execFileSync(binary, ['--version'], { timeout: 5000, encoding: 'utf8' });
+    return out.match(/\d+\.\d+\.\d+/)?.[0] || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
+function compareVersions(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
+  return 0;
+}
+
+// Uses the configured path when there is one. Otherwise it picks the newest
+// Claude Code installed on this Mac. The answer is kept for five minutes, so
+// a desktop app update is picked up without restarting AgentDeck.
+let cachedClaude = null;
 function findClaude(configured) {
   if (configured && fs.existsSync(configured)) return configured;
-  return CLAUDE_CANDIDATES.find(p => fs.existsSync(p)) || 'claude';
+  if (cachedClaude && Date.now() - cachedClaude.at < 5 * 60 * 1000) return cachedClaude.path;
+
+  let best = null;
+  for (const candidate of [...CLAUDE_CANDIDATES, ...desktopCandidates()]) {
+    let real;
+    try { real = fs.realpathSync(candidate); } catch { continue; }
+    const version = versionOf(real);
+    if (!best || compareVersions(version, best.version) > 0) best = { path: real, version };
+  }
+  cachedClaude = { path: best?.path || 'claude', version: best?.version, at: Date.now() };
+  return cachedClaude.path;
 }
 
 // An app started from Finder gets a short PATH, so agents could not find
@@ -237,4 +291,4 @@ function fetchModels(config) {
   });
 }
 
-module.exports = { AgentManager, fetchModels };
+module.exports = { AgentManager, fetchModels, findClaude };
