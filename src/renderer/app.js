@@ -723,10 +723,24 @@ const NEXT_COLORS = { idle: '#74d39d', waiting: '#f09a75', question: '#a99bf7', 
 function updateNextHint() {
   let hint = $('next-hint');
   if (!hint) {
+    // In the Hub, the Tab button sits right above the message box.
+    $('composer').prepend(hub.tabHint);
     hint = el('button', 'next-hint');
     hint.id = 'next-hint';
     hint.type = 'button';
-    hint.append(el('span', 'next-hint-label', 'Tab to go'), el('span', 'next-hint-name'));
+    // Bubbles rise along the right edge in the next agent's color, like the
+    // tank it goes to; each has its own size, place, speed and start.
+    const bubbles = el('span', 'next-bubbles');
+    for (let i = 0; i < 16; i++) {
+      const b = el('span');
+      b.style.setProperty('--x', `${4 + Math.random() * 70}px`);
+      b.style.setProperty('--s', `${4 + Math.round(Math.random() * 10)}px`);
+      b.style.setProperty('--t', `${(3 + Math.random() * 3.5).toFixed(2)}s`);
+      b.style.setProperty('--d', `-${(Math.random() * 6).toFixed(2)}s`);
+      b.style.setProperty('--w', `${(Math.random() * 10 - 5).toFixed(1)}px`);
+      bubbles.appendChild(b);
+    }
+    hint.append(bubbles, el('span', 'next-hint-label', 'Tab to go'), el('span', 'next-hint-name'));
     hint.onclick = () => checkNext();
     $('main').appendChild(hint);
   }

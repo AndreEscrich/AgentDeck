@@ -64,7 +64,8 @@ class Hub {
     this.tabHintName = el('span', 'hub-tab-name');
     this.tabHint.append(el('kbd', null, 'Tab'), this.tabHintText, this.tabHintName);
     this.tabHint.onclick = () => onTab?.();
-    head.append(el('h2', null, 'Hub'), this.counters, this.tabHint, historyBtn, settingsBtn);
+    // The app puts the Tab button above the message box (see app.js).
+    head.append(el('h2', null, 'Hub'), this.counters, historyBtn, settingsBtn);
 
     // One section per group, each with its own grid of tiles.
     this.grid = el('div', 'hub-board');
