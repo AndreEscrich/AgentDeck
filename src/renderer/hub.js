@@ -47,11 +47,8 @@ class Hub {
     this.sections = new Map();       // group id ('' for no group) + repository -> { el, name, repo, count, grid }
     this.tiles = new Map();          // agent id -> { el, parts, status }
     this.arrivals = new Map();       // agent id -> where its message box was, for the morph animation
-    this.completed = 0;              // agents that finished a task this session
 
     this.root = el('div', 'hub');
-    const head = el('div', 'hub-head');
-    this.counters = el('div', 'hub-counters');
     // Shown when Tab has agents to check: the key, how many, and the first one.
     this.tabHint = el('button', 'hub-tab-hint hidden');
     this.tabHint.type = 'button';
@@ -60,14 +57,13 @@ class Hub {
     this.tabHint.append(el('kbd', null, 'Tab'), this.tabHintText, this.tabHintName);
     this.tabHint.onclick = () => onTab?.();
     // The app puts the Tab button above the message box (see app.js).
-    head.append(el('h2', null, 'Hub'), this.counters);
 
     // One section per group, each with its own grid of tiles.
     this.grid = el('div', 'hub-board');
     this.empty = el('div', 'hub-empty');
     this.empty.append(el('div', 'hub-empty-tank'), el('p', null, 'No agents yet. Describe a task in the box below to start one.'));
 
-    this.root.append(head, this.grid, this.empty);
+    this.root.append(this.grid, this.empty);
 
     // Your plan's usage (see setUsage): a small tab pinned to the left edge
     // of the Hub. Clicking it opens the usage card beside it; clicking
@@ -322,7 +318,6 @@ class Hub {
         tile.classList.remove(`state-${before}`);
         tile.classList.add(`state-${agent.status}`);
         if (agent.status === 'idle' && ['working', 'waiting', 'starting'].includes(before)) {
-          this.completed++;
           this.replay(tile, 'celebrate', 1600);
         }
         if (agent.status === 'error' && before) this.replay(tile, 'shake', 700);
@@ -380,14 +375,6 @@ class Hub {
       sec.repoEl.textContent = sec.repo;
       sec.el.style.order = String(i);
     });
-
-    const count = s => agents.filter(a => a.status === s).length;
-    const parts = [];
-    if (count('working') + count('starting')) parts.push(`<b>${count('working') + count('starting')}</b> working`);
-    if (count('waiting')) parts.push(`<b class="attn">${count('waiting')}</b> need${count('waiting') === 1 ? 's' : ''} you`);
-    if (count('idle')) parts.push(`<b class="ok">${count('idle')}</b> completed`);
-    parts.push(`<b>${this.completed}</b> task${this.completed === 1 ? '' : 's'} done this session`);
-    this.counters.innerHTML = parts.join('<span class="sep">·</span>');
 
     this.empty.classList.toggle('hidden', agents.length > 0);
     this.grid.classList.toggle('hidden', agents.length === 0);

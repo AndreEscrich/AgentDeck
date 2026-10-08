@@ -446,13 +446,6 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 
 
 .hub { padding: 24px 28px 40px; max-width: 1400px; margin: 0 auto; }
-.hub-head { display: flex; align-items: center; gap: 18px; margin-bottom: 22px; }
-.hub-head h2 { margin: 0; font-size: 22px; }
-.hub-counters { flex: 1; color: var(--text-dim); font-size: 13px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.hub-counters b { color: var(--text); }
-.hub-counters b.attn { color: var(--accent); }
-.hub-counters b.ok { color: var(--ok); }
-.hub-counters .sep { color: var(--text-faint); }
 /* "Tab to check 3 agents · <first one>" in the Hub's header */
 /* Above the Hub's message box, centered. */
 #composer .hub-tab-hint { width: fit-content; max-width: 100%; margin: 0 auto 10px; }
@@ -473,7 +466,7 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 /* The usage tab, pinned to the left edge of the Hub while it scrolls (it
    takes no room itself), and the usage card that opens beside it. */
 .usage-rail { position: sticky; top: 0; height: 0; z-index: 20; }
-.hub-nav { position: absolute; left: 0; top: 84px; display: flex; flex-direction: column; gap: 8px; }
+.hub-nav { position: absolute; left: 0; top: 24px; display: flex; flex-direction: column; gap: 8px; }
 .usage-tab { width: 40px;
   border-radius: 0 12px 12px 0; border: 1px solid #3d3329; border-left: none; background: linear-gradient(180deg, #2c241d, #1d1813);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 4px 8px 18px -8px rgba(0, 0, 0, 0.7); color: var(--text-dim);
