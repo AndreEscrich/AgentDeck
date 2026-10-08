@@ -498,31 +498,42 @@ function show(kind, id) {
 // The Hub's subtitle tells you how many agents wait for you to look at them.
 function reviewHint() {
   const n = reviewQueue().length;
-  return n ? `All running agents · ↩ to review ${n}` : 'All running agents';
+  return n ? `All running agents · Tab to check ${n}` : 'All running agents';
 }
 
 function backToHub() {
   const cur = state.current;
+  continueReview(cur, leaveToHub());
+}
+
+// Shows the Hub; an agent's chat shrinks back into its tile. Resolves when
+// that animation is over.
+function leaveToHub() {
+  const cur = state.current;
   show('hub');
-  let back = null;
   if (cur?.kind === 'agent' && state.agents.has(cur.id)) {
-    back = hub.returnTo(cur.id, state.agents.get(cur.id).view);
-  } else if (cur?.kind === 'history' && state.parked.has(cur.id)) {
-    back = hub.returnTo('p:' + cur.id, state.history.get(cur.id)?.view);
+    return hub.returnTo(cur.id, state.agents.get(cur.id).view);
   }
-  continueReview(cur, back);
+  if (cur?.kind === 'history' && state.parked.has(cur.id)) {
+    return hub.returnTo('p:' + cur.id, state.history.get(cur.id)?.view);
+  }
+  return Promise.resolve();
 }
 
 // ---------- review queue ----------
 
-// Enter in the Hub (with the message box not active) opens the next agent
-// that needs you: first the agents waiting for your input (approval or a
-// question), the one that has waited longest first; then completed agents you
-// have not looked at yet, newest first. Closing an agent the queue opened, or
-// answering it, opens the next one. Opening another agent yourself ends it.
+// The agents to check, in order: first the ones waiting for your input
+// (a question or an approval) that you have not opened since, the one that
+// has waited longest first; then completed agents you have not opened since
+// they finished, the latest first.
+//
+// Tab (anywhere in the app) opens the first one: from the Hub it zooms out
+// of its tile; from an agent, that chat first shrinks back into its tile.
+// Enter in the Hub (with the message box not active) also opens it, and
+// there closing or answering the agent opens the next one.
 function reviewQueue() {
   const items = hubItems();
-  const waiting = items.filter(i => i.status === 'waiting')
+  const waiting = items.filter(i => i.status === 'waiting' && i.unread)
     .sort((a, b) => (a.waitingSince || 0) - (b.waitingSince || 0));
   const unseen = items.filter(i => i.unread && i.status === 'idle')
     .sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
@@ -541,6 +552,32 @@ function reviewNext(continuing = false) {
     hub.open(next.id);
   }
   return !!next;
+}
+
+// Tab: the next agent to check, or a short message when there is none.
+async function checkNext() {
+  if (hub.opening) return;
+  const cur = state.current;
+  const next = reviewQueue().find(i => i.id !== hubIdOf(cur));
+  if (!next) {
+    toast('Nothing to check: no agent is waiting for you or has finished since you looked');
+    return;
+  }
+  state.reviewing = null;
+  if (cur?.kind !== 'hub') await leaveToHub();
+  hub.open(next.id);
+}
+
+// A short message at the bottom of the window that fades away by itself.
+function toast(text) {
+  document.querySelector('.toast')?.remove();
+  const node = el('div', 'toast', text);
+  document.body.appendChild(node);
+  requestAnimationFrame(() => node.classList.add('show'));
+  setTimeout(() => {
+    node.classList.remove('show');
+    setTimeout(() => node.remove(), 300);
+  }, 2200);
 }
 
 // The Hub id of what is on screen: an agent's id, or "p:<session>" for a
@@ -1313,6 +1350,7 @@ window.deck.onPermission((id, req) => {
   };
   // A question from Claude (AskUserQuestion) arrives as a permission request;
   // it gets a card with its options instead of Allow/Deny.
+  if (!(state.current?.kind === 'agent' && state.current.id === id)) a.unread = true;
   if (req.tool_name === 'AskUserQuestion' && Array.isArray(req.input?.questions)) {
     a.attention = 'question';
     a.pendingQuestion = { requestId: req.requestId, card: a.transcript.question(req, answer) };
@@ -1494,6 +1532,11 @@ document.addEventListener('keydown', e => {
       && !document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .review')) {
     e.preventDefault();
     reviewNext();
+  }
+  // Tab never moves the focus around the app; it opens the next agent to check.
+  if (e.key === 'Tab' && !isMod(e) && !e.altKey) {
+    e.preventDefault();
+    if (!document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .review')) checkNext();
   }
   // Esc leaves an agent (or a saved session, or a new agent) for the Hub.
   // The Stop button in the top bar stops a running turn.

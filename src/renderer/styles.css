@@ -807,6 +807,12 @@ video.chat-media { background: #000; }
 .box-bad { color: var(--err); font-weight: 700; }
 .box-raw { margin: 0; padding: 10px 14px; font: 12px/1.4 var(--mono); white-space: pre; overflow-x: auto; color: var(--text-dim); }
 
+/* A short message at the bottom of the window (for example: nothing to check) */
+.toast { position: fixed; left: 50%; bottom: 120px; z-index: 50; transform: translate(-50%, 10px); max-width: min(520px, calc(100% - 32px));
+  padding: 9px 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-active); color: var(--text);
+  font-size: 13px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
 /* The message the output on screen answers, floating at the top of the chat */
 .prompt-pin { position: sticky; top: 0; height: 0; z-index: 6; }
 .prompt-pin-bar { position: absolute; top: 10px; left: 50%; transform: translate(-50%, -8px);
