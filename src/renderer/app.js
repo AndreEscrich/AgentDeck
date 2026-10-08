@@ -507,6 +507,9 @@ function hubInfo(a) {
     // Finished while you were not looking, and not opened since.
     unread: !!a.unread,
     finishedAt: a.finishedAt || 0,
+    // Busy when this was saved. If the app quits now, the agent continues
+    // the next time the app opens (see resumeInterrupted).
+    wasWorking: ['working', 'starting', 'waiting'].includes(a.status),
   };
 }
 
@@ -898,10 +901,8 @@ async function loadSessions() {
 
 // ---------- history ----------
 
-async function openHistory(session) {
-  // Opening a completed agent's session from History also counts as seeing it.
-  const parked = state.parked.get(session.id);
-  if (parked) parked.unread = false;
+// Loads a saved session into a (hidden) chat view, once.
+async function loadHistory(session) {
   if (!state.history.has(session.id)) {
     const view = makeChatView();
     const data = await window.deck.loadTranscript(session.file);
@@ -912,9 +913,42 @@ async function openHistory(session) {
     state.history.set(session.id, { session, view, transcript, cwd: data.cwd });
     view.scrollTop = view.scrollHeight;
   }
+  return state.history.get(session.id);
+}
+
+async function openHistory(session) {
+  // Opening a completed agent's session from History also counts as seeing it.
+  const parked = state.parked.get(session.id);
+  if (parked) parked.unread = false;
+  await loadHistory(session);
   show('history', session.id);
   setHistoryOpen(false);
 }
+
+// Agents that were busy when the app quit continue on their saved session.
+const RESUME_PROMPT = 'The app was closed while you were working, which stopped you. Continue where you left off.';
+async function resumeInterrupted() {
+  for (const p of [...state.parked.values()]) {
+    if (!p.wasWorking) continue;
+    p.wasWorking = false;
+    const session = state.sessions.find(s => s.id === p.sessionId);
+    if (!session?.file) continue;
+    try {
+      const h = await loadHistory({ ...session, title: p.title || session.title });
+      await startAgent({ cwd: h.cwd || session.cwd || p.cwd, prompt: RESUME_PROMPT, permissionMode: p.mode, choice: p.choice, resume: h });
+    } catch (err) {
+      console.error('Could not continue', p.title, err);
+    }
+  }
+  saveHub();
+}
+
+// The app is about to quit: save which agents are busy, and keep that list,
+// because stopping the agents would otherwise mark them as finished.
+window.deck.onQuitting(() => {
+  saveHub();
+  state.quitting = true;
+});
 
 // ---------- agents ----------
 
@@ -1094,7 +1128,7 @@ window.deck.onModel((id, model) => {
 
 window.deck.onExit((id, { code, stderr }) => {
   const a = state.agents.get(id);
-  if (!a) return;
+  if (!a || state.quitting) return;
   if (code !== 0 && stderr.trim()) a.transcript.note(stderr.trim().split('\n').slice(-12).join('\n'), true);
   a.transcript.note(`Agent process ended (exit code ${code}).`);
   a.status = 'exited';
@@ -1263,4 +1297,5 @@ setInterval(renderSidebar, 60_000);
   }
   await loadSessions();
   show('hub');
+  resumeInterrupted();
 })();

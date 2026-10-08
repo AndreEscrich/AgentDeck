@@ -230,6 +230,11 @@ class AgentManager {
     setTimeout(() => { if (agent.proc.exitCode === null) this.killGroup(agent); }, 2000);
   }
 
+  // Agents that are busy right now: working, starting, or waiting for you.
+  activeCount() {
+    return [...this.agents.values()].filter(a => ['working', 'starting', 'waiting'].includes(a.status)).length;
+  }
+
   // The app is quitting, so there is no time to wait.
   closeAll() {
     for (const agent of this.agents.values()) {

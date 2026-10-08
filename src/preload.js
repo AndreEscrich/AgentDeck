@@ -43,4 +43,5 @@ contextBridge.exposeInMainWorld('deck', {
   onMode: fn => on('agent:mode', fn),
   onExit: fn => on('agent:exit', fn),
   onSessionsChanged: fn => on('sessions:changed', fn),
+  onQuitting: fn => on('app:quitting', fn),
 });

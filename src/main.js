@@ -91,6 +91,8 @@ function createWindow() {
   // clash with the app's own. Copy and paste keep working without it.
   if (process.platform !== 'darwin') win.removeMenu();
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  // Closing the window with busy agents asks first, then quits the app.
+  win.on('close', event => allowStop(event));
   // Links in agent replies open in the normal browser, not inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -115,7 +117,9 @@ function watchSessions() {
 // The app is called Agent Hub, but its settings (config.json, groups.json,
 // snapshots, the Hub's saved agents) stay in the folder from when it was
 // called AgentDeck. Electron would otherwise pick a folder named after the app.
-app.setPath('userData', path.join(app.getPath('appData'), 'agentdeck'));
+// Tests set AGENTDECK_USER_DATA to a folder of their own, so they never
+// touch your real settings, groups and Hub.
+app.setPath('userData', process.env.AGENTDECK_USER_DATA || path.join(app.getPath('appData'), 'agentdeck'));
 
 // Windows groups taskbar buttons and shows notifications by this id. It keeps
 // the old name, so Windows treats the renamed app as the same app.
@@ -179,7 +183,33 @@ app.whenReady().then(() => {
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
-app.on('before-quit', () => agents.closeAll());
+// Quitting (or closing the window) stops the agents. When some are still
+// busy, the app asks first. If you quit anyway, the window first saves which
+// agents were busy, so they continue the next time the app opens.
+let quitConfirmed = false;
+function allowStop(event) {
+  const busy = agents.activeCount();
+  if (quitConfirmed || !busy || !win || win.isDestroyed()) return true;
+  event.preventDefault();
+  const choice = dialog.showMessageBoxSync(win, {
+    type: 'warning',
+    buttons: ['Quit', 'Cancel'],
+    defaultId: 0,
+    cancelId: 1,
+    message: busy === 1 ? '1 agent is still working' : `${busy} agents are still working`,
+    detail: 'Quitting stops them now. They continue where they stopped the next time you open the app.',
+  });
+  if (choice === 0) {
+    quitConfirmed = true;
+    win.webContents.send('app:quitting');
+    setTimeout(() => app.quit(), 300);
+  }
+  return false;
+}
+
+app.on('before-quit', event => {
+  if (allowStop(event)) agents.closeAll();
+});
 // Quit normally (and stop the agents) also when the app is stopped with
 // Ctrl-C in the terminal that runs `npm start`.
 process.on('SIGINT', () => app.quit());
