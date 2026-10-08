@@ -477,7 +477,7 @@ function show(kind, id) {
   } else {
     state.current = { kind: 'hub' };
     $('hub-view').classList.remove('hidden');
-    setHeader('Hub', reviewHint(), null);
+    setHeader('Claude HUB', '', null);
     const d = ensureDraft();
     composerPicker.setValue(d.choice);
     composerModePicker.setValue(d.mode);
@@ -500,12 +500,6 @@ function show(kind, id) {
 
 // From an agent, the view shrinks back into its tile; from anywhere else the
 // Hub simply opens.
-// The Hub's subtitle tells you how many agents wait for you to look at them.
-function reviewHint() {
-  const n = reviewQueue().length;
-  return n ? `All running agents · Tab to check ${n}` : 'All running agents';
-}
-
 function backToHub() {
   const cur = state.current;
   continueReview(cur, leaveToHub());
@@ -717,7 +711,6 @@ function refreshHub() {
     saveHub();
     const agents = items.filter(a => !a.parked);
     const busy = agents.filter(a => ['working', 'starting', 'waiting'].includes(a.status)).length;
-    if (state.current?.kind === 'hub') $('view-subtitle').textContent = reviewHint();
     // Agents finishing or getting their short title change the "continues from" line.
     if (['new', 'hub'].includes(state.current?.kind)) renderDraftButtons();
     updateNextHint();
