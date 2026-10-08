@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('deck', {
   getGroups: () => ipcRenderer.invoke('groups:get'),
   saveGroups: data => ipcRenderer.invoke('groups:save', data),
   popupMenu: items => ipcRenderer.invoke('menu:popup', items),
+  gitSnapshot: cwd => ipcRenderer.invoke('git:snapshot', cwd),
+  gitChanges: (cwd, snap) => ipcRenderer.invoke('git:changes', cwd, snap),
   listSessions: () => ipcRenderer.invoke('sessions:list'),
   loadTranscript: file => ipcRenderer.invoke('sessions:load', file),
   pickFolder: () => ipcRenderer.invoke('dialog:pickFolder'),

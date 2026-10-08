@@ -391,9 +391,10 @@ async function loadSessions() {
 async function openHistory(session) {
   if (!state.history.has(session.id)) {
     const view = makeChatView();
-    const transcript = new Transcript(view);
     const data = await window.deck.loadTranscript(session.file);
+    const transcript = new Transcript(view, data.cwd || session.cwd);
     for (const m of data.messages) transcript.add(m);
+    transcript.finishTurn();
     transcript.note('End of saved session. Send a message to continue it.');
     state.history.set(session.id, { session, view, transcript, cwd: data.cwd });
     view.scrollTop = view.scrollHeight;
@@ -418,7 +419,7 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
 
   // A resumed session keeps its chat container, so its history stays on screen.
   const view = resume ? resume.view : makeChatView();
-  const transcript = resume ? resume.transcript : new Transcript(view);
+  const transcript = resume ? resume.transcript : new Transcript(view, cwd);
   if (resume) state.history.delete(resume.session.id);
 
   const agent = { id, title, cwd, status: 'starting', sessionId: resume?.session.id || null, view, transcript, unread: false, choice, mode: permissionMode,
@@ -426,14 +427,29 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     groupId: resume ? groupOf(resume.session.id) : groupId || null };
   state.agents.set(id, agent);
   transcript.add({ type: 'user', message: { role: 'user', content: prompt } });
-  await window.deck.sendMessage(id, prompt);
   show('agent', id);
+  await sendToAgent(agent, prompt);
+}
+
+// Before each message, remember the state of the files (only in a git
+// repository), so that after the turn we can list every file the agent changed.
+async function sendToAgent(agent, text) {
+  if (!agent.snapshot) {
+    try { agent.snapshot = await window.deck.gitSnapshot(agent.cwd); } catch { agent.snapshot = null; }
+  }
+  await window.deck.sendMessage(agent.id, text);
 }
 
 window.deck.onEvent((id, msg) => {
   const a = state.agents.get(id);
   if (!a) return;
   a.transcript.add(msg);
+  if (msg.type === 'result' && a.snapshot) {
+    const snap = a.snapshot;
+    const turn = a.transcript.lastFinished;
+    a.snapshot = null;
+    window.deck.gitChanges(a.cwd, snap).then(diff => a.transcript.showGitChanges(turn, diff)).catch(() => {});
+  }
   if (msg.type === 'result') {
     window.deck.notify(a.title, msg.is_error ? 'Stopped with an error' : 'Finished and waiting for you');
   }
@@ -509,7 +525,7 @@ async function sendFromComposer() {
   if (state.current.kind === 'agent') {
     const a = state.agents.get(state.current.id);
     a.transcript.add({ type: 'user', message: { role: 'user', content: text } });
-    await window.deck.sendMessage(a.id, text);
+    await sendToAgent(a, text);
   } else if (state.current.kind === 'history') {
     const h = state.history.get(state.current.id);
     const cwd = h.cwd || h.session.cwd;

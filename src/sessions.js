@@ -107,7 +107,7 @@ function loadTranscript(file) {
     } else if (e.type === 'user' && e.message && !e.isMeta) {
       const content = e.message.content;
       const hasToolResult = Array.isArray(content) && content.some(c => c.type === 'tool_result');
-      if (hasToolResult || userText(e)) messages.push({ type: 'user', message: e.message });
+      if (hasToolResult || userText(e)) messages.push({ type: 'user', message: e.message, tool_use_result: e.toolUseResult });
     }
   }
   return { cwd, messages };
