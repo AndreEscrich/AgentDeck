@@ -728,16 +728,17 @@ function updateNextHint() {
     hint = el('button', 'next-hint');
     hint.id = 'next-hint';
     hint.type = 'button';
-    // Bubbles rise along the right edge in the next agent's color, like the
-    // tank it goes to; each has its own size, place, speed and start.
+    // Bubbles in the next agent's color, like the tank it goes to, drift in
+    // slowly from the right edge toward the chat; each has its own height,
+    // size, speed and start.
     const bubbles = el('span', 'next-bubbles');
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < 14; i++) {
       const b = el('span');
-      b.style.setProperty('--x', `${4 + Math.random() * 70}px`);
+      b.style.setProperty('--y', `${8 + Math.random() * 84}%`);
       b.style.setProperty('--s', `${4 + Math.round(Math.random() * 10)}px`);
-      b.style.setProperty('--t', `${(3 + Math.random() * 3.5).toFixed(2)}s`);
-      b.style.setProperty('--d', `-${(Math.random() * 6).toFixed(2)}s`);
-      b.style.setProperty('--w', `${(Math.random() * 10 - 5).toFixed(1)}px`);
+      b.style.setProperty('--t', `${(9 + Math.random() * 7).toFixed(2)}s`);
+      b.style.setProperty('--d', `-${(Math.random() * 16).toFixed(2)}s`);
+      b.style.setProperty('--w', `${(Math.random() * 16 - 8).toFixed(1)}px`);
       bubbles.appendChild(b);
     }
     hint.append(bubbles, el('span', 'next-hint-label', 'Tab to go'), el('span', 'next-hint-name'));
