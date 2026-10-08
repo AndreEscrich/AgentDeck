@@ -590,7 +590,50 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
 .hub-tile .tank, .hub-tile .hub-info { transition: transform 0.2s ease-out; }
 .hub-tile.tilt .tank { transform: translateZ(18px); }
 .hub-tile.tilt .hub-info { transform: translateZ(10px); }
+/* ---------- Floating tanks ----------
+   Each tile is a metal tank seen slightly from above: curved top and bottom
+   edges (an elliptical border radius), a body shaded like a cylinder (dark
+   at both sides, a highlight band left of the middle), a lid on top, two
+   metal bands, and its liquid behind a glass window in front. It floats
+   gently above its own shadow on the floor. */
+.hub-tile { border-radius: 50% 50% 50% 50% / 16px 16px 24px 24px; padding: 22px 12px 26px; margin: 12px 0 30px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 18%, rgba(0, 0, 0, 0) 75%, rgba(0, 0, 0, 0.35)),
+    linear-gradient(90deg, #0e0f15 0%, #23263a 10%, #3b4058 24%, #4a5070 30%, #2e3246 46%, #222536 66%, #171922 86%, #0b0c11 100%);
+  --slab: inset 0 -6px 10px -4px rgba(0, 0, 0, 0.55), inset 0 6px 8px -6px rgba(255, 255, 255, 0.18);
+  animation: barrel-float 5.5s ease-in-out infinite; animation-delay: var(--phase, 0s); }
+.hub-tile:hover { border-color: rgba(255, 255, 255, 0.16); }
+.hub-tile.current { border-color: var(--accent); }
+@keyframes barrel-float { 50% { translate: 0 -4px; } }
+/* Working tanks bob a little more (work-float); the shadow follows below. */
+.barrel-shadow { position: absolute; left: 12%; right: 12%; top: calc(100% + 12px); height: 16px; border-radius: 50%; pointer-events: none; z-index: -1;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--c1) 22%, rgba(0, 0, 0, 0.75)), transparent);
+  animation: barrel-shadow 5.5s ease-in-out infinite; animation-delay: var(--phase, 0s); }
+@keyframes barrel-shadow { 50% { translate: 0 4px; scale: 0.86; opacity: 0.7; } }
+.hub-tile.state-working .barrel-shadow { animation: work-shadow 3.6s ease-in-out infinite; animation-delay: var(--phase, 0s); }
+@keyframes work-shadow { 30% { translate: 0 2px; scale: 0.92; opacity: 0.8; } 70% { translate: 0 -1px; scale: 1.03; } }
+/* The lid: a metal ellipse over the top edge, with a raised rim. */
+.barrel-lid { position: absolute; left: -1px; right: -1px; top: -13px; height: 28px; border-radius: 50%; pointer-events: none; z-index: 1;
+  background:
+    radial-gradient(ellipse 78% 62% at 50% 46%, #2a2e40 0 60%, rgba(0, 0, 0, 0) 64%),
+    linear-gradient(90deg, #191b25, #4e5474 28%, #6a7196 36%, #3a3f57 60%, #1b1d27);
+  box-shadow: inset 0 2px 1px rgba(255, 255, 255, 0.22), inset 0 -3px 4px rgba(0, 0, 0, 0.5), 0 3px 6px rgba(0, 0, 0, 0.45); }
+.barrel-lid::after { content: ""; position: absolute; left: 44%; right: 44%; top: 34%; height: 26%; border-radius: 50%;
+  background: linear-gradient(90deg, #3a3f57, #8890b5, #3a3f57); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+/* Two metal bands around the body, curved like the tank. */
+.barrel-band { position: absolute; left: 0; right: 0; height: 18px; border-radius: 50%; pointer-events: none; z-index: 1;
+  border-bottom: 3px solid rgba(150, 160, 205, 0.28); box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35); }
+.barrel-band.top { top: 4px; }
+.barrel-band.bottom { bottom: 6px; border-bottom-color: rgba(150, 160, 205, 0.18); }
+/* The glass window in front shows the liquid. */
+.hub-tile .tank { border-radius: 18px 18px 22px 22px / 14px 14px 20px 20px; z-index: 2; }
+.hub-tile .hub-info { position: relative; z-index: 2; padding: 0 4px; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8); }
+.hub-tile .tile-remove { top: 18px; right: 10px; }
+.hub-tile.unread::after { top: 20px; left: 14px; }
+
 @media (prefers-reduced-motion: reduce) {
+  .hub-tile, .barrel-shadow { animation: none; }
   .hub-tile.tilt { transform: translateY(-2px); }
   .hub-tile.tilt .tank, .hub-tile.tilt .hub-info { transform: none; }
 }
