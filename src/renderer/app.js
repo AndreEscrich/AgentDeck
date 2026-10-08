@@ -395,12 +395,14 @@ function renderContextMeter() {
 function revealLatest(view, transcript) {
   const turnEl = transcript?.lastFinished?.el;
   if (!view || !turnEl) return;
+  view.revealing = true;
   const startAt = () => view.scrollTop + turnEl.getBoundingClientRect().top - view.getBoundingClientRect().top - 16;
   view.scrollTop = Math.max(0, startAt());
 
   let frame = 0;
   let timer = 0;
   const stop = () => {
+    view.revealing = false;
     clearTimeout(timer);
     cancelAnimationFrame(frame);
     for (const type of ['wheel', 'mousedown', 'touchstart']) view.removeEventListener(type, stop);
@@ -427,6 +429,17 @@ function revealLatest(view, transcript) {
   }, 900);
 }
 
+// Every other time you open a chat, it starts at the bottom. A hidden view
+// loses its scroll position, so this runs after the view is shown, and once
+// more in the next frame, when its height is final.
+function scrollToBottom(view) {
+  if (!view) return;
+  view.scrollTop = view.scrollHeight;
+  requestAnimationFrame(() => {
+    if (!view.revealing) view.scrollTop = view.scrollHeight;
+  });
+}
+
 function show(kind, id) {
   state.current = { kind, id };
   $('back-to-hub').classList.toggle('hidden', !['agent', 'history'].includes(kind));
@@ -444,6 +457,7 @@ function show(kind, id) {
     a.view.classList.remove('hidden');
     // Finished while you were not looking: show its output from the start.
     if (a.unread && a.status === 'idle') revealLatest(a.view, a.transcript);
+    else scrollToBottom(a.view);
     a.unread = false;
     setHeader(a.title, a.cwd, a);
     composerPicker.setValue(a.choice || defaultChoice());
@@ -453,6 +467,7 @@ function show(kind, id) {
   } else if (kind === 'history') {
     const h = state.history.get(id);
     h.view.classList.remove('hidden');
+    scrollToBottom(h.view);
     setHeader(h.session.title, h.cwd || h.session.cwd, null);
     composerPicker.setValue(h.choice || defaultChoice());
     composerModePicker.setValue(h.mode || defaultMode());
@@ -1080,6 +1095,9 @@ function afterSend(agent, wake) {
 // Before each message, remember the state of the files (only in a git
 // repository), so that after the turn we can list every file the agent changed.
 async function sendToAgent(agent, text) {
+  // Images and videos changed after this moment count as the task's media.
+  // A second of slack covers clocks that round file times.
+  if (!agent.mediaSince) agent.mediaSince = Date.now() - 1000;
   if (!agent.snapshot) {
     try { agent.snapshot = await window.deck.gitSnapshot(agent.cwd); } catch { agent.snapshot = null; }
   }
@@ -1090,6 +1108,16 @@ window.deck.onEvent((id, msg) => {
   const a = state.agents.get(id);
   if (!a) return;
   a.transcript.add(msg);
+  // New textures and videos from this task (see showMedia). Your home folder
+  // is too big to search.
+  if (msg.type === 'result' && a.mediaSince) {
+    const since = a.mediaSince;
+    const turn = a.transcript.lastFinished;
+    a.mediaSince = null;
+    if (a.cwd && a.cwd !== state.config.home) {
+      window.deck.recentMedia(a.cwd, since).then(files => a.transcript.showMedia(turn, files)).catch(() => {});
+    }
+  }
   if (msg.type === 'result' && a.snapshot) {
     const snap = a.snapshot;
     const turn = a.transcript.lastFinished;
