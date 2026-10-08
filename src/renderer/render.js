@@ -382,7 +382,7 @@ class Transcript {
   }
 
   relativePath(p) {
-    if (this.cwd && p.startsWith(this.cwd + '/')) return p.slice(this.cwd.length + 1);
+    if (this.cwd && (p.startsWith(this.cwd + '/') || p.startsWith(this.cwd + '\\'))) return p.slice(this.cwd.length + 1);
     return p;
   }
 

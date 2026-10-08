@@ -81,7 +81,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 body.history-open #sidebar.history-drawer { transform: none; }
 #drawer-backdrop { position: fixed; inset: 0; z-index: 39; background: rgba(0, 0, 0, 0.35); opacity: 0; pointer-events: none; transition: opacity 0.22s; }
 body.history-open #drawer-backdrop { opacity: 1; pointer-events: auto; }
-.drawer-head { display: flex; justify-content: space-between; align-items: center; height: 52px; padding: 0 4px 0 80px; flex-shrink: 0; -webkit-app-region: drag; }
+.drawer-head { display: flex; justify-content: space-between; align-items: center; height: 52px; padding: 0 4px 0 12px; flex-shrink: 0; -webkit-app-region: drag; }
+.platform-darwin .drawer-head { padding-left: 80px; }
 .drawer-head button { -webkit-app-region: no-drag; font-size: 14px; }
 .drawer-title { font-weight: 600; }
 .section-label {
@@ -165,7 +166,8 @@ body.history-open #drawer-backdrop { opacity: 1; pointer-events: auto; }
 .sidebar-toggle:hover { background: var(--bg-hover); color: var(--text); }
 
 /* No sidebar: the top bar leaves room for the window buttons. */
-#topbar { padding-left: 84px; }
+.platform-darwin #topbar { padding-left: 84px; }
+.platform-win32 #topbar { padding-right: 150px; }
 #topbar { transition: padding-left 0.18s ease; }
 #view-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #view-subtitle { font-size: 12px; color: var(--text-faint); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -410,7 +412,8 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 #main { position: relative; }
 .review { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column; background: var(--bg); outline: none; }
 .review-bar { height: 52px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 16px; border-bottom: 1px solid var(--border); -webkit-app-region: drag; }
-.review-bar { padding-left: 84px; }
+.platform-darwin .review-bar { padding-left: 84px; }
+.platform-win32 .review-bar { padding-right: 150px; }
 .review-bar button { -webkit-app-region: no-drag; margin-left: auto; }
 .review-title { font-weight: 600; }
 .review-body { flex: 1; display: flex; min-height: 0; }

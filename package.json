@@ -7,8 +7,8 @@
   "scripts": {
     "start": "electron .",
     "icon": "electron scripts/render-icon.js",
-    "make-app": "bash scripts/make-app.sh",
-    "promote": "bash scripts/promote.sh"
+    "make-app": "node scripts/make-app.js",
+    "promote": "node scripts/promote.js"
   },
   "devDependencies": {
     "electron": "^38.0.0"

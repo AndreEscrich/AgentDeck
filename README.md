@@ -9,15 +9,26 @@ npm install
 npm start
 ```
 
-You need Claude Code installed and logged in (`claude` in a terminal, then `/login`).
+You need Node.js, Git, and Claude Code installed and logged in (`claude` in a terminal, then `/login`). AgentDeck runs on macOS and Windows.
 
-### As a Mac app
+### As a clickable app
 
 ```bash
 npm run make-app
 ```
 
-Run this in the stable copy (see below). It builds `~/Applications/AgentDeck.app` with the AgentDeck icon and puts a link to it on your Desktop. The app runs the code in that folder directly, so after an update you only quit and reopen it. Run `npm run make-app` again only after `npm install` updates Electron, or after you change the icon (`build/icon.html`, then `npm run icon`).
+Run this in the stable copy (see below).
+
+- **macOS:** it builds `~/Applications/AgentDeck.app` with the AgentDeck icon and puts a link to it on your Desktop.
+- **Windows:** it creates "AgentDeck" shortcuts on the Desktop and in the Start menu, with the AgentDeck icon.
+
+Both run the code in that folder directly, so after an update you only quit and reopen AgentDeck. Run `npm run make-app` again only after `npm install` updates Electron, or after you change the icon (`build/icon.html`, then `npm run icon`, which writes `icon.png` and the Windows `icon.ico`).
+
+### On Windows
+
+- **Setting up the two copies:** clone the repository, then in it run `git checkout dev`, `git worktree add ../AgentDeck-stable master`, and `npm install` in both folders. Then run `npm run make-app` in `AgentDeck-stable`.
+- **Shortcuts:** use Ctrl where this README says ⌘.
+- **Finding Claude Code:** AgentDeck looks for `claude` in the native installer's folder (`%USERPROFILE%\.local\bin`), the npm folder (`%APPDATA%\npm`), wherever `where claude` finds it, and the Claude desktop app's own copy, and uses the newest. If it picks the wrong one, set `claudePath` in Settings.
 
 ## Two copies: stable and dev
 
@@ -67,6 +78,7 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 | ⌘1 … ⌘9 | Switch to running agent 1–9 |
 | ⌘F | Search history |
 | ⌘\\ | Open or close History |
+| (Windows) | Ctrl instead of ⌘ for every shortcut above |
 | Esc | Stop the current turn |
 
 ## How it works
@@ -74,6 +86,7 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 | File | What it does |
 | --- | --- |
 | `src/main.js` | Creates the window, reads the settings file, and connects the window to the two modules below. |
+| `src/platform.js` | What differs between macOS and Windows: where `claude` is installed, how to start it, the environment agents get, and stopping an agent together with the commands it started. |
 | `src/agents.js` | Starts `claude -p --input-format stream-json --output-format stream-json` for each agent. It writes your messages to the process as JSON lines and forwards every JSON line the process prints back to the window. |
 | `src/sessions.js` | Reads the saved `.jsonl` session files for the History drawer and the session view. |
 | `src/git.js` | Takes a snapshot before each turn and lists the files that changed during it. |
@@ -83,6 +96,8 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 | `src/renderer/render.js` | Draws each turn: the collapsed steps, the final answer, the Changes card and permission cards. |
 | `src/renderer/app.js` | Window state: the History drawer, switching between the Hub and agents, and the message box. |
 | `src/renderer/styles.css` | All styling. The colors, fonts and sizes are variables at the top of the file. |
+| `scripts/promote.js` | `npm run promote`: moves `dev` to `master` and updates the stable copy. |
+| `scripts/make-app.js` | `npm run make-app`: runs `make-app.sh` on macOS or `make-app-win.ps1` on Windows. |
 
 ## Settings
 

@@ -20,7 +20,7 @@ const CODE_EXTENSIONS = new Set(['cs', 'shader', 'hlsl', 'cginc', 'compute', 'c'
   'js', 'mjs', 'cjs', 'ts', 'tsx', 'py', 'java', 'kt', 'swift', 'css', 'html', 'sh', 'asmdef', 'asmref']);
 
 function extensionOf(p) {
-  const name = p.split('/').pop();
+  const name = p.split(/[\\/]/).pop();
   const dot = name.lastIndexOf('.');
   return dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
 }
@@ -184,7 +184,7 @@ function openReview(files, start = 0) {
   const items = files.map((f, i) => {
     const item = el('div', 'review-item' + (isCodeFile(f.path) ? '' : ' other'));
     const { add, del } = fileStats(f);
-    const name = f.path.split('/').pop();
+    const name = f.path.split(/[\\/]/).pop();
     const dir = f.path.slice(0, -name.length).replace(/\/$/, '');
     const text = el('div', 'review-item-text');
     text.append(el('div', 'review-name', name), el('div', 'review-dir', dir));

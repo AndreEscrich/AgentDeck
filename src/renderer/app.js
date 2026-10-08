@@ -5,6 +5,14 @@
 
 const $ = id => document.getElementById(id);
 
+// macOS uses ⌘ for shortcuts and keeps its window buttons at the top left;
+// Windows uses Ctrl and keeps them at the top right (see styles.css).
+const IS_MAC = window.deck.platform === 'darwin';
+document.body.classList.add(`platform-${window.deck.platform}`);
+const isMod = e => (IS_MAC ? e.metaKey : e.ctrlKey);
+// Paths use / on macOS and \ on Windows.
+const SEP = /[\\/]/;
+
 const STATUS_TEXT = {
   starting: 'Starting',
   working: 'Working',
@@ -83,7 +91,7 @@ const composerModePicker = new ModePicker($('composer-mode-picker'), {
 
 function homePath(p) {
   const home = state.config.home;
-  return home && p && (p === home || p.startsWith(home + '/')) ? '~' + p.slice(home.length) : p;
+  return home && p && (p === home || p.startsWith(home + '/') || p.startsWith(home + '\\')) ? '~' + p.slice(home.length) : p;
 }
 
 function lastFolder() {
@@ -121,7 +129,7 @@ function ensureDraft() {
 function renderDraftButtons() {
   const d = ensureDraft();
   const folder = $('composer-folder');
-  folder.textContent = (d.folder ? '📁 ' + (d.folder.split('/').filter(Boolean).pop() || d.folder) : '📁 Choose folder') + ' ▾';
+  folder.textContent = (d.folder ? '📁 ' + (d.folder.split(SEP).filter(Boolean).pop() || d.folder) : '📁 Choose folder') + ' ▾';
   folder.title = d.folder ? `Folder: ${d.folder}` : 'Pick the folder the agent works in';
   folder.classList.toggle('danger-text', !d.folder);
   const group = state.groups.groups.find(g => g.id === d.groupId);
@@ -446,7 +454,7 @@ function refreshHeaderIfCurrent(agentId) {
 
 function shortPath(p) {
   if (!p) return 'Unknown folder';
-  const parts = p.split('/').filter(Boolean);
+  const parts = p.split(SEP).filter(Boolean);
   return parts.slice(-2).join('/');
 }
 
@@ -900,14 +908,14 @@ window.deck.onSessionsChanged(loadSessions);
 
 document.addEventListener('keydown', e => {
   // New agents start from the message box under the Hub.
-  if (e.metaKey && e.key === 'n') { e.preventDefault(); show('hub'); $('input').focus(); }
-  if (e.metaKey && e.key === '0') { e.preventDefault(); show('hub'); }
-  if (e.metaKey && e.key === '[') { e.preventDefault(); backToHub(); }
-  if (e.metaKey && /^[1-9]$/.test(e.key)) {
+  if (isMod(e) && e.key === 'n') { e.preventDefault(); show('hub'); $('input').focus(); }
+  if (isMod(e) && e.key === '0') { e.preventDefault(); show('hub'); }
+  if (isMod(e) && e.key === '[') { e.preventDefault(); backToHub(); }
+  if (isMod(e) && /^[1-9]$/.test(e.key)) {
     const a = [...state.agents.values()][Number(e.key) - 1];
     if (a) { e.preventDefault(); show('agent', a.id); }
   }
-  if (e.metaKey && e.key === 'f') { e.preventDefault(); setHistoryOpen(true); }
+  if (isMod(e) && e.key === 'f') { e.preventDefault(); setHistoryOpen(true); }
   if (e.key === 'Escape' && state.current?.kind === 'agent') {
     const a = state.agents.get(state.current.id);
     if (a?.status === 'working') window.deck.interrupt(a.id);
@@ -929,7 +937,7 @@ $('toggle-sidebar').onclick = () => setHistoryOpen(!document.body.classList.cont
 $('close-history').onclick = () => setHistoryOpen(false);
 $('drawer-backdrop').onclick = () => setHistoryOpen(false);
 document.addEventListener('keydown', e => {
-  if (e.metaKey && e.key === '\\') {
+  if (isMod(e) && e.key === '\\') {
     e.preventDefault();
     $('toggle-sidebar').click();
   }
@@ -948,6 +956,14 @@ setInterval(renderSidebar, 60_000);
   loadModels();
   state.groups = { groups: [], assignments: {}, ...(await window.deck.getGroups()) };
   loadHub();
+  if (!IS_MAC) {
+    for (const node of document.querySelectorAll('[title], [placeholder]')) {
+      for (const attr of ['title', 'placeholder']) {
+        const v = node.getAttribute(attr);
+        if (v && v.includes('⌘')) node.setAttribute(attr, v.replaceAll('⌘', 'Ctrl+'));
+      }
+    }
+  }
   await loadSessions();
   show('hub');
 })();

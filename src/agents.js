@@ -5,112 +5,9 @@
 // (assistant text, tool calls, tool results, end-of-turn results) to stdout
 // as JSON lines. We forward those events to the window unchanged.
 
-const { spawn, execFileSync } = require('child_process');
-const fs = require('fs');
 const os = require('os');
-const path = require('path');
 const { randomUUID } = require('crypto');
-
-const CLAUDE_CANDIDATES = [
-  '/opt/homebrew/bin/claude',
-  '/usr/local/bin/claude',
-  path.join(os.homedir(), '.local/bin/claude'),
-  path.join(os.homedir(), '.claude/local/claude'),
-];
-
-// The Claude desktop app keeps its own copy of Claude Code here, one folder
-// per version, and updates it automatically. That copy is often newer than a
-// Homebrew or npm install, and a newer copy knows about newer models.
-const DESKTOP_DIR = path.join(os.homedir(), 'Library/Application Support/Claude/claude-code');
-
-function desktopCandidates() {
-  const found = [];
-  let versions = [];
-  try { versions = fs.readdirSync(DESKTOP_DIR); } catch { return found; }
-  for (const version of versions) {
-    let builds = [];
-    try { builds = fs.readdirSync(path.join(DESKTOP_DIR, version)); } catch { continue; }
-    for (const build of builds) {
-      found.push(path.join(DESKTOP_DIR, version, build, 'claude.app/Contents/MacOS/claude'));
-    }
-  }
-  return found;
-}
-
-// Install paths contain the version (".../claude-code/2.1.293/...",
-// ".../Caskroom/claude-code/2.1.176/..."). When a path does not, we ask the
-// binary itself.
-function versionOf(binary) {
-  const fromPath = binary.match(/\/(\d+\.\d+\.\d+)\//);
-  if (fromPath) return fromPath[1];
-  try {
-    const out = execFileSync(binary, ['--version'], { timeout: 5000, encoding: 'utf8' });
-    return out.match(/\d+\.\d+\.\d+/)?.[0] || '0.0.0';
-  } catch {
-    return '0.0.0';
-  }
-}
-
-function compareVersions(a, b) {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
-  for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
-  return 0;
-}
-
-// Uses the configured path when there is one. Otherwise it picks the newest
-// Claude Code installed on this Mac. The answer is kept for five minutes, so
-// a desktop app update is picked up without restarting AgentDeck.
-let cachedClaude = null;
-function findClaude(configured) {
-  if (configured && fs.existsSync(configured)) return configured;
-  if (cachedClaude && Date.now() - cachedClaude.at < 5 * 60 * 1000) return cachedClaude.path;
-
-  let best = null;
-  for (const candidate of [...CLAUDE_CANDIDATES, ...desktopCandidates()]) {
-    let real;
-    try { real = fs.realpathSync(candidate); } catch { continue; }
-    const version = versionOf(real);
-    if (!best || compareVersions(version, best.version) > 0) best = { path: real, version };
-  }
-  cachedClaude = { path: best?.path || 'claude', version: best?.version, at: Date.now() };
-  return cachedClaude.path;
-}
-
-// An app started from Finder gets a short PATH, so agents could not find
-// node, git or brew tools. We ask your login shell for your real PATH once,
-// and also add the usual install folders. When the app is
-// itself started from inside a Claude Code session, that session's variables
-// (proxy URL, session ids) would make the child talk to the wrong endpoint,
-// so we remove them.
-let cachedLoginPath = null;
-function loginShellPath() {
-  if (cachedLoginPath !== null) return cachedLoginPath;
-  try {
-    // The markers let us find PATH even when shell startup files print text.
-    const out = execFileSync(process.env.SHELL || '/bin/zsh', ['-ilc', 'printf "__PATH__%s__END__" "$PATH"'],
-      { timeout: 5000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-    cachedLoginPath = out.match(/__PATH__(.*)__END__/)?.[1] || '';
-  } catch {
-    cachedLoginPath = '';
-  }
-  return cachedLoginPath;
-}
-
-function childEnv(extra) {
-  const env = { ...process.env, ...extra };
-  if (env.CLAUDECODE) {
-    for (const key of Object.keys(env)) {
-      if (key === 'CLAUDECODE' || key.startsWith('CLAUDE_CODE_') || key.startsWith('CLAUDE_AGENT_SDK_') || key === 'ANTHROPIC_BASE_URL') {
-        delete env[key];
-      }
-    }
-  }
-  const extraPath = ['/opt/homebrew/bin', '/usr/local/bin', path.join(os.homedir(), '.local/bin')];
-  const parts = [...loginShellPath().split(':'), ...extraPath, ...(env.PATH || '/usr/bin:/bin').split(':')];
-  env.PATH = [...new Set(parts.filter(Boolean))].join(':');
-  return env;
-}
+const { findClaude, spawnClaude, killTree, childEnv } = require('./platform');
 
 class AgentManager {
   constructor({ send, getConfig }) {
@@ -140,13 +37,10 @@ class AgentManager {
     if (resumeId) args.push('--resume', resumeId);
     args.push(...(config.extraArgs || []));
 
-    const proc = spawn(findClaude(config.claudePath), args, {
+    const proc = spawnClaude(config.claudePath, args, {
       cwd,
       env: childEnv(config.env),
       stdio: ['pipe', 'pipe', 'pipe'],
-      // Its own process group, so that stopping the agent also stops the
-      // shell commands it started (see killGroup).
-      detached: true,
     });
 
     const agent = { id, proc, cwd, title, status: 'starting', sessionId: resumeId || null, stderr: '', pending: new Set() };
@@ -283,10 +177,9 @@ class AgentManager {
     agent.proc.stdin.write(JSON.stringify(req) + '\n');
   }
 
-  // A negative pid sends the signal to the whole process group: the claude
-  // process and every command it is running.
-  killGroup(agent, signal = 'SIGTERM') {
-    try { process.kill(-agent.proc.pid, signal); } catch { /* already gone */ }
+  // Stops the claude process and every command it is running.
+  killGroup(agent) {
+    killTree(agent.proc);
   }
 
   // Asks the agent to finish (end of input), and stops it after two seconds.
@@ -304,9 +197,7 @@ class AgentManager {
       agent.closing = true;
       this.killGroup(agent);
     }
-    for (const proc of helperProcesses) {
-      try { process.kill(-proc.pid, 'SIGTERM'); } catch { /* already gone */ }
-    }
+    for (const proc of helperProcesses) killTree(proc);
   }
 }
 
@@ -318,15 +209,15 @@ const helperProcesses = new Set();   // short-lived claude processes, stopped wh
 
 function fetchModels(config) {
   return new Promise(resolve => {
-    const proc = spawn(findClaude(config.claudePath),
+    const proc = spawnClaude(config.claudePath,
       ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'],
-      { cwd: os.homedir(), env: childEnv(config.env), stdio: ['pipe', 'pipe', 'ignore'], detached: true });
+      { cwd: os.homedir(), env: childEnv(config.env), stdio: ['pipe', 'pipe', 'ignore'] });
     helperProcesses.add(proc);
     let buffer = '';
     const finish = models => {
       clearTimeout(timer);
       helperProcesses.delete(proc);
-      try { process.kill(-proc.pid, 'SIGTERM'); } catch { /* already gone */ }
+      killTree(proc);
       resolve(models);
     };
     const timer = setTimeout(() => finish(null), 15000);

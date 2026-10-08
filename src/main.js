@@ -71,14 +71,23 @@ function createWindow() {
     height: 820,
     minWidth: 760,
     minHeight: 480,
-    titleBarStyle: 'hiddenInset',
     backgroundColor: '#16171d',
+    // The top bar is part of the page. macOS keeps its window buttons at the
+    // top left; on Windows the minimize, maximize and close buttons are drawn
+    // at the top right in the app's colors.
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset' }
+      : { titleBarStyle: 'hidden', titleBarOverlay: { color: '#16171d', symbolColor: '#e6e6ea', height: 52 } }),
+    icon: path.join(__dirname, '..', 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
+  // Windows would show a File/Edit/View menu whose shortcuts (Ctrl+0, Ctrl+R)
+  // clash with the app's own. Copy and paste keep working without it.
+  if (process.platform !== 'darwin') win.removeMenu();
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   // Links in agent replies open in the normal browser, not inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -100,6 +109,9 @@ function watchSessions() {
     });
   } catch { /* watching is a convenience; the refresh button still works */ }
 }
+
+// Windows groups taskbar buttons and shows notifications by this id.
+if (process.platform === 'win32') app.setAppUserModelId('com.agentdeck.app');
 
 app.whenReady().then(() => {
   // Shows the AgentDeck icon in the Dock also when you run `npm start`.

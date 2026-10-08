@@ -10,6 +10,7 @@ function on(channel, fn) {
 }
 
 contextBridge.exposeInMainWorld('deck', {
+  platform: process.platform,   // 'darwin' on macOS, 'win32' on Windows
   getConfig: () => ipcRenderer.invoke('config:get'),
   openConfig: () => ipcRenderer.invoke('config:open'),
   getGroups: () => ipcRenderer.invoke('groups:get'),
