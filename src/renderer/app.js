@@ -1821,6 +1821,13 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     backToHub();
   }
+  // Alt+← does the same, like "back" in a browser. (On macOS, Option+← in a
+  // text field moves the cursor a word, so there it only works outside one.)
+  if (e.key === 'ArrowLeft' && e.altKey && !e.shiftKey && !isMod(e) && (!IS_MAC || !typing)
+      && !document.querySelector('.quit-modal') && ['agent', 'history', 'new'].includes(state.current?.kind)) {
+    e.preventDefault();
+    backToHub();
+  }
 });
 
 // Esc first closes whatever is open (a model or permission menu, the group
