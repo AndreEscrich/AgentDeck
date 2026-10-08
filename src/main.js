@@ -148,6 +148,16 @@ app.whenReady().then(() => {
   ipcMain.handle('agent:setPermissionMode', (_e, id, mode) => agents.setPermissionMode(id, mode));
   ipcMain.handle('agent:interrupt', (_e, id) => agents.interrupt(id));
   ipcMain.handle('agent:close', (_e, id) => agents.close(id));
+  // The number of agents that wait for you, as a red badge on the Dock icon.
+  // The icon bounces once when one more starts waiting while you are elsewhere.
+  let attention = 0;
+  ipcMain.handle('attention', (_e, count) => {
+    if (process.platform === 'darwin' && app.dock) {
+      app.setBadgeCount(count);
+      if (count > attention && !win.isFocused()) app.dock.bounce('informational');
+    }
+    attention = count;
+  });
   ipcMain.handle('agent:context', (_e, id) => agents.contextUsage(id));
   ipcMain.handle('agent:title', (_e, text) => (getConfig().summarizeTitles ? summarizeTitle(getConfig(), text) : null));
   ipcMain.handle('notify', (_e, title, body) => {

@@ -41,7 +41,9 @@ class AgentManager {
 
     const proc = spawnClaude(config.claudePath, args, {
       cwd,
-      env: childEnv(config.env),
+      // Lets Claude ask you questions with options (the AskUserQuestion tool),
+      // as in the Claude desktop app. They arrive as permission requests.
+      env: childEnv({ CLAUDE_CODE_ENABLE_ASK_USER_QUESTION_TOOL: 'true', ...config.env }),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
@@ -111,7 +113,8 @@ class AgentManager {
         this.send('agent:model', agent.id, msg.model);
       }
     }
-    if (msg.type === 'assistant' || msg.type === 'stream_event') this.setStatus(agent, 'working');
+    // Late pieces of a message must not hide an open question or approval.
+    if ((msg.type === 'assistant' || msg.type === 'stream_event') && !agent.pending.size) this.setStatus(agent, 'working');
     if (msg.type === 'result') this.setStatus(agent, msg.is_error ? 'error' : 'idle');
     this.send('agent:event', agent.id, msg);
   }

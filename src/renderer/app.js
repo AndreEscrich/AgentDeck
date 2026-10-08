@@ -406,6 +406,16 @@ const hub = new Hub($('hub-view'), {
   onContext: id => sessionMenu(id.startsWith('p:') ? id.slice(2) : state.agents.get(id)?.sessionId),
 });
 
+// The Dock badge: how many agents wait for you right now.
+let attentionCount = 0;
+function updateAttention() {
+  const n = [...state.agents.values()].filter(a => a.status === 'waiting').length;
+  if (n !== attentionCount) {
+    attentionCount = n;
+    window.deck.setAttention(n);
+  }
+}
+
 // Many events can arrive in one frame, so the Hub redraws at most once per frame.
 let hubFrame = 0;
 function refreshHub() {
@@ -415,6 +425,7 @@ function refreshHub() {
     const items = hubItems();
     hub.update(items, state.current?.kind === 'agent' ? state.current.id : null, state.groups.groups);
     saveHub();
+    updateAttention();
     const agents = items.filter(a => !a.parked);
     const busy = agents.filter(a => ['working', 'starting', 'waiting'].includes(a.status)).length;
     // Agents finishing or getting their short title change the "continues from" line.
@@ -580,7 +591,8 @@ function setHeader(title, subtitle, agent) {
   if (agent) {
     pill.classList.remove('hidden');
     pill.innerHTML = '';
-    pill.append(el('span', `dot ${agent.status}`), document.createTextNode(STATUS_TEXT[agent.status] || agent.status));
+    const statusText = agent.status === 'waiting' && agent.attention === 'question' ? 'Asks you a question' : STATUS_TEXT[agent.status] || agent.status;
+    pill.append(el('span', `dot ${agent.status}`), document.createTextNode(statusText));
   } else {
     pill.classList.add('hidden');
   }
@@ -969,6 +981,7 @@ window.deck.onStatus((id, status) => {
   const a = state.agents.get(id);
   if (!a) return;
   a.status = status;
+  if (status !== 'waiting') a.attention = null;
   const viewing = state.current?.kind === 'agent' && state.current.id === id;
   if ((status === 'idle' || status === 'error' || status === 'waiting') && !viewing) a.unread = true;
   refreshHeaderIfCurrent(id);
@@ -978,8 +991,23 @@ window.deck.onStatus((id, status) => {
 window.deck.onPermission((id, req) => {
   const a = state.agents.get(id);
   if (!a) return;
-  a.transcript.permission(req, decision => window.deck.respondPermission(id, req.requestId, decision));
-  window.deck.notify(a.title, req.title || `Needs approval to use ${req.display_name || req.tool_name}`);
+  const answer = decision => {
+    if (a.pendingQuestion?.requestId === req.requestId) a.pendingQuestion = null;
+    window.deck.respondPermission(id, req.requestId, decision);
+  };
+  // A question from Claude (AskUserQuestion) arrives as a permission request;
+  // it gets a card with its options instead of Allow/Deny.
+  if (req.tool_name === 'AskUserQuestion' && Array.isArray(req.input?.questions)) {
+    a.attention = 'question';
+    a.pendingQuestion = { requestId: req.requestId, card: a.transcript.question(req, answer) };
+    window.deck.notify(a.title, `Asks: ${req.input.questions[0]?.question || 'a question'}`);
+  } else {
+    a.attention = 'approval';
+    a.transcript.permission(req, answer);
+    window.deck.notify(a.title, req.title || `Needs approval to use ${req.display_name || req.tool_name}`);
+  }
+  refreshHeaderIfCurrent(id);
+  refreshHub();
 });
 
 window.deck.onMode((id, mode) => {
@@ -1052,6 +1080,11 @@ async function sendFromComposer() {
     await startAgent({ cwd: d.folder, prompt: text, permissionMode: d.mode, choice: d.choice, groupId: d.groupId, fromRect, forkFrom });
   } else if (state.current.kind === 'agent') {
     const a = state.agents.get(state.current.id);
+    // While Claude waits for an answer to its question, what you type is the answer.
+    if (a.pendingQuestion) {
+      a.pendingQuestion.card.answerWith(text);
+      return;
+    }
     a.transcript.add({ type: 'user', message: { role: 'user', content: text } });
     afterSend(a, true);
     await sendToAgent(a, text);
@@ -1074,6 +1107,17 @@ function autosize() {
 
 $('input').addEventListener('input', autosize);
 $('input').addEventListener('keydown', e => {
+  // While Claude waits for an answer and the box is empty, 1–9 pick an option.
+  const asking = state.current?.kind === 'agent' && state.agents.get(state.current.id)?.pendingQuestion;
+  if (asking && !$('input').value && /^[1-9]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    const open = [...asking.card.querySelectorAll('.question')].find(q => !q.querySelector('.question-option.selected')) || asking.card.querySelector('.question');
+    const option = open?.querySelectorAll('.question-option')[Number(e.key) - 1];
+    if (option && !option.disabled) {
+      e.preventDefault();
+      option.click();
+      return;
+    }
+  }
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
     e.preventDefault();
     sendFromComposer();

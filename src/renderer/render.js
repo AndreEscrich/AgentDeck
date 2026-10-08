@@ -471,6 +471,134 @@ class Transcript {
     return card;
   }
 
+  // A question from Claude (the AskUserQuestion tool), drawn like in the
+  // Claude desktop app: each question with its options as clickable cards,
+  // plus a field for your own answer. decide(decision) sends the answers.
+  // The returned card has answerWith(text), used when you type the answer in
+  // the message box instead.
+  question(req, decide) {
+    const input = req.input || {};
+    const questions = input.questions || [];
+    const chosen = questions.map(() => new Set());   // selected option labels per question
+    const own = questions.map(() => '');             // typed answer per question
+
+    const card = el('div', 'permission question-card');
+    card.dataset.requestId = req.requestId;
+    const head = el('div', 'perm-head');
+    head.append(el('span', 'question-icon', '?'), el('span', null, questions.length > 1 ? 'Claude has some questions' : 'Claude has a question'));
+    card.appendChild(head);
+
+    const answers = () => {
+      const out = {};
+      questions.forEach((q, i) => {
+        const parts = [...chosen[i]];
+        if (own[i].trim()) parts.push(own[i].trim());
+        if (parts.length) out[q.question] = parts.join(', ');
+      });
+      return out;
+    };
+    const complete = () => Object.keys(answers()).length === questions.length;
+
+    const footer = el('div', 'perm-buttons');
+    const submit = el('button', 'primary', 'Answer');
+    const skip = el('button', null, 'Skip');
+    footer.append(submit, skip);
+
+    let done = false;
+    const finish = (decision, label) => {
+      if (done) return;
+      done = true;
+      decide(decision);
+      card.classList.add('answered');
+      for (const b of card.querySelectorAll('button, input')) b.disabled = true;
+      footer.replaceWith(el('div', 'perm-result ' + (decision.behavior === 'allow' ? 'ok' : 'err'), label));
+    };
+    const send = () => {
+      if (!complete()) return;
+      const a = answers();
+      finish({ behavior: 'allow', updatedInput: { ...input, answers: a } }, Object.values(a).join(' · '));
+    };
+    submit.onclick = send;
+    skip.onclick = () => finish({ behavior: 'deny', message: 'The user chose not to answer these questions.' }, 'Skipped');
+    const refresh = () => { submit.disabled = !complete(); };
+
+    // One question with one answer: a click on an option sends it right away.
+    const instant = questions.length === 1 && !questions[0].multiSelect;
+
+    questions.forEach((q, i) => {
+      const block = el('div', 'question');
+      const title = el('div', 'question-title');
+      if (q.header) title.appendChild(el('span', 'question-chip', q.header));
+      title.appendChild(el('span', null, q.question));
+      block.appendChild(title);
+      if (q.multiSelect) block.appendChild(el('div', 'question-hint', 'Pick one or more'));
+
+      const list = el('div', 'question-options');
+      const buttons = [];
+      (q.options || []).forEach((o, n) => {
+        const b = el('button', 'question-option');
+        b.type = 'button';
+        const text = el('span', 'question-option-text');
+        text.append(el('span', 'question-option-label', o.label));
+        if (o.description) text.append(el('span', 'question-option-desc', o.description));
+        b.append(el('span', 'question-key', String(n + 1)), text);
+        b.onclick = () => {
+          if (q.multiSelect) {
+            chosen[i].has(o.label) ? chosen[i].delete(o.label) : chosen[i].add(o.label);
+          } else {
+            chosen[i] = new Set([o.label]);
+            own[i] = '';
+            other.value = '';
+          }
+          for (const [k, btn] of buttons.entries()) btn.classList.toggle('selected', chosen[i].has(q.options[k].label));
+          refresh();
+          if (instant) send();
+        };
+        buttons.push(b);
+        list.appendChild(b);
+      });
+      block.appendChild(list);
+
+      const other = document.createElement('input');
+      other.className = 'question-other';
+      other.placeholder = 'Or type your own answer…';
+      other.oninput = () => {
+        own[i] = other.value;
+        if (!q.multiSelect && other.value.trim()) {
+          chosen[i].clear();
+          for (const btn of buttons) btn.classList.remove('selected');
+        }
+        refresh();
+      };
+      other.onkeydown = e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          send();
+        }
+      };
+      block.appendChild(other);
+      card.appendChild(block);
+    });
+
+    card.appendChild(footer);
+    refresh();
+
+    // A typed answer from the message box answers the first unanswered question.
+    card.answerWith = text => {
+      const i = Math.max(0, questions.findIndex((_, k) => !chosen[k].size && !own[k].trim()));
+      own[i] = text;
+      const field = card.querySelectorAll('.question-other')[i];
+      if (field) field.value = text;
+      refresh();
+      send();
+    };
+
+    const turn = this.ensureTurn();
+    this.pinned(() => turn.live.appendChild(card));
+    this.scroller.scrollTop = this.scroller.scrollHeight;
+    return card;
+  }
+
   cancelPermission(requestId) {
     const card = this.root.querySelector(`.permission[data-request-id="${CSS.escape(requestId)}"]`);
     const buttons = card?.querySelector('.perm-buttons');

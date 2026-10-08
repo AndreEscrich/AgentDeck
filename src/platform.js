@@ -172,7 +172,7 @@ function loginShellPath() {
 // session's variables (proxy URL, session ids) would make the child talk to
 // the wrong endpoint, so we remove them.
 function childEnv(extra) {
-  const env = { ...process.env, ...extra };
+  const env = { ...process.env };
   if (env.CLAUDECODE) {
     for (const key of Object.keys(env)) {
       if (key === 'CLAUDECODE' || key.startsWith('CLAUDE_CODE_') || key.startsWith('CLAUDE_AGENT_SDK_') || key === 'ANTHROPIC_BASE_URL') {
@@ -180,6 +180,8 @@ function childEnv(extra) {
       }
     }
   }
+  // Added after the clean-up above, so the app's own settings always apply.
+  Object.assign(env, extra);
   // Windows usually spells the variable "Path"; keep whichever spelling exists.
   const pathKey = Object.keys(env).find(k => k.toUpperCase() === 'PATH') || 'PATH';
   const extraPath = isWin

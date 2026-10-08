@@ -2,7 +2,8 @@
 // liquid color shows the agent's state:
 //   starting: blue, the tank fills up
 //   working: amber, waves and rising bubbles; the level climbs with each step
-//   waiting: orange, the tank pulses and a "!" badge bounces (needs approval)
+//   waiting: orange and agitated: choppy liquid, the tile wiggles and glows,
+//            a "?" (question) or "!" (approval) badge sends out a signal ring
 //   idle: green, a burst and a check mark when the agent has just finished
 //   error: red, the tile shakes once
 //
@@ -93,7 +94,8 @@ class Hub {
     }
     const icon = el('div', 'tank-icon');
     const badge = el('div', 'tank-badge', '!');
-    tank.append(liquid, bubbles, el('div', 'tank-shine'), icon, badge, burst);
+    const ping = el('div', 'tank-ping');
+    tank.append(liquid, bubbles, el('div', 'tank-shine'), icon, ping, badge, burst);
 
     // Under the tank: the task title, then its status and time.
     const info = el('div', 'hub-info');
@@ -106,7 +108,7 @@ class Hub {
     info.append(title, statusRow);
 
     tile.append(remove, tank, info);
-    const entry = { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, title, statusDot, statusText, timer } };
+    const entry = { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, badge, title, statusDot, statusText, timer } };
     this.tiles.set(agent.id, entry);
     return entry;
   }
@@ -177,6 +179,11 @@ class Hub {
       parts.title.title = `${agent.title}\n${agent.cwd}`;
       parts.statusDot.className = `dot ${agent.status}`;
       parts.statusText.textContent = HUB_STATUS_TEXT[agent.status] || agent.status;
+      // What a waiting agent needs from you: an answer or an approval.
+      const needs = agent.status === 'waiting' ? agent.attention || 'approval' : null;
+      tile.classList.toggle('needs-question', needs === 'question');
+      parts.badge.textContent = needs === 'question' ? '?' : '!';
+      if (needs) parts.statusText.textContent = needs === 'question' ? 'Asks you a question' : 'Needs approval';
       this.updateTimer(agent, parts.timer);
     }
 
