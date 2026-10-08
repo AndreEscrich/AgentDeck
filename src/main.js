@@ -91,6 +91,7 @@ app.whenReady().then(() => {
     if (!models) models = await fetchModels(getConfig());
     return models;
   });
+  ipcMain.handle('agent:respondPermission', (_e, id, requestId, decision) => agents.respondPermission(id, requestId, decision));
   ipcMain.handle('agent:interrupt', (_e, id) => agents.interrupt(id));
   ipcMain.handle('agent:close', (_e, id) => agents.close(id));
   ipcMain.handle('notify', (_e, title, body) => {

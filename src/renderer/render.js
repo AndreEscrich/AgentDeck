@@ -38,6 +38,26 @@ function clip(text, max = 6000) {
   return text.length > max ? text.slice(0, max) + `\n… (${text.length - max} more characters)` : text;
 }
 
+const DESTINATION_NAMES = {
+  session: 'for this session',
+  localSettings: 'in this project (only you)',
+  projectSettings: 'in this project (shared)',
+  userSettings: 'in all projects',
+};
+
+// Describes one suggested permission update, for example
+// "Always allow Bash(npm start) in this project (only you)".
+function describeSuggestion(s) {
+  const where = DESTINATION_NAMES[s.destination] || '';
+  if (s.type === 'addRules') {
+    const rules = s.rules.map(r => (r.ruleContent ? `${r.toolName}(${r.ruleContent})` : r.toolName)).join(', ');
+    return `Always allow ${rules} ${where}`.trim();
+  }
+  if (s.type === 'addDirectories') return `Allow access to ${s.directories.join(', ')} ${where}`.trim();
+  if (s.type === 'setMode') return `Allow, and switch to ${s.mode} mode ${where}`.trim();
+  return null;
+}
+
 class Transcript {
   constructor(container) {
     this.root = el('div', 'messages');
@@ -114,6 +134,60 @@ class Transcript {
     d.append(summary, el('pre', null, clip(JSON.stringify(block.input, null, 2))));
     this.tools.set(block.id, d);
     return d;
+  }
+
+  // A card that asks you to allow or deny one tool call. decide(decision)
+  // sends the answer to the agent.
+  permission(req, decide) {
+    const card = el('div', 'permission');
+    const head = el('div', 'perm-head');
+    head.append(el('span', 'perm-icon', '⚠'), el('span', null, req.title || `Claude wants to use ${req.display_name || req.tool_name}`));
+    card.appendChild(head);
+    if (req.description) card.appendChild(el('div', 'perm-desc', req.description));
+
+    const input = req.input || {};
+    const main = input.command || input.file_path || input.url || input.pattern;
+    card.appendChild(el('pre', 'perm-input', clip(main ? String(main) : JSON.stringify(input, null, 2), 3000)));
+    if (req.decision_reason) card.appendChild(el('div', 'perm-desc', req.decision_reason));
+    if (req.blocked_path) card.appendChild(el('div', 'perm-desc', `Path: ${req.blocked_path}`));
+
+    const buttons = el('div', 'perm-buttons');
+    const finish = (decision, label) => {
+      decide(decision);
+      buttons.replaceWith(el('div', 'perm-result ' + (decision.behavior === 'allow' ? 'ok' : 'err'), label));
+      card.classList.add('answered');
+    };
+
+    const allow = el('button', 'primary', 'Allow once');
+    allow.onclick = () => finish({ behavior: 'allow', updatedInput: input }, 'Allowed');
+    buttons.appendChild(allow);
+
+    for (const s of req.permission_suggestions || []) {
+      const label = describeSuggestion(s);
+      if (!label) continue;
+      const b = el('button', null, label);
+      b.onclick = () => finish({ behavior: 'allow', updatedInput: input, updatedPermissions: [s] }, label);
+      buttons.appendChild(b);
+    }
+
+    const deny = el('button', 'danger', 'Deny');
+    deny.onclick = () => finish({ behavior: 'deny', message: 'The user denied this action.' }, 'Denied');
+    buttons.appendChild(deny);
+
+    card.appendChild(buttons);
+    this.append(card);
+    this.scroller.scrollTop = this.scroller.scrollHeight;
+    card.dataset.requestId = req.requestId;
+    return card;
+  }
+
+  cancelPermission(requestId) {
+    const card = this.root.querySelector(`.permission[data-request-id="${CSS.escape(requestId)}"]`);
+    const buttons = card?.querySelector('.perm-buttons');
+    if (buttons) {
+      buttons.replaceWith(el('div', 'perm-result', 'Cancelled'));
+      card.classList.add('answered');
+    }
   }
 
   fillTool(block) {

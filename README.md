@@ -15,6 +15,7 @@ You need Claude Code installed and logged in (`claude` in a terminal, then `/log
 
 - **History sidebar.** It lists every session Claude Code has saved in `~/.claude/projects`, grouped by project folder. This includes sessions you ran in the terminal or in the Claude desktop app. Click one to read it, and type a message to continue it.
 - **Model menu.** Under the message box and in the New agent form. It lists the same models, with the same descriptions, as the Claude desktop app, because the app asks your installed Claude Code for the list. You can also set the effort level and fast mode. A change applies to the agent on screen from its next message on.
+- **Permission prompts.** When an agent wants to run a command or edit a file that your permission mode and rules don't already allow, an approval card appears in the chat, and the agent's dot turns orange ("Needs approval"). You can allow it once, deny it, or pick one of Claude Code's suggested rules (for example "Always allow Bash(npm start) in this project"). Claude Code saves that rule in the project's `.claude/settings.local.json`, the same file the terminal uses.
 - **Chat.** Replies stream in as Claude writes them. Each tool call shows as a card that you can open to see its input and its result.
 - **Parallel agents.** Every agent is its own `claude` process. The Running list shows each agent's state: working (amber), waiting for you (green), or error (red). You get a macOS notification when an agent finishes while the window is in the background.
 
@@ -54,6 +55,3 @@ Click **Settings** in the sidebar to open `config.json`, then restart the app af
 - `env`: extra environment variables for every agent.
 - `notifyWhenDone`: show a notification when an agent finishes.
 
-## Known limits
-
-- Agents cannot ask you for permission yet. In `default` mode, Claude refuses any tool call that would need your approval. Use `acceptEdits`, or add allowed tools in `~/.claude/settings.json`.

@@ -9,6 +9,7 @@ const STATUS_TEXT = {
   starting: 'Starting',
   working: 'Working',
   idle: 'Waiting for you',
+  waiting: 'Needs approval',
   error: 'Error',
   exited: 'Stopped',
 };
@@ -243,9 +244,20 @@ window.deck.onStatus((id, status) => {
   if (!a) return;
   a.status = status;
   const viewing = state.current?.kind === 'agent' && state.current.id === id;
-  if ((status === 'idle' || status === 'error') && !viewing) a.unread = true;
+  if ((status === 'idle' || status === 'error' || status === 'waiting') && !viewing) a.unread = true;
   refreshHeaderIfCurrent(id);
   renderSidebar();
+});
+
+window.deck.onPermission((id, req) => {
+  const a = state.agents.get(id);
+  if (!a) return;
+  a.transcript.permission(req, decision => window.deck.respondPermission(id, req.requestId, decision));
+  window.deck.notify(a.title, req.title || `Needs approval to use ${req.display_name || req.tool_name}`);
+});
+
+window.deck.onPermissionCancel((id, requestId) => {
+  state.agents.get(id)?.transcript.cancelPermission(requestId);
 });
 
 window.deck.onSession((id, sessionId) => {

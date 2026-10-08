@@ -120,6 +120,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .dot.working, .dot.starting { background: var(--busy); animation: pulse 1.2s ease-in-out infinite; }
 .dot.starting { background: var(--info); }
 .dot.error { background: var(--err); }
+.dot.waiting { background: var(--accent); animation: pulse 0.8s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.35; } }
 
 /* Main area */
@@ -280,3 +281,25 @@ details.thinking pre { font-family: var(--font); color: var(--text-dim); }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--bg-active); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
 ::-webkit-scrollbar-thumb:hover { background-color: var(--text-faint); }
+
+/* Permission cards */
+button.danger { color: var(--err); }
+.permission {
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--bg-panel);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.permission.answered { border-color: var(--border); opacity: 0.75; }
+.perm-head { display: flex; gap: 8px; align-items: center; font-weight: 600; }
+.perm-icon { color: var(--accent); }
+.perm-desc { font-size: 12px; color: var(--text-dim); }
+.perm-input { margin: 0; padding: 8px 10px; background: var(--code-bg); border-radius: 6px; font: 12px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow-y: auto; }
+.perm-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.perm-buttons button { font-size: 13px; }
+.perm-result { font-size: 12px; color: var(--text-dim); }
+.perm-result.ok { color: var(--ok); }
+.perm-result.err { color: var(--err); }

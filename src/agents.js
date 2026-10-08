@@ -59,6 +59,8 @@ class AgentManager {
       '--verbose',
       '--include-partial-messages',
       '--permission-mode', permissionMode || config.defaultPermissionMode,
+      // Send permission questions to us over stdout instead of refusing them.
+      '--permission-prompt-tool', 'stdio',
     ];
     if (model && model !== 'default') args.push('--model', model);
     if (effort) args.push('--effort', effort);
@@ -72,7 +74,7 @@ class AgentManager {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
-    const agent = { id, proc, cwd, title, status: 'starting', sessionId: resumeId || null, stderr: '' };
+    const agent = { id, proc, cwd, title, status: 'starting', sessionId: resumeId || null, stderr: '', pending: new Set() };
     this.agents.set(id, agent);
 
     let buffer = '';
@@ -104,6 +106,14 @@ class AgentManager {
   handleLine(agent, line) {
     let msg;
     try { msg = JSON.parse(line); } catch { return; }
+    if (msg.type === 'control_request') return this.handleControlRequest(agent, msg);
+    if (msg.type === 'control_cancel_request') {
+      agent.pending.delete(msg.request_id);
+      this.send('agent:permissionCancel', agent.id, msg.request_id);
+      if (!agent.pending.size && agent.status === 'waiting') this.setStatus(agent, 'working');
+      return;
+    }
+    if (msg.type === 'control_response') return; // answers to our own requests
     if (msg.session_id && msg.session_id !== agent.sessionId) {
       agent.sessionId = msg.session_id;
       this.send('agent:session', agent.id, msg.session_id);
@@ -118,6 +128,37 @@ class AgentManager {
     if (msg.type === 'assistant' || msg.type === 'stream_event') this.setStatus(agent, 'working');
     if (msg.type === 'result') this.setStatus(agent, msg.is_error ? 'error' : 'idle');
     this.send('agent:event', agent.id, msg);
+  }
+
+  // The CLI asks before it runs a tool that your permission mode and rules do
+  // not already allow. It waits until we answer with respondPermission().
+  handleControlRequest(agent, msg) {
+    if (msg.request?.subtype === 'can_use_tool') {
+      agent.pending.add(msg.request_id);
+      this.setStatus(agent, 'waiting');
+      this.send('agent:permission', agent.id, { requestId: msg.request_id, ...msg.request });
+      return;
+    }
+    // We do not handle other requests (hook callbacks, SDK MCP servers), so we
+    // answer with an error to keep the CLI from waiting for us.
+    this.writeJson(agent, {
+      type: 'control_response',
+      response: { subtype: 'error', request_id: msg.request_id, error: `AgentDeck does not handle ${msg.request?.subtype}` },
+    });
+  }
+
+  // decision is { behavior: 'allow', updatedInput, updatedPermissions? }
+  // or { behavior: 'deny', message }.
+  respondPermission(id, requestId, decision) {
+    const agent = this.agents.get(id);
+    if (!agent || !agent.pending.has(requestId)) return;
+    agent.pending.delete(requestId);
+    this.writeJson(agent, { type: 'control_response', response: { subtype: 'success', request_id: requestId, response: decision } });
+    if (!agent.pending.size) this.setStatus(agent, 'working');
+  }
+
+  writeJson(agent, obj) {
+    agent.proc.stdin.write(JSON.stringify(obj) + '\n');
   }
 
   setStatus(agent, status) {
