@@ -76,6 +76,21 @@ class Hub {
     tile.style.setProperty('--phase', `-${(Math.random() * 5).toFixed(2)}s`);
     tile.addEventListener('animationend', e => { if (e.animationName === 'spawn') tile.classList.remove('spawn'); });
     tile.onclick = () => this.open(agent.id);
+    // The tile tilts toward the mouse (see .tilt in styles.css): up to about
+    // 7 degrees at its edges.
+    tile.addEventListener('pointermove', e => {
+      const r = tile.getBoundingClientRect();
+      const x = (e.clientX - r.left) / r.width - 0.5;
+      const y = (e.clientY - r.top) / r.height - 0.5;
+      tile.style.setProperty('--ry', `${(x * 14).toFixed(2)}deg`);
+      tile.style.setProperty('--rx', `${(-y * 12).toFixed(2)}deg`);
+      tile.classList.add('tilt');
+    });
+    tile.addEventListener('pointerleave', () => {
+      tile.classList.remove('tilt');
+      tile.style.removeProperty('--rx');
+      tile.style.removeProperty('--ry');
+    });
     tile.oncontextmenu = e => { e.preventDefault(); this.onContext?.(agent.id); };
     const remove = el('button', 'tile-remove', '×');
     remove.title = 'Remove from the Hub';

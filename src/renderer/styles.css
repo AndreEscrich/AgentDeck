@@ -480,7 +480,11 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 /* Colors per state: --c1 top of the liquid, --c2 bottom, --glow the tile glow. */
 .hub-tile { --c1: #6b708c; --c2: #4a4e66; --glow: transparent; --wave-speed: 9s;
   position: relative; display: flex; flex-direction: column; gap: 10px;
-  padding: 10px; border-radius: 16px; background: var(--bg-panel); border: 1px solid var(--border);
+  padding: 10px; border-radius: 16px; border: 1px solid #30344a;
+  /* A thick slab lit from above: lighter at the top, a bright top edge, and
+     its thickness as a dark band underneath. */
+  background: linear-gradient(180deg, #262938, #1a1c25);
+  --slab: inset 0 1px 0 rgba(255, 255, 255, 0.09), inset 0 -2px 0 rgba(0, 0, 0, 0.35), 0 5px 0 #0e0f15, 0 14px 22px -8px rgba(0, 0, 0, 0.7);
   /* Sizes inside the tile (cqw) follow the tile's width. */
   container-type: inline-size;
   cursor: pointer; transition: border-color 0.3s, box-shadow 0.4s, transform 0.15s; }
@@ -491,7 +495,7 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 .hub-tile.state-waiting  { --c1: #f09a75; --c2: #c4562f; --glow: rgba(217, 119, 87, 0.45); --wave-speed: 6s; }
 .hub-tile.state-idle     { --c1: #74d39d; --c2: #2f8f5a; --glow: rgba(76, 175, 122, 0.22); --wave-speed: 12s; }
 .hub-tile.state-error    { --c1: #ef7f7f; --c2: #b33a3a; --glow: rgba(224, 90, 90, 0.3); --wave-speed: 14s; }
-.hub-tile { box-shadow: 0 0 0 0 var(--glow); }
+.hub-tile { box-shadow: var(--slab); }
 /* The light behind a tile is its own layer, so it can breathe slowly while
    the tile itself plays its other animations. Each tile starts at a random
    point (--phase), so they do not pulse together. Working tiles breathe a
@@ -515,13 +519,34 @@ details.other-files details.change-file > summary { padding-left: 24px; }
   70% { translate: 0 1px; rotate: 0.35deg; }
 }
 .hub-tile.state-waiting { animation: attention 1.4s ease-in-out infinite; }
-@keyframes attention { 50% { box-shadow: 0 0 0 4px var(--glow), 0 6px 30px -4px var(--glow); } }
+@keyframes attention { 50% { box-shadow: var(--slab), 0 0 0 4px var(--glow), 0 6px 30px -4px var(--glow); } }
+
+/* Pointing at a tile tilts it toward the mouse (hub.js sets --rx and --ry),
+   with the tank and the text floating above the slab. Only the tile under
+   the mouse is in 3D, so the others keep crisp text. */
+.hub-tile.tilt { isolation: auto; transform-style: preserve-3d;
+  transform: perspective(800px) translateY(-2px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)); transition: transform 0.12s ease-out, border-color 0.3s; }
+.hub-tile .tank, .hub-tile .hub-info { transition: transform 0.2s ease-out; }
+.hub-tile.tilt .tank { transform: translateZ(18px); }
+.hub-tile.tilt .hub-info { transform: translateZ(10px); }
+@media (prefers-reduced-motion: reduce) {
+  .hub-tile.tilt { transform: translateY(-2px); }
+  .hub-tile.tilt .tank, .hub-tile.tilt .hub-info { transform: none; }
+}
 
 /* The tank and its liquid */
+/* The tank is a glass cylinder set into the tile: a dark inner shadow at the
+   top, a faint rim, and (::after) darker sides with a light band on the left,
+   over the liquid too. */
 .tank { position: relative; aspect-ratio: 4 / 3; border-radius: 14px 14px 22px 22px; overflow: hidden;
-  background: #0f1016; border: 2px solid #2c2f3d; box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.6); }
+  background: #0f1016;
+  box-shadow: inset 0 6px 14px rgba(0, 0, 0, 0.85), inset 0 0 0 2px rgba(255, 255, 255, 0.06), inset 0 -10px 18px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.06); }
+.tank::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 2;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.55) 0%, rgba(255, 255, 255, 0.10) 14%, rgba(255, 255, 255, 0.03) 30%, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.25) 82%, rgba(0, 0, 0, 0.6) 100%); }
 .liquid { position: absolute; left: 0; right: 0; bottom: 0; height: 12%;
-  background: linear-gradient(var(--c1), var(--c2)); transition: height 1.2s cubic-bezier(.3,1.3,.5,1), background 0.6s; }
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0) 35%), linear-gradient(var(--c1), var(--c2));
+  box-shadow: inset 0 6px 10px -4px rgba(255, 255, 255, 0.35);
+  transition: height 1.2s cubic-bezier(.3,1.3,.5,1), background 0.6s; }
 /* Two big rounded squares in the tank's color turn slowly over the top edge
    of the liquid, which cuts a moving wave into it. */
 .liquid::before, .liquid::after { content: ""; position: absolute; left: 50%; bottom: calc(100% - 9px);
@@ -529,8 +554,12 @@ details.other-files details.change-file > summary { padding-left: 24px; }
   animation: wave var(--wave-speed) linear infinite; }
 .liquid::after { border-radius: 44%; opacity: 0.45; bottom: calc(100% - 12px); animation-duration: calc(var(--wave-speed) * 1.6); }
 @keyframes wave { to { transform: rotate(360deg); } }
-.tank-shine { position: absolute; top: 10px; left: 12px; width: 10px; height: 58%; border-radius: 6px;
-  background: linear-gradient(rgba(255,255,255,0.18), rgba(255,255,255,0)); pointer-events: none; }
+/* Highlights on the glass: a tall streak and a short soft one beside it. */
+.tank-shine { position: absolute; top: 9%; left: 8%; width: 6%; height: 62%; border-radius: 99px; z-index: 3;
+  background: linear-gradient(rgba(255, 255, 255, 0.38), rgba(255, 255, 255, 0.03)); pointer-events: none; }
+.tank-shine::after { content: ""; position: absolute; left: 180%; top: 4%; width: 45%; height: 30%; border-radius: 99px; background: rgba(255, 255, 255, 0.14); }
+/* What sits on the glass stays in front of it. */
+.tank-icon, .tank-badge, .tank-ping, .burst { z-index: 4; }
 
 .bubbles { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.5s; }
 .bubbles span { position: absolute; bottom: -12px; left: var(--x); width: var(--s); height: var(--s); border-radius: 50%;
@@ -748,7 +777,7 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 .hub-tile.state-waiting .bubbles { opacity: 1; }
 .hub-tile.state-waiting .bubbles span { animation-duration: 1.3s; }
 /* The badge: "!" for an approval, "?" for a question, with a signal ring. */
-.hub-tile.state-waiting .tank-badge { width: 28px; height: 28px; font-size: 16px; animation: badge 0.7s ease-in-out infinite; z-index: 2; }
+.hub-tile.state-waiting .tank-badge { width: 28px; height: 28px; font-size: 16px; animation: badge 0.7s ease-in-out infinite; z-index: 5; }
 .hub-tile.needs-question .tank-badge { background: #7c6cf0; }
 .tank-ping { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--c1); opacity: 0; pointer-events: none; }
 .hub-tile.state-waiting .tank-ping { animation: ping 1.3s ease-out infinite; }
