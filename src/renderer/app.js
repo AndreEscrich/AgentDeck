@@ -289,9 +289,9 @@ function backToHub() {
   const cur = state.current;
   show('hub');
   if (cur?.kind === 'agent' && state.agents.has(cur.id)) {
-    requestAnimationFrame(() => hub.returnTo(cur.id));
+    hub.returnTo(cur.id, state.agents.get(cur.id).view);
   } else if (cur?.kind === 'history' && state.parked.has(cur.id)) {
-    requestAnimationFrame(() => hub.returnTo('p:' + cur.id));
+    hub.returnTo('p:' + cur.id, state.history.get(cur.id)?.view);
   }
 }
 $('back-to-hub').onclick = backToHub;

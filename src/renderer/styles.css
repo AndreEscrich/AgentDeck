@@ -652,6 +652,5 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 .tile-lid { position: fixed; z-index: 50; margin: 0; pointer-events: none; transform-origin: top left; }
 /* The tank of a moving tile flips open upward, like a lid on a hinge at its top. */
 .tile-lid .tank { transform-origin: top center; }
+.tile-lid { will-change: transform, opacity; }
 .tile-lid .tile-remove { display: none; }
-.close-ghost { position: fixed; z-index: 50; pointer-events: none; background: var(--bg);
-  border: 1px solid var(--border); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45); }
