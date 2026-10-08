@@ -35,7 +35,7 @@ contextBridge.exposeInMainWorld('deck', {
   setAttention: count => ipcRenderer.invoke('attention', count),
   contextUsage: id => ipcRenderer.invoke('agent:context', id),
   summarizeTitle: text => ipcRenderer.invoke('agent:title', text),
-  notify: (title, body) => ipcRenderer.invoke('notify', title, body),
+  notify: (id, title, body) => ipcRenderer.invoke('notify', id, title, body),
   onEvent: fn => on('agent:event', fn),
   onStatus: fn => on('agent:status', fn),
   onSession: fn => on('agent:session', fn),
@@ -46,4 +46,5 @@ contextBridge.exposeInMainWorld('deck', {
   onExit: fn => on('agent:exit', fn),
   onSessionsChanged: fn => on('sessions:changed', fn),
   onQuitting: fn => on('app:quitting', fn),
+  onNotificationOpen: fn => on('notification:open', fn),
 });

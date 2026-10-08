@@ -1205,7 +1205,7 @@ window.deck.onEvent((id, msg) => {
     saveHub();
   }
   if (msg.type === 'result') {
-    window.deck.notify(a.title, msg.is_error ? 'Stopped with an error' : 'Finished and waiting for you');
+    window.deck.notify(a.id, a.title, msg.is_error ? 'Stopped with an error' : 'Finished and waiting for you');
   }
   // The context meter: after each task, and at most every 5 seconds while working.
   if (msg.type === 'result' || (msg.type === 'assistant' && Date.now() - (a.contextAt || 0) > 5000)) updateContext(a);
@@ -1237,11 +1237,11 @@ window.deck.onPermission((id, req) => {
   if (req.tool_name === 'AskUserQuestion' && Array.isArray(req.input?.questions)) {
     a.attention = 'question';
     a.pendingQuestion = { requestId: req.requestId, card: a.transcript.question(req, answer) };
-    window.deck.notify(a.title, `Asks: ${req.input.questions[0]?.question || 'a question'}`);
+    window.deck.notify(a.id, a.title, `Asks: ${req.input.questions[0]?.question || 'a question'}`);
   } else {
     a.attention = 'approval';
     a.transcript.permission(req, answer);
-    window.deck.notify(a.title, req.title || `Needs approval to use ${req.display_name || req.tool_name}`);
+    window.deck.notify(a.id, a.title, req.title || `Needs approval to use ${req.display_name || req.tool_name}`);
   }
   refreshHeaderIfCurrent(id);
   refreshHub();
@@ -1252,6 +1252,11 @@ window.deck.onMode((id, mode) => {
   if (!a) return;
   a.mode = mode;
   if (state.current?.kind === 'agent' && state.current.id === id) composerModePicker.setValue(mode);
+});
+
+// Clicking a notification opens the agent it is about.
+window.deck.onNotificationOpen(id => {
+  if (state.agents.has(id)) show('agent', id);
 });
 
 window.deck.onPermissionCancel((id, requestId) => {

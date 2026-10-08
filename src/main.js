@@ -100,6 +100,8 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   // Closing the window with busy agents asks first, then quits the app.
   win.on('close', event => allowStop(event));
+  // The taskbar button stops flashing when you come back.
+  win.on('focus', () => win.flashFrame(false));
   // Links in agent replies open in the normal browser, not inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -130,7 +132,34 @@ app.setPath('userData', process.env.AGENTDECK_USER_DATA || path.join(app.getPath
 
 // Windows groups taskbar buttons and shows notifications by this id. It keeps
 // the old name, so Windows treats the renamed app as the same app.
-if (process.platform === 'win32') app.setAppUserModelId('com.agentdeck.app');
+const APP_ID = 'com.agentdeck.app';
+if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
+
+// Windows shows notifications only for an app id that a Start Menu shortcut
+// carries. Gives the Agent Hub shortcut that id, or makes the shortcut (for
+// this copy) when there is none; `npm run make-app` in the stable copy points
+// it there again.
+function registerForNotifications() {
+  if (process.platform !== 'win32') return;
+  const link = path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Agent Hub.lnk');
+  try {
+    if (fs.existsSync(link)) {
+      if (shell.readShortcutLink(link).appUserModelId !== APP_ID) {
+        shell.writeShortcutLink(link, 'update', { appUserModelId: APP_ID });
+      }
+    } else {
+      shell.writeShortcutLink(link, 'create', {
+        target: process.execPath,
+        args: `"${app.getAppPath()}"`,
+        cwd: app.getAppPath(),
+        icon: path.join(__dirname, '..', 'build', 'icon.ico'),
+        iconIndex: 0,
+        description: 'Agent Hub',
+        appUserModelId: APP_ID,
+      });
+    }
+  } catch { /* without it there are no notifications, but everything else works */ }
+}
 
 app.whenReady().then(() => {
   media.registerProtocol(protocol, net, path.join(app.getPath('userData'), 'media-previews'));
@@ -170,25 +199,39 @@ app.whenReady().then(() => {
   ipcMain.handle('agent:interrupt', (_e, id) => agents.interrupt(id));
   ipcMain.handle('agent:close', (_e, id) => agents.close(id));
   // The number of agents that wait for you, as a red badge on the Dock icon.
-  // The icon bounces once when one more starts waiting while you are elsewhere.
+  // The icon bounces once (on Windows, the taskbar button flashes) when one
+  // more starts waiting while you are elsewhere.
   let attention = 0;
   ipcMain.handle('attention', (_e, count) => {
     if (process.platform === 'darwin' && app.dock) {
       app.setBadgeCount(count);
       if (count > attention && !win.isFocused()) app.dock.bounce('informational');
+    } else if (count > attention && !win.isFocused()) {
+      win.flashFrame(true);
     }
     attention = count;
   });
   ipcMain.handle('agent:context', (_e, id) => agents.contextUsage(id));
   ipcMain.handle('agent:title', (_e, text) => (getConfig().summarizeTitles ? summarizeTitle(getConfig(), text) : null));
-  ipcMain.handle('notify', (_e, title, body) => {
+  // Clicking a notification opens its agent. The app keeps each notification
+  // until it closes, or Windows would forget the click handler.
+  const shown = new Set();
+  ipcMain.handle('notify', (_e, id, title, body) => {
     if (getConfig().notifyWhenDone && !win.isFocused()) {
       const n = new Notification({ title, body });
-      n.on('click', () => win.show());
+      shown.add(n);
+      n.on('click', () => {
+        if (win.isMinimized()) win.restore();
+        win.show();
+        win.focus();
+        send('notification:open', id);
+      });
+      n.on('close', () => shown.delete(n));
       n.show();
     }
   });
 
+  registerForNotifications();
   createWindow();
   watchSessions();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

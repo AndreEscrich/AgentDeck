@@ -75,7 +75,7 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 - **Text boxes as cards.** When an agent writes a box drawn with `╔ ═ ╗ ║ ╠ ╣ ╚ ╝` characters (for example from a skill that asks for a CHANGES summary), the chat shows it as a card: the first line in capitals is the title, `╠═╣` lines separate sections, lines in capitals (BEFORE, AFTER) are labels, `•` lines are a list (file names in the code font), lines with `──►` arrows are a chain of steps with the line below as a note per step, and `✓`/`✗` color a step green or red. The Text button shows the box as written. If a box cannot be read, it stays as text.
 - **Images and videos.** Agents are told (through `--append-system-prompt`) that they can show an image or a video in the chat with a Markdown image and a file path, for example `![Grass texture](Assets/Textures/Grass.png)`; videos (mp4, webm, mov) become players. After each task, a **Media** card lists the images and videos in the agent's folder that were created or changed during the task, also when the agent did not mention them (found by modification time; Unity's Library, Temp and Logs are skipped). Click an image to see it at full size. Unity formats Chromium cannot show (tga, psd, exr, tif) are converted to a PNG preview with macOS's `sips`.
 - **How changes are found.** In a git repository, the app saves a snapshot of the working tree before each message (`git stash create`, which does not change your files or your stash list) and compares the files to it when the turn ends. That way it also catches changes made by shell commands, and it leaves out changes that existed before the turn. Outside git (for example in an SVN checkout), the app keeps its own git repository for that folder in its settings folder (`snapshots/`) and records only code files there; it never writes into your folder. Embedded packages that are git repositories get their own git snapshot. Changes to non-code files outside git come from the reports that Claude Code's Edit and Write tools send.
-- **Parallel agents.** Every agent is its own `claude` process. The Running list shows each agent's state: working (amber), waiting for you (green), or error (red). You get a macOS notification when an agent finishes while the window is in the background.
+- **Parallel agents.** Every agent is its own `claude` process. The Running list shows each agent's state: working (amber), waiting for you (green), or error (red). You get a notification when an agent finishes, asks a question or needs approval while the window is in the background; click it to open that agent. On Windows the taskbar button also flashes when an agent starts waiting for you.
 
 ## Shortcuts
 
@@ -122,7 +122,7 @@ Click **Settings** in the Hub (or at the bottom of History) to open `config.json
 - `defaultFolder`: the folder for a new agent when you have not started one in Agent Hub yet.
 - `extraArgs`: extra flags for every agent, for example `["--add-dir", "/some/path"]`.
 - `env`: extra environment variables for every agent.
-- `notifyWhenDone`: show a notification when an agent finishes.
+- `notifyWhenDone`: show a notification when an agent finishes or needs you.
 - `hubAfterSend`: open the Hub after you send a message (default `true`).
 - `summarizeTitles`: name new agents with a short summary of your message (default `true`).
 
