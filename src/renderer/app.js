@@ -737,7 +737,6 @@ function updateNextHint() {
       b.style.setProperty('--y', `${8 + Math.random() * 84}%`);
       b.style.setProperty('--s', `${4 + Math.round(Math.random() * 10)}px`);
       b.style.setProperty('--t', `${(9 + Math.random() * 7).toFixed(2)}s`);
-      b.style.setProperty('--d', `-${(Math.random() * 16).toFixed(2)}s`);
       b.style.setProperty('--w', `${(Math.random() * 16 - 8).toFixed(1)}px`);
       bubbles.appendChild(b);
     }
@@ -752,8 +751,21 @@ function updateNextHint() {
   // In the Hub, the header says that Tab starts going through them.
   hub.setTabHint(cur?.kind === 'hub' && next ? { count: queue.length, name: next.latestTitle || next.title, color: colorOf(next) } : null);
   const inAgent = ['agent', 'history'].includes(cur?.kind);
-  hint.classList.toggle('show', inAgent && !!next);
-  if (!inAgent || !next) return;
+  const showing = inAgent && !!next;
+  // Each time the hint appears, or you move to another agent, the bubbles
+  // start over from the right edge one after another, so they build up.
+  const shownFor = showing ? `${hubIdOf(cur)}>${next.id}` : '';
+  if (shownFor && shownFor !== hint.dataset.shownFor) {
+    hint.querySelectorAll('.next-bubbles span').forEach((b, i) => {
+      b.style.setProperty('--d', `${(0.6 + i * 0.7 + Math.random() * 0.6).toFixed(2)}s`);
+      b.style.animation = 'none';
+      void b.offsetWidth;
+      b.style.animation = '';
+    });
+  }
+  hint.dataset.shownFor = shownFor;
+  hint.classList.toggle('show', showing);
+  if (!showing) return;
   hint.style.setProperty('--next', colorOf(next));
   hint.querySelector('.next-hint-name').textContent = next.latestTitle || next.title;
   hint.title = `Tab: open "${next.title}"`;
