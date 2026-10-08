@@ -638,6 +638,9 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 /* Very small tiles: drop the separators and let time and tokens wrap. */
 @container (max-width: 150px) {
   .hub-tokens:not(:empty)::before { content: none; }
+  /* The tank's color already shows the state. */
+  .hub-status .dot { display: none; }
+  .hub-title { overflow-wrap: anywhere; }
   .hub-timer { margin-left: 0; }
   .tank-badge { width: 18px; height: 18px; font-size: 11px; top: 5px; right: 5px; }
 }
