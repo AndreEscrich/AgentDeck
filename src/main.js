@@ -107,13 +107,13 @@ function createWindow() {
     height: 820,
     minWidth: 760,
     minHeight: 480,
-    backgroundColor: '#16171d',
+    backgroundColor: '#18140f',
     // The top bar is part of the page. macOS keeps its window buttons at the
     // top left; on Windows the minimize, maximize and close buttons are drawn
     // at the top right in the app's colors.
     ...(process.platform === 'darwin'
       ? { titleBarStyle: 'hiddenInset' }
-      : { titleBarStyle: 'hidden', titleBarOverlay: { color: '#16171d', symbolColor: '#e6e6ea', height: 52 } }),
+      : { titleBarStyle: 'hidden', titleBarOverlay: { color: '#18140f', symbolColor: '#f1e7dc', height: 52 } }),
     icon: path.join(__dirname, '..', 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

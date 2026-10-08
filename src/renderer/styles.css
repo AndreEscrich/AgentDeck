@@ -1,18 +1,18 @@
 /* Change these variables to restyle the whole app. */
 :root {
-  --bg: #16171d;
-  --bg-sidebar: #111217;
-  --bg-panel: #1e2028;
-  --bg-hover: #262833;
-  --bg-active: #2d3040;
-  --border: #2a2c36;
-  --text: #e6e6ea;
-  --text-dim: #9a9cab;
-  --text-faint: #6b6d7c;
-  --accent: #d97757;
-  --accent-text: #ffffff;
-  --user-bubble: #2b2e3b;
-  --code-bg: #0e0f13;
+  --bg: #18140f;
+  --bg-sidebar: #120f0b;
+  --bg-panel: #221c16;
+  --bg-hover: #2c241d;
+  --bg-active: #352c23;
+  --border: #342b22;
+  --text: #f1e7dc;
+  --text-dim: #b3a594;
+  --text-faint: #7d705f;
+  --accent: #e9a23b;
+  --accent-text: #2a1a04;
+  --user-bubble: #2e261e;
+  --code-bg: #100d0a;
   --ok: #4caf7a;
   --busy: #e0a83a;
   --err: #e05a5a;
@@ -454,7 +454,7 @@ details.other-files details.change-file > summary { padding-left: 24px; }
   border: 1px solid color-mix(in srgb, var(--next) 55%, transparent); background: color-mix(in srgb, var(--next) 12%, transparent);
   color: var(--text-dim); font-size: 13px; animation: tab-hint 2.4s ease-in-out infinite; }
 .hub-tab-hint:hover { background: color-mix(in srgb, var(--next) 22%, transparent); color: var(--text); }
-.hub-tab-hint kbd { font: 700 11px var(--font); padding: 2px 7px; border-radius: 6px; color: #15161d; background: var(--next);
+.hub-tab-hint kbd { font: 700 11px var(--font); padding: 2px 7px; border-radius: 6px; color: #1a150f; background: var(--next);
   box-shadow: 0 2px 0 color-mix(in srgb, var(--next) 50%, #000); }
 .hub-tab-text { flex-shrink: 0; }
 .hub-tab-name { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -469,20 +469,20 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 .usage-rail { position: sticky; top: 0; height: 0; z-index: 20; }
 .hub-nav { position: absolute; left: 0; top: 84px; display: flex; flex-direction: column; gap: 8px; }
 .usage-tab { width: 40px;
-  border-radius: 0 12px 12px 0; border: 1px solid #30344a; border-left: none; background: linear-gradient(180deg, #262938, #1a1c25);
+  border-radius: 0 12px 12px 0; border: 1px solid #3d3329; border-left: none; background: linear-gradient(180deg, #2c241d, #1d1813);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 4px 8px 18px -8px rgba(0, 0, 0, 0.7); color: var(--text-dim);
   transition: width 0.15s, background 0.15s; }
 .usage-tab { padding: 10px 0 12px; display: flex; flex-direction: column; align-items: center; gap: 7px; }
-.usage-tab:hover, .usage-rail.open .usage-tab { width: 44px; color: var(--text); background: linear-gradient(180deg, #2c3043, #1e2029); }
+.usage-tab:hover, .usage-rail.open .usage-tab { width: 44px; color: var(--text); background: linear-gradient(180deg, #352c23, #221c16); }
 .usage-tab-bars { display: flex; gap: 4px; height: 34px; }
-.usage-tab-bar { position: relative; width: 6px; height: 100%; border-radius: 99px; background: #0d0e14; overflow: hidden; --meter: var(--ok); }
+.usage-tab-bar { position: relative; width: 6px; height: 100%; border-radius: 99px; background: #100d0a; overflow: hidden; --meter: var(--ok); }
 .usage-tab-bar.mid { --meter: var(--busy); }
 .usage-tab-bar.high { --meter: var(--err); }
 .usage-tab-bar span { position: absolute; left: 0; right: 0; bottom: 0; border-radius: inherit; background: var(--meter); box-shadow: 0 0 6px var(--meter); transition: height 0.8s cubic-bezier(.3,1.2,.5,1); }
 .usage-tab-pct { font-size: 11px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
 .usage-tab-label { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
 .hub-usage { position: absolute; left: 52px; top: 72px; width: 230px; display: flex; flex-direction: column; gap: 14px; padding: 14px;
-  border-radius: 16px; background: linear-gradient(180deg, #23263a, #17191f); border: 1px solid #343850;
+  border-radius: 16px; background: linear-gradient(180deg, #2a231b, #1a1510); border: 1px solid #403528;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 22px 50px -10px rgba(0, 0, 0, 0.75);
   opacity: 0; transform: translateX(-10px) scale(0.97); transform-origin: left top; pointer-events: none;
   transition: opacity 0.18s, transform 0.22s cubic-bezier(.3,1.4,.5,1); }
@@ -494,7 +494,7 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 .usage-row { display: flex; justify-content: space-between; align-items: baseline; }
 .usage-label { font-size: 12.5px; font-weight: 600; color: var(--text); }
 .usage-pct { font-size: 15px; font-weight: 700; color: var(--meter); font-variant-numeric: tabular-nums; }
-.usage-bar { height: 8px; border-radius: 99px; background: #0d0e14; box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.7); overflow: hidden; }
+.usage-bar { height: 8px; border-radius: 99px; background: #100d0a; box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.7); overflow: hidden; }
 .usage-fill { height: 100%; min-width: 4px; border-radius: inherit; background: linear-gradient(90deg, color-mix(in srgb, var(--meter) 75%, #fff), var(--meter));
   box-shadow: 0 0 10px var(--meter); transition: width 0.8s cubic-bezier(.3,1.2,.5,1); }
 .usage-note { font-size: 11.5px; color: var(--text-faint); line-height: 1.4; }
@@ -584,13 +584,13 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
 
 /* The tank and its liquid */
 .tank { position: relative; aspect-ratio: 4 / 3; border-radius: 14px 14px 22px 22px; overflow: hidden;
-  background: #0f1016; border: 2px solid #2c2f3d; box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.6); }
+  background: #120e0b; border: 2px solid #3a3027; box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.6); }
 .liquid { position: absolute; left: 0; right: 0; bottom: 0; height: 12%;
   background: linear-gradient(var(--c1), var(--c2)); transition: height 1.2s cubic-bezier(.3,1.3,.5,1), background 0.6s; }
 /* Two big rounded squares in the tank's color turn slowly over the top edge
    of the liquid, which cuts a moving wave into it. */
 .liquid::before, .liquid::after { content: ""; position: absolute; left: 50%; bottom: calc(100% - 9px);
-  width: 400%; aspect-ratio: 1; margin-left: -200%; border-radius: 46%; background: #0f1016;
+  width: 400%; aspect-ratio: 1; margin-left: -200%; border-radius: 46%; background: #120e0b;
   animation: wave var(--wave-speed) linear infinite; }
 .liquid::after { border-radius: 44%; opacity: 0.45; bottom: calc(100% - 12px); animation-duration: calc(var(--wave-speed) * 1.6); }
 @keyframes wave { to { transform: rotate(360deg); } }
@@ -667,7 +667,7 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
 
 /* Hub: opening a tile. The ghost is a copy of the tank that grows over the chat area. */
 .hub-tile.opening { opacity: 0; transition: opacity 0.1s; }
-.zoom-ghost { --c1: #6b708c; --c2: #4a4e66; position: fixed; z-index: 50; overflow: hidden; background: #0f1016; pointer-events: none; }
+.zoom-ghost { --c1: #6b708c; --c2: #4a4e66; position: fixed; z-index: 50; overflow: hidden; background: #120e0b; pointer-events: none; }
 .zoom-ghost.state-starting { --c1: #7fa8f0; --c2: #3d6bc4; }
 .zoom-ghost.state-working  { --c1: #f2c060; --c2: #c98a1c; }
 .zoom-ghost.state-waiting  { --c1: #f09a75; --c2: #c4562f; }
@@ -683,7 +683,7 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
 
 /* Hub: the message box morphs into a new tile */
 .hub-tile.arriving { opacity: 0; }
-.morph-ghost { border: 2px solid #2c2f3d; z-index: 60; }
+.morph-ghost { border: 2px solid #3a3027; z-index: 60; }
 .morph-text { position: absolute; inset: 0; padding: 10px 14px; font-size: var(--font-size); color: var(--text);
   white-space: pre-wrap; overflow: hidden; }
 .morph-ghost .liquid { height: 0; }
@@ -848,7 +848,7 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
 
 /* Images and videos in the chat */
 .msg-text .chat-media { display: block; max-width: 100%; max-height: 420px; border-radius: 8px; margin: 6px 0;
-  background: repeating-conic-gradient(#2a2c36 0% 25%, #22242d 0% 50%) 0 0 / 16px 16px; }
+  background: repeating-conic-gradient(#342b22 0% 25%, #2a231c 0% 50%) 0 0 / 16px 16px; }
 img.chat-media { cursor: zoom-in; }
 video.chat-media { background: #000; }
 .media-missing { font-size: 12px; color: var(--text-faint); font-style: italic; }
@@ -856,13 +856,13 @@ video.chat-media { background: #000; }
 .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; padding: 10px 12px 12px; }
 .media-item { margin: 0; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .media-item .chat-media { width: 100%; aspect-ratio: 1; object-fit: contain; border-radius: 6px;
-  background: repeating-conic-gradient(#2a2c36 0% 25%, #22242d 0% 50%) 0 0 / 16px 16px; }
+  background: repeating-conic-gradient(#342b22 0% 25%, #2a231c 0% 50%) 0 0 / 16px 16px; }
 .media-item video.chat-media { aspect-ratio: 16 / 9; background: #000; }
 .media-item figcaption { font: 11px var(--mono); color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lightbox { position: fixed; inset: 0; z-index: 100; background: rgba(8, 9, 12, 0.92); display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 10px; cursor: zoom-out; }
 .lightbox img { max-width: 92vw; max-height: 86vh; object-fit: contain;
-  background: repeating-conic-gradient(#2a2c36 0% 25%, #22242d 0% 50%) 0 0 / 16px 16px; }
+  background: repeating-conic-gradient(#342b22 0% 25%, #2a231c 0% 50%) 0 0 / 16px 16px; }
 .lightbox-path { font: 12px var(--mono); color: var(--text-dim); }
 
 /* Cards made from ╔═╗ text boxes (boxcard.js) */
@@ -930,7 +930,7 @@ video.chat-media { background: #000; }
   background: rgba(8, 9, 12, 0.55); backdrop-filter: blur(6px); opacity: 0; transition: opacity 0.2s; }
 .quit-modal.show { opacity: 1; }
 .quit-card { width: min(440px, calc(100% - 32px)); padding: 22px 22px 18px; border-radius: 16px;
-  background: linear-gradient(180deg, #262938, #1a1c25); border: 1px solid #30344a;
+  background: linear-gradient(180deg, #2c241d, #1d1813); border: 1px solid #3d3329;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 24px 60px rgba(0, 0, 0, 0.6);
   transform: translateY(12px) scale(0.97); transition: transform 0.25s cubic-bezier(.3,1.4,.5,1); }
 .quit-modal.show .quit-card { transform: none; }
@@ -957,11 +957,11 @@ video.chat-media { background: #000; }
 .prompt-pin-bar { position: absolute; top: 10px; left: 50%; transform: translate(-50%, -8px);
   width: min(calc(var(--chat-width) - 48px), calc(100% - 32px));
   display: flex; align-items: baseline; gap: 10px; padding: 7px 14px; text-align: left;
-  background: rgba(30, 32, 40, 0.92); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  background: rgba(34, 28, 22, 0.92); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   opacity: 0; pointer-events: none; transition: opacity 0.18s, transform 0.18s; cursor: pointer; }
 .prompt-pin.show .prompt-pin-bar { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
-.prompt-pin-bar:hover { border-color: var(--text-faint); background: rgba(38, 40, 51, 0.95); }
+.prompt-pin-bar:hover { border-color: var(--text-faint); background: rgba(44, 36, 29, 0.95); }
 .prompt-pin-label { flex-shrink: 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); }
 .prompt-pin-text { font-size: 13px; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
 /* With room beside the chat, the message sits in the right margin (where

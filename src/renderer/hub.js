@@ -657,9 +657,9 @@ class Hub {
     const duration = 950;
     const box = r => ({ left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
     const flight = ghost.animate([
-      { ...box(from), borderRadius: '12px', backgroundColor: '#1e2028', borderColor: '#d97757', easing: 'cubic-bezier(.3,0,.2,1)' },
-      { ...box({ ...lift, width: to.width, height: to.height }), borderRadius: '14px 14px 22px 22px', backgroundColor: '#0f1016', borderColor: '#2c2f3d', offset: 0.38, easing: 'cubic-bezier(.55,0,.25,1)' },
-      { ...box(to), borderRadius: '14px 14px 22px 22px', backgroundColor: '#0f1016', borderColor: '#2c2f3d' },
+      { ...box(from), borderRadius: '12px', backgroundColor: '#221c16', borderColor: '#e9a23b', easing: 'cubic-bezier(.3,0,.2,1)' },
+      { ...box({ ...lift, width: to.width, height: to.height }), borderRadius: '14px 14px 22px 22px', backgroundColor: '#120e0b', borderColor: '#3a3027', offset: 0.38, easing: 'cubic-bezier(.55,0,.25,1)' },
+      { ...box(to), borderRadius: '14px 14px 22px 22px', backgroundColor: '#120e0b', borderColor: '#3a3027' },
     ], { duration, fill: 'forwards' });
     label.animate([{ opacity: 1 }, { opacity: 0, offset: 0.3 }, { opacity: 0 }], { duration, fill: 'forwards' });
     liquid.animate([{ height: '0%' }, { height: '0%', offset: 0.25 }, { height: `${Math.max(entry.level, 22)}%` }], { duration, fill: 'forwards', easing: 'ease-out' });
