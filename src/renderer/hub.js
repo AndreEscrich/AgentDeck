@@ -30,11 +30,11 @@ function formatDuration(ms) {
 }
 
 class Hub {
-  // onOpen(agentId) opens an agent's chat and returns its chat element;
-  // onNew() opens a new agent.
+  // onOpen(agentId) opens an agent's chat and returns its chat element.
+  // New agents start only from the message box under the Hub.
   // onRemove(agentId) removes a tile's agent; onContext(agentId) shows its
   // right-click menu.
-  constructor(container, { onOpen, onNew, onRemove, onContext, onHistory, onSettings }) {
+  constructor(container, { onOpen, onRemove, onContext, onHistory, onSettings }) {
     this.onOpen = onOpen;
     this.onRemove = onRemove;
     this.onContext = onContext;
@@ -46,21 +46,17 @@ class Hub {
     this.root = el('div', 'hub');
     const head = el('div', 'hub-head');
     this.counters = el('div', 'hub-counters');
-    const newBtn = el('button', 'primary', '+ New agent');
-    newBtn.onclick = onNew;
     const historyBtn = el('button', null, 'History');
     historyBtn.title = 'Saved sessions (⌘\\)';
     historyBtn.onclick = onHistory;
     const settingsBtn = el('button', null, 'Settings');
     settingsBtn.onclick = onSettings;
-    head.append(el('h2', null, 'Hub'), this.counters, historyBtn, settingsBtn, newBtn);
+    head.append(el('h2', null, 'Hub'), this.counters, historyBtn, settingsBtn);
 
     // One section per group, each with its own grid of tiles.
     this.grid = el('div', 'hub-board');
     this.empty = el('div', 'hub-empty');
-    const emptyBtn = el('button', 'primary', '+ Start an agent');
-    emptyBtn.onclick = onNew;
-    this.empty.append(el('div', 'hub-empty-tank'), el('p', null, 'No agents running.'), emptyBtn);
+    this.empty.append(el('div', 'hub-empty-tank'), el('p', null, 'No agents yet. Describe a task in the box below to start one.'));
 
     this.root.append(head, this.grid, this.empty);
     container.appendChild(this.root);

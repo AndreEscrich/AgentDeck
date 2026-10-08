@@ -177,9 +177,6 @@ body.history-open #drawer-backdrop { opacity: 1; pointer-events: auto; }
 .empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-dim); }
 .empty h1 { margin: 0 0 8px; color: var(--text); font-weight: 600; }
 
-/* New agent: an empty chat */
-.new-empty h1 { font-size: 22px; }
-.new-empty p { font-family: var(--mono); font-size: 13px; }
 
 /* Chat */
 .chat .messages { max-width: var(--chat-width); margin: 0 auto; padding: 20px 24px 40px; display: flex; flex-direction: column; gap: 10px; }

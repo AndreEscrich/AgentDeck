@@ -19,7 +19,7 @@ const state = {
   sessions: [],
   agents: new Map(),       // agent id -> { id, title, cwd, status, sessionId, view, transcript, unread }
   history: new Map(),      // session id -> { session, view, transcript } for opened, not-yet-resumed sessions
-  current: null,           // { kind: 'agent' | 'history' | 'new', id }
+  current: null,           // { kind: 'hub' | 'agent' | 'history', id }
   groups: { groups: [], assignments: {} },  // your session groups, saved in groups.json
   renamingGroup: null,     // id of the group whose name is being edited
   parked: new Map(),       // session id -> a completed Hub agent that is not running (kept across restarts)
@@ -47,7 +47,7 @@ const composerPicker = new ModelPicker($('composer-picker'), {
       a.transcript.note(`Switched to ${composerPicker.button.textContent.replace(' ▾', '')} from the next message on.`);
     } else if (cur?.kind === 'history') {
       state.history.get(cur.id).choice = choice;
-    } else if (cur?.kind === 'new' || cur?.kind === 'hub') {
+    } else if (cur?.kind === 'hub') {
       ensureDraft().choice = choice;
     }
   },
@@ -69,7 +69,7 @@ const composerModePicker = new ModePicker($('composer-mode-picker'), {
       a.transcript.note(`Permissions switched to ${composerModePicker.mode.label}.`);
     } else if (cur?.kind === 'history') {
       state.history.get(cur.id).mode = mode;
-    } else if (cur?.kind === 'new' || cur?.kind === 'hub') {
+    } else if (cur?.kind === 'hub') {
       ensureDraft().mode = mode;
     }
   },
@@ -127,9 +127,6 @@ function renderDraftButtons() {
   const group = state.groups.groups.find(g => g.id === d.groupId);
   $('composer-group').textContent = (group ? '# ' + group.name : '# No group') + ' ▾';
   $('composer-group').title = 'The group the new session goes into';
-  $('new-view').querySelector('p').textContent = d.folder
-    ? `The agent will work in ${homePath(d.folder)}.`
-    : 'Pick a folder for the agent with the button under the message box.';
 }
 
 async function chooseFolder() {
@@ -237,25 +234,16 @@ function makeChatView() {
 
 function show(kind, id) {
   state.current = { kind, id };
-  $('back-to-hub').classList.toggle('hidden', !['agent', 'history', 'new'].includes(kind));
+  $('back-to-hub').classList.toggle('hidden', !['agent', 'history'].includes(kind));
   for (const v of $('views').children) v.classList.add('hidden');
 
   // The Hub also has the message box: a message there starts a new agent.
-  const startsAgent = kind === 'new' || kind === 'hub' || !['agent', 'history'].includes(kind);
+  const startsAgent = !['agent', 'history'].includes(kind);
   $('composer').classList.remove('hidden');
   $('composer-folder').classList.toggle('hidden', !startsAgent);
   $('composer-group').classList.toggle('hidden', !startsAgent);
 
-  if (kind === 'new') {
-    const d = ensureDraft();
-    $('new-view').classList.remove('hidden');
-    setHeader('New agent', '', null);
-    composerPicker.setValue(d.choice);
-    composerModePicker.setValue(d.mode);
-    renderDraftButtons();
-    $('input').placeholder = 'Describe a task for a new agent… (↩ to start)';
-    $('input').focus();
-  } else if (kind === 'agent') {
+  if (kind === 'agent') {
     const a = state.agents.get(id);
     a.view.classList.remove('hidden');
     a.unread = false;
@@ -310,10 +298,6 @@ const hub = new Hub($('hub-view'), {
   onHistory: () => setHistoryOpen(true),
   onSettings: () => window.deck.openConfig(),
   onContext: id => sessionMenu(id.startsWith('p:') ? id.slice(2) : state.agents.get(id)?.sessionId),
-  onNew: () => {
-    show('hub');
-    $('input').focus();
-  },
 });
 
 // Many events can arrive in one frame, so the Hub redraws at most once per frame.
@@ -848,9 +832,9 @@ async function sendFromComposer() {
   input.value = '';
   autosize();
 
-  if (state.current.kind === 'new' || state.current.kind === 'hub') {
-    // From the Hub, the message box morphs into the new agent's tile.
-    const fromRect = state.current.kind === 'hub' ? document.querySelector('.composer-box').getBoundingClientRect() : null;
+  if (state.current.kind === 'hub') {
+    // The message box morphs into the new agent's tile.
+    const fromRect = document.querySelector('.composer-box').getBoundingClientRect();
     const d = ensureDraft();
     if (!d.folder) {
       input.value = text;
@@ -908,7 +892,8 @@ $('open-settings').onclick = () => window.deck.openConfig();
 window.deck.onSessionsChanged(loadSessions);
 
 document.addEventListener('keydown', e => {
-  if (e.metaKey && e.key === 'n') { e.preventDefault(); show('new'); }
+  // New agents start from the message box under the Hub.
+  if (e.metaKey && e.key === 'n') { e.preventDefault(); show('hub'); $('input').focus(); }
   if (e.metaKey && e.key === '0') { e.preventDefault(); show('hub'); }
   if (e.metaKey && e.key === '[') { e.preventDefault(); backToHub(); }
   if (e.metaKey && /^[1-9]$/.test(e.key)) {

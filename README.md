@@ -44,7 +44,7 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 
 ## What it does
 
-- **New agent.** ⌘N opens an empty chat with the cursor in the message box. The buttons under the message box set the folder (it starts with the folder of the agent you started last; click it for recent folders or Choose folder…), the group, the permissions and the model. Press ↩ to start the agent.
+- **New agent.** Agents start only from the message box at the bottom of the Hub (⌘N puts the cursor there). The buttons under the message box set the folder (it starts with the folder of the agent you started last; click it for recent folders or Choose folder…), the group, the permissions and the model. Press ↩ to start the agent: the box morphs into its tile.
 - **Hub.** The main screen (⌘0, or ← Hub in an agent) shows every running agent as a tile with a tank of liquid. The color shows the state: blue starting, amber working (waves and bubbles, and the level rises with each step), orange needs your approval (the tile pulses), green done (a burst and a check mark when it finishes), red error (the tile shakes). Each tile shows the task title, its status and how long the task took. Click a tile to open the agent: its tank grows over the window and the chat fades in. After you send a message, the Hub opens and shows the agent's tile springing in (new agent) or hopping back to work (follow-up message); set `hubAfterSend` to `false` to stay in the chat instead.
 - **Hub groups.** Tiles are sorted into one panel per group. A group's tiles always stay on one row: they share its width and get smaller the more agents the group has (at most 240px wide each). The group button under the message box opens a panel: type a name and press ↩ to create a group, or pick one from the list. The list only shows groups that agents in the Hub use, with their agent count, so a group disappears from it when its last agent leaves; typing the exact name of such a group picks it again instead of creating a new one. Right-click a tile to move its agent to another group.
 - **The Hub remembers its agents.** After a restart, or when an agent's process ends, its tile stays in the Hub as a green "Completed" tile with the time of its last task, the same as an agent that has just finished. Click it to open the session; your next message resumes it. Point at a tile and click × to remove it from the Hub (a working agent is stopped, after you confirm). The session itself stays in History. The Hub also has a message box at the bottom with the same folder, group, permissions and model buttons as a new agent: type a task and press ↩, and the box morphs into the new agent's tile and flies to its place in the grid, while you stay in the Hub.
@@ -61,7 +61,7 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 
 | Key | Action |
 | --- | --- |
-| ⌘N | New agent |
+| ⌘N | Start a new agent (cursor in the Hub's message box) |
 | ⌘0 | Hub |
 | ⌘[ | Back to the Hub (also the ← Hub button in an agent; the chat shrinks back into its tile) |
 | ⌘1 … ⌘9 | Switch to running agent 1–9 |
