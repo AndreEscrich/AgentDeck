@@ -150,6 +150,11 @@ const sounds = (() => {
     attention: () => play([[880, 0, 0.4], [880, 0.17, 0.6]], 0.2),
     // An agent is removed from the Hub.
     removed: swoosh,
+    // Dragging a tile: a soft pop when you pick it up, a tiny tick each
+    // time the others make room, and a low thud when it lands.
+    pick: () => { try { slide(audio(), 0, 320, 560, 0.1, 0.1); } catch { /* no sound is fine */ } },
+    shift: () => play([[1320, 0, 0.05]], 0.035),
+    drop: () => { try { const ac = audio(); slide(ac, 0, 240, 85, 0.2, 0.2); slide(ac, 0.07, 180, 120, 0.1, 0.06); } catch { /* no sound is fine */ } },
     // Tab opens the next agent to check: a quick airy flick upwards.
     tab: () => {
       try {

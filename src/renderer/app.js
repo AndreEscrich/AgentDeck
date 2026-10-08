@@ -650,6 +650,8 @@ const hub = new Hub($('hub-view'), {
   onRemove: removeFromHub,
   onRemoveGroup: removeGroupFromHub,
   onTab: () => checkNext(),
+  onReorder: ids => saveTileOrder(ids),
+  onDragSound: kind => { if (playSounds()) sounds[kind]?.(); },
   onHistory: () => setHistoryOpen(true),
   onSettings: () => window.deck.openConfig(),
   // A new agent's message box has flown into its tile.
@@ -813,6 +815,10 @@ function forkSourceFor(cwd, categoryId) {
 }
 
 // Running agents first, then the ones that are not running. Agents you removed are left out.
+// Tiles you sorted by dragging, by session (so the order survives a
+// restart), or by agent id for an agent that has no session yet.
+let tileOrder = [];
+try { tileOrder = JSON.parse(localStorage.getItem('hubOrder') || '[]'); } catch { /* unsorted */ }
 function hubItems() {
   const live = [...state.agents.values()].filter(a => !a.removed);
   for (const a of live) a.groupId = groupOf(a.sessionId) || a.groupId || null;
@@ -820,7 +826,20 @@ function hubItems() {
   const parked = [...state.parked.values()].filter(p => !liveSessions.has(p.sessionId)).map(parkedItem);
   const items = [...live, ...parked];
   for (const item of items) item.repo = repoName(item.cwd);
-  return items;
+  // The order you dragged the tiles into; tiles not sorted yet come after.
+  const rank = new Map(tileOrder.map((key, i) => [key, i]));
+  return items.map((item, i) => [item, rank.has(orderKey(item)) ? rank.get(orderKey(item)) : 1e6 + i])
+    .sort((a, b) => a[1] - b[1]).map(([item]) => item);
+}
+
+function orderKey(item) {
+  return item.sessionId || item.id;
+}
+function saveTileOrder(ids) {
+  const keys = ids.map(id => (id.startsWith('p:') ? id.slice(2) : orderKey(state.agents.get(id) || { id })));
+  tileOrder = [...tileOrder.filter(k => !keys.includes(k)), ...keys];
+  try { localStorage.setItem('hubOrder', JSON.stringify(tileOrder)); } catch { /* not important */ }
+  refreshHub();
 }
 
 // The Hub has one panel per group and repository. The main process finds the

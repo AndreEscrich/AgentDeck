@@ -35,8 +35,10 @@ class Hub {
   // New agents start only from the message box under the Hub.
   // onRemove(agentId) removes a tile's agent; onContext(agentId) shows its
   // right-click menu.
-  constructor(container, { onOpen, onRemove, onRemoveGroup, onContext, onHistory, onSettings, onLanded, onReplay, onTab }) {
+  constructor(container, { onOpen, onRemove, onRemoveGroup, onContext, onHistory, onSettings, onLanded, onReplay, onTab, onReorder, onDragSound }) {
     this.onOpen = onOpen;
+    this.onReorder = onReorder;
+    this.onDragSound = onDragSound;
     this.onReplay = onReplay;
     this.onLanded = onLanded;
     this.onRemoveGroup = onRemoveGroup;
@@ -151,10 +153,13 @@ class Hub {
     // Where in its breathing and floating the tile starts (see styles.css).
     tile.style.setProperty('--phase', `-${(Math.random() * 5).toFixed(2)}s`);
     tile.addEventListener('animationend', e => { if (e.animationName === 'spawn') tile.classList.remove('spawn'); });
-    tile.onclick = () => this.open(agent.id);
+    // A click opens the agent, unless it was the end of dragging the tile.
+    tile.onclick = () => { if (!this.justDragged) this.open(agent.id); };
+    tile.addEventListener('pointerdown', e => this.press(e, agent.id));
     // The tile tilts toward the mouse (see .tilt in styles.css): up to about
     // 7 degrees at its edges.
     tile.addEventListener('pointermove', e => {
+      if (this.drag) return;
       const r = tile.getBoundingClientRect();
       const x = (e.clientX - r.left) / r.width - 0.5;
       const y = (e.clientY - r.top) / r.height - 0.5;
@@ -229,7 +234,7 @@ class Hub {
     this.latest = [agents, currentId, groups];
     // While the app is in the background (or replaying), the tiles keep the
     // state you last saw; thaw() catches them up.
-    if (this.frozen || this.replaying) return;
+    if (this.frozen || this.replaying || this.drag) return;
     this.render(agents, currentId, groups);
   }
 
@@ -407,6 +412,140 @@ class Hub {
     entry.parts.liquid.style.height = '0%';
     entry.el.classList.add('removing');
     await new Promise(r => setTimeout(r, 650));
+  }
+
+  // ---------- sorting tiles by dragging them ----------
+
+  // A press on a tile becomes a drag once the mouse has moved a few pixels;
+  // a press without moving stays a click.
+  press(e, agentId) {
+    if (e.button !== 0 || e.target.closest('.tile-remove') || this.drag || this.opening) return;
+    const entry = this.tiles.get(agentId);
+    if (!entry || entry.removing || !entry.el.parentNode) return;
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const move = ev => {
+      if (!this.drag) {
+        if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
+        this.startDrag(entry, sx, sy);
+      }
+      this.moveDrag(ev);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      if (this.drag) this.endDrag();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  }
+
+  // Picks the tile up: it leaves the row and follows the mouse, a little
+  // bigger and tilted, while a slot keeps its place in the row.
+  startDrag(entry, sx, sy) {
+    const tile = entry.el;
+    const grid = tile.parentNode;
+    const r = tile.getBoundingClientRect();
+    tile.classList.remove('tilt');
+    tile.style.removeProperty('--rx');
+    tile.style.removeProperty('--ry');
+    const byOrder = (a, b) => Number(a.style.order) - Number(b.style.order);
+    const row = [...grid.children].filter(c => c.classList.contains('hub-tile') && !c.classList.contains('removing')).sort(byOrder);
+    const slot = el('div', 'hub-tile-slot');
+    slot.style.height = `${r.height}px`;
+    slot.style.order = tile.style.order;
+    slot.style.setProperty('--slot', getComputedStyle(tile).getPropertyValue('--c1').trim() || '#6b708c');
+    grid.appendChild(slot);
+    this.drag = {
+      tile, grid, slot,
+      siblings: row.filter(t => t !== tile),
+      orders: row.map(t => t.style.order),
+      index: row.indexOf(tile),
+      offX: sx - r.left,
+      offY: sy - r.top,
+      lastX: sx,
+      centers: new Map(),
+    };
+    for (const s of this.drag.siblings) {
+      const sr = s.getBoundingClientRect();
+      this.drag.centers.set(s, sr.left + sr.width / 2);
+    }
+    Object.assign(tile.style, { position: 'fixed', left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`, margin: '0' });
+    tile.classList.add('dragging');
+    document.body.classList.add('grabbing');
+    this.onDragSound?.('pick');
+  }
+
+  moveDrag(ev) {
+    const d = this.drag;
+    d.tile.style.left = `${ev.clientX - d.offX}px`;
+    d.tile.style.top = `${ev.clientY - d.offY}px`;
+    // It sways a little with the movement, like something held by its top.
+    const sway = Math.max(-7, Math.min(7, (ev.clientX - d.lastX) * 0.6));
+    d.lastX = ev.clientX;
+    d.tile.style.setProperty('--sway', `${(sway - 1.5).toFixed(1)}deg`);
+    // The slot goes before the first tile whose middle is right of the mouse.
+    const index = d.siblings.filter(s => d.centers.get(s) < ev.clientX).length;
+    if (index !== d.index) {
+      d.index = index;
+      this.placeSlot();
+      this.onDragSound?.('shift');
+    }
+  }
+
+  // Moves the slot to d.index; the tiles around it slide to their new places
+  // (they are measured before and after, then animated from old to new).
+  placeSlot() {
+    const d = this.drag;
+    const row = [...d.siblings];
+    row.splice(d.index, 0, d.slot);
+    const before = new Map(row.map(e => [e, e.getBoundingClientRect()]));
+    for (const e of row) for (const a of e.getAnimations()) if (a.id === 'flip') a.cancel();
+    row.forEach((e, i) => { e.style.order = d.orders[i]; });
+    for (const e of row) {
+      const after = e.getBoundingClientRect();
+      if (e !== d.slot) d.centers.set(e, after.left + after.width / 2);
+      const dx = before.get(e).left - after.left;
+      if (Math.abs(dx) < 0.5) continue;
+      const a = e.animate([{ transform: `translateX(${dx}px)` }, { transform: 'translateX(0)' }],
+        { duration: 320, easing: 'cubic-bezier(.2,.9,.25,1.08)' });
+      a.id = 'flip';
+    }
+  }
+
+  // Drops the tile: it falls into the slot, squashes a little as it lands
+  // and settles. Then the new order is saved.
+  async endDrag() {
+    const d = this.drag;
+    this.justDragged = true;
+    setTimeout(() => { this.justDragged = false; }, 60);
+    for (const a of d.slot.getAnimations()) a.cancel();
+    const to = d.slot.getBoundingClientRect();
+    const from = d.tile.getBoundingClientRect();
+    d.tile.classList.remove('dragging');
+    d.tile.classList.add('dropping');
+    const fall = d.tile.animate([
+      { left: `${from.left}px`, top: `${from.top}px`, transform: `scale(1.07) rotate(${d.tile.style.getPropertyValue('--sway') || '-1.5deg'})` },
+      { left: `${to.left}px`, top: `${to.top}px`, transform: 'scale(0.96, 0.98) rotate(0deg)', offset: 0.72 },
+      { left: `${to.left}px`, top: `${to.top}px`, transform: 'scale(1)' },
+    ], { duration: 420, easing: 'cubic-bezier(.35,.0,.25,1)' });
+    setTimeout(() => this.onDragSound?.('drop'), 300);
+    await fall.finished.catch(() => {});
+    d.tile.style.order = d.slot.style.order;
+    for (const p of ['position', 'left', 'top', 'width', 'height', 'margin', '--sway']) d.tile.style.removeProperty(p);
+    d.tile.classList.remove('dropping');
+    document.body.classList.remove('grabbing');
+    d.slot.remove();
+    this.drag = null;
+    const ids = [...d.grid.children]
+      .filter(c => c.classList.contains('hub-tile'))
+      .sort((a, b) => Number(a.style.order) - Number(b.style.order))
+      .map(t => [...this.tiles].find(([, entry]) => entry.el === t)?.[0])
+      .filter(Boolean);
+    this.onReorder?.(ids);
+    if (this.latest) this.render(...this.latest);
   }
 
   // Removes a whole group: its tiles drop out one after another, left to

@@ -508,6 +508,19 @@ details.other-files details.change-file > summary { padding-left: 24px; }
    get smaller the more there are, up to 240px wide each. */
 .hub-section .hub-grid { display: flex; gap: 12px; align-items: stretch; }
 .hub-section .hub-tile { flex: 1 1 0; min-width: 0; max-width: 240px; }
+/* Sorting tiles by dragging: the tile you hold is lifted (bigger, tilted
+   and swaying, with a deep shadow); a dashed slot in its color shows where
+   it will land. */
+.hub-tile.dragging { z-index: 60; pointer-events: none; animation: none;
+  transform: scale(1.07) rotate(var(--sway, -1.5deg));
+  box-shadow: var(--slab), 0 34px 50px -14px rgba(0, 0, 0, 0.8), 0 0 0 1px color-mix(in srgb, var(--c1) 50%, transparent);
+  transition: transform 0.2s cubic-bezier(.3,1.5,.5,1), box-shadow 0.2s; }
+.hub-tile.dropping { z-index: 60; pointer-events: none; animation: none; }
+.hub-tile-slot { flex: 1 1 0; min-width: 0; max-width: 240px; box-sizing: border-box; border-radius: 16px;
+  border: 2px dashed color-mix(in srgb, var(--slot) 50%, transparent); background: color-mix(in srgb, var(--slot) 7%, transparent);
+  animation: slot-in 0.25s ease-out; }
+@keyframes slot-in { from { opacity: 0; transform: scale(0.94); } }
+body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none; }
 .hub-empty { display: flex; flex-direction: column; align-items: center; gap: 14px; margin-top: 12vh; color: var(--text-dim); }
 .hub-empty-tank { width: 70px; height: 96px; border: 3px solid var(--bg-active); border-radius: 18px 18px 22px 22px; position: relative; }
 .hub-empty-tank::after { content: ""; position: absolute; left: 6px; right: 6px; bottom: 6px; height: 14px; border-radius: 4px 4px 12px 12px; background: var(--bg-active); }
