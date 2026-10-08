@@ -405,7 +405,7 @@ class Transcript {
 
   add(msg) {
     switch (msg.type) {
-      case 'user': return this.addUser(msg.message, msg.tool_use_result);
+      case 'user': return this.addUser(msg.message, msg.tool_use_result, msg.isSynthetic || msg.isMeta);
       case 'assistant': return this.addAssistant(msg.message);
       case 'stream_event': return this.addStreamEvent(msg.event);
       case 'result': return this.finishTurn(msg);
@@ -420,9 +420,13 @@ class Transcript {
     }
   }
 
-  addUser(message, toolUseResult) {
+  // Text that Claude Code adds by itself (a skill's instructions when the
+  // agent runs a skill, notes about attached images) is for the agent, not
+  // you: it stays out of the chat and does not start a new turn.
+  addUser(message, toolUseResult, synthetic) {
     const content = message.content;
-    const texts = typeof content === 'string' ? [content]
+    const texts = synthetic ? []
+      : typeof content === 'string' ? [content]
       : content.filter(b => b.type === 'text').map(b => b.text);
     if (texts.length) {
       // Your message starts a new turn.
