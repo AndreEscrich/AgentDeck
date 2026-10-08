@@ -282,6 +282,56 @@ function setSettingsOpen(open) {
 
 $('composer-settings-btn').onclick = () => setSettingsOpen($('composer-settings').classList.contains('hidden'));
 
+// ---------- context meter ----------
+
+// Asks the agent's claude process how full its context window is.
+function updateContext(agent) {
+  agent.contextAt = Date.now();
+  window.deck.contextUsage(agent.id).then(usage => {
+    if (!usage || !usage.maxTokens) return;
+    agent.context = usage;
+    if (state.current?.kind === 'agent' && state.current.id === agent.id) renderContextMeter();
+  }).catch(() => {});
+}
+
+function formatK(n) {
+  if (n >= 1e6) return `${(n / 1e6).toFixed(n % 1e6 ? 1 : 0)}M`;
+  if (n >= 1000) return `${Math.round(n / 1000)}k`;
+  return String(n);
+}
+
+// A ring next to the Send button that fills up with the context in use, like
+// in the Claude desktop app. Pointing at it shows what fills the context.
+function renderContextMeter() {
+  const meter = $('context-meter');
+  const agent = state.current?.kind === 'agent' ? state.agents.get(state.current.id) : null;
+  const usage = agent?.context;
+  meter.classList.toggle('hidden', !usage);
+  if (!usage) return;
+  const fraction = Math.min(1, usage.totalTokens / usage.maxTokens);
+  const percent = Math.round(fraction * 100);
+  const r = 7;
+  const length = 2 * Math.PI * r;
+  meter.className = 'context-meter' + (fraction >= 0.85 ? ' full' : fraction >= 0.6 ? ' high' : '');
+  meter.innerHTML = `
+    <svg width="18" height="18" viewBox="0 0 18 18">
+      <circle class="ring-bg" cx="9" cy="9" r="${r}"/>
+      <circle class="ring" cx="9" cy="9" r="${r}" stroke-dasharray="${(fraction * length).toFixed(2)} ${length.toFixed(2)}" transform="rotate(-90 9 9)"/>
+    </svg>
+    <span class="context-percent">${percent}%</span>`;
+  const pop = el('div', 'context-pop');
+  pop.append(el('div', 'context-pop-head', `Context: ${formatK(usage.totalTokens)} of ${formatK(usage.maxTokens)} tokens (${percent}%)`));
+  const used = (usage.categories || []).filter(c => c.kind === 'used' && c.tokens > 0).sort((a, b) => b.tokens - a.tokens);
+  for (const c of used) {
+    const row = el('div', 'context-pop-row');
+    row.append(el('span', null, c.name), el('span', 'context-pop-num', formatK(c.tokens)));
+    pop.appendChild(row);
+  }
+  const buffer = (usage.categories || []).find(c => c.kind === 'buffer');
+  if (buffer) pop.appendChild(el('div', 'context-pop-note', `Claude Code compacts the conversation when it reaches ${formatK(usage.maxTokens - buffer.tokens)} tokens.`));
+  meter.appendChild(pop);
+}
+
 function show(kind, id) {
   state.current = { kind, id };
   $('back-to-hub').classList.toggle('hidden', !['agent', 'history'].includes(kind));
@@ -323,6 +373,10 @@ function show(kind, id) {
   }
   renderSettingsButton();
   renderSidebar();
+  // The context meter shows for a running agent; it asks for numbers the
+  // first time you open the agent.
+  if (kind === 'agent' && state.agents.get(id) && !state.agents.get(id).context) updateContext(state.agents.get(id));
+  renderContextMeter();
 }
 
 // ---------- hub ----------
@@ -907,6 +961,8 @@ window.deck.onEvent((id, msg) => {
   if (msg.type === 'result') {
     window.deck.notify(a.title, msg.is_error ? 'Stopped with an error' : 'Finished and waiting for you');
   }
+  // The context meter: after each task, and at most every 5 seconds while working.
+  if (msg.type === 'result' || (msg.type === 'assistant' && Date.now() - (a.contextAt || 0) > 5000)) updateContext(a);
 });
 
 window.deck.onStatus((id, status) => {

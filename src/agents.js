@@ -84,7 +84,15 @@ class AgentManager {
       if (!agent.pending.size && agent.status === 'waiting') this.setStatus(agent, 'working');
       return;
     }
-    if (msg.type === 'control_response') return; // answers to our own requests
+    if (msg.type === 'control_response') {
+      // An answer to one of our requests; request() may be waiting for it.
+      const waiting = agent.waiting?.get(msg.response?.request_id);
+      if (waiting) {
+        agent.waiting.delete(msg.response.request_id);
+        waiting(msg.response);
+      }
+      return;
+    }
     if (msg.session_id && msg.session_id !== agent.sessionId) {
       agent.sessionId = msg.session_id;
       this.send('agent:session', agent.id, msg.session_id);
@@ -157,6 +165,32 @@ class AgentManager {
     const agent = this.agents.get(id);
     if (!agent) return;
     agent.proc.stdin.write(JSON.stringify({ type: 'control_request', request_id: randomUUID(), request }) + '\n');
+  }
+
+  // Sends a control request and waits for the CLI's answer (null after 10
+  // seconds without one, or when the request failed).
+  request(id, request) {
+    const agent = this.agents.get(id);
+    if (!agent) return Promise.resolve(null);
+    const requestId = randomUUID();
+    agent.waiting = agent.waiting || new Map();
+    return new Promise(resolve => {
+      const timer = setTimeout(() => {
+        agent.waiting.delete(requestId);
+        resolve(null);
+      }, 10000);
+      agent.waiting.set(requestId, response => {
+        clearTimeout(timer);
+        resolve(response.subtype === 'success' ? response.response : null);
+      });
+      this.writeJson(agent, { type: 'control_request', request_id: requestId, request });
+    });
+  }
+
+  // How full the context window is: { totalTokens, maxTokens, percentage,
+  // categories: [{ name, tokens, kind }] }, the same numbers as /context.
+  contextUsage(id) {
+    return this.request(id, { subtype: 'get_context_usage' });
   }
 
   // Changes model, effort and fast mode from the next turn on, the same as the

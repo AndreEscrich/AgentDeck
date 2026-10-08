@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('deck', {
   setPermissionMode: (id, mode) => ipcRenderer.invoke('agent:setPermissionMode', id, mode),
   interrupt: id => ipcRenderer.invoke('agent:interrupt', id),
   closeAgent: id => ipcRenderer.invoke('agent:close', id),
+  contextUsage: id => ipcRenderer.invoke('agent:context', id),
   summarizeTitle: text => ipcRenderer.invoke('agent:title', text),
   notify: (title, body) => ipcRenderer.invoke('notify', title, body),
   onEvent: fn => on('agent:event', fn),

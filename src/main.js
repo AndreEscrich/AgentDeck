@@ -148,6 +148,7 @@ app.whenReady().then(() => {
   ipcMain.handle('agent:setPermissionMode', (_e, id, mode) => agents.setPermissionMode(id, mode));
   ipcMain.handle('agent:interrupt', (_e, id) => agents.interrupt(id));
   ipcMain.handle('agent:close', (_e, id) => agents.close(id));
+  ipcMain.handle('agent:context', (_e, id) => agents.contextUsage(id));
   ipcMain.handle('agent:title', (_e, text) => (getConfig().summarizeTitles ? summarizeTitle(getConfig(), text) : null));
   ipcMain.handle('notify', (_e, title, body) => {
     if (getConfig().notifyWhenDone && !win.isFocused()) {
