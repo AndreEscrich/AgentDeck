@@ -1,4 +1,4 @@
-// Makes AgentDeck clickable: on macOS it builds ~/Applications/AgentDeck.app
+// Makes Agent Hub clickable: on macOS it builds ~/Applications/Agent Hub.app
 // (make-app.sh), on Windows it creates Desktop and Start menu shortcuts
 // (make-app-win.ps1). Both run the code in this folder directly.
 //

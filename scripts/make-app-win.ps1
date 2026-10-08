@@ -1,7 +1,7 @@
-# Creates "AgentDeck" shortcuts on the Desktop and in the Start menu (Windows).
+# Creates "Agent Hub" shortcuts on the Desktop and in the Start menu (Windows).
 #
 # The shortcuts start Electron with this folder, so they always run the
-# current code: after you change the code, close and reopen AgentDeck.
+# current code: after you change the code, close and reopen Agent Hub.
 # Run this again only after `npm install` updates Electron or after the icon
 # changes.
 #
@@ -35,12 +35,12 @@ $Folders = @(
 
 $Shell = New-Object -ComObject WScript.Shell
 foreach ($Folder in $Folders) {
-  $Link = $Shell.CreateShortcut((Join-Path $Folder 'AgentDeck.lnk'))
+  $Link = $Shell.CreateShortcut((Join-Path $Folder 'Agent Hub.lnk'))
   $Link.TargetPath = $Electron
   $Link.Arguments = '"' + $Project + '"'
   $Link.WorkingDirectory = $Project
   $Link.IconLocation = $Icon
-  $Link.Description = 'AgentDeck'
+  $Link.Description = 'Agent Hub'
   $Link.Save()
-  Write-Host "Created $(Join-Path $Folder 'AgentDeck.lnk')"
+  Write-Host "Created $(Join-Path $Folder 'Agent Hub.lnk')"
 }

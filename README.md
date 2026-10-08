@@ -1,4 +1,6 @@
-# AgentDeck
+# Agent Hub
+
+(Called AgentDeck before. The repository, the npm package name and the settings folder `~/Library/Application Support/agentdeck` keep the old name.)
 
 A desktop app for running and managing Claude Code agents. You can change anything in it.
 
@@ -19,7 +21,7 @@ npm run make-app
 
 Run this in the stable copy (see below).
 
-- **macOS:** it builds `~/Applications/AgentDeck.app` with the AgentDeck icon and puts a link to it on your Desktop.
+- **macOS:** it builds `~/Applications/Agent Hub.app` with the AgentDeck icon and puts a link to it on your Desktop.
 - **Windows:** it creates "AgentDeck" shortcuts on the Desktop and in the Start menu, with the AgentDeck icon.
 
 Both run the code in that folder directly, so after an update you only quit and reopen AgentDeck. Run `npm run make-app` again only after `npm install` updates Electron, or after you change the icon (`build/icon.html`, then `npm run icon`, which writes `icon.png` and the Windows `icon.ico`).
@@ -36,7 +38,7 @@ The app you use every day and the code you change live in two separate folders, 
 
 | Folder | Branch | Used for |
 | --- | --- | --- |
-| `~/Repositories/AgentDeck-stable` | `master` | AgentDeck.app runs this code. Don't edit it directly. |
+| `~/Repositories/AgentDeck-stable` | `master` | Agent Hub.app runs this code. Don't edit it directly. |
 | `~/Repositories/AgentDeck` | `dev` | Make and commit changes here. Test them with `npm start`, which opens a second window that runs the dev code. |
 
 When a change works, move it to the stable copy from the dev folder:
@@ -45,7 +47,7 @@ When a change works, move it to the stable copy from the dev folder:
 npm run promote
 ```
 
-This moves `master` forward to `dev`, installs packages in the stable copy if they changed, and rebuilds AgentDeck.app if the icon or Electron changed. Then quit and reopen AgentDeck. To also set a version number and tag it, and to upload everything to GitHub:
+This moves `master` forward to `dev`, installs packages in the stable copy if they changed, and rebuilds Agent Hub.app if the icon or Electron changed. Then quit and reopen Agent Hub. To also set a version number and tag it, and to upload everything to GitHub:
 
 ```bash
 npm run promote -- 0.3.0 --push

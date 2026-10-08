@@ -1,5 +1,5 @@
 // Moves the tested changes from the `dev` branch to `master`, and updates the
-// stable copy (the folder on `master`) that the AgentDeck app runs. Works the
+// stable copy (the folder on `master`) that the Agent Hub app runs. Works the
 // same on macOS and Windows.
 //
 // Run it from the dev folder:
@@ -7,7 +7,7 @@
 //   npm run promote -- 0.3.0         also set the version to 0.3.0 and tag it v0.3.0
 //   npm run promote -- 0.3.0 --push  also upload master, dev and the tag to GitHub
 //
-// Afterwards, quit and reopen AgentDeck to use the new version.
+// Afterwards, quit and reopen Agent Hub to use the new version.
 
 const { execFileSync, spawnSync } = require('child_process');
 const path = require('path');
@@ -78,7 +78,7 @@ if (packagesChanged) {
 const changed = file => git(stable, 'diff', '--name-only', oldHead, newHead, '--', file) !== '';
 const electronChanged = before?.['node_modules/electron']?.version !== after?.['node_modules/electron']?.version;
 if (electronChanged || ['build/icon.png', 'build/icon.ico', 'scripts/make-app.sh', 'scripts/make-app-win.ps1'].some(changed)) {
-  console.log('Rebuilding the AgentDeck app…');
+  console.log('Rebuilding the Agent Hub app…');
   const r = spawnSync(process.execPath, [path.join(stable, 'scripts', 'make-app.js')], { cwd: stable, stdio: 'inherit' });
   if (r.status !== 0) fail('Rebuilding the app failed.');
 }
@@ -89,4 +89,4 @@ if (push) {
   console.log('Uploaded to GitHub.');
 }
 
-console.log('Done. Quit and reopen AgentDeck to use the new version.');
+console.log('Done. Quit and reopen Agent Hub to use the new version.');

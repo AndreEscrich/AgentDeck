@@ -112,11 +112,17 @@ function watchSessions() {
   } catch { /* watching is a convenience; the refresh button still works */ }
 }
 
-// Windows groups taskbar buttons and shows notifications by this id.
+// The app is called Agent Hub, but its settings (config.json, groups.json,
+// snapshots, the Hub's saved agents) stay in the folder from when it was
+// called AgentDeck. Electron would otherwise pick a folder named after the app.
+app.setPath('userData', path.join(app.getPath('appData'), 'agentdeck'));
+
+// Windows groups taskbar buttons and shows notifications by this id. It keeps
+// the old name, so Windows treats the renamed app as the same app.
 if (process.platform === 'win32') app.setAppUserModelId('com.agentdeck.app');
 
 app.whenReady().then(() => {
-  // Shows the AgentDeck icon in the Dock also when you run `npm start`.
+  // Shows the Agent Hub icon in the Dock also when you run `npm start`.
   if (app.dock) app.dock.setIcon(path.join(__dirname, '..', 'build', 'icon.png'));
   configPath = path.join(app.getPath('userData'), 'config.json');
   groupsPath = path.join(app.getPath('userData'), 'groups.json');

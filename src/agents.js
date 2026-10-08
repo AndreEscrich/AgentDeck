@@ -132,7 +132,7 @@ class AgentManager {
     // answer with an error to keep the CLI from waiting for us.
     this.writeJson(agent, {
       type: 'control_response',
-      response: { subtype: 'error', request_id: msg.request_id, error: `AgentDeck does not handle ${msg.request?.subtype}` },
+      response: { subtype: 'error', request_id: msg.request_id, error: `Agent Hub does not handle ${msg.request?.subtype}` },
     });
   }
 

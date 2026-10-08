@@ -96,7 +96,7 @@ function compareVersions(a, b) {
 
 // Uses the configured path when there is one. Otherwise it picks the newest
 // Claude Code installed on this computer. The answer is kept for five
-// minutes, so a desktop app update is picked up without restarting AgentDeck.
+// minutes, so a desktop app update is picked up without restarting Agent Hub.
 let cachedClaude = null;
 function findClaude(configured) {
   if (configured && fs.existsSync(configured)) return configured;
