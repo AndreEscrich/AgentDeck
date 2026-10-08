@@ -1,6 +1,6 @@
 {
   "name": "agentdeck",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A customizable desktop app for running and managing Claude Code agents",
   "main": "src/main.js",
   "private": true,
