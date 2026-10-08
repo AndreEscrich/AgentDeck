@@ -329,4 +329,39 @@ function summarizeTitle(config, text) {
   });
 }
 
-module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle };
+// Your plan's usage limits, without an agent: Claude Code reports them (a
+// "rate_limit_event") with every reply, so this sends Haiku a one-word
+// message, not saved as a session, and keeps only that report. It costs a
+// very small amount of usage. Resolves with the rate_limit_info, or null.
+function fetchUsage(config) {
+  return new Promise(resolve => {
+    const proc = spawnClaude(config.claudePath,
+      ['-p', '--model', 'haiku', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--tools', '', '--no-session-persistence'],
+      { cwd: os.tmpdir(), env: childEnv(config.env), stdio: ['pipe', 'pipe', 'ignore'] });
+    helperProcesses.add(proc);
+    let buffer = '';
+    let info = null;
+    const timer = setTimeout(() => { killTree(proc); }, 45000);
+    proc.stdout.on('data', d => {
+      buffer += d;
+      let nl;
+      while ((nl = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, nl);
+        buffer = buffer.slice(nl + 1);
+        try {
+          const msg = JSON.parse(line);
+          if (msg.type === 'rate_limit_event' && msg.rate_limit_info) info = msg.rate_limit_info;
+        } catch { /* not a JSON line */ }
+      }
+    });
+    proc.on('error', () => resolve(null));
+    proc.on('close', () => {
+      clearTimeout(timer);
+      helperProcesses.delete(proc);
+      resolve(info);
+    });
+    proc.stdin.end('Reply with only: ok');
+  });
+}
+
+module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, fetchUsage };

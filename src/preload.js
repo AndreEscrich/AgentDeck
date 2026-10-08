@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('deck', {
   getConfig: () => ipcRenderer.invoke('config:get'),
   openConfig: () => ipcRenderer.invoke('config:open'),
   appVersion: () => ipcRenderer.invoke('app:version'),
+  fetchUsage: () => ipcRenderer.invoke('usage:fetch'),
   repoOf: cwd => ipcRenderer.invoke('repo:of', cwd),
   existingFiles: paths => ipcRenderer.invoke('fs:existing', paths),
   getGroups: () => ipcRenderer.invoke('groups:get'),

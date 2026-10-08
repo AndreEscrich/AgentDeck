@@ -1476,6 +1476,24 @@ async function sendToAgent(agent, text) {
 const usage = { limits: null, at: 0, tokens: 0, tasks: 0 };
 try { Object.assign(usage, JSON.parse(localStorage.getItem('usageLimits') || '{}'), { tokens: 0, tasks: 0 }); } catch { /* none yet */ }
 hub.setUsage({ ...usage });
+
+// The limits also come without an agent: when the app opens, and every 15
+// minutes after that if no agent has reported them in the meantime, a tiny
+// Claude Code request fetches them (see fetchUsage in agents.js).
+const USAGE_REFRESH = 15 * 60 * 1000;
+let fetchingUsage = false;
+async function refreshUsage() {
+  if (fetchingUsage) return;
+  fetchingUsage = true;
+  try {
+    const info = await window.deck.fetchUsage();
+    if (info) noteUsage({ type: 'rate_limit_event', rate_limit_info: info });
+  } catch { /* the last known numbers stay */ } finally {
+    fetchingUsage = false;
+  }
+}
+refreshUsage();
+setInterval(() => { if (Date.now() - usage.at >= USAGE_REFRESH) refreshUsage(); }, 60 * 1000);
 function noteUsage(msg) {
   if (msg.type === 'rate_limit_event' && msg.rate_limit_info) {
     usage.limits = msg.rate_limit_info;

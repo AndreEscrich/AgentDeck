@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Notification, Menu, protocol
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
-const { AgentManager, fetchModels, summarizeTitle } = require('./agents');
+const { AgentManager, fetchModels, summarizeTitle, fetchUsage } = require('./agents');
 const { listSessions, loadTranscript, PROJECTS_DIR } = require('./sessions');
 const git = require('./git');
 const { repoOf } = require('./repos');
@@ -200,6 +200,7 @@ app.whenReady().then(() => {
   ipcMain.handle('config:get', () => ({ ...getConfig(), home: require('os').homedir() }));
   ipcMain.handle('config:open', () => shell.openPath(configPath));
   ipcMain.handle('app:quit', () => quitNow());
+  ipcMain.handle('usage:fetch', () => fetchUsage(getConfig()));
   ipcMain.handle('app:version', () => appVersion());
   ipcMain.handle('sessions:list', () => listSessions());
   ipcMain.handle('git:snapshot', (_e, cwd) => git.snapshot(cwd, path.join(app.getPath('userData'), 'snapshots')));
