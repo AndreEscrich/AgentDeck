@@ -11,7 +11,7 @@ npm install
 npm start
 ```
 
-You need Node.js, Git, and Claude Code installed and logged in (`claude` in a terminal, then `/login`). AgentDeck runs on macOS and Windows.
+You need Node.js, Git, and Claude Code installed and logged in (`claude` in a terminal, then `/login`). Agent Hub runs on macOS and Windows.
 
 ### As a clickable app
 
@@ -21,16 +21,16 @@ npm run make-app
 
 Run this in the stable copy (see below).
 
-- **macOS:** it builds `~/Applications/Agent Hub.app` with the AgentDeck icon and puts a link to it on your Desktop.
-- **Windows:** it creates "AgentDeck" shortcuts on the Desktop and in the Start menu, with the AgentDeck icon.
+- **macOS:** it builds `~/Applications/Agent Hub.app` with the Agent Hub icon and puts a link to it on your Desktop.
+- **Windows:** it creates "Agent Hub" shortcuts on the Desktop and in the Start menu, with the Agent Hub icon.
 
-Both run the code in that folder directly, so after an update you only quit and reopen AgentDeck. Run `npm run make-app` again only after `npm install` updates Electron, or after you change the icon (`build/icon.html`, then `npm run icon`, which writes `icon.png` and the Windows `icon.ico`).
+Both run the code in that folder directly, so after an update you only quit and reopen Agent Hub. Run `npm run make-app` again only after `npm install` updates Electron, or after you change the icon (`build/icon.html`, then `npm run icon`, which writes `icon.png` and the Windows `icon.ico`).
 
 ### On Windows
 
 - **Setting up the two copies:** clone the repository, then in it run `git checkout dev`, `git worktree add ../AgentDeck-stable master`, and `npm install` in both folders. Then run `npm run make-app` in `AgentDeck-stable`.
 - **Shortcuts:** use Ctrl where this README says ⌘.
-- **Finding Claude Code:** AgentDeck looks for `claude` in the native installer's folder (`%USERPROFILE%\.local\bin`), the npm folder (`%APPDATA%\npm`), wherever `where claude` finds it, and the Claude desktop app's own copy, and uses the newest. If it picks the wrong one, set `claudePath` in Settings.
+- **Finding Claude Code:** Agent Hub looks for `claude` in the native installer's folder (`%USERPROFILE%\.local\bin`), the npm folder (`%APPDATA%\npm`), wherever `where claude` finds it, and the Claude desktop app's own copy, and uses the newest. If it picks the wrong one, set `claudePath` in Settings.
 
 ## Two copies: stable and dev
 
@@ -113,7 +113,7 @@ Click **Settings** in the Hub (or at the bottom of History) to open `config.json
 - `defaultModel`: a model value from the model menu. The default is `opus`, which always means the latest Opus (Opus 5.5 today).
 - `defaultEffort`: `low`, `medium` (the default), `high`, `xhigh` or `max`. Empty means the model's own default.
 - `defaultFastMode`: `true` to turn fast mode on for new agents.
-- `defaultFolder`: the folder for a new agent when you have not started one in AgentDeck yet.
+- `defaultFolder`: the folder for a new agent when you have not started one in Agent Hub yet.
 - `extraArgs`: extra flags for every agent, for example `["--add-dir", "/some/path"]`.
 - `env`: extra environment variables for every agent.
 - `notifyWhenDone`: show a notification when an agent finishes.
