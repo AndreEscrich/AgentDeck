@@ -442,6 +442,7 @@ function scrollToBottom(view) {
 
 function show(kind, id) {
   state.current = { kind, id };
+  requestAnimationFrame(updateNextHint);
   $('back-to-hub').classList.toggle('hidden', !['agent', 'history'].includes(kind));
   for (const v of $('views').children) v.classList.add('hidden');
 
@@ -648,6 +649,7 @@ const hub = new Hub($('hub-view'), {
   },
   onRemove: removeFromHub,
   onRemoveGroup: removeGroupFromHub,
+  onTab: () => checkNext(),
   onHistory: () => setHistoryOpen(true),
   onSettings: () => window.deck.openConfig(),
   // A new agent's message box has flown into its tile.
@@ -708,7 +710,36 @@ function refreshHub() {
     if (state.current?.kind === 'hub') $('view-subtitle').textContent = reviewHint();
     // Agents finishing or getting their short title change the "continues from" line.
     if (['new', 'hub'].includes(state.current?.kind)) renderDraftButtons();
+    updateNextHint();
   });
+}
+
+// In an agent, when Tab has somewhere to go: a glow on the right edge in the
+// color of the next agent's state, with "Tab to go" and its name. Clicking
+// it does the same as Tab.
+const NEXT_COLORS = { idle: '#74d39d', waiting: '#f09a75', question: '#a99bf7', error: '#ef7f7f' };
+function updateNextHint() {
+  let hint = $('next-hint');
+  if (!hint) {
+    hint = el('button', 'next-hint');
+    hint.id = 'next-hint';
+    hint.type = 'button';
+    hint.append(el('span', 'next-hint-label', 'Tab to go'), el('span', 'next-hint-name'));
+    hint.onclick = () => checkNext();
+    $('main').appendChild(hint);
+  }
+  const cur = state.current;
+  const queue = reviewQueue().filter(i => i.id !== hubIdOf(cur));
+  const next = queue[0];
+  const colorOf = i => NEXT_COLORS[i.status === 'waiting' && i.attention === 'question' ? 'question' : i.status] || NEXT_COLORS.idle;
+  // In the Hub, the header says that Tab starts going through them.
+  hub.setTabHint(cur?.kind === 'hub' && next ? { count: queue.length, name: next.latestTitle || next.title, color: colorOf(next) } : null);
+  const inAgent = ['agent', 'history'].includes(cur?.kind);
+  hint.classList.toggle('show', inAgent && !!next);
+  if (!inAgent || !next) return;
+  hint.style.setProperty('--next', colorOf(next));
+  hint.querySelector('.next-hint-name').textContent = next.latestTitle || next.title;
+  hint.title = `Tab: open "${next.title}"`;
 }
 
 setInterval(() => {
