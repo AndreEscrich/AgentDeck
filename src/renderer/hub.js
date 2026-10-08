@@ -310,7 +310,8 @@ class Hub {
   // A copy of a tile, fixed on top of everything, for the animations below.
   tileCopy(entry, rect) {
     const copy = entry.el.cloneNode(true);
-    copy.classList.remove('spawn', 'landed', 'wake', 'celebrate', 'current', 'opening');
+    // No pulse or glow on the copy: only the moving card should catch the eye.
+    copy.classList.remove('spawn', 'landed', 'wake', 'celebrate', 'current', 'opening', 'unread');
     copy.classList.add('tile-lid');
     Object.assign(copy.style, { left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` });
     document.body.appendChild(copy);
@@ -366,6 +367,9 @@ class Hub {
         [{ transform: 'perspective(700px) rotateX(0deg)' }, { transform: 'perspective(700px) rotateX(-75deg)' }],
         { duration: 220, easing: 'ease-in', fill: 'forwards' },
       ),
+      // The colored tank is gone while the copy is still about tile size,
+      // so its color never fills the window.
+      copy.querySelector('.tank')?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: 'ease-out', fill: 'forwards' }),
       view?.animate([
         { clipPath: Hub.outline(from, to, 16), opacity: 0 },
         { opacity: 1, offset: 0.45 },
@@ -411,6 +415,8 @@ class Hub {
         [{ transform: 'perspective(700px) rotateX(-75deg)' }, { transform: 'perspective(700px) rotateX(0deg)' }],
         { duration: 220, delay: 200, easing: 'ease-out', fill: 'forwards' },
       ),
+      // The colored tank appears only when the copy is almost back to tile size.
+      copy.querySelector('.tank')?.animate([{ opacity: 0 }, { opacity: 0, offset: 0.7 }, { opacity: 1 }], { duration: 420, fill: 'forwards' }),
       view?.animate([
         { clipPath: 'inset(0px 0px 0px 0px round 0px)', opacity: 1 },
         { opacity: 1, offset: 0.55 },
