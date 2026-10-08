@@ -428,3 +428,104 @@ body.sidebar-collapsed .review-bar { padding-left: 84px; }
 .review-pane { flex: 1; min-width: 0; overflow: auto; }
 .review-path { position: sticky; top: 0; z-index: 1; padding: 8px 16px; font: 12px var(--mono); color: var(--text-dim); background: var(--bg-panel); border-bottom: 1px solid var(--border); }
 .review-pane .diff { max-height: none; border-top: none; font-size: 12.5px; }
+
+/* ---------- Hub ---------- */
+
+.hub-nav { margin-top: 10px; color: var(--text); }
+.hub-nav-icon { width: 10px; height: 14px; border: 1.5px solid currentColor; border-radius: 3px 3px 4px 4px; position: relative; flex-shrink: 0; margin: 0 1px; }
+.hub-nav-icon::after { content: ""; position: absolute; left: 1px; right: 1px; bottom: 1px; height: 55%; border-radius: 1px 1px 2px 2px; background: var(--accent); }
+.hub-nav.attn .hub-nav-icon::after { animation: pulse 0.8s ease-in-out infinite; }
+
+.hub { padding: 24px 28px 40px; max-width: 1400px; margin: 0 auto; }
+.hub-head { display: flex; align-items: center; gap: 18px; margin-bottom: 22px; }
+.hub-head h2 { margin: 0; font-size: 22px; }
+.hub-counters { flex: 1; color: var(--text-dim); font-size: 13px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.hub-counters b { color: var(--text); }
+.hub-counters b.attn { color: var(--accent); }
+.hub-counters b.ok { color: var(--ok); }
+.hub-counters .sep { color: var(--text-faint); }
+
+.hub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px; }
+.hub-empty { display: flex; flex-direction: column; align-items: center; gap: 14px; margin-top: 12vh; color: var(--text-dim); }
+.hub-empty-tank { width: 70px; height: 96px; border: 3px solid var(--bg-active); border-radius: 18px 18px 22px 22px; position: relative; }
+.hub-empty-tank::after { content: ""; position: absolute; left: 6px; right: 6px; bottom: 6px; height: 14px; border-radius: 4px 4px 12px 12px; background: var(--bg-active); }
+
+/* Colors per state: --c1 top of the liquid, --c2 bottom, --glow the tile glow. */
+.hub-tile { --c1: #6b708c; --c2: #4a4e66; --glow: transparent; --wave-speed: 9s;
+  position: relative; display: flex; flex-direction: column; gap: 12px;
+  padding: 14px; border-radius: 16px; background: var(--bg-panel); border: 1px solid var(--border);
+  cursor: pointer; transition: border-color 0.3s, box-shadow 0.4s, transform 0.15s; }
+.hub-tile:hover { transform: translateY(-2px); border-color: var(--text-faint); }
+.hub-tile.current { border-color: var(--accent); }
+.hub-tile.state-starting { --c1: #7fa8f0; --c2: #3d6bc4; --glow: rgba(90, 141, 224, 0.25); --wave-speed: 5s; }
+.hub-tile.state-working  { --c1: #f2c060; --c2: #c98a1c; --glow: rgba(224, 168, 58, 0.28); --wave-speed: 3.2s; }
+.hub-tile.state-waiting  { --c1: #f09a75; --c2: #c4562f; --glow: rgba(217, 119, 87, 0.45); --wave-speed: 6s; }
+.hub-tile.state-idle     { --c1: #74d39d; --c2: #2f8f5a; --glow: rgba(76, 175, 122, 0.22); --wave-speed: 12s; }
+.hub-tile.state-error    { --c1: #ef7f7f; --c2: #b33a3a; --glow: rgba(224, 90, 90, 0.3); --wave-speed: 14s; }
+.hub-tile { box-shadow: 0 0 0 0 var(--glow); }
+.hub-tile.state-working, .hub-tile.state-starting, .hub-tile.state-idle, .hub-tile.state-error { box-shadow: 0 6px 28px -6px var(--glow); }
+.hub-tile.state-waiting { animation: attention 1.4s ease-in-out infinite; }
+@keyframes attention { 50% { box-shadow: 0 0 0 4px var(--glow), 0 6px 30px -4px var(--glow); } }
+
+/* The tank and its liquid */
+.tank { position: relative; height: 150px; border-radius: 14px 14px 22px 22px; overflow: hidden;
+  background: #0f1016; border: 2px solid #2c2f3d; box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.6); }
+.liquid { position: absolute; left: 0; right: 0; bottom: 0; height: 12%;
+  background: linear-gradient(var(--c1), var(--c2)); transition: height 1.2s cubic-bezier(.3,1.3,.5,1), background 0.6s; }
+/* Two big rounded squares in the tank's color turn slowly over the top edge
+   of the liquid, which cuts a moving wave into it. */
+.liquid::before, .liquid::after { content: ""; position: absolute; left: 50%; bottom: calc(100% - 9px);
+  width: 400%; aspect-ratio: 1; margin-left: -200%; border-radius: 46%; background: #0f1016;
+  animation: wave var(--wave-speed) linear infinite; }
+.liquid::after { border-radius: 44%; opacity: 0.45; bottom: calc(100% - 12px); animation-duration: calc(var(--wave-speed) * 1.6); }
+@keyframes wave { to { transform: rotate(360deg); } }
+.tank-shine { position: absolute; top: 10px; left: 12px; width: 10px; height: 58%; border-radius: 6px;
+  background: linear-gradient(rgba(255,255,255,0.18), rgba(255,255,255,0)); pointer-events: none; }
+
+.bubbles { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.5s; }
+.bubbles span { position: absolute; bottom: -12px; left: var(--x); width: var(--s); height: var(--s); border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.55); background: rgba(255, 255, 255, 0.12);
+  animation: bubble 2.6s ease-in infinite; animation-delay: var(--d); }
+@keyframes bubble {
+  0% { transform: translate(0, 0); opacity: 0; }
+  15% { opacity: 1; }
+  50% { transform: translate(6px, -70px); }
+  100% { transform: translate(-4px, -150px); opacity: 0; }
+}
+.hub-tile.state-working .bubbles, .hub-tile.state-starting .bubbles { opacity: 1; }
+
+.tank-icon { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 44px; font-weight: 700; color: rgba(255, 255, 255, 0.92); text-shadow: 0 2px 10px rgba(0,0,0,0.35);
+  transform: scale(0); transition: transform 0.4s cubic-bezier(.3,1.6,.5,1); pointer-events: none; }
+.hub-tile.state-idle .tank-icon, .hub-tile.state-error .tank-icon { transform: scale(1); }
+
+.tank-badge { position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; border-radius: 50%;
+  background: var(--accent); color: #fff; font-weight: 800; display: flex; align-items: center; justify-content: center;
+  transform: scale(0); transition: transform 0.3s; }
+.hub-tile.state-waiting .tank-badge { transform: scale(1); animation: badge 0.9s ease-in-out infinite; }
+@keyframes badge { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-5px) scale(1.08); } }
+
+/* Played once when an agent finishes: the tile pops and particles fly out. */
+.burst { position: absolute; left: 50%; top: 50%; pointer-events: none; }
+.burst span { position: absolute; width: 7px; height: 7px; margin: -3.5px; border-radius: 50%; background: var(--c1); opacity: 0; }
+.hub-tile.celebrate { animation: pop 0.6s cubic-bezier(.3,1.6,.5,1); }
+.hub-tile.celebrate .burst span { animation: fly 1.1s ease-out forwards; }
+.hub-tile.celebrate .burst span:nth-child(odd) { background: #fff; width: 5px; height: 5px; }
+@keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.06); } 100% { transform: scale(1); } }
+@keyframes fly {
+  0% { transform: rotate(var(--a)) translateY(0) scale(1); opacity: 1; }
+  100% { transform: rotate(var(--a)) translateY(-95px) scale(0.3); opacity: 0; }
+}
+.hub-tile.shake { animation: shake 0.6s; }
+@keyframes shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+
+/* Text under the tank */
+.hub-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.hub-title { font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.hub-meta { font-size: 12px; color: var(--text-faint); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+.hub-timer { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text-faint); }
+.hub-activity { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 18px; }
+.hub-stats { font-size: 11px; color: var(--text-faint); min-height: 16px; }
+.hub-tile.unread::after { content: ""; position: absolute; top: 10px; left: 10px; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 3px var(--bg-panel); z-index: 2; }

@@ -109,11 +109,37 @@ function show(kind, id) {
     $('input').placeholder = 'Send a message to continue this session…';
     $('input').focus();
   } else {
-    $('empty-view').classList.remove('hidden');
-    setHeader('AgentDeck', '', null);
+    state.current = { kind: 'hub' };
+    $('hub-view').classList.remove('hidden');
+    setHeader('Hub', 'All running agents', null);
   }
   renderSidebar();
 }
+
+// ---------- hub ----------
+
+const hub = new Hub($('hub-view'), {
+  onOpen: id => show('agent', id),
+  onNew: () => show('new'),
+});
+
+// Many events can arrive in one frame, so the Hub redraws at most once per frame.
+let hubFrame = 0;
+function refreshHub() {
+  if (hubFrame) return;
+  hubFrame = requestAnimationFrame(() => {
+    hubFrame = 0;
+    const agents = [...state.agents.values()];
+    hub.update(agents, state.current?.kind === 'agent' ? state.current.id : null);
+    const busy = agents.filter(a => ['working', 'starting', 'waiting'].includes(a.status)).length;
+    $('hub-count').textContent = agents.length ? `${busy}/${agents.length}` : '';
+    $('hub-nav').classList.toggle('attn', agents.some(a => a.status === 'waiting'));
+  });
+}
+
+setInterval(() => {
+  if (state.current?.kind === 'hub') hub.tick([...state.agents.values()]);
+}, 1000);
 
 function setHeader(title, subtitle, agent) {
   $('view-title').textContent = title;
@@ -170,6 +196,8 @@ function renderSidebar() {
     running.appendChild(li);
   }
   $('running-count').textContent = n ? String(n) : '';
+  $('hub-nav').classList.toggle('active', state.current?.kind === 'hub');
+  refreshHub();
   if (!n) running.appendChild(el('li', 'note', 'No agents running'));
 
   renderHistory();
@@ -422,6 +450,7 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
   const transcript = resume ? resume.transcript : new Transcript(view, cwd);
   if (resume) state.history.delete(resume.session.id);
 
+  transcript.onUpdate = refreshHub;
   const agent = { id, title, cwd, status: 'starting', sessionId: resume?.session.id || null, view, transcript, unread: false, choice, mode: permissionMode,
     // A resumed session stays in its group. A new one goes to the group picked in the form.
     groupId: resume ? groupOf(resume.session.id) : groupId || null };
@@ -555,6 +584,7 @@ $('input').addEventListener('keydown', e => {
 $('send').onclick = sendFromComposer;
 
 $('new-agent').onclick = () => show('new');
+$('hub-nav').onclick = () => show('hub');
 $('pick-folder').onclick = async () => {
   const dir = await window.deck.pickFolder();
   if (dir) $('new-cwd').value = dir;
@@ -588,6 +618,7 @@ window.deck.onSessionsChanged(loadSessions);
 
 document.addEventListener('keydown', e => {
   if (e.metaKey && e.key === 'n') { e.preventDefault(); show('new'); }
+  if (e.metaKey && e.key === '0') { e.preventDefault(); show('hub'); }
   if (e.metaKey && /^[1-9]$/.test(e.key)) {
     const a = [...state.agents.values()][Number(e.key) - 1];
     if (a) { e.preventDefault(); show('agent', a.id); }
@@ -628,5 +659,5 @@ setInterval(renderSidebar, 60_000);
   state.groups = { groups: [], assignments: {}, ...(await window.deck.getGroups()) };
   fillGroupSelect();
   await loadSessions();
-  show('empty');
+  show('hub');
 })();

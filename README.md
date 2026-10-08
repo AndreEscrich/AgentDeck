@@ -44,6 +44,7 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 
 ## What it does
 
+- **Hub.** The start screen (⌘0, or Hub at the top of the sidebar) shows every running agent as a tile with a tank of liquid. The color shows the state: blue starting, amber working (waves and bubbles, and the level rises with each step), orange needs your approval (the tile pulses), green done (a burst and a check mark when it finishes), red error (the tile shakes). Each tile shows what the agent is doing, its step count, a timer and how many files it changed. Click a tile to open the agent.
 - **History sidebar.** It lists every session Claude Code has saved in `~/.claude/projects`. This includes sessions you ran in the terminal or in the Claude desktop app. Click one to read it, and type a message to continue it.
 - **Groups.** Click ＋ next to History to create a group, for example one per domain. Drag a session onto a group, or right-click a session and choose Move to group. Right-click a group to rename it, move it up or down, or delete it (its sessions become ungrouped). The New agent form has a Group menu, so a new agent goes into the right group from the start. Groups are saved in `groups.json` next to `config.json`.
 - **Model menu.** Under the message box and in the New agent form. It lists the same models, with the same descriptions, as the Claude desktop app, because the app asks your installed Claude Code for the list. You can also set the effort level and fast mode. A change applies to the agent on screen from its next message on.
@@ -58,6 +59,7 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 | Key | Action |
 | --- | --- |
 | ⌘N | New agent |
+| ⌘0 | Hub |
 | ⌘1 … ⌘9 | Switch to running agent 1–9 |
 | ⌘F | Search history |
 | ⌘\\ | Hide or show the sidebar |
@@ -73,6 +75,7 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 | `src/sessions.js` | Reads the saved `.jsonl` session files for the sidebar and the history view. |
 | `src/git.js` | Takes a snapshot before each turn and lists the files that changed during it. |
 | `src/preload.js` | The list of functions the window is allowed to call. |
+| `src/renderer/hub.js` | The Hub: one animated tile per running agent. |
 | `src/renderer/diffview.js` | Draws diffs: line numbers, syntax colors, code files first, and the full-window review view. |
 | `src/renderer/render.js` | Draws each turn: the collapsed steps, the final answer, the Changes card and permission cards. |
 | `src/renderer/app.js` | Window state: the sidebar, switching between agents, and the message box. |

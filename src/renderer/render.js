@@ -131,7 +131,9 @@ class Transcript {
   // ---------- turns ----------
 
   startTurn() {
+    this.activity = 'Starting…';
     const turn = {
+      startedAt: Date.now(),
       el: el('div', 'turn'),
       steps: el('details', 'steps hidden'),
       summary: el('summary'),
@@ -158,7 +160,21 @@ class Transcript {
     const turn = this.ensureTurn();
     turn.steps.classList.remove('hidden');
     this.pinned(() => turn.body.appendChild(node));
-    if (activity) turn.summary.querySelector('.steps-text').textContent = activity;
+    if (activity) {
+      turn.summary.querySelector('.steps-text').textContent = activity;
+      this.activity = activity;
+    }
+    this.onUpdate?.();
+  }
+
+  // ---------- state for the Hub ----------
+
+  get stepCount() {
+    return this.turn ? this.turn.stepCount : this.lastTurn?.stepCount || 0;
+  }
+
+  get turnStartedAt() {
+    return this.turn?.startedAt || null;
   }
 
   // Ends the turn: the last text Claude wrote becomes the visible answer, the
@@ -182,6 +198,14 @@ class Transcript {
     turn.summary.querySelector('.steps-text').textContent = parts.join(' · ');
     turn.el.classList.add('done');
     this.lastFinished = turn;
+    this.lastTurn = {
+      stepCount: turn.stepCount,
+      durationMs: result?.duration_ms || Date.now() - turn.startedAt,
+      costUsd: result?.total_cost_usd || 0,
+      changedFiles: turn.changes.size,
+    };
+    this.activity = result?.is_error ? 'Stopped with an error' : 'Finished';
+    this.onUpdate?.();
     if (!turn.stepCount) turn.steps.classList.add('hidden');
     else turn.steps.classList.remove('hidden');
 
@@ -344,6 +368,10 @@ class Transcript {
       turn.el.querySelector('.changes')?.remove();
       if (files.length) turn.answer.prepend(changesCard(files));
     });
+    if (this.lastFinished === turn && this.lastTurn) {
+      this.lastTurn.changedFiles = files.length;
+      this.onUpdate?.();
+    }
   }
 
   // ---------- permission prompts ----------
