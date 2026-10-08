@@ -69,8 +69,77 @@ class Hub {
     this.empty = el('div', 'hub-empty');
     this.empty.append(el('div', 'hub-empty-tank'), el('p', null, 'No agents yet. Describe a task in the box below to start one.'));
 
-    this.root.append(head, this.grid, this.empty);
+    // Left of the groups: your plan's usage (see setUsage).
+    this.usage = el('aside', 'hub-usage');
+    const main = el('div', 'hub-main');
+    main.append(this.grid, this.empty);
+    const body = el('div', 'hub-body');
+    body.append(this.usage, main);
+    this.root.append(head, body);
     container.appendChild(this.root);
+    this.setUsage(null);
+  }
+
+  // usage: { limits: rate_limit_info from Claude Code or null, at: when it
+  // arrived, tokens: tokens your agents used since the app opened, tasks }.
+  setUsage(usage) {
+    this.usageData = usage;
+    this.renderUsage();
+  }
+
+  renderUsage() {
+    const u = this.usageData;
+    const box = this.usage;
+    box.textContent = '';
+    box.appendChild(el('div', 'usage-title', 'Usage'));
+    const windows = u?.limits?.unifiedWindows;
+    const meters = [['five_hour', 'Current session', '5-hour limit'], ['seven_day', 'This week', 'all models']];
+    if (windows) {
+      for (const [key, label, note] of meters) {
+        const w = windows[key];
+        if (!w) continue;
+        const pct = Math.max(0, Math.min(100, Math.round((w.utilization || 0) * 100)));
+        const level = pct >= 90 ? 'high' : pct >= 70 ? 'mid' : 'low';
+        const meter = el('div', `usage-meter ${level}`);
+        const top = el('div', 'usage-row');
+        top.append(el('span', 'usage-label', label), el('span', 'usage-pct', `${pct}%`));
+        const bar = el('div', 'usage-bar');
+        const fill = el('div', 'usage-fill');
+        fill.style.width = `${pct}%`;
+        bar.appendChild(fill);
+        meter.append(top, bar, el('div', 'usage-note', `${note} · resets ${Hub.resetText(w.resetsAt)}`));
+        box.appendChild(meter);
+      }
+      if (u.limits.status && u.limits.status !== 'allowed') box.appendChild(el('div', 'usage-warn', 'Limit reached: agents wait until it resets'));
+      const age = Date.now() - (u.at || 0);
+      if (age > 10 * 60 * 1000) box.appendChild(el('div', 'usage-note', `as of ${Hub.ago(age)} ago`));
+    } else {
+      box.appendChild(el('div', 'usage-note', 'Shows your plan limits after an agent\'s first reply.'));
+    }
+    const tokens = u?.tokens || 0;
+    const since = el('div', 'usage-since');
+    since.append(el('span', 'usage-label', 'Since Agent Hub opened'),
+      el('span', 'usage-big', tokens ? `${formatTokens(tokens)} tokens` : '—'),
+      el('span', 'usage-note', `${u?.tasks || 0} task${u?.tasks === 1 ? '' : 's'}`));
+    box.appendChild(since);
+  }
+
+  // "in 2h 05m", "Fri 18:00" for later than a day.
+  static resetText(seconds) {
+    if (!seconds) return 'later';
+    const ms = seconds * 1000 - Date.now();
+    if (ms <= 0) return 'now';
+    if (ms < 24 * 3600 * 1000) {
+      const h = Math.floor(ms / 3600000);
+      const m = Math.floor((ms % 3600000) / 60000);
+      return h ? `in ${h}h ${String(m).padStart(2, '0')}m` : `in ${m}m`;
+    }
+    return new Date(seconds * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  }
+
+  static ago(ms) {
+    const m = Math.round(ms / 60000);
+    return m < 60 ? `${m}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`;
   }
 
   createTile(agent) {
@@ -392,6 +461,12 @@ class Hub {
     for (const agent of agents) {
       const entry = this.tiles.get(agent.id);
       if (entry) this.updateTimer(agent, entry.parts.timer);
+    }
+    // The "resets in" times count down once a minute.
+    const minute = Math.floor(Date.now() / 60000);
+    if (minute !== this.usageMinute) {
+      this.usageMinute = minute;
+      this.renderUsage();
     }
   }
 

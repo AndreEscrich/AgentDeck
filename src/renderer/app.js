@@ -1416,7 +1416,28 @@ async function sendToAgent(agent, text) {
   await window.deck.sendMessage(agent.id, text);
 }
 
+// Your plan's usage, as Claude Code reports it with each agent's replies,
+// and the tokens your agents used since the app opened. The last limits are
+// remembered, so the Hub shows them right after a restart.
+const usage = { limits: null, at: 0, tokens: 0, tasks: 0 };
+try { Object.assign(usage, JSON.parse(localStorage.getItem('usageLimits') || '{}'), { tokens: 0, tasks: 0 }); } catch { /* none yet */ }
+hub.setUsage({ ...usage });
+function noteUsage(msg) {
+  if (msg.type === 'rate_limit_event' && msg.rate_limit_info) {
+    usage.limits = msg.rate_limit_info;
+    usage.at = Date.now();
+    try { localStorage.setItem('usageLimits', JSON.stringify({ limits: usage.limits, at: usage.at })); } catch { /* not important */ }
+  } else if (msg.type === 'result') {
+    usage.tokens += totalTokens(msg.usage || {});
+    usage.tasks++;
+  } else {
+    return;
+  }
+  hub.setUsage({ ...usage });
+}
+
 window.deck.onEvent((id, msg) => {
+  noteUsage(msg);
   const a = state.agents.get(id);
   if (!a) return;
   a.transcript.add(msg);
