@@ -634,7 +634,9 @@ body.sidebar-collapsed .review-bar { padding-left: 84px; }
 .group-panel { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 30; width: 300px;
   background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 10px; padding: 8px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.45); }
-.group-panel input { width: 100%; margin-bottom: 6px; }
+.group-panel { color: var(--text); }
+.group-panel input { width: 100%; margin-bottom: 6px; color: var(--text); background: var(--bg-panel); font-size: 13px; }
+.group-panel input::placeholder { color: var(--text-faint); }
 .group-panel-list { max-height: 260px; overflow-y: auto; }
 .group-panel-item { display: flex; justify-content: space-between; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
 .group-panel-item:hover { background: var(--bg-hover); }
