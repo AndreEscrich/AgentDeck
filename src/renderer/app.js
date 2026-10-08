@@ -46,10 +46,11 @@ const composerPicker = new ModelPicker($('composer-picker'), {
       a.transcript.note(`Switched to ${composerPicker.button.textContent.replace(' ▾', '')} from the next message on.`);
     } else if (cur?.kind === 'history') {
       state.history.get(cur.id).choice = choice;
+    } else if (cur?.kind === 'new') {
+      ensureDraft().choice = choice;
     }
   },
 });
-const newPicker = new ModelPicker($('new-model-picker'), { openUp: false });
 
 function defaultMode() {
   return state.config.defaultPermissionMode || 'bypassPermissions';
@@ -67,10 +68,103 @@ const composerModePicker = new ModePicker($('composer-mode-picker'), {
       a.transcript.note(`Permissions switched to ${composerModePicker.mode.label}.`);
     } else if (cur?.kind === 'history') {
       state.history.get(cur.id).mode = mode;
+    } else if (cur?.kind === 'new') {
+      ensureDraft().mode = mode;
     }
   },
 });
-const newModePicker = new ModePicker($('new-mode-picker'), { openUp: false });
+
+// ---------- new agent ----------
+
+// A new agent starts as an empty chat (a "draft"). Its folder, group,
+// permissions and model are set with the buttons under the message box, and
+// the first message starts it.
+
+function homePath(p) {
+  const home = state.config.home;
+  return home && p && (p === home || p.startsWith(home + '/')) ? '~' + p.slice(home.length) : p;
+}
+
+function lastFolder() {
+  try {
+    const saved = localStorage.getItem('lastFolder');
+    if (saved) return saved;
+  } catch { /* not important */ }
+  return state.config.defaultFolder || recentFolders()[0] || null;
+}
+
+// Folders you used lately: running agents first, then saved sessions, newest
+// first. Temporary folders (from scratchpads) are left out.
+function recentFolders() {
+  const list = [];
+  const add = f => { if (f && !list.includes(f) && !/\/private\/tmp\/|scratch-workspaces/.test(f)) list.push(f); };
+  try { add(localStorage.getItem('lastFolder')); } catch { /* not important */ }
+  for (const a of state.agents.values()) add(a.cwd);
+  for (const s of state.sessions) add(s.cwd);
+  return list.slice(0, 12);
+}
+
+function ensureDraft() {
+  if (!state.draft) {
+    state.draft = {
+      folder: lastFolder(),
+      groupId: state.groups.lastGroupId || null,
+      choice: defaultChoice(),
+      mode: defaultMode(),
+    };
+  }
+  if (state.draft.groupId && !state.groups.groups.some(g => g.id === state.draft.groupId)) state.draft.groupId = null;
+  return state.draft;
+}
+
+function renderDraftButtons() {
+  const d = ensureDraft();
+  const folder = $('composer-folder');
+  folder.textContent = (d.folder ? '📁 ' + (d.folder.split('/').filter(Boolean).pop() || d.folder) : '📁 Choose folder') + ' ▾';
+  folder.title = d.folder ? `Folder: ${d.folder}` : 'Pick the folder the agent works in';
+  folder.classList.toggle('danger-text', !d.folder);
+  const group = state.groups.groups.find(g => g.id === d.groupId);
+  $('composer-group').textContent = (group ? '# ' + group.name : '# No group') + ' ▾';
+  $('composer-group').title = 'The group the new session goes into';
+  $('new-view').querySelector('p').textContent = d.folder
+    ? `The agent will work in ${homePath(d.folder)}.`
+    : 'Pick a folder for the agent with the button under the message box.';
+}
+
+async function chooseFolder() {
+  const d = ensureDraft();
+  const folders = recentFolders();
+  const items = folders.map(f => ({ id: 'f:' + f, label: homePath(f), checked: f === d.folder }));
+  if (items.length) items.push({ type: 'separator' });
+  items.push({ id: 'choose', label: 'Choose folder…' });
+  const picked = await window.deck.popupMenu(items);
+  if (!picked) return;
+  if (picked === 'choose') {
+    const dir = await window.deck.pickFolder();
+    if (!dir) return;
+    d.folder = dir;
+  } else {
+    d.folder = picked.slice(2);
+  }
+  renderDraftButtons();
+  $('input').focus();
+}
+
+async function chooseGroup() {
+  const d = ensureDraft();
+  const items = [
+    { id: 'none', label: 'No group', checked: !d.groupId },
+    ...state.groups.groups.map(g => ({ id: 'g:' + g.id, label: g.name, checked: g.id === d.groupId })),
+  ];
+  const picked = await window.deck.popupMenu(items);
+  if (!picked) return;
+  d.groupId = picked === 'none' ? null : picked.slice(2);
+  renderDraftButtons();
+  $('input').focus();
+}
+
+$('composer-folder').onclick = chooseFolder;
+$('composer-group').onclick = chooseGroup;
 
 // ---------- views ----------
 
@@ -84,13 +178,20 @@ function show(kind, id) {
   state.current = { kind, id };
   for (const v of $('views').children) v.classList.add('hidden');
 
-  const isChat = kind === 'agent' || kind === 'history';
+  const isChat = kind === 'agent' || kind === 'history' || kind === 'new';
   $('composer').classList.toggle('hidden', !isChat);
+  $('composer-folder').classList.toggle('hidden', kind !== 'new');
+  $('composer-group').classList.toggle('hidden', kind !== 'new');
 
   if (kind === 'new') {
+    const d = ensureDraft();
     $('new-view').classList.remove('hidden');
     setHeader('New agent', '', null);
-    $('new-prompt').focus();
+    composerPicker.setValue(d.choice);
+    composerModePicker.setValue(d.mode);
+    renderDraftButtons();
+    $('input').placeholder = 'Describe a task for a new agent… (↩ to start)';
+    $('input').focus();
   } else if (kind === 'agent') {
     const a = state.agents.get(id);
     a.view.classList.remove('hidden');
@@ -240,7 +341,6 @@ function deleteGroup(groupId) {
   if (state.groups.lastGroupId === groupId) delete state.groups.lastGroupId;
   saveGroups();
   renderSidebar();
-  fillGroupSelect();
 }
 
 function moveGroup(groupId, delta) {
@@ -317,8 +417,7 @@ function groupHeader(group, count, collapsed) {
       if (commit && input.value.trim()) group.name = input.value.trim();
       saveGroups();
       renderSidebar();
-      fillGroupSelect();
-    };
+        };
     input.onkeydown = e => {
       if (e.key === 'Enter') finish(true);
       if (e.key === 'Escape') finish(false);
@@ -399,15 +498,6 @@ function renderHistory() {
   if (!shown && (q || !state.groups.groups.length)) list.appendChild(el('div', 'note', q ? 'No matches' : 'No saved sessions'));
 }
 
-// The Group menu in the New agent form.
-function fillGroupSelect() {
-  const select = $('new-group');
-  const keep = select.value || state.groups.lastGroupId || '';
-  select.innerHTML = '';
-  select.appendChild(new Option('No group', ''));
-  for (const g of state.groups.groups) select.appendChild(new Option(g.name, g.id));
-  select.value = state.groups.groups.some(g => g.id === keep) ? keep : '';
-}
 
 async function loadSessions() {
   state.sessions = await window.deck.listSessions();
@@ -553,7 +643,20 @@ async function sendFromComposer() {
   input.value = '';
   autosize();
 
-  if (state.current.kind === 'agent') {
+  if (state.current.kind === 'new') {
+    const d = ensureDraft();
+    if (!d.folder) {
+      input.value = text;
+      await chooseFolder();
+      return;
+    }
+    try { localStorage.setItem('lastFolder', d.folder); } catch { /* not important */ }
+    state.groups.lastGroupId = d.groupId || undefined;
+    saveGroups();
+    // The next new agent starts with the same folder and group, and the default model.
+    state.draft = null;
+    await startAgent({ cwd: d.folder, prompt: text, permissionMode: d.mode, choice: d.choice, groupId: d.groupId });
+  } else if (state.current.kind === 'agent') {
     const a = state.agents.get(state.current.id);
     a.transcript.add({ type: 'user', message: { role: 'user', content: text } });
     await sendToAgent(a, text);
@@ -585,24 +688,6 @@ $('send').onclick = sendFromComposer;
 
 $('new-agent').onclick = () => show('new');
 $('hub-nav').onclick = () => show('hub');
-$('pick-folder').onclick = async () => {
-  const dir = await window.deck.pickFolder();
-  if (dir) $('new-cwd').value = dir;
-};
-$('new-form').addEventListener('submit', async e => {
-  e.preventDefault();
-  const cwd = $('new-cwd').value.trim();
-  const prompt = $('new-prompt').value.trim();
-  if (!cwd || !prompt) return;
-  $('new-prompt').value = '';
-  const groupId = $('new-group').value || null;
-  state.groups.lastGroupId = groupId || undefined;
-  saveGroups();
-  await startAgent({ cwd, prompt, permissionMode: newModePicker.value, choice: newPicker.value, groupId });
-});
-$('new-prompt').addEventListener('keydown', e => {
-  if (e.key === 'Enter' && e.metaKey) $('new-form').requestSubmit();
-});
 
 $('btn-interrupt').onclick = () => {
   if (state.current?.kind === 'agent') window.deck.interrupt(state.current.id);
@@ -652,12 +737,8 @@ setInterval(renderSidebar, 60_000);
 
 (async () => {
   state.config = await window.deck.getConfig();
-  newModePicker.setValue(defaultMode());
-  newPicker.setValue(defaultChoice());
   loadModels();
-  if (state.config.defaultFolder) $('new-cwd').value = state.config.defaultFolder;
   state.groups = { groups: [], assignments: {}, ...(await window.deck.getGroups()) };
-  fillGroupSelect();
   await loadSessions();
   show('hub');
 })();

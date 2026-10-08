@@ -44,9 +44,10 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 
 ## What it does
 
+- **New agent.** ⌘N opens an empty chat with the cursor in the message box. The buttons under the message box set the folder (it starts with the folder of the agent you started last; click it for recent folders or Choose folder…), the group, the permissions and the model. Press ↩ to start the agent.
 - **Hub.** The start screen (⌘0, or Hub at the top of the sidebar) shows every running agent as a tile with a tank of liquid. The color shows the state: blue starting, amber working (waves and bubbles, and the level rises with each step), orange needs your approval (the tile pulses), green done (a burst and a check mark when it finishes), red error (the tile shakes). Each tile shows what the agent is doing, its step count, a timer and how many files it changed. Click a tile to open the agent.
 - **History sidebar.** It lists every session Claude Code has saved in `~/.claude/projects`. This includes sessions you ran in the terminal or in the Claude desktop app. Click one to read it, and type a message to continue it.
-- **Groups.** Click ＋ next to History to create a group, for example one per domain. Drag a session onto a group, or right-click a session and choose Move to group. Right-click a group to rename it, move it up or down, or delete it (its sessions become ungrouped). The New agent form has a Group menu, so a new agent goes into the right group from the start. Groups are saved in `groups.json` next to `config.json`.
+- **Groups.** Click ＋ next to History to create a group, for example one per domain. Drag a session onto a group, or right-click a session and choose Move to group. Right-click a group to rename it, move it up or down, or delete it (its sessions become ungrouped). The group button under the message box of a new agent puts it into the right group from the start. Groups are saved in `groups.json` next to `config.json`.
 - **Model menu.** Under the message box and in the New agent form. It lists the same models, with the same descriptions, as the Claude desktop app, because the app asks your installed Claude Code for the list. You can also set the effort level and fast mode. A change applies to the agent on screen from its next message on.
 - **Permission prompts.** When an agent wants to run a command or edit a file that your permission mode and rules don't already allow, an approval card appears in the chat, and the agent's dot turns orange ("Needs approval"). You can allow it once, deny it, or pick one of Claude Code's suggested rules (for example "Always allow Bash(npm start) in this project"). Claude Code saves that rule in the project's `.claude/settings.local.json`, the same file the terminal uses.
 - **Chat.** Each of your messages starts a turn. While the agent works, one line shows what it is doing right now. When it finishes, the chat shows a **Changes** card that lists every file it changed, with a diff per file, followed by its final message. The steps in between (tool calls, thinking, notes) are collapsed into one line such as "12 steps · 34s", which you can click to open.
@@ -64,7 +65,6 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 | ⌘F | Search history |
 | ⌘\\ | Hide or show the sidebar |
 | Esc | Stop the current turn |
-| ⌘↩ | Start agent (in the New agent form) |
 
 ## How it works
 
@@ -90,7 +90,7 @@ Click **Settings** in the sidebar to open `config.json`, then restart the app af
 - `defaultModel`: a model value from the model menu. The default is `opus`, which always means the latest Opus (Opus 5.5 today).
 - `defaultEffort`: `low`, `medium` (the default), `high`, `xhigh` or `max`. Empty means the model's own default.
 - `defaultFastMode`: `true` to turn fast mode on for new agents.
-- `defaultFolder`: prefilled folder in the New agent form.
+- `defaultFolder`: the folder for a new agent when you have not started one in AgentDeck yet.
 - `extraArgs`: extra flags for every agent, for example `["--add-dir", "/some/path"]`.
 - `env`: extra environment variables for every agent.
 - `notifyWhenDone`: show a notification when an agent finishes.

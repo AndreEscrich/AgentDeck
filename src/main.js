@@ -107,7 +107,7 @@ app.whenReady().then(() => {
   groupsPath = path.join(app.getPath('userData'), 'groups.json');
   if (!fs.existsSync(configPath)) fs.writeFileSync(configPath, JSON.stringify(DEFAULT_CONFIG, null, 2));
 
-  ipcMain.handle('config:get', () => getConfig());
+  ipcMain.handle('config:get', () => ({ ...getConfig(), home: require('os').homedir() }));
   ipcMain.handle('config:open', () => shell.openPath(configPath));
   ipcMain.handle('sessions:list', () => listSessions());
   ipcMain.handle('git:snapshot', (_e, cwd) => git.snapshot(cwd, path.join(app.getPath('userData'), 'snapshots')));

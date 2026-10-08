@@ -53,33 +53,10 @@
       <div id="hub-view" class="view"></div>
 
       <div id="new-view" class="view hidden">
-        <form id="new-form" class="new-form">
-          <h2>New agent</h2>
-          <label>Folder
-            <div class="row">
-              <input id="new-cwd" type="text" placeholder="/path/to/project" required>
-              <button type="button" id="pick-folder">Choose…</button>
-            </div>
-          </label>
-          <div class="row">
-            <div class="grow field">Permissions
-              <div id="new-mode-picker"></div>
-            </div>
-            <div class="grow field">Model
-              <div id="new-model-picker"></div>
-            </div>
-          </div>
-          <label>Group
-            <select id="new-group"></select>
-          </label>
-          <label>First message
-            <textarea id="new-prompt" rows="6" placeholder="What should this agent do?" required></textarea>
-          </label>
-          <div class="row end">
-            <span class="hint">⌘↩ to start</span>
-            <button type="submit" class="primary">Start agent</button>
-          </div>
-        </form>
+        <div class="empty new-empty">
+          <h1>What should the agent do?</h1>
+          <p>Write the task below. The buttons under the message box set the folder, group, permissions and model.</p>
+        </div>
       </div>
       <!-- One .view.chat per agent or opened history session is added here by app.js -->
     </section>
@@ -89,6 +66,8 @@
         <textarea id="input" rows="1" placeholder="Message the agent… (↩ to send, ⇧↩ for a new line)"></textarea>
         <div class="composer-bar">
           <div class="composer-pickers">
+            <button id="composer-folder" class="model-btn hidden" type="button"></button>
+            <button id="composer-group" class="model-btn hidden" type="button"></button>
             <div id="composer-mode-picker"></div>
             <div id="composer-picker"></div>
           </div>
