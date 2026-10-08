@@ -947,8 +947,7 @@ async function removeFromHub(id) {
   }
   const a = state.agents.get(id);
   if (!a) return;
-  if (['working', 'waiting', 'starting'].includes(a.status)
-      && !confirm(`"${a.title}" is still working. Stop it and remove it from the Hub?`)) return;
+  if (!(await confirmStop([a], { action: 'Removing it from the Hub', label: 'Stop and remove' }))) return;
   if (playSounds()) sounds.removed();
   await hub.removeTile(id);
   // The process stops too; its session stays in History.
@@ -962,11 +961,7 @@ async function removeFromHub(id) {
 // after one question for all of them. Their sessions stay in History.
 async function removeGroupFromHub(ids) {
   const live = ids.filter(id => !id.startsWith('p:')).map(id => state.agents.get(id)).filter(Boolean);
-  const busy = live.filter(a => ['working', 'waiting', 'starting'].includes(a.status));
-  if (busy.length) {
-    const which = busy.length === 1 ? `"${busy[0].title}" is` : `${busy.length} agents are`;
-    if (!confirm(`${which} still working. Stop ${busy.length === 1 ? 'it' : 'them'} and remove the whole group from the Hub?`)) return;
-  }
+  if (!(await confirmStop(live, { action: 'Removing the group from the Hub', label: 'Stop and remove group' }))) return;
   if (playSounds()) sounds.groupRemoved(ids.length);
   await hub.removeGroup(ids);
   for (const id of ids) {
@@ -1288,56 +1283,91 @@ async function resumeInterrupted() {
 
 // The app is about to quit: save which agents are busy, and keep that list,
 // because stopping the agents would otherwise mark them as finished.
-// Closing the app while agents work: a card in the app (not a system
-// dialog) lists them and says they continue the next time the app opens.
-window.deck.onConfirmQuit(confirmQuit);
-function confirmQuit() {
-  if (document.querySelector('.quit-modal')) return;
-  const working = [...state.agents.values()].filter(a => !a.removed && ['working', 'starting', 'waiting'].includes(a.status));
-  const n = working.length || 1;
-  const overlay = el('div', 'quit-modal');
-  const card = el('div', 'quit-card');
-  card.append(
-    el('div', 'quit-title', n === 1 ? '1 agent is still working' : `${n} agents are still working`),
-    el('p', 'quit-text', `If you quit now, ${n === 1 ? 'it stops' : 'they stop'}. The next time you open Agent Hub, ${n === 1 ? 'it restarts' : 'they restart'} and ${n === 1 ? 'continues' : 'continue'} where ${n === 1 ? 'it' : 'they'} left off.`),
-  );
-  if (working.length) {
-    const list = el('div', 'quit-list');
-    for (const a of working.slice(0, 6)) {
-      const row = el('div', 'quit-agent');
-      row.append(el('span', `dot ${a.status}`), el('span', null, a.latestTitle || a.title));
-      list.appendChild(row);
+const BUSY = ['working', 'starting', 'waiting'];
+
+// A card in the app (not a system dialog) that asks before stopping working
+// agents: a title, a sentence, the agents with their state, and two buttons.
+// Enter confirms, Esc (or a click outside the card) keeps them working.
+// Resolves true when you confirm. While it waits after confirming
+// (busyText), the buttons are disabled.
+function confirmCard({ title, text, agents = [], confirmLabel, busyText = null }) {
+  return new Promise(resolve => {
+    if (document.querySelector('.quit-modal')) return resolve(false);
+    const overlay = el('div', 'quit-modal');
+    const card = el('div', 'quit-card');
+    card.append(el('div', 'quit-title', title), el('p', 'quit-text', text));
+    if (agents.length) {
+      const list = el('div', 'quit-list');
+      for (const a of agents.slice(0, 6)) {
+        const row = el('div', 'quit-agent');
+        row.append(el('span', `dot ${a.status}`), el('span', null, a.latestTitle || a.title));
+        list.appendChild(row);
+      }
+      if (agents.length > 6) list.appendChild(el('div', 'quit-more', `and ${agents.length - 6} more`));
+      card.appendChild(list);
     }
-    if (working.length > 6) list.appendChild(el('div', 'quit-more', `and ${working.length - 6} more`));
-    card.appendChild(list);
-  }
-  const buttons = el('div', 'quit-buttons');
-  const stay = el('button', 'quit-stay', 'Keep working');
-  const quit = el('button', 'quit-go', 'Quit');
-  buttons.append(stay, quit);
-  card.appendChild(buttons);
-  overlay.appendChild(card);
-  document.body.appendChild(overlay);
-  requestAnimationFrame(() => overlay.classList.add('show'));
-  quit.focus();
-  const close = () => {
-    document.removeEventListener('keydown', onKey, true);
-    overlay.classList.remove('show');
-    setTimeout(() => overlay.remove(), 200);
-  };
-  const onKey = e => {
-    if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); }
-    if (e.key === 'Enter') { e.preventDefault(); e.stopImmediatePropagation(); quit.click(); }
-    if (e.key === 'Tab') { e.preventDefault(); e.stopImmediatePropagation(); (document.activeElement === quit ? stay : quit).focus(); }
-  };
-  document.addEventListener('keydown', onKey, true);
-  stay.onclick = close;
-  overlay.onclick = e => { if (e.target === overlay) close(); };
-  quit.onclick = () => {
-    quit.disabled = stay.disabled = true;
-    quit.textContent = 'Quitting…';
-    window.deck.quit();
-  };
+    const buttons = el('div', 'quit-buttons');
+    const stay = el('button', 'quit-stay', 'Keep working');
+    const go = el('button', 'quit-go', confirmLabel);
+    buttons.append(stay, go);
+    card.appendChild(buttons);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('show'));
+    go.focus();
+    const close = answer => {
+      document.removeEventListener('keydown', onKey, true);
+      if (answer && busyText) {
+        go.disabled = stay.disabled = true;
+        go.textContent = busyText;
+      } else {
+        overlay.classList.remove('show');
+        setTimeout(() => overlay.remove(), 200);
+      }
+      resolve(answer);
+    };
+    const onKey = e => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(false); }
+      if (e.key === 'Enter') { e.preventDefault(); e.stopImmediatePropagation(); close(true); }
+      if (e.key === 'Tab') { e.preventDefault(); e.stopImmediatePropagation(); (document.activeElement === go ? stay : go).focus(); }
+    };
+    document.addEventListener('keydown', onKey, true);
+    stay.onclick = () => close(false);
+    go.onclick = () => close(true);
+    overlay.onclick = e => { if (e.target === overlay) close(false); };
+  });
+}
+
+// Closing the app while agents work: the card lists them and says they
+// continue the next time the app opens.
+window.deck.onConfirmQuit(confirmQuit);
+async function confirmQuit() {
+  const working = [...state.agents.values()].filter(a => !a.removed && BUSY.includes(a.status));
+  const n = working.length || 1;
+  const one = n === 1;
+  const ok = await confirmCard({
+    title: one ? '1 agent is still working' : `${n} agents are still working`,
+    text: `If you quit now, ${one ? 'it stops' : 'they stop'}. The next time you open Agent Hub, ${one ? 'it restarts' : 'they restart'} and ${one ? 'continues' : 'continue'} where ${one ? 'it' : 'they'} left off.`,
+    agents: working,
+    confirmLabel: 'Quit',
+    busyText: 'Quitting…',
+  });
+  if (ok) window.deck.quit();
+}
+
+// Stopping agents yourself (removing them from the Hub, or Close agent)
+// while they work asks first, with the same card. Resolves true when there
+// is nothing to ask or you confirm.
+async function confirmStop(agents, { action, label }) {
+  const working = agents.filter(a => a && BUSY.includes(a.status));
+  if (!working.length) return true;
+  const one = working.length === 1;
+  return confirmCard({
+    title: one ? `"${working[0].latestTitle || working[0].title}" is still working` : `${working.length} agents are still working`,
+    text: `${action} stops ${one ? 'its task' : 'their tasks'} now. ${one ? 'Its session stays' : 'Their sessions stay'} in History, so you can open ${one ? 'it' : 'them'} and continue later.`,
+    agents: working,
+    confirmLabel: label,
+  });
 }
 
 window.deck.onQuitting(() => {
@@ -1731,8 +1761,11 @@ $('btn-interrupt').onclick = () => {
   if (a) a.stopping = true;
   window.deck.interrupt(state.current.id);
 };
-$('btn-close').onclick = () => {
-  if (state.current?.kind === 'agent') window.deck.closeAgent(state.current.id);
+$('btn-close').onclick = async () => {
+  if (state.current?.kind !== 'agent') return;
+  const id = state.current.id;
+  if (!(await confirmStop([state.agents.get(id)], { action: 'Closing it', label: 'Stop and close' }))) return;
+  window.deck.closeAgent(id);
 };
 $('search').addEventListener('input', renderSidebar);
 $('refresh').onclick = loadSessions;
