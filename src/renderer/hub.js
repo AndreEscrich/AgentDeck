@@ -318,14 +318,22 @@ class Hub {
     return copy;
   }
 
-  // The chat's visible part as a clip-path: the rectangle r, relative to the
-  // chat area `area`, with rounded corners.
-  static outline(r, area, radius) {
-    const top = Math.max(0, r.top - area.top);
-    const right = Math.max(0, area.right - r.right);
-    const bottom = Math.max(0, area.bottom - r.bottom);
-    const left = Math.max(0, r.left - area.left);
-    return `inset(${top}px ${right}px ${bottom}px ${left}px round ${radius}px)`;
+  // The chat shrunk evenly to fit inside a tile, centered in it, as a
+  // transform relative to the chat area. Also returns the scale.
+  static thumb(tile, area) {
+    const scale = (tile.width - 16) / area.width;
+    const x = tile.left + (tile.width - area.width * scale) / 2 - area.left;
+    const y = tile.top + (tile.height - area.height * scale) / 2 - area.top;
+    return { transform: `translate(${x}px, ${y}px) scale(${scale})`, scale };
+  }
+
+  // While it animates, the chat sits above the tile copy, scales from its top
+  // left corner and has its own background.
+  static liftView(view, on) {
+    if (!view) return;
+    Object.assign(view.style, on
+      ? { zIndex: '60', transformOrigin: '0 0', background: 'var(--bg)' }
+      : { zIndex: '', transformOrigin: '', background: '' });
   }
 
   // Moves and scales the tile's rectangle `from` onto the rectangle `to`.
@@ -333,11 +341,10 @@ class Hub {
     return `translate(${to.left - from.left}px, ${to.top - from.top}px) scale(${to.width / from.width}, ${to.height / from.height})`;
   }
 
-  // Clicking a tile: in one smooth movement, the tile grows from its place
-  // until it covers the whole chat area. The chat grows inside exactly the
-  // same rectangle, so the tile turns into the chat on the way: the tile
-  // fades into it in the first half while its tank flips open like a lid,
-  // and the Hub fades out underneath.
+  // Clicking a tile: its tank and text fade away and the agent's chat
+  // appears inside it, shrunk to fit. Then, in one smooth movement, the tile
+  // and the chat inside it grow until the chat fills the window, while the
+  // Hub fades out underneath.
   async open(agentId) {
     const entry = this.tiles.get(agentId);
     const area = document.getElementById('views');
@@ -355,14 +362,17 @@ class Hub {
     const view = await this.onOpen(agentId);
     // Keep the Hub underneath while the chat grows over it.
     hubView.classList.remove('hidden');
+    const thumb = Hub.thumb(from, to);
+    Hub.liftView(view, true);
 
     const timing = { duration: 420, easing: 'cubic-bezier(.35,0,.15,1)', fill: 'forwards' };
     const runs = [
       copy.animate([
         { transform: 'none', opacity: 1 },
-        { opacity: 1, offset: 0.15 },
+        { opacity: 1, offset: 0.8 },
         { transform: Hub.cover(from, to), opacity: 0 },
       ], timing),
+      copy.querySelector('.hub-info')?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 100, fill: 'forwards' }),
       copy.querySelector('.tank')?.animate(
         [{ transform: 'perspective(700px) rotateX(0deg)' }, { transform: 'perspective(700px) rotateX(-75deg)' }],
         { duration: 220, easing: 'ease-in', fill: 'forwards' },
@@ -371,9 +381,9 @@ class Hub {
       // so its color never fills the window.
       copy.querySelector('.tank')?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: 'ease-out', fill: 'forwards' }),
       view?.animate([
-        { clipPath: Hub.outline(from, to, 16), opacity: 0 },
-        { opacity: 1, offset: 0.45 },
-        { clipPath: 'inset(0px 0px 0px 0px round 0px)', opacity: 1 },
+        { transform: thumb.transform, clipPath: `inset(0px 0px 0px 0px round ${12 / thumb.scale}px)`, opacity: 0 },
+        { opacity: 1, offset: 0.12 },
+        { transform: 'none', clipPath: 'inset(0px 0px 0px 0px round 0px)', opacity: 1 },
       ], timing),
       hubView.animate([{ opacity: 1 }, { opacity: 0 }], timing),
     ];
@@ -382,14 +392,15 @@ class Hub {
     // The chat is on screen now; the Hub goes back to hidden.
     if (view && !view.classList.contains('hidden')) hubView.classList.add('hidden');
     for (const a of runs) a?.cancel();
+    Hub.liftView(view, false);
     copy.remove();
     entry.el.classList.remove('opening');
     this.opening = false;
   }
 
-  // Going back, the exact reverse: the chat shrinks into the tile's
-  // rectangle in one movement while the tile fades in, its lid closes, and
-  // the Hub fades in underneath. `view` is the chat that was on screen. Call
+  // Going back, the exact reverse: the chat shrinks with the tile until it
+  // fits inside it, then the tile's tank and text come back, and the Hub
+  // fades in underneath. `view` is the chat that was on screen. Call
   // it right after the Hub is shown again.
   async returnTo(agentId, view) {
     const entry = this.tiles.get(agentId);
@@ -403,14 +414,17 @@ class Hub {
     const copy = this.tileCopy(entry, home);
     // The chat stays on top of the Hub while it shrinks.
     view?.classList.remove('hidden');
+    const thumb = Hub.thumb(home, full);
+    Hub.liftView(view, true);
 
     const timing = { duration: 420, easing: 'cubic-bezier(.35,0,.15,1)', fill: 'forwards' };
     const runs = [
       copy.animate([
         { transform: Hub.cover(home, full), opacity: 0 },
-        { opacity: 0, offset: 0.45 },
+        { opacity: 1, offset: 0.2 },
         { transform: 'none', opacity: 1 },
       ], timing),
+      copy.querySelector('.hub-info')?.animate([{ opacity: 0 }, { opacity: 0, offset: 0.75 }, { opacity: 1 }], { duration: 420, fill: 'forwards' }),
       copy.querySelector('.tank')?.animate(
         [{ transform: 'perspective(700px) rotateX(-75deg)' }, { transform: 'perspective(700px) rotateX(0deg)' }],
         { duration: 220, delay: 200, easing: 'ease-out', fill: 'forwards' },
@@ -418,9 +432,9 @@ class Hub {
       // The colored tank appears only when the copy is almost back to tile size.
       copy.querySelector('.tank')?.animate([{ opacity: 0 }, { opacity: 0, offset: 0.7 }, { opacity: 1 }], { duration: 420, fill: 'forwards' }),
       view?.animate([
-        { clipPath: 'inset(0px 0px 0px 0px round 0px)', opacity: 1 },
-        { opacity: 1, offset: 0.55 },
-        { clipPath: Hub.outline(home, full, 16), opacity: 0 },
+        { transform: 'none', clipPath: 'inset(0px 0px 0px 0px round 0px)', opacity: 1 },
+        { opacity: 1, offset: 0.85 },
+        { transform: thumb.transform, clipPath: `inset(0px 0px 0px 0px round ${12 / thumb.scale}px)`, opacity: 0 },
       ], timing),
       document.getElementById('hub-view').animate([{ opacity: 0 }, { opacity: 1 }], timing),
     ];
@@ -429,6 +443,7 @@ class Hub {
     // Unless you opened something else in the meantime, the chat goes back to hidden.
     if (!document.getElementById('hub-view').classList.contains('hidden')) view?.classList.add('hidden');
     for (const a of runs) a?.cancel();
+    Hub.liftView(view, false);
     copy.remove();
     entry.el.classList.remove('opening');
     this.replay(entry.el, 'landed', 600);
