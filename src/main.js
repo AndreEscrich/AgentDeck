@@ -138,6 +138,8 @@ app.whenReady().then(() => {
   ipcMain.handle('git:snapshot', (_e, cwd) => git.snapshot(cwd, path.join(app.getPath('userData'), 'snapshots')));
   ipcMain.handle('git:changes', (_e, cwd, snap) => git.changesSince(cwd, snap));
   ipcMain.handle('repo:of', (_e, cwd) => repoOf(cwd));
+  // Which of these files still exist (for the Changes card).
+  ipcMain.handle('fs:existing', (_e, paths) => (Array.isArray(paths) ? paths : []).filter(p => typeof p === 'string' && fs.existsSync(p)));
   ipcMain.handle('groups:get', () => readGroups());
   ipcMain.handle('groups:save', (_e, data) => fs.writeFileSync(groupsPath, JSON.stringify(data, null, 2)));
   ipcMain.handle('menu:popup', (_e, items) => popupMenu(items));

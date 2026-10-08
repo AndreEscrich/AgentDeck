@@ -229,6 +229,15 @@ class Transcript {
     this.pinned(() => {
       // The changed files come first, then Claude's message about them.
       if (turn.changes.size) turn.answer.appendChild(changesCard(this.toolChanges(turn.changes)));
+      // Then drop files that no longer exist, unless the snapshot comparison
+      // (showGitChanges) has replaced this card in the meantime.
+      this.pruneMissing(turn).then(removed => {
+        if (!removed || turn.gitShown) return;
+        this.pinned(() => {
+          turn.el.querySelector('.changes')?.remove();
+          if (turn.changes.size) turn.answer.prepend(changesCard(this.toolChanges(turn.changes)));
+        });
+      }).catch(() => {});
       for (const node of turn.pendingText) turn.answer.appendChild(node);
       if (!turn.pendingText.length && result?.result && !result.is_error) turn.answer.appendChild(markdown(result.result));
     });
@@ -371,7 +380,9 @@ class Transcript {
     const hunks = Array.isArray(result.structuredPatch) ? result.structuredPatch : [];
     if (!isNew && !hunks.length) return;
     const path = result.filePath || tool.input.file_path;
-    if (!path) return;
+    // Files outside the agent's folder are its own helpers (scripts in /tmp
+    // or a scratch folder), not part of the work.
+    if (!path || !this.isInside(path)) return;
     const entry = this.turn.changes.get(path) || { path, created: false, content: null, hunks: [] };
     if (isNew) {
       entry.created = true;
@@ -379,6 +390,28 @@ class Transcript {
     }
     entry.hunks.push(...hunks);
     this.turn.changes.set(path, entry);
+  }
+
+  isInside(p) {
+    if (!this.cwd) return true;
+    return p === this.cwd || p.startsWith(this.cwd + '/') || p.startsWith(this.cwd + '\\');
+  }
+
+  // Leaves out files the agent created and deleted again during the task:
+  // only files that still exist when it is done are part of its work. Resolves
+  // true when something was left out.
+  async pruneMissing(turn) {
+    const paths = [...turn.changes.keys()];
+    if (!paths.length || !window.deck?.existingFiles) return false;
+    const existing = new Set(await window.deck.existingFiles(paths));
+    let removed = false;
+    for (const p of paths) {
+      if (!existing.has(p)) {
+        turn.changes.delete(p);
+        removed = true;
+      }
+    }
+    return removed;
   }
 
   relativePath(p) {
@@ -406,10 +439,12 @@ class Transcript {
   // includes files changed by shell commands. A folder snapshot records only
   // code files, so with merge=true the Edit/Write reports for other files
   // (for example a .prefab) are kept.
-  showGitChanges(turn, diffText, merge) {
+  async showGitChanges(turn, diffText, merge) {
     if (!turn || diffText == null) return;
+    turn.gitShown = true;
     const files = parseUnifiedDiff(diffText);
     if (merge) {
+      await this.pruneMissing(turn).catch(() => {});
       const seen = new Set(files.map(f => f.path));
       for (const f of this.toolChanges(turn.changes)) if (!seen.has(f.path)) files.push(f);
     }

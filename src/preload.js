@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('deck', {
   getConfig: () => ipcRenderer.invoke('config:get'),
   openConfig: () => ipcRenderer.invoke('config:open'),
   repoOf: cwd => ipcRenderer.invoke('repo:of', cwd),
+  existingFiles: paths => ipcRenderer.invoke('fs:existing', paths),
   getGroups: () => ipcRenderer.invoke('groups:get'),
   saveGroups: data => ipcRenderer.invoke('groups:save', data),
   popupMenu: items => ipcRenderer.invoke('menu:popup', items),
