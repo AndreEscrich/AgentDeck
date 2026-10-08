@@ -1088,7 +1088,18 @@ function afterSend(agent, wake) {
     show('agent', agent.id);
     return;
   }
+  // Sent from the agent's chat (or from a saved session it continues): the
+  // chat shrinks back into the tile, the same as with "← Hub", and the tile
+  // then hops back to work.
+  const cur = state.current;
+  const fromChat = (cur?.kind === 'agent' && cur.id === agent.id) || cur?.kind === 'history';
   show('hub');
+  if (fromChat && agent.view) {
+    // The tile of a continued session is new: draw it now, not in the next frame.
+    hub.update(hubItems(), null, state.groups.groups);
+    hub.returnTo(agent.id, agent.view).then(() => { if (wake) hub.wake(agent.id); });
+    return;
+  }
   if (wake) requestAnimationFrame(() => requestAnimationFrame(() => hub.wake(agent.id)));
 }
 
