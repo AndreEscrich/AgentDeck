@@ -7,6 +7,8 @@
   --bg-active: #352c23;
   --border: #342b22;
   --text: #f1e7dc;
+  --text-output: #dcc9b0;         /* an agent's answers: a very light brown */
+  --text-output-strong: #ecdcc5;  /* bold text and headings in them */
   --text-dim: #b3a594;
   --text-faint: #7d705f;
   --accent: #e9a23b;
@@ -194,7 +196,8 @@ body.history-open #drawer-backdrop { opacity: 1; pointer-events: auto; }
   white-space: pre-wrap;
   word-wrap: break-word;
 }
-.msg-text { word-wrap: break-word; }
+.msg-text { word-wrap: break-word; color: var(--text-output); }
+.msg-text strong, .msg-text b, .msg-text h1, .msg-text h2, .msg-text h3, .msg-text h4 { color: var(--text-output-strong); }
 .msg-text > :first-child { margin-top: 0; }
 .msg-text > :last-child { margin-bottom: 0; }
 .msg-text a { color: var(--accent); }
