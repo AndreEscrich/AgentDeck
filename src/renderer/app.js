@@ -757,7 +757,7 @@ function updateNextHint() {
   const shownFor = showing ? `${hubIdOf(cur)}>${next.id}` : '';
   if (shownFor && shownFor !== hint.dataset.shownFor) {
     hint.querySelectorAll('.next-bubbles span').forEach((b, i) => {
-      b.style.setProperty('--d', `${(0.6 + i * 0.7 + Math.random() * 0.6).toFixed(2)}s`);
+      b.style.setProperty('--d', `${(0.1 + i * 0.35 + Math.random() * 0.3).toFixed(2)}s`);
       b.style.animation = 'none';
       void b.offsetWidth;
       b.style.animation = '';

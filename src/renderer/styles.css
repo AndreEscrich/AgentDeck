@@ -896,23 +896,23 @@ video.chat-media { background: #000; }
    tag saying "Tab to go" and its name. */
 .next-hint { position: absolute; right: 0; top: 52px; bottom: 0; width: 220px; z-index: 7; padding: 0 16px 0 0; border: none;
   display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 3px; text-align: right;
-  background: linear-gradient(270deg, color-mix(in srgb, var(--next) 16%, transparent), transparent 45%),
-    radial-gradient(55% 40% at 100% 50%, color-mix(in srgb, var(--next) 22%, transparent), transparent 70%);
+  background: linear-gradient(270deg, color-mix(in srgb, var(--next) 6%, transparent), transparent 35%),
+    radial-gradient(40% 35% at 100% 50%, color-mix(in srgb, var(--next) 10%, transparent), transparent 70%);
   opacity: 0; transform: translateX(40px); pointer-events: none; transition: opacity 0.3s, transform 0.3s; cursor: pointer; }
 /* Appearing, the glow fades in slowly (the bubbles build up on their own). */
-.next-hint.show { opacity: 1; transform: none; pointer-events: none; transition: opacity 1.4s ease-out 0.3s, transform 1s ease-out 0.3s; }
+.next-hint.show { opacity: 1; transform: none; pointer-events: none; transition: opacity 1s ease-out 0.1s, transform 0.8s ease-out 0.1s; }
 .next-hint.show > .next-hint-label, .next-hint.show > .next-hint-name { pointer-events: auto; position: relative; }
 .next-bubbles { position: absolute; right: 0; top: 0; bottom: 0; width: 220px; overflow: hidden; pointer-events: none;
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 45%), linear-gradient(transparent, #000 10%, #000 90%, transparent);
   -webkit-mask-composite: source-in; mask-composite: intersect; }
-.next-bubbles span { position: absolute; right: -16px; top: var(--y); width: var(--s); height: var(--s); border-radius: 50%;
+.next-bubbles span { position: absolute; right: -4px; top: var(--y); width: var(--s); height: var(--s); border-radius: 50%;
   border: 1.5px solid color-mix(in srgb, var(--next) 85%, #fff); background: color-mix(in srgb, var(--next) 22%, transparent);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--next) 60%, transparent);
-  animation: next-bubble var(--t) linear infinite; animation-delay: var(--d); }
+  box-shadow: 0 0 6px color-mix(in srgb, var(--next) 40%, transparent);
+  animation: next-bubble var(--t) linear infinite backwards; animation-delay: var(--d); }
 /* From the right edge to the left, bobbing gently up and down. */
 @keyframes next-bubble {
   0% { transform: translate(0, 0) scale(0.6); opacity: 0; }
-  10% { opacity: 0.9; }
+  4% { opacity: 0.9; }
   33% { transform: translate(-75px, var(--w)) scale(0.9); }
   66% { transform: translate(-150px, calc(var(--w) * -1)) scale(1); }
   85% { opacity: 0.6; }
