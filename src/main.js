@@ -147,6 +147,9 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', () => agents.closeAll());
+// Quit normally (and stop the agents) also when the app is stopped with
+// Ctrl-C in the terminal that runs `npm start`.
+process.on('SIGINT', () => app.quit());
 app.on('window-all-closed', () => {
   agents.closeAll();
   if (process.platform !== 'darwin') app.quit();

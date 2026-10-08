@@ -517,6 +517,8 @@ body.sidebar-collapsed .review-bar { padding-left: 84px; }
 .hub-meta { font-size: 12px; color: var(--text-faint); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hub-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); margin-top: 4px; }
 .hub-timer { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text-faint); }
+.hub-tokens { font-variant-numeric: tabular-nums; color: var(--text-faint); }
+.hub-tokens:not(:empty)::before { content: "·"; margin-right: 6px; }
 .hub-activity { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 18px; }
 .hub-stats { font-size: 11px; color: var(--text-faint); min-height: 16px; }
 .hub-tile.unread::after { content: ""; position: absolute; top: 10px; left: 10px; width: 9px; height: 9px; border-radius: 50%;

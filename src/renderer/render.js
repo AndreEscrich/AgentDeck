@@ -58,6 +58,41 @@ function describeSuggestion(s) {
   return null;
 }
 
+// Tokens of one API call or one whole task. Input, cached context and output
+// all count against a subscription's usage limits.
+function tokenParts(usage) {
+  return {
+    input: usage?.input_tokens || 0,
+    cacheWrite: usage?.cache_creation_input_tokens || 0,
+    cacheRead: usage?.cache_read_input_tokens || 0,
+    output: usage?.output_tokens || 0,
+  };
+}
+
+function totalTokens(usage) {
+  const t = tokenParts(usage);
+  return t.input + t.cacheWrite + t.cacheRead + t.output;
+}
+
+// Adds up the API calls of a task.
+function sumUsage(turn) {
+  const sum = { input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0 };
+  for (const u of turn.usage.values()) {
+    const t = tokenParts(u);
+    sum.input_tokens += t.input;
+    sum.cache_creation_input_tokens += t.cacheWrite;
+    sum.cache_read_input_tokens += t.cacheRead;
+    sum.output_tokens += t.output;
+  }
+  return sum;
+}
+
+function formatTokens(n) {
+  if (n < 1000) return `${n}`;
+  if (n < 1e6) return `${(n / 1000).toFixed(n < 10000 ? 1 : 0)}k`;
+  return `${(n / 1e6).toFixed(1)}M`;
+}
+
 // Splits the output of `git diff` into one entry per file.
 function parseUnifiedDiff(text) {
   const files = [];
@@ -143,6 +178,7 @@ class Transcript {
       stepCount: 0,
       pendingText: [],      // text written since the last tool call; the last batch is the answer
       changes: new Map(),   // file path -> { path, created, content, hunks }
+      usage: new Map(),     // API message id -> its token usage, while the task runs
     };
     turn.summary.append(el('span', 'steps-spinner'), el('span', 'steps-text', 'Working…'));
     turn.steps.append(turn.summary, turn.body);
@@ -173,6 +209,11 @@ class Transcript {
     return this.turn ? this.turn.stepCount : this.lastTurn?.stepCount || 0;
   }
 
+  // Tokens of the task in progress, or of the last finished task.
+  get tokens() {
+    return this.turn ? sumUsage(this.turn) : this.lastTurn?.usage || null;
+  }
+
   get turnStartedAt() {
     return this.turn?.startedAt || null;
   }
@@ -194,14 +235,17 @@ class Transcript {
 
     const parts = [`${turn.stepCount} step${turn.stepCount === 1 ? '' : 's'}`];
     if (result?.duration_ms) parts.push(`${(result.duration_ms / 1000).toFixed(1)}s`);
-    if (result?.total_cost_usd) parts.push(`$${result.total_cost_usd.toFixed(3)}`);
+    // The result's usage covers the whole task; without a result (a saved
+    // session), add up the API calls.
+    const usage = result?.usage || sumUsage(turn);
+    if (totalTokens(usage)) parts.push(`${formatTokens(totalTokens(usage))} tokens`);
     turn.summary.querySelector('.steps-text').textContent = parts.join(' · ');
     turn.el.classList.add('done');
     this.lastFinished = turn;
     this.lastTurn = {
       stepCount: turn.stepCount,
       durationMs: result?.duration_ms || Date.now() - turn.startedAt,
-      costUsd: result?.total_cost_usd || 0,
+      usage,
       changedFiles: turn.changes.size,
     };
     this.activity = result?.is_error ? 'Stopped with an error' : 'Finished';
@@ -263,6 +307,11 @@ class Transcript {
 
   addAssistant(message) {
     const turn = this.ensureTurn();
+    // One API call can arrive as several messages with the same id and usage.
+    if (message.usage && message.id) {
+      turn.usage.set(message.id, message.usage);
+      this.onUpdate?.();
+    }
     for (const block of message.content || []) {
       const key = `${message.id}|${block.type}|${block.id || (block.text || block.thinking || '').slice(0, 300)}`;
       if (this.seen.has(key)) continue;
@@ -453,4 +502,7 @@ class Transcript {
 }
 
 window.Transcript = Transcript;
+window.totalTokens = totalTokens;
+window.formatTokens = formatTokens;
+window.tokenParts = tokenParts;
 window.el = el;

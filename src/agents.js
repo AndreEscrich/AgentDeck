@@ -144,6 +144,9 @@ class AgentManager {
       cwd,
       env: childEnv(config.env),
       stdio: ['pipe', 'pipe', 'pipe'],
+      // Its own process group, so that stopping the agent also stops the
+      // shell commands it started (see killGroup).
+      detached: true,
     });
 
     const agent = { id, proc, cwd, title, status: 'starting', sessionId: resumeId || null, stderr: '', pending: new Set() };
@@ -280,16 +283,30 @@ class AgentManager {
     agent.proc.stdin.write(JSON.stringify(req) + '\n');
   }
 
+  // A negative pid sends the signal to the whole process group: the claude
+  // process and every command it is running.
+  killGroup(agent, signal = 'SIGTERM') {
+    try { process.kill(-agent.proc.pid, signal); } catch { /* already gone */ }
+  }
+
+  // Asks the agent to finish (end of input), and stops it after two seconds.
   close(id) {
     const agent = this.agents.get(id);
     if (!agent) return;
     agent.closing = true;
     agent.proc.stdin.end();
-    setTimeout(() => { if (!agent.proc.killed && agent.proc.exitCode === null) agent.proc.kill('SIGTERM'); }, 2000);
+    setTimeout(() => { if (agent.proc.exitCode === null) this.killGroup(agent); }, 2000);
   }
 
+  // The app is quitting, so there is no time to wait.
   closeAll() {
-    for (const id of this.agents.keys()) this.close(id);
+    for (const agent of this.agents.values()) {
+      agent.closing = true;
+      this.killGroup(agent);
+    }
+    for (const proc of helperProcesses) {
+      try { process.kill(-proc.pid, 'SIGTERM'); } catch { /* already gone */ }
+    }
   }
 }
 
@@ -297,13 +314,21 @@ class AgentManager {
 // the same descriptions, that the model menu in the Claude desktop app shows.
 // We start a short-lived process, send the "initialize" request and read the
 // "models" field of the answer. No API call is made.
+const helperProcesses = new Set();   // short-lived claude processes, stopped when the app quits
+
 function fetchModels(config) {
   return new Promise(resolve => {
     const proc = spawn(findClaude(config.claudePath),
       ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'],
-      { cwd: os.homedir(), env: childEnv(config.env), stdio: ['pipe', 'pipe', 'ignore'] });
+      { cwd: os.homedir(), env: childEnv(config.env), stdio: ['pipe', 'pipe', 'ignore'], detached: true });
+    helperProcesses.add(proc);
     let buffer = '';
-    const finish = models => { clearTimeout(timer); proc.kill(); resolve(models); };
+    const finish = models => {
+      clearTimeout(timer);
+      helperProcesses.delete(proc);
+      try { process.kill(-proc.pid, 'SIGTERM'); } catch { /* already gone */ }
+      resolve(models);
+    };
     const timer = setTimeout(() => finish(null), 15000);
     proc.on('error', () => finish(null));
     proc.stdout.on('data', chunk => {

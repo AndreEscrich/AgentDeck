@@ -29,10 +29,6 @@ function formatDuration(ms) {
   return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
 }
 
-function folderName(p) {
-  return (p || '').split('/').filter(Boolean).pop() || p || '';
-}
-
 class Hub {
   // onOpen(agentId) opens an agent's chat and returns its chat element;
   // onNew() opens a new agent.
@@ -88,20 +84,19 @@ class Hub {
     const badge = el('div', 'tank-badge', '!');
     tank.append(liquid, bubbles, el('div', 'tank-shine'), icon, badge, burst);
 
+    // Under the tank: the task title, then its status, time and tokens.
     const info = el('div', 'hub-info');
     const title = el('div', 'hub-title');
-    const meta = el('div', 'hub-meta');
     const statusRow = el('div', 'hub-status');
     const statusDot = el('span', 'dot');
     const statusText = el('span');
     const timer = el('span', 'hub-timer');
-    statusRow.append(statusDot, statusText, timer);
-    const activity = el('div', 'hub-activity');
-    const stats = el('div', 'hub-stats');
-    info.append(title, meta, statusRow, activity, stats);
+    const tokens = el('span', 'hub-tokens');
+    statusRow.append(statusDot, statusText, timer, tokens);
+    info.append(title, statusRow);
 
     tile.append(tank, info);
-    const entry = { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, title, meta, statusDot, statusText, timer, activity, stats } };
+    const entry = { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, title, statusDot, statusText, timer, tokens } };
     this.tiles.set(agent.id, entry);
     return entry;
   }
@@ -161,25 +156,18 @@ class Hub {
       parts.liquid.style.height = `${entry.level}%`;
       parts.icon.textContent = agent.status === 'idle' ? '✓' : agent.status === 'error' ? '✕' : '';
       parts.title.textContent = agent.title;
-      parts.title.title = agent.title;
-      const model = agent.choice?.model && agent.choice.model !== 'default' ? agent.choice.model : 'default model';
-      parts.meta.textContent = `${folderName(agent.cwd)} · ${model}`;
-      parts.meta.title = agent.cwd;
+      parts.title.title = `${agent.title}\n${agent.cwd}`;
       parts.statusDot.className = `dot ${agent.status}`;
       parts.statusText.textContent = HUB_STATUS_TEXT[agent.status] || agent.status;
-      parts.activity.textContent = agent.transcript.activity || '';
-
-      const t = agent.transcript;
-      const bits = [];
-      if (agent.status === 'idle' && t.lastTurn) {
-        bits.push(`${t.lastTurn.stepCount} steps`);
-        if (t.lastTurn.changedFiles) bits.push(`${t.lastTurn.changedFiles} file${t.lastTurn.changedFiles === 1 ? '' : 's'} changed`);
-        if (t.lastTurn.costUsd) bits.push(`$${t.lastTurn.costUsd.toFixed(2)}`);
-      } else if (t.stepCount) {
-        bits.push(`${t.stepCount} step${t.stepCount === 1 ? '' : 's'}`);
-      }
-      parts.stats.textContent = bits.join(' · ');
       this.updateTimer(agent, parts.timer);
+
+      const usage = agent.transcript.tokens;
+      const total = totalTokens(usage);
+      parts.tokens.textContent = total ? `${formatTokens(total)} tokens` : '';
+      if (total) {
+        const t = tokenParts(usage);
+        parts.tokens.title = `Input ${t.input.toLocaleString()}\nCached context read ${t.cacheRead.toLocaleString()}\nCached context written ${t.cacheWrite.toLocaleString()}\nOutput ${t.output.toLocaleString()}`;
+      }
     }
 
     for (const [id, entry] of this.tiles) {
