@@ -1536,6 +1536,13 @@ document.addEventListener('keydown', e => {
   }
 }, true);
 
+// While the app is in the background, the Hub's tiles stay as you left them.
+// When it comes back in front, the changes play one tile after another, so
+// you see what happened while you were away. (Only when the Hub is on screen;
+// otherwise the tiles simply catch up.)
+window.addEventListener('blur', () => hub.freeze());
+window.addEventListener('focus', () => hub.thaw({ instant: state.current?.kind !== 'hub' }));
+
 // Refresh the "5m ago" labels now and then.
 setInterval(renderSidebar, 60_000);
 

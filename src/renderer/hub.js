@@ -132,6 +132,52 @@ class Hub {
   // groups: [{ id, name }] in display order. Each agent has a groupId (or
   // null) and a repo name; there is one panel per group and repository.
   update(agents, currentId, groups = []) {
+    this.latest = [agents, currentId, groups];
+    // While the app is in the background (or replaying), the tiles keep the
+    // state you last saw; thaw() catches them up.
+    if (this.frozen || this.replaying) return;
+    this.render(agents, currentId, groups);
+  }
+
+  // The app went to the background: tiles stop changing until thaw().
+  freeze() {
+    this.frozen = true;
+  }
+
+  // The app is back in front. The tiles whose state changed in the meantime
+  // move to their new state one after another, each with its usual
+  // animation (finished, needs you, error). instant skips the replay.
+  async thaw({ instant = false } = {}) {
+    if (!this.frozen) return;
+    this.frozen = false;
+    if (!this.latest) return;
+    const changed = this.latest[0].filter(a => {
+      const entry = this.tiles.get(a.id);
+      return entry && entry.status && entry.status !== a.status && !entry.removing;
+    });
+    if (instant || !changed.length) {
+      this.render(...this.latest);
+      return;
+    }
+    // A stand-in for each changed agent that still has its old state.
+    const pending = new Map(changed.map(a => [a.id, this.tiles.get(a.id).status]));
+    const staged = () => this.latest[0].map(a => (pending.has(a.id) ? Object.assign(Object.create(a), { status: pending.get(a.id) }) : a));
+    this.replaying = true;
+    this.render(staged(), this.latest[1], this.latest[2]);
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    await wait(250);
+    for (const a of changed) {
+      // The tile may have been removed while the replay runs.
+      if (!this.tiles.has(a.id)) continue;
+      pending.delete(a.id);
+      this.render(staged(), this.latest[1], this.latest[2]);
+      await wait(550);
+    }
+    this.replaying = false;
+    this.render(...this.latest);
+  }
+
+  render(agents, currentId, groups = []) {
     const seen = new Set();
     const counts = new Map();
     let order = 0;
