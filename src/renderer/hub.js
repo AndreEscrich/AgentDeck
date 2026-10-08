@@ -307,9 +307,36 @@ class Hub {
     if (entry) this.replay(entry.el, 'wake', 900);
   }
 
-  // Clicking a tile opens it: a copy of the tile lifts and fades like a lid,
-  // while the agent's chat shows through the tile's outline, which widens to
-  // the whole chat area. The colors stay those of the dark chat background.
+  // Where an opening tile pauses: in the middle of the chat area, about 1.5
+  // times its size. Returns the rectangle and the scale.
+  middleRect(tile, area) {
+    const scale = Math.max(1.15, Math.min(1.6, (area.width * 0.4) / tile.width));
+    const width = tile.width * scale;
+    const height = tile.height * scale;
+    return {
+      scale,
+      left: area.left + (area.width - width) / 2,
+      top: area.top + (area.height - height) / 2,
+      width,
+      height,
+    };
+  }
+
+  // A copy of a tile, fixed on top of everything, for the animations below.
+  tileCopy(entry, rect) {
+    const copy = entry.el.cloneNode(true);
+    copy.classList.remove('spawn', 'landed', 'wake', 'celebrate', 'current', 'opening');
+    copy.classList.add('tile-lid');
+    Object.assign(copy.style, { left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` });
+    document.body.appendChild(copy);
+    return copy;
+  }
+
+  // Clicking a tile morphs it into the agent's chat, in two phases:
+  // 1. the tile lifts off, moves to the middle of the chat area and grows,
+  //    while its tank flips open upward like a lid and its text fades;
+  // 2. the chat grows out of that enlarged tile to the whole area, while the
+  //    tile fades into it.
   async open(agentId) {
     const entry = this.tiles.get(agentId);
     const area = document.getElementById('views');
@@ -319,55 +346,79 @@ class Hub {
     }
     this.opening = true;
     const from = entry.el.getBoundingClientRect();
-
-    const lid = entry.el.cloneNode(true);
-    lid.classList.remove('spawn', 'landed', 'wake', 'celebrate', 'current');
-    lid.classList.add('tile-lid');
-    Object.assign(lid.style, { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px` });
-    document.body.appendChild(lid);
-
-    const view = await this.onOpen(agentId);
     const to = area.getBoundingClientRect();
-    // clip-path inset(): how far each edge of the tile is from the chat area's edges.
-    const outline = r => `inset(${Math.max(0, r.top - to.top)}px ${Math.max(0, to.right - r.right)}px ${Math.max(0, to.bottom - r.bottom)}px ${Math.max(0, r.left - to.left)}px round 16px)`;
-    const reveal = view?.animate(
-      [{ clipPath: outline(from), opacity: 0.5 }, { clipPath: 'inset(0px 0px 0px 0px round 0px)', opacity: 1 }],
-      { duration: 340, easing: 'cubic-bezier(.2,.8,.2,1)' },
+    const mid = this.middleRect(from, to);
+    const copy = this.tileCopy(entry, from);
+    entry.el.classList.add('opening');
+
+    // Phase 1: move and grow (transform keeps the tile's proportions).
+    const lift = `translate(${mid.left - from.left}px, ${mid.top - from.top}px) scale(${mid.scale})`;
+    const move = copy.animate(
+      [{ transform: 'none', boxShadow: '0 0 0 rgba(0,0,0,0)' }, { transform: lift, boxShadow: '0 30px 70px rgba(0,0,0,0.6)' }],
+      { duration: 240, easing: 'cubic-bezier(.3,.7,.3,1)', fill: 'forwards' },
     );
-    const lift = lid.animate(
-      [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(1.1) translateY(-6px)' }],
-      { duration: 220, easing: 'ease-out', fill: 'forwards' },
+    copy.querySelector('.tank')?.animate(
+      [{ transform: 'perspective(700px) rotateX(0deg)', opacity: 1 }, { transform: 'perspective(700px) rotateX(-78deg)', opacity: 0.35 }],
+      { duration: 200, delay: 90, easing: 'ease-in', fill: 'forwards' },
     );
-    await Promise.all([reveal?.finished, lift.finished].map(p => p?.catch(() => {})));
-    lid.remove();
+    copy.querySelector('.hub-info')?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, delay: 80, fill: 'forwards' });
+    await move.finished.catch(() => {});
+
+    // Phase 2: the chat grows out of the enlarged tile.
+    const view = await this.onOpen(agentId);
+    const outline = (r, radius) => `inset(${Math.max(0, r.top - to.top)}px ${Math.max(0, to.right - r.left - r.width)}px ${Math.max(0, to.bottom - r.top - r.height)}px ${Math.max(0, r.left - to.left)}px round ${radius}px)`;
+    const grow = view?.animate(
+      [{ clipPath: outline(mid, 16 * mid.scale), opacity: 0.35 }, { clipPath: 'inset(0px 0px 0px 0px round 0px)', opacity: 1 }],
+      { duration: 280, easing: 'cubic-bezier(.2,.8,.2,1)' },
+    );
+    const fade = copy.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: 'ease-out', fill: 'forwards' });
+    await Promise.all([grow?.finished, fade.finished].map(p => p?.catch(() => {})));
+    copy.remove();
+    entry.el.classList.remove('opening');
     this.opening = false;
   }
 
-  // Going back: a dark panel the size of the chat area shrinks into the
-  // agent's tile, and the tile settles with a small bounce. Call it after the
-  // Hub is visible again.
+  // Going back: the reverse. A dark panel the size of the chat area shrinks
+  // to an enlarged tile in the middle, turns into the tile with its lid
+  // closing, and the tile flies back to its place and settles. Call it after
+  // the Hub is visible again.
   async returnTo(agentId) {
     const entry = this.tiles.get(agentId);
     const area = document.getElementById('views');
     if (!entry || !area || this.opening) return;
     entry.el.scrollIntoView({ block: 'nearest' });
-    const from = area.getBoundingClientRect();
-    const to = entry.el.getBoundingClientRect();
+    const full = area.getBoundingClientRect();
+    const home = entry.el.getBoundingClientRect();
+    const mid = this.middleRect(home, full);
     this.opening = true;
-    const panel = el('div', 'close-ghost');
-    Object.assign(panel.style, { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px` });
-    document.body.appendChild(panel);
     entry.el.classList.add('opening');
 
     const box = r => ({ left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+    const panel = el('div', 'close-ghost');
+    Object.assign(panel.style, box(full));
+    document.body.appendChild(panel);
     await panel.animate(
-      [{ ...box(from), borderRadius: '0px' }, { ...box(to), borderRadius: '16px' }],
-      { duration: 280, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' },
+      [{ ...box(full), borderRadius: '0px' }, { ...box(mid), borderRadius: `${16 * mid.scale}px` }],
+      { duration: 240, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' },
     ).finished.catch(() => {});
+
+    const copy = this.tileCopy(entry, home);
+    const lifted = `translate(${mid.left - home.left}px, ${mid.top - home.top}px) scale(${mid.scale})`;
+    panel.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: 'forwards' });
+    copy.querySelector('.tank')?.animate(
+      [{ transform: 'perspective(700px) rotateX(-78deg)', opacity: 0.35 }, { transform: 'perspective(700px) rotateX(0deg)', opacity: 1 }],
+      { duration: 200, easing: 'ease-out', fill: 'forwards' },
+    );
+    copy.querySelector('.hub-info')?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, delay: 60, fill: 'forwards' });
+    await copy.animate(
+      [{ transform: lifted, boxShadow: '0 30px 70px rgba(0,0,0,0.6)' }, { transform: 'none', boxShadow: '0 0 0 rgba(0,0,0,0)' }],
+      { duration: 260, easing: 'cubic-bezier(.3,.7,.3,1)', fill: 'forwards' },
+    ).finished.catch(() => {});
+
+    panel.remove();
+    copy.remove();
     entry.el.classList.remove('opening');
     this.replay(entry.el, 'landed', 600);
-    await panel.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, fill: 'forwards' }).finished.catch(() => {});
-    panel.remove();
     this.opening = false;
   }
 
