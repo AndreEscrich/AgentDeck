@@ -11,7 +11,7 @@ const DEFAULT_CONFIG = {
   claudePath: '',                       // empty means: look in the usual install folders
   defaultPermissionMode: 'bypassPermissions', // default | acceptEdits | auto | plan | bypassPermissions
   defaultModel: 'opus',                 // a value from the model menu; "opus" is always the latest Opus
-  defaultEffort: '',                    // low | medium | high | xhigh | max; empty means the model's default
+  defaultEffort: 'medium',              // low | medium | high | xhigh | max; empty means the model's default
   defaultFastMode: false,
   defaultFolder: '',
   extraArgs: [],                        // extra command-line flags for every agent

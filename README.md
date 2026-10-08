@@ -59,8 +59,8 @@ Click **Settings** in the sidebar to open `config.json`, then restart the app af
 
 - `claudePath`: path to the `claude` binary. When it is empty, the app finds every Claude Code installation (Homebrew, `~/.local/bin`, and the copy inside the Claude desktop app) and uses the newest one. A newer Claude Code knows about newer models.
 - `defaultPermissionMode`: `bypassPermissions` (the default), `auto`, `acceptEdits`, `default` or `plan`. You can change the mode of a running agent with the menu under the message box.
-- `defaultModel`: a model value from the model menu. The default is `opus`, which always means the latest Opus.
-- `defaultEffort`: `low`, `medium`, `high`, `xhigh` or `max`. Empty means the model's own default.
+- `defaultModel`: a model value from the model menu. The default is `opus`, which always means the latest Opus (Opus 5.5 today).
+- `defaultEffort`: `low`, `medium` (the default), `high`, `xhigh` or `max`. Empty means the model's own default.
 - `defaultFastMode`: `true` to turn fast mode on for new agents.
 - `defaultFolder`: prefilled folder in the New agent form.
 - `extraArgs`: extra flags for every agent, for example `["--add-dir", "/some/path"]`.
