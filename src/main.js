@@ -17,6 +17,7 @@ const DEFAULT_CONFIG = {
   extraArgs: [],                        // extra command-line flags for every agent
   env: {},                              // extra environment variables for every agent
   notifyWhenDone: true,
+  hubAfterSend: true,                   // show the Hub after you send a message
 };
 
 let win;

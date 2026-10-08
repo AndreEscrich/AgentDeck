@@ -34,7 +34,8 @@ function folderName(p) {
 }
 
 class Hub {
-  // onOpen(agentId) opens an agent's chat; onNew() opens the New agent form.
+  // onOpen(agentId) opens an agent's chat and returns its chat element;
+  // onNew() opens a new agent.
   constructor(container, { onOpen, onNew }) {
     this.onOpen = onOpen;
     this.tiles = new Map();          // agent id -> { el, parts, status }
@@ -58,8 +59,10 @@ class Hub {
   }
 
   createTile(agent) {
-    const tile = el('div', 'hub-tile');
-    tile.onclick = () => this.onOpen(agent.id);
+    // A new tile springs in; the class is removed when that animation ends.
+    const tile = el('div', 'hub-tile spawn');
+    tile.addEventListener('animationend', e => { if (e.animationName === 'spawn') tile.classList.remove('spawn'); });
+    tile.onclick = () => this.open(agent.id);
 
     const tank = el('div', 'tank');
     const liquid = el('div', 'liquid');
@@ -94,7 +97,7 @@ class Hub {
     info.append(title, meta, statusRow, activity, stats);
 
     tile.append(tank, info);
-    const entry = { el: tile, status: null, parts: { liquid, icon, title, meta, statusDot, statusText, timer, activity, stats } };
+    const entry = { el: tile, status: null, fresh: true, level: 0, parts: { liquid, icon, title, meta, statusDot, statusText, timer, activity, stats } };
     this.tiles.set(agent.id, entry);
     return entry;
   }
@@ -138,7 +141,15 @@ class Hub {
       tile.classList.toggle('current', agent.id === currentId);
       tile.classList.toggle('unread', !!agent.unread);
 
-      parts.liquid.style.height = `${this.levelFor(agent)}%`;
+      // A new tank starts empty and fills up, so the browser must draw it
+      // empty once before the level changes.
+      if (entry.fresh) {
+        entry.fresh = false;
+        parts.liquid.style.height = '0%';
+        void parts.liquid.offsetHeight;
+      }
+      entry.level = this.levelFor(agent);
+      parts.liquid.style.height = `${entry.level}%`;
       parts.icon.textContent = agent.status === 'idle' ? '✓' : agent.status === 'error' ? '✕' : '';
       parts.title.textContent = agent.title;
       parts.title.title = agent.title;
@@ -198,6 +209,50 @@ class Hub {
       const entry = this.tiles.get(agent.id);
       if (entry) this.updateTimer(agent, entry.parts.timer);
     }
+  }
+
+  // "Back to work": the tile hops and its tank flashes when you send a
+  // follow-up message to an agent.
+  wake(agentId) {
+    const entry = this.tiles.get(agentId);
+    if (entry) this.replay(entry.el, 'wake', 900);
+  }
+
+  // Clicking a tile: its tank grows until it covers the chat area and the
+  // liquid rises to the top, then the chat fades in.
+  async open(agentId) {
+    const entry = this.tiles.get(agentId);
+    const target = document.getElementById('views')?.getBoundingClientRect();
+    if (!entry || !target || this.opening) {
+      this.onOpen(agentId);
+      return;
+    }
+    this.opening = true;
+    const tank = entry.el.querySelector('.tank');
+    const from = tank.getBoundingClientRect();
+    const ghost = el('div', `zoom-ghost state-${entry.status}`);
+    const liquid = el('div', 'liquid');
+    liquid.style.height = `${entry.level}%`;
+    ghost.appendChild(liquid);
+    Object.assign(ghost.style, { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px` });
+    document.body.appendChild(ghost);
+    entry.el.classList.add('opening');
+
+    const timing = { duration: 460, easing: 'cubic-bezier(.65,0,.25,1)', fill: 'forwards' };
+    const grow = ghost.animate([
+      { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px`, borderRadius: '14px 14px 22px 22px' },
+      { left: `${target.left}px`, top: `${target.top}px`, width: `${target.width}px`, height: `${target.height}px`, borderRadius: '0px' },
+    ], timing);
+    liquid.animate([{ height: `${entry.level}%` }, { height: '115%' }], timing);
+    await grow.finished.catch(() => {});
+
+    const view = this.onOpen(agentId);
+    view?.classList.add('entering');
+    setTimeout(() => view?.classList.remove('entering'), 500);
+    await ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 320, easing: 'ease-out', fill: 'forwards' }).finished.catch(() => {});
+    ghost.remove();
+    entry.el.classList.remove('opening');
+    this.opening = false;
   }
 
   // Restarts a CSS animation by removing and adding its class.

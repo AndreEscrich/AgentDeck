@@ -220,7 +220,10 @@ function show(kind, id) {
 // ---------- hub ----------
 
 const hub = new Hub($('hub-view'), {
-  onOpen: id => show('agent', id),
+  onOpen: id => {
+    show('agent', id);
+    return state.agents.get(id)?.view;
+  },
   onNew: () => show('new'),
 });
 
@@ -282,24 +285,24 @@ function timeAgo(ms) {
 }
 
 function renderSidebar() {
+  // Running agents as a row of small tanks in the agent's state color.
   const running = $('running-list');
   running.innerHTML = '';
   let n = 0;
   for (const a of state.agents.values()) {
     n++;
-    const li = el('li', 'item');
-    if (state.current?.kind === 'agent' && state.current.id === a.id) li.classList.add('active');
-    if (a.unread) li.classList.add('unread');
-    li.title = `${a.title}\n${a.cwd}\n⌘${n}`;
-    li.append(el('span', `dot ${a.status}`), el('span', 'label', a.title), el('span', 'meta', shortPath(a.cwd).split('/').pop()));
-    li.onclick = () => show('agent', a.id);
-    li.oncontextmenu = e => { e.preventDefault(); sessionMenu(a.sessionId); };
-    running.appendChild(li);
+    const tank = el('button', `mini-tank state-${a.status}`);
+    tank.appendChild(el('span', 'mini-liquid'));
+    if (state.current?.kind === 'agent' && state.current.id === a.id) tank.classList.add('active');
+    if (a.unread) tank.classList.add('unread');
+    tank.title = `${a.title}\n${STATUS_TEXT[a.status] || a.status} · ${shortPath(a.cwd)}\n⌘${n}`;
+    tank.onclick = () => show('agent', a.id);
+    tank.oncontextmenu = e => { e.preventDefault(); sessionMenu(a.sessionId); };
+    running.appendChild(tank);
   }
-  $('running-count').textContent = n ? String(n) : '';
+  running.classList.toggle('hidden', !n);
   $('hub-nav').classList.toggle('active', state.current?.kind === 'hub');
   refreshHub();
-  if (!n) running.appendChild(el('li', 'note', 'No agents running'));
 
   renderHistory();
 }
@@ -546,8 +549,19 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     groupId: resume ? groupOf(resume.session.id) : groupId || null };
   state.agents.set(id, agent);
   transcript.add({ type: 'user', message: { role: 'user', content: prompt } });
-  show('agent', id);
+  afterSend(agent, false);
   await sendToAgent(agent, prompt);
+}
+
+// After you send a message, the Hub shows the agent going (back) to work.
+// Set "hubAfterSend": false in Settings to stay in the chat instead.
+function afterSend(agent, wake) {
+  if (state.config.hubAfterSend === false) {
+    show('agent', agent.id);
+    return;
+  }
+  show('hub');
+  if (wake) requestAnimationFrame(() => requestAnimationFrame(() => hub.wake(agent.id)));
 }
 
 // Before each message, remember the state of the files (only in a git
@@ -659,6 +673,7 @@ async function sendFromComposer() {
   } else if (state.current.kind === 'agent') {
     const a = state.agents.get(state.current.id);
     a.transcript.add({ type: 'user', message: { role: 'user', content: text } });
+    afterSend(a, true);
     await sendToAgent(a, text);
   } else if (state.current.kind === 'history') {
     const h = state.history.get(state.current.id);
