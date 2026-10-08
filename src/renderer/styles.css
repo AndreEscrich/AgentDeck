@@ -600,7 +600,7 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 
 /* Sleeping agents: kept in the Hub, not running */
 .hub-tile.state-sleeping { --c1: #8d92ab; --c2: #4f5369; --glow: transparent; --wave-speed: 18s; }
-.hub-tile.state-sleeping .tank-icon { transform: scale(1); font-size: 34px; color: rgba(255,255,255,0.55); font-style: italic; }
+.hub-tile.state-sleeping .tank-icon { transform: scale(1); font-size: clamp(14px, 16cqw, 34px); color: rgba(255,255,255,0.55); font-style: italic; }
 .hub-tile.state-sleeping .hub-title { color: var(--text-dim); }
 .dot.sleeping { background: var(--text-faint); }
 
