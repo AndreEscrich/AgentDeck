@@ -199,6 +199,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('config:get', () => ({ ...getConfig(), home: require('os').homedir() }));
   ipcMain.handle('config:open', () => shell.openPath(configPath));
+  ipcMain.handle('app:quit', () => quitNow());
   ipcMain.handle('app:version', () => appVersion());
   ipcMain.handle('sessions:list', () => listSessions());
   ipcMain.handle('git:snapshot', (_e, cwd) => git.snapshot(cwd, path.join(app.getPath('userData'), 'snapshots')));
@@ -277,20 +278,32 @@ function allowStop(event) {
   const busy = agents.activeCount();
   if (quitConfirmed || !busy || !win || win.isDestroyed()) return true;
   event.preventDefault();
-  const choice = dialog.showMessageBoxSync(win, {
-    type: 'warning',
-    buttons: ['Quit', 'Cancel'],
-    defaultId: 0,
-    cancelId: 1,
-    message: busy === 1 ? '1 agent is still working' : `${busy} agents are still working`,
-    detail: 'Quitting stops them now. They continue where they stopped the next time you open the app.',
-  });
-  if (choice === 0) {
-    quitConfirmed = true;
-    win.webContents.send('app:quitting');
-    setTimeout(() => app.quit(), 300);
+  // The window asks, in the app itself (see confirmQuit in app.js). If the
+  // window cannot answer (it crashed), the system dialog asks instead.
+  if (win.webContents.isCrashed()) {
+    const choice = dialog.showMessageBoxSync(win, {
+      type: 'warning',
+      buttons: ['Quit', 'Cancel'],
+      defaultId: 0,
+      cancelId: 1,
+      message: busy === 1 ? '1 agent is still working' : `${busy} agents are still working`,
+      detail: 'Quitting stops them now. They continue where they stopped the next time you open the app.',
+    });
+    if (choice === 0) quitNow();
+    return false;
   }
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+  send('app:confirmQuit');
   return false;
+}
+
+// The agents' state is saved by the window (app:quitting), then the app quits.
+function quitNow() {
+  quitConfirmed = true;
+  send('app:quitting');
+  setTimeout(() => app.quit(), 300);
 }
 
 app.on('before-quit', event => {

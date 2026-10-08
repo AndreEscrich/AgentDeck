@@ -1234,6 +1234,58 @@ async function resumeInterrupted() {
 
 // The app is about to quit: save which agents are busy, and keep that list,
 // because stopping the agents would otherwise mark them as finished.
+// Closing the app while agents work: a card in the app (not a system
+// dialog) lists them and says they continue the next time the app opens.
+window.deck.onConfirmQuit(confirmQuit);
+function confirmQuit() {
+  if (document.querySelector('.quit-modal')) return;
+  const working = [...state.agents.values()].filter(a => !a.removed && ['working', 'starting', 'waiting'].includes(a.status));
+  const n = working.length || 1;
+  const overlay = el('div', 'quit-modal');
+  const card = el('div', 'quit-card');
+  card.append(
+    el('div', 'quit-title', n === 1 ? '1 agent is still working' : `${n} agents are still working`),
+    el('p', 'quit-text', `If you quit now, ${n === 1 ? 'it stops' : 'they stop'}. The next time you open Agent Hub, ${n === 1 ? 'it restarts' : 'they restart'} and ${n === 1 ? 'continues' : 'continue'} where ${n === 1 ? 'it' : 'they'} left off.`),
+  );
+  if (working.length) {
+    const list = el('div', 'quit-list');
+    for (const a of working.slice(0, 6)) {
+      const row = el('div', 'quit-agent');
+      row.append(el('span', `dot ${a.status}`), el('span', null, a.latestTitle || a.title));
+      list.appendChild(row);
+    }
+    if (working.length > 6) list.appendChild(el('div', 'quit-more', `and ${working.length - 6} more`));
+    card.appendChild(list);
+  }
+  const buttons = el('div', 'quit-buttons');
+  const stay = el('button', 'quit-stay', 'Keep working');
+  const quit = el('button', 'quit-go', 'Quit');
+  buttons.append(stay, quit);
+  card.appendChild(buttons);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('show'));
+  quit.focus();
+  const close = () => {
+    document.removeEventListener('keydown', onKey, true);
+    overlay.classList.remove('show');
+    setTimeout(() => overlay.remove(), 200);
+  };
+  const onKey = e => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); }
+    if (e.key === 'Enter') { e.preventDefault(); e.stopImmediatePropagation(); quit.click(); }
+    if (e.key === 'Tab') { e.preventDefault(); e.stopImmediatePropagation(); (document.activeElement === quit ? stay : quit).focus(); }
+  };
+  document.addEventListener('keydown', onKey, true);
+  stay.onclick = close;
+  overlay.onclick = e => { if (e.target === overlay) close(); };
+  quit.onclick = () => {
+    quit.disabled = stay.disabled = true;
+    quit.textContent = 'Quitting…';
+    window.deck.quit();
+  };
+}
+
 window.deck.onQuitting(() => {
   saveHub();
   state.quitting = true;

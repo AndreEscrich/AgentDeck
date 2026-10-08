@@ -47,5 +47,7 @@ contextBridge.exposeInMainWorld('deck', {
   onExit: fn => on('agent:exit', fn),
   onSessionsChanged: fn => on('sessions:changed', fn),
   onQuitting: fn => on('app:quitting', fn),
+  onConfirmQuit: fn => on('app:confirmQuit', fn),
+  quit: () => ipcRenderer.invoke('app:quit'),
   onNotificationOpen: fn => on('notification:open', fn),
 });
