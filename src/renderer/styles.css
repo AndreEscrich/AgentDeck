@@ -17,8 +17,8 @@
   --busy: #e0a83a;
   --err: #e05a5a;
   --info: #5a8de0;
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
-  --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --font: Nunito, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono: "Fira Code", ui-monospace, Consolas, monospace;
   --font-size: 14px;
   --chat-width: 820px;
 }
