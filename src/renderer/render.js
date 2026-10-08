@@ -170,9 +170,10 @@ class Transcript {
     this.turn = null;
 
     this.pinned(() => {
+      // The changed files come first, then Claude's message about them.
+      if (turn.changes.size) turn.answer.appendChild(changesCard(this.toolChanges(turn.changes)));
       for (const node of turn.pendingText) turn.answer.appendChild(node);
       if (!turn.pendingText.length && result?.result && !result.is_error) turn.answer.appendChild(markdown(result.result));
-      if (turn.changes.size) turn.answer.appendChild(changesCard(this.toolChanges(turn.changes)));
     });
 
     const parts = [`${turn.stepCount} step${turn.stepCount === 1 ? '' : 's'}`];
@@ -341,7 +342,7 @@ class Transcript {
     }
     this.pinned(() => {
       turn.el.querySelector('.changes')?.remove();
-      if (files.length) turn.answer.appendChild(changesCard(files));
+      if (files.length) turn.answer.prepend(changesCard(files));
     });
   }
 
