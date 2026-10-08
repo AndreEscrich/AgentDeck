@@ -809,9 +809,13 @@ class Hub {
     if (!document.getElementById('hub-view').classList.contains('hidden')) view?.classList.add('hidden');
     for (const a of runs) a?.cancel();
     Hub.liftView(view, false);
-    copy.remove();
+    // The copy is a still picture of the tile; the tile itself is moving
+    // (liquid, glow, float). Instead of swapping one for the other, the tile
+    // fades in under the copy while the copy fades out, so the motion eases in.
     entry.el.classList.remove('opening');
-    this.replay(entry.el, 'landed', 600);
+    entry.el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: 'ease-out' });
+    copy.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 320, easing: 'ease-in', fill: 'forwards' })
+      .finished.catch(() => {}).then(() => copy.remove());
     this.opening = false;
   }
 
