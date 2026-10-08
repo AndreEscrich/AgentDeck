@@ -448,7 +448,9 @@ window.deck.onEvent((id, msg) => {
     const snap = a.snapshot;
     const turn = a.transcript.lastFinished;
     a.snapshot = null;
-    window.deck.gitChanges(a.cwd, snap).then(diff => a.transcript.showGitChanges(turn, diff)).catch(() => {});
+    window.deck.gitChanges(a.cwd, snap)
+      .then(diff => a.transcript.showGitChanges(turn, diff, snap.kind === 'folder'))
+      .catch(() => {});
   }
   if (msg.type === 'result') {
     window.deck.notify(a.title, msg.is_error ? 'Stopped with an error' : 'Finished and waiting for you');

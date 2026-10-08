@@ -172,7 +172,7 @@ class Transcript {
     this.pinned(() => {
       for (const node of turn.pendingText) turn.answer.appendChild(node);
       if (!turn.pendingText.length && result?.result && !result.is_error) turn.answer.appendChild(markdown(result.result));
-      if (turn.changes.size) turn.answer.appendChild(this.changesCard(this.toolChanges(turn.changes)));
+      if (turn.changes.size) turn.answer.appendChild(changesCard(this.toolChanges(turn.changes)));
     });
 
     const parts = [`${turn.stepCount} step${turn.stepCount === 1 ? '' : 's'}`];
@@ -328,56 +328,21 @@ class Transcript {
     });
   }
 
-  // Replaces the turn's Changes card with the git comparison, which also
-  // includes files changed by shell commands.
-  showGitChanges(turn, diffText) {
+  // Replaces the turn's Changes card with the snapshot comparison, which also
+  // includes files changed by shell commands. A folder snapshot records only
+  // code files, so with merge=true the Edit/Write reports for other files
+  // (for example a .prefab) are kept.
+  showGitChanges(turn, diffText, merge) {
     if (!turn || diffText == null) return;
     const files = parseUnifiedDiff(diffText);
+    if (merge) {
+      const seen = new Set(files.map(f => f.path));
+      for (const f of this.toolChanges(turn.changes)) if (!seen.has(f.path)) files.push(f);
+    }
     this.pinned(() => {
       turn.el.querySelector('.changes')?.remove();
-      if (files.length) turn.answer.appendChild(this.changesCard(files));
+      if (files.length) turn.answer.appendChild(changesCard(files));
     });
-  }
-
-  changesCard(files) {
-    const card = el('div', 'changes');
-    let totalAdd = 0;
-    let totalDel = 0;
-    const rows = [];
-    const BADGES = { new: 'New', mod: 'Edited', del: 'Deleted', bin: 'Binary' };
-
-    for (const f of files) {
-      const lines = f.lines;
-      const add = lines.filter(l => l[0] === 'add').length;
-      const del = lines.filter(l => l[0] === 'del').length;
-      totalAdd += add;
-      totalDel += del;
-
-      const row = el('details', 'change-file');
-      const summary = el('summary');
-      const counts = el('span', 'change-counts');
-      counts.append(el('span', 'plus', add ? `+${add}` : ''), el('span', 'minus', del ? ` −${del}` : ''));
-      summary.append(
-        el('span', 'change-badge ' + f.status, BADGES[f.status] || 'Edited'),
-        el('span', 'change-path', f.path),
-        counts,
-      );
-      const diff = el('div', 'diff');
-      for (const [kind, text] of lines.slice(0, 2000)) diff.appendChild(el('div', 'diff-line ' + kind, text || ' '));
-      if (lines.length > 2000) diff.appendChild(el('div', 'diff-line hunk', `… ${lines.length - 2000} more lines`));
-      row.append(summary, diff);
-      row.title = f.path;
-      rows.push(row);
-    }
-
-    const head = el('div', 'changes-head');
-    head.append(
-      el('span', null, `Changed ${files.length} file${files.length === 1 ? '' : 's'}`),
-      el('span', 'plus', ` +${totalAdd}`),
-      el('span', 'minus', ` −${totalDel}`),
-    );
-    card.append(head, ...rows);
-    return card;
   }
 
   // ---------- permission prompts ----------
