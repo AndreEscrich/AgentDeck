@@ -150,6 +150,16 @@ const sounds = (() => {
     attention: () => play([[880, 0, 0.4], [880, 0.17, 0.6]], 0.2),
     // An agent is removed from the Hub.
     removed: swoosh,
+    // Tab opens the next agent to check: a quick airy flick upwards.
+    tab: () => {
+      try {
+        const ac = audio();
+        slide(ac, 0, 430, 900, 0.16, 0.11);
+        simmer(ac, ac.destination, 0.12, 0.015);
+      } catch { /* no sound is fine */ }
+    },
+    // Tab with nothing to check: two soft low notes.
+    nothing: () => play([[392, 0, 0.15], [329.63, 0.09, 0.28]], 0.1),
     // A whole group is removed from the Hub; count is its number of agents.
     groupRemoved,
     // A new agent: two quick rising notes.

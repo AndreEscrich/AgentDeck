@@ -528,7 +528,7 @@ function leaveToHub() {
 // they finished, the latest first.
 //
 // Tab (anywhere in the app) opens the first one: from the Hub it zooms out
-// of its tile; from an agent, that chat first shrinks back into its tile.
+// of its tile; from an agent, the next one slides in from the right.
 // Enter in the Hub (with the message box not active) also opens it, and
 // there closing or answering the agent opens the next one.
 function reviewQueue() {
@@ -555,17 +555,54 @@ function reviewNext(continuing = false) {
 }
 
 // Tab: the next agent to check, or a short message when there is none.
+// From the Hub, the agent zooms out of its tile. From an agent, the next one
+// slides in from the right, without going through the Hub.
 async function checkNext() {
-  if (hub.opening) return;
+  if (hub.opening || state.sliding) return;
   const cur = state.current;
   const next = reviewQueue().find(i => i.id !== hubIdOf(cur));
   if (!next) {
+    if (playSounds()) sounds.nothing();
     toast('Nothing to check: no agent is waiting for you or has finished since you looked');
     return;
   }
   state.reviewing = null;
-  if (cur?.kind !== 'hub') await leaveToHub();
-  hub.open(next.id);
+  if (playSounds()) sounds.tab();
+  const from = viewOf(cur);
+  if (cur?.kind === 'hub' || !from) {
+    if (cur?.kind !== 'hub') show('hub');
+    hub.open(next.id);
+    return;
+  }
+  state.sliding = true;
+  try {
+    await slideTo(next, from);
+  } finally {
+    state.sliding = false;
+  }
+}
+
+// The chat element of an agent or saved session on screen.
+function viewOf(cur) {
+  if (cur?.kind === 'agent') return state.agents.get(cur.id)?.view || null;
+  if (cur?.kind === 'history') return state.history.get(cur.id)?.view || null;
+  return null;
+}
+
+// The current chat moves out to the left while the next one comes in from
+// the right.
+async function slideTo(next, from) {
+  if (next.id.startsWith('p:')) await openParked(next.id.slice(2));
+  else show('agent', next.id);
+  const to = viewOf(state.current);
+  if (!to || to === from) return;
+  from.classList.remove('hidden');
+  const timing = { duration: 220, easing: 'cubic-bezier(.2,.7,.2,1)' };
+  await Promise.all([
+    to.animate([{ transform: 'translateX(100%)', opacity: 0.6 }, { transform: 'none', opacity: 1 }], timing).finished,
+    from.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateX(-25%)', opacity: 0 }], timing).finished,
+  ]).catch(() => {});
+  if (viewOf(state.current) !== from) from.classList.add('hidden');
 }
 
 // A short message at the bottom of the window that fades away by itself.

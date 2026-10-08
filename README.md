@@ -95,7 +95,7 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 | ⌘\\ | Open or close History |
 | (Windows) | Ctrl instead of ⌘ for every shortcut above |
 | Esc | Back to the Hub from an agent (closes an open menu, panel or review first); the Stop button stops a running turn |
-| Tab | Open the next agent to check: first agents that ask you something or need approval and that you have not opened since, then agents that finished since you last opened them, the latest first. In an agent, its chat shrinks into its tile and the next one opens. With nothing to check, a short message says so. Tab does nothing else in the app. |
+| Tab | Open the next agent to check: first agents that ask you something or need approval and that you have not opened since, then agents that finished since you last opened them, the latest first. In an agent, the next one slides in from the right. A soft flick sound plays (two low notes when there is nothing to check). With nothing to check, a short message says so. Tab does nothing else in the app. |
 
 ## How it works
 
