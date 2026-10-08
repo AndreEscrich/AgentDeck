@@ -52,11 +52,17 @@ class Hub {
     this.root = el('div', 'hub');
     const head = el('div', 'hub-head');
     this.counters = el('div', 'hub-counters');
-    const historyBtn = el('button', null, 'History');
-    historyBtn.title = 'Saved sessions (⌘\\)';
-    historyBtn.onclick = onHistory;
-    const settingsBtn = el('button', null, 'Settings');
-    settingsBtn.onclick = onSettings;
+    // History and Settings sit in the floating bar on the left (see below).
+    const navButton = (cls, title, svg, onclick) => {
+      const b = el('button', `nav-btn ${cls}`);
+      b.type = 'button';
+      b.title = title;
+      b.innerHTML = svg;
+      b.onclick = () => { this.rail.classList.remove('open'); onclick?.(); };
+      return b;
+    };
+    const historyBtn = navButton('nav-history', 'History: saved sessions (⌘\\)', '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="9" r="6.5"/><polyline points="9,5.5 9,9 11.5,10.5" stroke-linecap="round" stroke-linejoin="round"/></svg>', onHistory);
+    const settingsBtn = navButton('nav-settings', 'Settings', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>', onSettings);
     // Shown when Tab has agents to check: the key, how many, and the first one.
     this.tabHint = el('button', 'hub-tab-hint hidden');
     this.tabHint.type = 'button';
@@ -65,7 +71,7 @@ class Hub {
     this.tabHint.append(el('kbd', null, 'Tab'), this.tabHintText, this.tabHintName);
     this.tabHint.onclick = () => onTab?.();
     // The app puts the Tab button above the message box (see app.js).
-    head.append(el('h2', null, 'Hub'), this.counters, historyBtn, settingsBtn);
+    head.append(el('h2', null, 'Hub'), this.counters);
 
     // One section per group, each with its own grid of tiles.
     this.grid = el('div', 'hub-board');
@@ -82,7 +88,10 @@ class Hub {
     this.usageTab.type = 'button';
     this.usageTab.title = 'Usage';
     this.usage = el('aside', 'hub-usage');
-    this.rail.append(this.usageTab, this.usage);
+    // The floating bar on the left edge: usage, History and Settings.
+    const nav = el('nav', 'hub-nav');
+    nav.append(this.usageTab, historyBtn, settingsBtn);
+    this.rail.append(nav, this.usage);
     this.usageTab.onclick = () => this.rail.classList.toggle('open');
     document.addEventListener('pointerdown', e => {
       if (this.rail.classList.contains('open') && !this.rail.contains(e.target)) this.rail.classList.remove('open');
