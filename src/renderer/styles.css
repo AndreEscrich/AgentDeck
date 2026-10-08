@@ -442,20 +442,29 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 .hub-counters b.ok { color: var(--ok); }
 .hub-counters .sep { color: var(--text-faint); }
 
-.hub-board { display: flex; flex-direction: column; gap: 26px; }
-.hub-section-head { display: flex; align-items: baseline; gap: 8px; margin: 0 2px 10px; }
+.hub-board { display: flex; flex-direction: column; gap: 18px; }
+/* Each group is a panel that holds its agents. */
+.hub-section { background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 18px; padding: 12px 14px 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03); }
+.hub-section-head { display: flex; align-items: baseline; gap: 8px; margin: 0 2px 12px; }
 .hub-section-name { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-dim); }
 .hub-section-name::before { content: "# "; color: var(--text-faint); }
 .hub-section-count { font-size: 12px; color: var(--text-faint); }
 .hub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px; }
+/* Inside a group, all tiles stay on one row: they share its width equally and
+   get smaller the more there are, up to 240px wide each. */
+.hub-section .hub-grid { display: flex; gap: 12px; align-items: stretch; }
+.hub-section .hub-tile { flex: 1 1 0; min-width: 0; max-width: 240px; }
 .hub-empty { display: flex; flex-direction: column; align-items: center; gap: 14px; margin-top: 12vh; color: var(--text-dim); }
 .hub-empty-tank { width: 70px; height: 96px; border: 3px solid var(--bg-active); border-radius: 18px 18px 22px 22px; position: relative; }
 .hub-empty-tank::after { content: ""; position: absolute; left: 6px; right: 6px; bottom: 6px; height: 14px; border-radius: 4px 4px 12px 12px; background: var(--bg-active); }
 
 /* Colors per state: --c1 top of the liquid, --c2 bottom, --glow the tile glow. */
 .hub-tile { --c1: #6b708c; --c2: #4a4e66; --glow: transparent; --wave-speed: 9s;
-  position: relative; display: flex; flex-direction: column; gap: 12px;
-  padding: 14px; border-radius: 16px; background: var(--bg-panel); border: 1px solid var(--border);
+  position: relative; display: flex; flex-direction: column; gap: 10px;
+  padding: 10px; border-radius: 16px; background: var(--bg-panel); border: 1px solid var(--border);
+  /* Sizes inside the tile (cqw) follow the tile's width. */
+  container-type: inline-size;
   cursor: pointer; transition: border-color 0.3s, box-shadow 0.4s, transform 0.15s; }
 .hub-tile:hover { transform: translateY(-2px); border-color: var(--text-faint); }
 .hub-tile.current { border-color: var(--accent); }
@@ -470,7 +479,7 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 @keyframes attention { 50% { box-shadow: 0 0 0 4px var(--glow), 0 6px 30px -4px var(--glow); } }
 
 /* The tank and its liquid */
-.tank { position: relative; height: 150px; border-radius: 14px 14px 22px 22px; overflow: hidden;
+.tank { position: relative; aspect-ratio: 4 / 3; border-radius: 14px 14px 22px 22px; overflow: hidden;
   background: #0f1016; border: 2px solid #2c2f3d; box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.6); }
 .liquid { position: absolute; left: 0; right: 0; bottom: 0; height: 12%;
   background: linear-gradient(var(--c1), var(--c2)); transition: height 1.2s cubic-bezier(.3,1.3,.5,1), background 0.6s; }
@@ -497,7 +506,7 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 .hub-tile.state-working .bubbles, .hub-tile.state-starting .bubbles { opacity: 1; }
 
 .tank-icon { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  font-size: 44px; font-weight: 700; color: rgba(255, 255, 255, 0.92); text-shadow: 0 2px 10px rgba(0,0,0,0.35);
+  font-size: clamp(16px, 20cqw, 44px); font-weight: 700; color: rgba(255, 255, 255, 0.92); text-shadow: 0 2px 10px rgba(0,0,0,0.35);
   transform: scale(0); transition: transform 0.4s cubic-bezier(.3,1.6,.5,1); pointer-events: none; }
 .hub-tile.state-idle .tank-icon, .hub-tile.state-error .tank-icon { transform: scale(1); }
 
@@ -523,12 +532,10 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 
 /* Text under the tank */
 .hub-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.hub-title { font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.hub-title { font-size: clamp(11px, 6.4cqw, 14px); font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .hub-meta { font-size: 12px; color: var(--text-faint); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hub-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+.hub-status { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: clamp(10px, 5.2cqw, 12px); color: var(--text-dim); margin-top: 2px; }
 .hub-timer { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text-faint); }
-.hub-tokens { font-variant-numeric: tabular-nums; color: var(--text-faint); }
-.hub-tokens:not(:empty)::before { content: "·"; margin-right: 6px; }
 .hub-activity { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 18px; }
 .hub-stats { font-size: 11px; color: var(--text-faint); min-height: 16px; }
 .hub-tile.unread::after { content: ""; position: absolute; top: 10px; left: 10px; width: 9px; height: 9px; border-radius: 50%;
@@ -627,3 +634,10 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 .group-panel-item.create { color: var(--accent); font-weight: 600; }
 .group-panel-count { font-size: 11px; color: var(--text-faint); }
 .group-panel-sep { padding: 8px 8px 2px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); }
+
+/* Very small tiles: drop the separators and let time and tokens wrap. */
+@container (max-width: 150px) {
+  .hub-tokens:not(:empty)::before { content: none; }
+  .hub-timer { margin-left: 0; }
+  .tank-badge { width: 18px; height: 18px; font-size: 11px; top: 5px; right: 5px; }
+}

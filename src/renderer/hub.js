@@ -100,19 +100,18 @@ class Hub {
     const badge = el('div', 'tank-badge', '!');
     tank.append(liquid, bubbles, el('div', 'tank-shine'), icon, badge, burst);
 
-    // Under the tank: the task title, then its status, time and tokens.
+    // Under the tank: the task title, then its status and time.
     const info = el('div', 'hub-info');
     const title = el('div', 'hub-title');
     const statusRow = el('div', 'hub-status');
     const statusDot = el('span', 'dot');
     const statusText = el('span');
     const timer = el('span', 'hub-timer');
-    const tokens = el('span', 'hub-tokens');
-    statusRow.append(statusDot, statusText, timer, tokens);
+    statusRow.append(statusDot, statusText, timer);
     info.append(title, statusRow);
 
     tile.append(remove, tank, info);
-    const entry = { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, title, statusDot, statusText, timer, tokens } };
+    const entry = { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, title, statusDot, statusText, timer } };
     this.tiles.set(agent.id, entry);
     return entry;
   }
@@ -183,14 +182,6 @@ class Hub {
       parts.statusDot.className = `dot ${agent.status}`;
       parts.statusText.textContent = HUB_STATUS_TEXT[agent.status] || agent.status;
       this.updateTimer(agent, parts.timer);
-
-      const usage = agent.transcript.tokens;
-      const total = totalTokens(usage);
-      parts.tokens.textContent = total ? `${formatTokens(total)} tokens` : '';
-      if (total) {
-        const t = tokenParts(usage);
-        parts.tokens.title = `Input ${t.input.toLocaleString()}\nCached context read ${t.cacheRead.toLocaleString()}\nCached context written ${t.cacheWrite.toLocaleString()}\nOutput ${t.output.toLocaleString()}`;
-      }
     }
 
     for (const [id, entry] of this.tiles) {
