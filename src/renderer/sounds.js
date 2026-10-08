@@ -92,9 +92,35 @@ const sounds = (() => {
     } catch { /* no sound is fine */ }
   }
 
+  // A tone that slides down while it fades, with a breath of noise: a tile
+  // dropping out of the Hub.
+  function swoosh() {
+    try {
+      const ac = audio();
+      const t = ac.currentTime;
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(620, t);
+      osc.frequency.exponentialRampToValueAtTime(140, t + 0.4);
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.16, t + 0.015);
+      gain.gain.setValueAtTime(0.16, t + 0.14);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.42);
+      osc.connect(gain).connect(ac.destination);
+      osc.start(t);
+      osc.stop(t + 0.46);
+      simmer(ac, ac.destination, 0.25, 0.025);
+    } catch { /* no sound is fine */ }
+  }
+
   return {
     // The new agent's message lands in its tile in the Hub: it starts to brew.
     brew,
+    // An agent asks you a question or needs your approval: two bell taps.
+    attention: () => play([[880, 0, 0.4], [880, 0.17, 0.6]], 0.2),
+    // An agent is removed from the Hub.
+    removed: swoosh,
     // A new agent: two quick rising notes.
     created: () => play([[659.25, 0, 0.18], [987.77, 0.08, 0.3]], 0.14),
     // An agent finished: a rising major chord, one note after another.

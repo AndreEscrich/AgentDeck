@@ -771,6 +771,7 @@ async function openParked(sessionId) {
 
 async function removeFromHub(id) {
   if (id.startsWith('p:')) {
+    if (playSounds()) sounds.removed();
     await hub.removeTile(id);
     state.parked.delete(id.slice(2));
     refreshHub();
@@ -780,6 +781,7 @@ async function removeFromHub(id) {
   if (!a) return;
   if (['working', 'waiting', 'starting'].includes(a.status)
       && !confirm(`"${a.title}" is still working. Stop it and remove it from the Hub?`)) return;
+  if (playSounds()) sounds.removed();
   await hub.removeTile(id);
   // The process stops too; its session stays in History.
   a.removed = true;
@@ -1293,6 +1295,7 @@ window.deck.onPermission((id, req) => {
     a.transcript.permission(req, answer);
     window.deck.notify(a.id, a.title, req.title || `Needs approval to use ${req.display_name || req.tool_name}`);
   }
+  if (playSounds()) sounds.attention();
   refreshHeaderIfCurrent(id);
   refreshHub();
 });
