@@ -1226,6 +1226,11 @@ window.deck.onEvent((id, msg) => {
   }
   if (msg.type === 'result') {
     window.deck.notify(a.id, a.title, msg.is_error ? 'Stopped with an error' : 'Finished and waiting for you');
+    if (playSounds()) {
+      if (!msg.is_error) sounds.done();
+      else if (!a.stopping) sounds.error();
+    }
+    a.stopping = false;
   }
   // The context meter: after each task, and at most every 5 seconds while working.
   if (msg.type === 'result' || (msg.type === 'assistant' && Date.now() - (a.contextAt || 0) > 5000)) updateContext(a);
@@ -1345,6 +1350,7 @@ async function sendFromComposer() {
     // The next new agent starts with the same folder and group, and the default model.
     state.draft = null;
     const forkFrom = forkSourceFor(d.folder, d.groupId);
+    if (playSounds()) sounds.created();
     await startAgent({ cwd: d.folder, prompt: text, permissionMode: d.mode, choice: d.choice, groupId: d.groupId, fromRect, forkFrom });
   } else if (state.current.kind === 'agent') {
     const a = state.agents.get(state.current.id);
@@ -1363,8 +1369,14 @@ async function sendFromComposer() {
       h.transcript.note('This session has no saved folder, so it cannot be resumed.', true);
       return;
     }
+    if (playSounds()) sounds.created();
     await startAgent({ cwd, prompt: text, permissionMode: h.mode, choice: h.choice, resume: h });
   }
+}
+
+// Sounds when you start an agent and when one finishes (see sounds.js).
+function playSounds() {
+  return state.config?.sounds !== false;
 }
 
 function autosize() {
@@ -1395,7 +1407,11 @@ $('send').onclick = sendFromComposer;
 
 
 $('btn-interrupt').onclick = () => {
-  if (state.current?.kind === 'agent') window.deck.interrupt(state.current.id);
+  if (state.current?.kind !== 'agent') return;
+  // A task you stop yourself ends without the error sound.
+  const a = state.agents.get(state.current.id);
+  if (a) a.stopping = true;
+  window.deck.interrupt(state.current.id);
 };
 $('btn-close').onclick = () => {
   if (state.current?.kind === 'agent') window.deck.closeAgent(state.current.id);

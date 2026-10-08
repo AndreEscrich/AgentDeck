@@ -26,6 +26,7 @@ const DEFAULT_CONFIG = {
   extraArgs: [],                        // extra command-line flags for every agent
   env: {},                              // extra environment variables for every agent
   notifyWhenDone: true,
+  sounds: true,                         // a sound when you start an agent and when one finishes
   hubAfterSend: true,                   // show the Hub after you send a message
   summarizeTitles: true,                // title new agents with a short summary of your message
 };
@@ -248,7 +249,8 @@ app.whenReady().then(() => {
   const shown = new Set();
   ipcMain.handle('notify', (_e, id, title, body) => {
     if (getConfig().notifyWhenDone && !win.isFocused()) {
-      const n = new Notification({ title, body });
+      // The app plays its own sounds, so the notification stays silent then.
+      const n = new Notification({ title, body, silent: getConfig().sounds !== false });
       shown.add(n);
       n.on('click', () => {
         if (win.isMinimized()) win.restore();
