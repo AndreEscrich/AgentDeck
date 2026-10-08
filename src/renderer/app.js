@@ -483,6 +483,8 @@ function show(kind, id) {
     composerModePicker.setValue(d.mode);
     renderDraftButtons();
     $('input').placeholder = 'Start a new agent… (↩ to start)';
+    // Back in the Hub (after leaving or closing an agent): ready to type.
+    focusInput();
   }
   renderSettingsButton();
   renderSidebar();
@@ -1780,6 +1782,18 @@ document.addEventListener('keydown', e => {
 // play one tile after another, so you see what happened while you were away.
 // (Only when the Hub is on screen; otherwise the tiles simply catch up.)
 const catchUp = () => hub.thaw({ instant: state.current?.kind !== 'hub' });
+// Coming back to the app puts the cursor in the message box.
+window.addEventListener('focus', () => focusInput());
+
+// The cursor goes to the message box, unless you are typing somewhere else
+// (a search, a group name) or a menu, panel or dialog is open.
+function focusInput() {
+  const active = document.activeElement;
+  if (active && active !== $('input') && active.matches?.('input, textarea, select, [contenteditable="true"]')) return;
+  if (document.querySelector('.quit-modal, .group-panel, .model-menu:not(.hidden), .lightbox, .review, .usage-rail.open')) return;
+  if ($('composer').classList.contains('hidden')) return;
+  $('input').focus();
+}
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') hub.freeze();
   else if (document.hasFocus()) catchUp();

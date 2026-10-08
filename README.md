@@ -96,6 +96,7 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 | ⌘F | Search history |
 | ⌘\\ | Open or close History |
 | (Windows) | Ctrl instead of ⌘ for every shortcut above |
+| (none) | The cursor is in the message box whenever you come back to the app, open an agent, or return to the Hub, so you can type right away |
 | Esc | Back to the Hub from an agent (closes an open menu, panel or review first); the Stop button stops a running turn |
 | Tab | (In the Hub, a button above the message box says how many agents there are to check and which one comes first. In an agent, bubbles in the next agent's color drift in slowly from the right edge, with "Tab to go" and its name; click it to go too.) Open the next agent to check: first agents that ask you something or need approval and that you have not opened since, then agents that finished since you last opened them, the latest first. In an agent, the next one slides in from the right. A soft flick sound plays (two low notes when there is nothing to check). With nothing to check, a short message says so. Tab does nothing else in the app. |
 
