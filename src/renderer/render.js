@@ -148,6 +148,9 @@ class Transcript {
   addResult(msg) {
     this.clearDraft();
     if (msg.is_error) {
+      if (msg.api_error_status === 401) {
+        this.note('Claude Code\'s saved login was rejected. Run `claude auth login` in a terminal, then start the agent again.', true);
+      }
       // The CLI often sends the error both as assistant text and as the result.
       if (msg.result && msg.result === this.lastText) return;
       this.note(msg.result || `Turn ended with an error (${msg.subtype})`, true);
