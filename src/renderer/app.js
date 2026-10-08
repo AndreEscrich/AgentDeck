@@ -22,7 +22,7 @@ const state = {
   current: null,           // { kind: 'agent' | 'history' | 'new', id }
   groups: { groups: [], assignments: {} },  // your session groups, saved in groups.json
   renamingGroup: null,     // id of the group whose name is being edited
-  parked: new Map(),       // session id -> a sleeping Hub agent (not running, kept across restarts)
+  parked: new Map(),       // session id -> a completed Hub agent that is not running (kept across restarts)
 };
 
 // ---------- model menu ----------
@@ -350,12 +350,14 @@ function hubInfo(a) {
   };
 }
 
-// A sleeping agent, in the shape the Hub expects from a running one.
+// An agent that is not running, in the shape the Hub expects from a running
+// one. It shows as completed (green, with a check mark), the same as an agent
+// that has just finished its task.
 function parkedItem(p) {
   return {
     id: 'p:' + p.sessionId,
     parked: true,
-    status: 'sleeping',
+    status: 'idle',
     title: p.title,
     cwd: p.cwd,
     groupId: groupOf(p.sessionId) || p.groupId,
@@ -363,7 +365,7 @@ function parkedItem(p) {
   };
 }
 
-// Running agents first, then the sleeping ones. Agents you removed are left out.
+// Running agents first, then the ones that are not running. Agents you removed are left out.
 function hubItems() {
   const live = [...state.agents.values()].filter(a => !a.removed);
   for (const a of live) a.groupId = groupOf(a.sessionId) || a.groupId || null;
@@ -373,7 +375,7 @@ function hubItems() {
 }
 
 // Saved in the window's local storage, which survives restarts. Running
-// agents are saved too, so after a restart they come back as sleeping tiles.
+// agents are saved too, so after a restart they come back as completed tiles.
 function saveHub() {
   const list = [];
   for (const a of state.agents.values()) if (!a.removed && a.sessionId) list.push(hubInfo(a));
@@ -388,7 +390,7 @@ function loadHub() {
   } catch { /* start with an empty Hub */ }
 }
 
-// Opens a sleeping agent's session; your next message there resumes it.
+// Opens the session of an agent that is not running; your next message there resumes it.
 async function openParked(sessionId) {
   const p = state.parked.get(sessionId);
   let session = state.sessions.find(s => s.id === sessionId);

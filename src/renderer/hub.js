@@ -13,10 +13,9 @@ const HUB_STATUS_TEXT = {
   starting: 'Starting',
   working: 'Working',
   waiting: 'Needs you',
-  idle: 'Done',
+  idle: 'Completed',
   error: 'Error',
   exited: 'Stopped',
-  sleeping: 'Sleeping',
 };
 
 const BUBBLE_COUNT = 7;
@@ -126,7 +125,6 @@ class Hub {
       case 'waiting': return Math.min(88, 30 + steps * 4);
       case 'idle': return 100;
       case 'error': return 60;
-      case 'sleeping': return 55;
       default: return 12;
     }
   }
@@ -176,7 +174,7 @@ class Hub {
       }
       entry.level = this.levelFor(agent);
       parts.liquid.style.height = `${entry.level}%`;
-      parts.icon.textContent = { idle: '✓', error: '✕', sleeping: 'z' }[agent.status] || '';
+      parts.icon.textContent = { idle: '✓', error: '✕' }[agent.status] || '';
       parts.title.textContent = agent.title;
       parts.title.title = `${agent.title}\n${agent.cwd}`;
       parts.statusDot.className = `dot ${agent.status}`;
@@ -205,8 +203,7 @@ class Hub {
     const parts = [];
     if (count('working') + count('starting')) parts.push(`<b>${count('working') + count('starting')}</b> working`);
     if (count('waiting')) parts.push(`<b class="attn">${count('waiting')}</b> need${count('waiting') === 1 ? 's' : ''} you`);
-    if (count('idle')) parts.push(`<b class="ok">${count('idle')}</b> waiting for a message`);
-    if (count('sleeping')) parts.push(`<b>${count('sleeping')}</b> sleeping`);
+    if (count('idle')) parts.push(`<b class="ok">${count('idle')}</b> completed`);
     parts.push(`<b>${this.completed}</b> task${this.completed === 1 ? '' : 's'} done this session`);
     this.counters.innerHTML = parts.join('<span class="sep">·</span>');
 
@@ -246,7 +243,7 @@ class Hub {
     const started = agent.transcript.turnStartedAt;
     if (started && (agent.status === 'working' || agent.status === 'waiting' || agent.status === 'starting')) {
       node.textContent = formatDuration(Date.now() - started);
-    } else if ((agent.status === 'idle' || agent.status === 'sleeping') && agent.transcript.lastTurn) {
+    } else if (agent.status === 'idle' && agent.transcript.lastTurn) {
       node.textContent = formatDuration(agent.transcript.lastTurn.durationMs);
     } else {
       node.textContent = '';
