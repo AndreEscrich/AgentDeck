@@ -16,6 +16,7 @@ const HUB_STATUS_TEXT = {
   idle: 'Done',
   error: 'Error',
   exited: 'Stopped',
+  sleeping: 'Sleeping',
 };
 
 const BUBBLE_COUNT = 7;
@@ -32,8 +33,13 @@ function formatDuration(ms) {
 class Hub {
   // onOpen(agentId) opens an agent's chat and returns its chat element;
   // onNew() opens a new agent.
-  constructor(container, { onOpen, onNew }) {
+  // onRemove(agentId) removes a tile's agent; onContext(agentId) shows its
+  // right-click menu.
+  constructor(container, { onOpen, onNew, onRemove, onContext }) {
     this.onOpen = onOpen;
+    this.onRemove = onRemove;
+    this.onContext = onContext;
+    this.sections = new Map();       // group id ('' for no group) -> { el, name, count, grid }
     this.tiles = new Map();          // agent id -> { el, parts, status }
     this.arrivals = new Map();       // agent id -> where its message box was, for the morph animation
     this.completed = 0;              // agents that finished a task this session
@@ -45,7 +51,8 @@ class Hub {
     newBtn.onclick = onNew;
     head.append(el('h2', null, 'Hub'), this.counters, newBtn);
 
-    this.grid = el('div', 'hub-grid');
+    // One section per group, each with its own grid of tiles.
+    this.grid = el('div', 'hub-board');
     this.empty = el('div', 'hub-empty');
     const emptyBtn = el('button', 'primary', '+ Start an agent');
     emptyBtn.onclick = onNew;
@@ -63,6 +70,10 @@ class Hub {
     const tile = el('div', arrival ? 'hub-tile arriving' : 'hub-tile spawn');
     tile.addEventListener('animationend', e => { if (e.animationName === 'spawn') tile.classList.remove('spawn'); });
     tile.onclick = () => this.open(agent.id);
+    tile.oncontextmenu = e => { e.preventDefault(); this.onContext?.(agent.id); };
+    const remove = el('button', 'tile-remove', '×');
+    remove.title = 'Remove from the Hub';
+    remove.onclick = e => { e.stopPropagation(); this.onRemove?.(agent.id); };
 
     const tank = el('div', 'tank');
     const liquid = el('div', 'liquid');
@@ -95,7 +106,7 @@ class Hub {
     statusRow.append(statusDot, statusText, timer, tokens);
     info.append(title, statusRow);
 
-    tile.append(tank, info);
+    tile.append(remove, tank, info);
     const entry = { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, title, statusDot, statusText, timer, tokens } };
     this.tiles.set(agent.id, entry);
     return entry;
@@ -111,19 +122,26 @@ class Hub {
       case 'waiting': return Math.min(88, 30 + steps * 4);
       case 'idle': return 100;
       case 'error': return 60;
+      case 'sleeping': return 55;
       default: return 12;
     }
   }
 
-  update(agents, currentId) {
+  // groups: [{ id, name }] in display order. Each agent has a groupId (or null).
+  update(agents, currentId, groups = []) {
     const seen = new Set();
+    const counts = new Map();
     let order = 0;
     for (const agent of agents) {
       seen.add(agent.id);
       const entry = this.tiles.get(agent.id) || this.createTile(agent);
+      if (entry.removing) continue;
       const { el: tile, parts } = entry;
       tile.style.order = String(order++);
-      if (!tile.parentNode) this.grid.appendChild(tile);
+      const key = groups.some(g => g.id === agent.groupId) ? agent.groupId : '';
+      counts.set(key, (counts.get(key) || 0) + 1);
+      const grid = this.section(key, groups).grid;
+      if (tile.parentNode !== grid) grid.appendChild(tile);
       if (entry.arrival) {
         const info = entry.arrival;
         entry.arrival = null;
@@ -154,7 +172,7 @@ class Hub {
       }
       entry.level = this.levelFor(agent);
       parts.liquid.style.height = `${entry.level}%`;
-      parts.icon.textContent = agent.status === 'idle' ? '✓' : agent.status === 'error' ? '✕' : '';
+      parts.icon.textContent = { idle: '✓', error: '✕', sleeping: 'z' }[agent.status] || '';
       parts.title.textContent = agent.title;
       parts.title.title = `${agent.title}\n${agent.cwd}`;
       parts.statusDot.className = `dot ${agent.status}`;
@@ -177,11 +195,22 @@ class Hub {
       }
     }
 
+    // Sections follow your group order, "No group" last; empty ones hide.
+    const keys = [...groups.map(g => g.id), ''];
+    for (const [key, sec] of this.sections) {
+      const n = counts.get(key) || 0;
+      sec.el.classList.toggle('hidden', !n);
+      sec.count.textContent = String(n);
+      sec.name.textContent = key ? groups.find(g => g.id === key)?.name || 'Group' : 'No group';
+      sec.el.style.order = String(keys.indexOf(key) < 0 ? keys.length : keys.indexOf(key));
+    }
+
     const count = s => agents.filter(a => a.status === s).length;
     const parts = [];
     if (count('working') + count('starting')) parts.push(`<b>${count('working') + count('starting')}</b> working`);
     if (count('waiting')) parts.push(`<b class="attn">${count('waiting')}</b> need${count('waiting') === 1 ? 's' : ''} you`);
     if (count('idle')) parts.push(`<b class="ok">${count('idle')}</b> waiting for a message`);
+    if (count('sleeping')) parts.push(`<b>${count('sleeping')}</b> sleeping`);
     parts.push(`<b>${this.completed}</b> task${this.completed === 1 ? '' : 's'} done this session`);
     this.counters.innerHTML = parts.join('<span class="sep">·</span>');
 
@@ -189,11 +218,39 @@ class Hub {
     this.grid.classList.toggle('hidden', agents.length === 0);
   }
 
+  section(key, groups) {
+    let sec = this.sections.get(key);
+    if (!sec) {
+      const elSec = el('section', 'hub-section');
+      const head = el('div', 'hub-section-head');
+      const name = el('span', 'hub-section-name');
+      const count = el('span', 'hub-section-count');
+      head.append(name, count);
+      const grid = el('div', 'hub-grid');
+      elSec.append(head, grid);
+      this.grid.appendChild(elSec);
+      sec = { el: elSec, name, count, grid };
+      this.sections.set(key, sec);
+    }
+    return sec;
+  }
+
+  // The tank drains, the tile tips over and shrinks with a puff of
+  // particles. Resolves when the animation is over.
+  async removeTile(agentId) {
+    const entry = this.tiles.get(agentId);
+    if (!entry || entry.removing) return;
+    entry.removing = true;
+    entry.parts.liquid.style.height = '0%';
+    entry.el.classList.add('removing');
+    await new Promise(r => setTimeout(r, 650));
+  }
+
   updateTimer(agent, node) {
     const started = agent.transcript.turnStartedAt;
     if (started && (agent.status === 'working' || agent.status === 'waiting' || agent.status === 'starting')) {
       node.textContent = formatDuration(Date.now() - started);
-    } else if (agent.status === 'idle' && agent.transcript.lastTurn) {
+    } else if ((agent.status === 'idle' || agent.status === 'sleeping') && agent.transcript.lastTurn) {
       node.textContent = formatDuration(agent.transcript.lastTurn.durationMs);
     } else {
       node.textContent = '';
@@ -289,7 +346,7 @@ class Hub {
     liquid.animate([{ height: `${entry.level}%` }, { height: '115%' }], timing);
     await grow.finished.catch(() => {});
 
-    const view = this.onOpen(agentId);
+    const view = await this.onOpen(agentId);
     view?.classList.add('entering');
     setTimeout(() => view?.classList.remove('entering'), 220);
     await ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 150, easing: 'ease-out', fill: 'forwards' }).finished.catch(() => {});

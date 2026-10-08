@@ -22,6 +22,7 @@ const state = {
   current: null,           // { kind: 'agent' | 'history' | 'new', id }
   groups: { groups: [], assignments: {} },  // your session groups, saved in groups.json
   renamingGroup: null,     // id of the group whose name is being edited
+  parked: new Map(),       // session id -> a sleeping Hub agent (not running, kept across restarts)
 };
 
 // ---------- model menu ----------
@@ -150,17 +151,77 @@ async function chooseFolder() {
   $('input').focus();
 }
 
-async function chooseGroup() {
+// The group button opens a panel: type a name to create a group, or pick
+// one from the list. Groups that agents in the Hub use come first.
+function chooseGroup() {
   const d = ensureDraft();
-  const items = [
-    { id: 'none', label: 'No group', checked: !d.groupId },
-    ...state.groups.groups.map(g => ({ id: 'g:' + g.id, label: g.name, checked: g.id === d.groupId })),
-  ];
-  const picked = await window.deck.popupMenu(items);
-  if (!picked) return;
-  d.groupId = picked === 'none' ? null : picked.slice(2);
-  renderDraftButtons();
-  $('input').focus();
+  document.querySelector('.group-panel')?.remove();
+  const panel = el('div', 'group-panel');
+  const input = document.createElement('input');
+  input.placeholder = 'Type a new group, or search…';
+  const list = el('div', 'group-panel-list');
+  panel.append(input, list);
+  $('composer-group').parentNode.appendChild(panel);
+
+  const inUse = new Map();
+  for (const item of hubItems()) if (item.groupId) inUse.set(item.groupId, (inUse.get(item.groupId) || 0) + 1);
+
+  const close = () => {
+    panel.remove();
+    document.removeEventListener('mousedown', outside, true);
+  };
+  const outside = e => { if (!panel.contains(e.target) && e.target !== $('composer-group')) close(); };
+  const pick = groupId => {
+    d.groupId = groupId;
+    close();
+    renderDraftButtons();
+    $('input').focus();
+  };
+
+  function render() {
+    const q = input.value.trim().toLowerCase();
+    list.innerHTML = '';
+    const groups = [...state.groups.groups]
+      .filter(g => !q || g.name.toLowerCase().includes(q))
+      .sort((a, b) => (inUse.get(b.id) || 0) - (inUse.get(a.id) || 0));
+    const exact = state.groups.groups.some(g => g.name.toLowerCase() === q);
+    if (q && !exact) {
+      const create = el('div', 'group-panel-item create', `+ Create group "${input.value.trim()}"`);
+      create.onclick = () => pick(addGroup(input.value.trim()).id);
+      list.appendChild(create);
+    }
+    if (!q) {
+      const none = el('div', 'group-panel-item' + (!d.groupId ? ' selected' : ''));
+      none.append(el('span', null, 'No group'));
+      none.onclick = () => pick(null);
+      list.appendChild(none);
+    }
+    let shownInUse = false;
+    for (const g of groups) {
+      const n = inUse.get(g.id) || 0;
+      if (!n && shownInUse && !list.querySelector('.group-panel-sep')) list.appendChild(el('div', 'group-panel-sep', 'Other groups'));
+      if (n) shownInUse = true;
+      const row = el('div', 'group-panel-item' + (g.id === d.groupId ? ' selected' : ''));
+      row.append(el('span', null, '# ' + g.name), el('span', 'group-panel-count', n ? `${n} agent${n === 1 ? '' : 's'}` : ''));
+      row.onclick = () => pick(g.id);
+      list.appendChild(row);
+    }
+  }
+
+  input.oninput = render;
+  input.onkeydown = e => {
+    if (e.key === 'Escape') { close(); $('input').focus(); }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const q = input.value.trim();
+      if (!q) return;
+      const match = state.groups.groups.find(g => g.name.toLowerCase() === q.toLowerCase());
+      pick(match ? match.id : addGroup(q).id);
+    }
+  };
+  setTimeout(() => document.addEventListener('mousedown', outside, true));
+  render();
+  input.focus();
 }
 
 $('composer-folder').onclick = chooseFolder;
@@ -233,15 +294,20 @@ function backToHub() {
   show('hub');
   if (cur?.kind === 'agent' && state.agents.has(cur.id)) {
     requestAnimationFrame(() => hub.returnTo(cur.id));
+  } else if (cur?.kind === 'history' && state.parked.has(cur.id)) {
+    requestAnimationFrame(() => hub.returnTo('p:' + cur.id));
   }
 }
 $('back-to-hub').onclick = backToHub;
 
 const hub = new Hub($('hub-view'), {
-  onOpen: id => {
+  onOpen: async id => {
+    if (id.startsWith('p:')) return openParked(id.slice(2));
     show('agent', id);
     return state.agents.get(id)?.view;
   },
+  onRemove: removeFromHub,
+  onContext: id => sessionMenu(id.startsWith('p:') ? id.slice(2) : state.agents.get(id)?.sessionId),
   onNew: () => {
     show('hub');
     $('input').focus();
@@ -254,8 +320,10 @@ function refreshHub() {
   if (hubFrame) return;
   hubFrame = requestAnimationFrame(() => {
     hubFrame = 0;
-    const agents = [...state.agents.values()];
-    hub.update(agents, state.current?.kind === 'agent' ? state.current.id : null);
+    const items = hubItems();
+    hub.update(items, state.current?.kind === 'agent' ? state.current.id : null, state.groups.groups);
+    saveHub();
+    const agents = items.filter(a => !a.parked);
     const busy = agents.filter(a => ['working', 'starting', 'waiting'].includes(a.status)).length;
     $('hub-count').textContent = agents.length ? `${busy}/${agents.length}` : '';
     $('hub-nav').classList.toggle('attn', agents.some(a => a.status === 'waiting'));
@@ -263,8 +331,104 @@ function refreshHub() {
 }
 
 setInterval(() => {
-  if (state.current?.kind === 'hub') hub.tick([...state.agents.values()]);
+  if (state.current?.kind === 'hub') hub.tick(hubItems());
 }, 1000);
+
+// ---------- agents kept in the Hub ----------
+
+// What the Hub remembers about an agent. Enough to show its tile and to
+// resume its session after a restart.
+function hubInfo(a) {
+  return {
+    sessionId: a.sessionId,
+    title: a.title,
+    cwd: a.cwd,
+    groupId: a.groupId || groupOf(a.sessionId) || null,
+    choice: a.choice,
+    mode: a.mode,
+    lastTurn: a.transcript?.lastTurn ? { durationMs: a.transcript.lastTurn.durationMs, usage: a.transcript.lastTurn.usage } : a.lastTurn || null,
+  };
+}
+
+// A sleeping agent, in the shape the Hub expects from a running one.
+function parkedItem(p) {
+  return {
+    id: 'p:' + p.sessionId,
+    parked: true,
+    status: 'sleeping',
+    title: p.title,
+    cwd: p.cwd,
+    groupId: groupOf(p.sessionId) || p.groupId,
+    transcript: { stepCount: 0, tokens: p.lastTurn?.usage || null, turnStartedAt: null, lastTurn: p.lastTurn },
+  };
+}
+
+// Running agents first, then the sleeping ones. Agents you removed are left out.
+function hubItems() {
+  const live = [...state.agents.values()].filter(a => !a.removed);
+  for (const a of live) a.groupId = groupOf(a.sessionId) || a.groupId || null;
+  const liveSessions = new Set(live.map(a => a.sessionId).filter(Boolean));
+  const parked = [...state.parked.values()].filter(p => !liveSessions.has(p.sessionId)).map(parkedItem);
+  return [...live, ...parked];
+}
+
+// Saved in the window's local storage, which survives restarts. Running
+// agents are saved too, so after a restart they come back as sleeping tiles.
+function saveHub() {
+  const list = [];
+  for (const a of state.agents.values()) if (!a.removed && a.sessionId) list.push(hubInfo(a));
+  const live = new Set(list.map(p => p.sessionId));
+  for (const p of state.parked.values()) if (!live.has(p.sessionId)) list.push(p);
+  try { localStorage.setItem('hubAgents', JSON.stringify(list)); } catch { /* not important */ }
+}
+
+function loadHub() {
+  try {
+    for (const p of JSON.parse(localStorage.getItem('hubAgents') || '[]')) state.parked.set(p.sessionId, p);
+  } catch { /* start with an empty Hub */ }
+}
+
+// Opens a sleeping agent's session; your next message there resumes it.
+async function openParked(sessionId) {
+  const p = state.parked.get(sessionId);
+  let session = state.sessions.find(s => s.id === sessionId);
+  if (!session) {
+    await loadSessions();
+    session = state.sessions.find(s => s.id === sessionId);
+  }
+  if (!session) {
+    show('hub');
+    return null;
+  }
+  await openHistory(session);
+  const h = state.history.get(sessionId);
+  if (h && p) {
+    h.choice = h.choice || p.choice;
+    h.mode = h.mode || p.mode;
+    composerPicker.setValue(h.choice || defaultChoice());
+    composerModePicker.setValue(h.mode || defaultMode());
+  }
+  return h?.view;
+}
+
+async function removeFromHub(id) {
+  if (id.startsWith('p:')) {
+    await hub.removeTile(id);
+    state.parked.delete(id.slice(2));
+    refreshHub();
+    return;
+  }
+  const a = state.agents.get(id);
+  if (!a) return;
+  if (['working', 'waiting', 'starting'].includes(a.status)
+      && !confirm(`"${a.title}" is still working. Stop it and remove it from the Hub?`)) return;
+  await hub.removeTile(id);
+  // The process stops too; its session stays in History.
+  a.removed = true;
+  window.deck.closeAgent(id);
+  if (state.current?.kind === 'agent' && state.current.id === id) show('hub');
+  refreshHub();
+}
 
 function setHeader(title, subtitle, agent) {
   $('view-title').textContent = title;
@@ -342,10 +506,21 @@ function groupOf(sessionId) {
 function assignGroup(sessionId, groupId) {
   if (!sessionId) return;
   for (const a of state.agents.values()) if (a.sessionId === sessionId) a.groupId = groupId;
+  const parked = state.parked.get(sessionId);
+  if (parked) parked.groupId = groupId;
   if (groupId) state.groups.assignments[sessionId] = groupId;
   else delete state.groups.assignments[sessionId];
   saveGroups();
   renderSidebar();
+}
+
+// Creates a group with a name, without the rename field in the sidebar.
+function addGroup(name) {
+  const group = { id: crypto.randomUUID(), name, collapsed: false };
+  state.groups.groups.push(group);
+  saveGroups();
+  renderSidebar();
+  return group;
 }
 
 function createGroup() {
@@ -562,7 +737,10 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
   // A resumed session keeps its chat container, so its history stays on screen.
   const view = resume ? resume.view : makeChatView();
   const transcript = resume ? resume.transcript : new Transcript(view, cwd);
-  if (resume) state.history.delete(resume.session.id);
+  if (resume) {
+    state.history.delete(resume.session.id);
+    state.parked.delete(resume.session.id);
+  }
 
   transcript.onUpdate = refreshHub;
   const agent = { id, title, cwd, status: 'starting', sessionId: resume?.session.id || null, view, transcript, unread: false, choice, mode: permissionMode,
@@ -669,6 +847,7 @@ window.deck.onExit((id, { code, stderr }) => {
   a.status = 'exited';
   // Keep the chat open as a history entry, so you can read it and resume it.
   state.agents.delete(id);
+  if (!a.removed && a.sessionId) state.parked.set(a.sessionId, hubInfo(a));
   const session = { id: a.sessionId || id, title: a.title, cwd: a.cwd, file: null, updatedAt: Date.now() };
   state.history.set(session.id, { session, view: a.view, transcript: a.transcript, cwd: a.cwd, choice: a.choice, mode: a.mode });
   if (state.current?.kind === 'agent' && state.current.id === id) show('history', session.id);
@@ -784,6 +963,7 @@ setInterval(renderSidebar, 60_000);
   state.config = await window.deck.getConfig();
   loadModels();
   state.groups = { groups: [], assignments: {}, ...(await window.deck.getGroups()) };
+  loadHub();
   await loadSessions();
   show('hub');
 })();
