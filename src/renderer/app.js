@@ -584,8 +584,28 @@ function updateAttention() {
   const n = [...state.agents.values()].filter(a => a.status === 'waiting').length;
   if (n !== attentionCount) {
     attentionCount = n;
-    window.deck.setAttention(n);
+    window.deck.setAttention(n, window.deck.platform === 'darwin' ? null : badgeImage(n));
   }
+}
+
+// Windows has no Dock badge, so the taskbar button gets a red dot with the
+// number drawn here (32 px, so it stays sharp on high-resolution screens).
+function badgeImage(n) {
+  if (!n) return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 32;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#e5484d';
+  ctx.beginPath();
+  ctx.arc(16, 16, 16, 0, Math.PI * 2);
+  ctx.fill();
+  const text = n > 9 ? '9+' : String(n);
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${text.length > 1 ? 17 : 21}px "Segoe UI", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 16, 17);
+  return canvas.toDataURL('image/png');
 }
 
 // Many events can arrive in one frame, so the Hub redraws at most once per frame.

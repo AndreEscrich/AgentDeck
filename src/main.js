@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Notification, Menu, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Notification, Menu, protocol, net, nativeImage } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { AgentManager, fetchModels, summarizeTitle } = require('./agents');
@@ -198,16 +198,19 @@ app.whenReady().then(() => {
   ipcMain.handle('agent:setPermissionMode', (_e, id, mode) => agents.setPermissionMode(id, mode));
   ipcMain.handle('agent:interrupt', (_e, id) => agents.interrupt(id));
   ipcMain.handle('agent:close', (_e, id) => agents.close(id));
-  // The number of agents that wait for you, as a red badge on the Dock icon.
-  // The icon bounces once (on Windows, the taskbar button flashes) when one
-  // more starts waiting while you are elsewhere.
+  // The number of agents that wait for you, as a red badge on the Dock icon
+  // (on Windows, on the taskbar button; the window draws that badge). The icon
+  // bounces once (on Windows, the taskbar button flashes) when one more starts
+  // waiting while you are elsewhere.
   let attention = 0;
-  ipcMain.handle('attention', (_e, count) => {
+  ipcMain.handle('attention', (_e, count, badge) => {
     if (process.platform === 'darwin' && app.dock) {
       app.setBadgeCount(count);
       if (count > attention && !win.isFocused()) app.dock.bounce('informational');
-    } else if (count > attention && !win.isFocused()) {
-      win.flashFrame(true);
+    } else {
+      const image = count && badge ? nativeImage.createFromDataURL(badge) : null;
+      win.setOverlayIcon(image, count ? `${count} waiting for you` : '');
+      if (count > attention && !win.isFocused()) win.flashFrame(true);
     }
     attention = count;
   });
