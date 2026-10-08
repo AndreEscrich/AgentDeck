@@ -386,6 +386,47 @@ function renderContextMeter() {
   meter.appendChild(pop);
 }
 
+// ---------- first look at a finished agent ----------
+
+// The first time you open an agent after it finished a task, the chat starts
+// at the beginning of that task's output (right under your message) and then
+// scrolls smoothly to the bottom, so you see the whole result go by. Scrolling,
+// clicking or typing yourself stops it.
+function revealLatest(view, transcript) {
+  const turnEl = transcript?.lastFinished?.el;
+  if (!view || !turnEl) return;
+  const startAt = () => view.scrollTop + turnEl.getBoundingClientRect().top - view.getBoundingClientRect().top - 16;
+  view.scrollTop = Math.max(0, startAt());
+
+  let frame = 0;
+  let timer = 0;
+  const stop = () => {
+    clearTimeout(timer);
+    cancelAnimationFrame(frame);
+    for (const type of ['wheel', 'mousedown', 'touchstart']) view.removeEventListener(type, stop);
+    document.removeEventListener('keydown', stop, true);
+  };
+  for (const type of ['wheel', 'mousedown', 'touchstart']) view.addEventListener(type, stop, { passive: true });
+  document.addEventListener('keydown', stop, true);
+
+  // Wait until the opening animation is over and you have seen the start.
+  timer = setTimeout(() => {
+    const from = view.scrollTop;
+    const distance = view.scrollHeight - view.clientHeight - from;
+    if (distance <= 0) return stop();
+    const duration = Math.min(2500, Math.max(600, distance * 0.9));
+    const began = performance.now();
+    const ease = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+    const step = now => {
+      const t = Math.min(1, (now - began) / duration);
+      view.scrollTop = from + (view.scrollHeight - view.clientHeight - from) * ease(t);
+      if (t < 1) frame = requestAnimationFrame(step);
+      else stop();
+    };
+    frame = requestAnimationFrame(step);
+  }, 900);
+}
+
 function show(kind, id) {
   state.current = { kind, id };
   $('back-to-hub').classList.toggle('hidden', !['agent', 'history'].includes(kind));
@@ -401,6 +442,8 @@ function show(kind, id) {
   if (kind === 'agent') {
     const a = state.agents.get(id);
     a.view.classList.remove('hidden');
+    // Finished while you were not looking: show its output from the start.
+    if (a.unread && a.status === 'idle') revealLatest(a.view, a.transcript);
     a.unread = false;
     setHeader(a.title, a.cwd, a);
     composerPicker.setValue(a.choice || defaultChoice());
@@ -601,6 +644,7 @@ function loadHub() {
 // Opens the session of an agent that is not running; your next message there resumes it.
 async function openParked(sessionId) {
   const p = state.parked.get(sessionId);
+  const firstLook = !!p?.unread;
   if (p) p.unread = false;
   let session = state.sessions.find(s => s.id === sessionId);
   if (!session) {
@@ -613,6 +657,7 @@ async function openParked(sessionId) {
   }
   await openHistory(session);
   const h = state.history.get(sessionId);
+  if (firstLook && h) revealLatest(h.view, h.transcript);
   if (h && p) {
     h.choice = h.choice || p.choice;
     h.mode = h.mode || p.mode;
