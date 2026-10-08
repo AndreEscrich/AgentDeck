@@ -640,6 +640,8 @@ function hubInfo(a) {
   return {
     sessionId: a.sessionId,
     title: a.title,
+    latestPrompt: a.latestPrompt || null,
+    latestTitle: a.latestTitle || null,
     cwd: a.cwd,
     groupId: a.groupId || groupOf(a.sessionId) || null,
     choice: a.choice,
@@ -663,6 +665,8 @@ function parkedItem(p) {
     parked: true,
     status: 'idle',
     title: p.title,
+    latestPrompt: p.latestPrompt,
+    latestTitle: p.latestTitle,
     cwd: p.cwd,
     groupId: groupOf(p.sessionId) || p.groupId,
     sessionId: p.sessionId,
@@ -1128,6 +1132,7 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
   }
   transcript.add({ type: 'user', message: { role: 'user', content: prompt } });
   if (!resume) summarizeTitle(agent, prompt);
+  else if (prompt !== RESUME_PROMPT) notePrompt(agent, prompt);
   if (fromRect) {
     // Started from the Hub: stay there and watch the message box become the tile.
     hub.expectArrival(id, fromRect, prompt);
@@ -1162,6 +1167,24 @@ async function summarizeTitle(agent, prompt) {
   rememberTitle(agent);
   refreshHeaderIfCurrent(agent.id);
   refreshHub();
+}
+
+// A message after the first one: the agent's tile shows it, first as you
+// wrote it, then as a short summary (the same kind as the agent's title).
+// The full message is in the tile's tooltip.
+function notePrompt(agent, text) {
+  text = String(text || '').trim();
+  if (!text) return;
+  agent.latestPrompt = text;
+  agent.latestTitle = text.split('\n')[0].slice(0, 80);
+  refreshHub();
+  saveHub();
+  window.deck.summarizeTitle(text).then(title => {
+    if (!title || agent.latestPrompt !== text) return;
+    agent.latestTitle = title;
+    refreshHub();
+    saveHub();
+  }).catch(() => {});
 }
 
 // After you send a message, the Hub shows the agent going (back) to work.
@@ -1362,6 +1385,7 @@ async function sendFromComposer() {
       return;
     }
     a.transcript.add({ type: 'user', message: { role: 'user', content: text } });
+    notePrompt(a, text);
     afterSend(a, true);
     await sendToAgent(a, text);
   } else if (state.current.kind === 'history') {

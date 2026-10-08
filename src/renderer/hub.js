@@ -176,8 +176,11 @@ class Hub {
       entry.level = this.levelFor(agent);
       parts.liquid.style.height = `${entry.level}%`;
       parts.icon.textContent = { idle: '✓', error: '✕' }[agent.status] || '';
-      parts.title.textContent = agent.title;
-      parts.title.title = `${agent.title}\n${agent.cwd}`;
+      // After a follow-up message, the tile shows that message (summarized).
+      parts.title.textContent = agent.latestTitle || agent.title;
+      parts.title.title = agent.latestPrompt
+        ? `${agent.latestPrompt}\n\nTask: ${agent.title}\n${agent.cwd}`
+        : `${agent.title}\n${agent.cwd}`;
       parts.statusDot.className = `dot ${agent.status}`;
       parts.statusText.textContent = HUB_STATUS_TEXT[agent.status] || agent.status;
       // What a waiting agent needs from you: an answer or an approval.
