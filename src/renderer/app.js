@@ -50,6 +50,27 @@ const composerPicker = new ModelPicker($('composer-picker'), {
 });
 const newPicker = new ModelPicker($('new-model-picker'), { openUp: false });
 
+function defaultMode() {
+  return state.config.defaultPermissionMode || 'bypassPermissions';
+}
+
+// The permission menu under the message box works the same way as the model
+// menu: it changes the agent on screen, or what a history session resumes with.
+const composerModePicker = new ModePicker($('composer-mode-picker'), {
+  onChange: mode => {
+    const cur = state.current;
+    if (cur?.kind === 'agent') {
+      const a = state.agents.get(cur.id);
+      a.mode = mode;
+      window.deck.setPermissionMode(a.id, mode);
+      a.transcript.note(`Permissions switched to ${composerModePicker.mode.label}.`);
+    } else if (cur?.kind === 'history') {
+      state.history.get(cur.id).mode = mode;
+    }
+  },
+});
+const newModePicker = new ModePicker($('new-mode-picker'), { openUp: false });
+
 // ---------- views ----------
 
 function makeChatView() {
@@ -75,6 +96,7 @@ function show(kind, id) {
     a.unread = false;
     setHeader(a.title, a.cwd, a);
     composerPicker.setValue(a.choice || defaultChoice());
+    composerModePicker.setValue(a.mode || defaultMode());
     $('input').placeholder = 'Message the agent… (↩ to send, ⇧↩ for a new line)';
     $('input').focus();
   } else if (kind === 'history') {
@@ -82,6 +104,7 @@ function show(kind, id) {
     h.view.classList.remove('hidden');
     setHeader(h.session.title, h.cwd || h.session.cwd, null);
     composerPicker.setValue(h.choice || defaultChoice());
+    composerModePicker.setValue(h.mode || defaultMode());
     $('input').placeholder = 'Send a message to continue this session…';
     $('input').focus();
   } else {
@@ -209,6 +232,7 @@ async function openHistory(session) {
 async function startAgent({ cwd, prompt, permissionMode, choice, resume }) {
   const title = resume ? resume.session.title : prompt.split('\n')[0].slice(0, 80);
   choice = choice || defaultChoice();
+  permissionMode = permissionMode || defaultMode();
   const { id } = await window.deck.startAgent({
     cwd,
     permissionMode,
@@ -223,7 +247,7 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume }) {
   const transcript = resume ? resume.transcript : new Transcript(view);
   if (resume) state.history.delete(resume.session.id);
 
-  const agent = { id, title, cwd, status: 'starting', sessionId: resume?.session.id || null, view, transcript, unread: false, choice };
+  const agent = { id, title, cwd, status: 'starting', sessionId: resume?.session.id || null, view, transcript, unread: false, choice, mode: permissionMode };
   state.agents.set(id, agent);
   transcript.add({ type: 'user', message: { role: 'user', content: prompt } });
   await window.deck.sendMessage(id, prompt);
@@ -256,6 +280,13 @@ window.deck.onPermission((id, req) => {
   window.deck.notify(a.title, req.title || `Needs approval to use ${req.display_name || req.tool_name}`);
 });
 
+window.deck.onMode((id, mode) => {
+  const a = state.agents.get(id);
+  if (!a) return;
+  a.mode = mode;
+  if (state.current?.kind === 'agent' && state.current.id === id) composerModePicker.setValue(mode);
+});
+
 window.deck.onPermissionCancel((id, requestId) => {
   state.agents.get(id)?.transcript.cancelPermission(requestId);
 });
@@ -281,7 +312,7 @@ window.deck.onExit((id, { code, stderr }) => {
   // Keep the chat open as a history entry, so you can read it and resume it.
   state.agents.delete(id);
   const session = { id: a.sessionId || id, title: a.title, cwd: a.cwd, file: null, updatedAt: Date.now() };
-  state.history.set(session.id, { session, view: a.view, transcript: a.transcript, cwd: a.cwd, choice: a.choice });
+  state.history.set(session.id, { session, view: a.view, transcript: a.transcript, cwd: a.cwd, choice: a.choice, mode: a.mode });
   if (state.current?.kind === 'agent' && state.current.id === id) show('history', session.id);
   loadSessions();
 });
@@ -306,7 +337,7 @@ async function sendFromComposer() {
       h.transcript.note('This session has no saved folder, so it cannot be resumed.', true);
       return;
     }
-    await startAgent({ cwd, prompt: text, permissionMode: state.config.defaultPermissionMode, choice: h.choice, resume: h });
+    await startAgent({ cwd, prompt: text, permissionMode: h.mode, choice: h.choice, resume: h });
   }
 }
 
@@ -336,7 +367,7 @@ $('new-form').addEventListener('submit', async e => {
   const prompt = $('new-prompt').value.trim();
   if (!cwd || !prompt) return;
   $('new-prompt').value = '';
-  await startAgent({ cwd, prompt, permissionMode: $('new-permission').value, choice: newPicker.value });
+  await startAgent({ cwd, prompt, permissionMode: newModePicker.value, choice: newPicker.value });
 });
 $('new-prompt').addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.metaKey) $('new-form').requestSubmit();
@@ -371,7 +402,7 @@ setInterval(renderSidebar, 60_000);
 
 (async () => {
   state.config = await window.deck.getConfig();
-  $('new-permission').value = state.config.defaultPermissionMode;
+  newModePicker.setValue(defaultMode());
   newPicker.setValue(defaultChoice());
   loadModels();
   if (state.config.defaultFolder) $('new-cwd').value = state.config.defaultFolder;

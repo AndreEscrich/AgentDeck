@@ -115,6 +115,8 @@ class AgentManager {
       '--permission-mode', permissionMode || config.defaultPermissionMode,
       // Send permission questions to us over stdout instead of refusing them.
       '--permission-prompt-tool', 'stdio',
+      // Without this flag the CLI refuses a later switch to bypass mode.
+      '--allow-dangerously-skip-permissions',
     ];
     if (model && model !== 'default') args.push('--model', model);
     if (effort) args.push('--effort', effort);
@@ -172,6 +174,13 @@ class AgentManager {
       agent.sessionId = msg.session_id;
       this.send('agent:session', agent.id, msg.session_id);
     }
+    // The mode can change without us asking, for example when Claude leaves
+    // plan mode. The CLI reports the new mode in init and status events.
+    if (msg.type === 'system' && msg.permissionMode && msg.permissionMode !== agent.mode) {
+      agent.mode = msg.permissionMode;
+      this.send('agent:mode', agent.id, msg.permissionMode);
+    }
+    if (msg.type === 'system' && msg.subtype === 'status') return;
     if (msg.type === 'system' && msg.subtype === 'init') {
       this.setStatus(agent, agent.status === 'starting' ? 'idle' : agent.status);
       if (msg.model && msg.model !== agent.model) {
@@ -240,6 +249,10 @@ class AgentManager {
   setModel(id, { model, effort, fastMode }) {
     this.control(id, { subtype: 'set_model', model: model && model !== 'default' ? model : null });
     this.control(id, { subtype: 'apply_flag_settings', settings: { effortLevel: effort || null, fastMode: !!fastMode } });
+  }
+
+  setPermissionMode(id, mode) {
+    this.control(id, { subtype: 'set_permission_mode', mode });
   }
 
   // Asks Claude to stop the current turn but keeps the process alive, the same

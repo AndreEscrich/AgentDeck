@@ -8,8 +8,8 @@ const { listSessions, loadTranscript, PROJECTS_DIR } = require('./sessions');
 // the first time it starts; use "Settings" in the sidebar to open it.
 const DEFAULT_CONFIG = {
   claudePath: '',                       // empty means: look in the usual install folders
-  defaultPermissionMode: 'acceptEdits', // default | acceptEdits | plan | bypassPermissions
-  defaultModel: 'default',              // a value from the model menu, e.g. "opus[1m]" or "sonnet"
+  defaultPermissionMode: 'bypassPermissions', // default | acceptEdits | auto | plan | bypassPermissions
+  defaultModel: 'opus',                 // a value from the model menu; "opus" is always the latest Opus
   defaultEffort: '',                    // low | medium | high | xhigh | max; empty means the model's default
   defaultFastMode: false,
   defaultFolder: '',
@@ -92,6 +92,7 @@ app.whenReady().then(() => {
     return models;
   });
   ipcMain.handle('agent:respondPermission', (_e, id, requestId, decision) => agents.respondPermission(id, requestId, decision));
+  ipcMain.handle('agent:setPermissionMode', (_e, id, mode) => agents.setPermissionMode(id, mode));
   ipcMain.handle('agent:interrupt', (_e, id) => agents.interrupt(id));
   ipcMain.handle('agent:close', (_e, id) => agents.close(id));
   ipcMain.handle('notify', (_e, title, body) => {

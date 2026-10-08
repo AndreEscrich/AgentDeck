@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('deck', {
   setModel: (id, choice) => ipcRenderer.invoke('agent:setModel', id, choice),
   listModels: () => ipcRenderer.invoke('models:list'),
   respondPermission: (id, requestId, decision) => ipcRenderer.invoke('agent:respondPermission', id, requestId, decision),
+  setPermissionMode: (id, mode) => ipcRenderer.invoke('agent:setPermissionMode', id, mode),
   interrupt: id => ipcRenderer.invoke('agent:interrupt', id),
   closeAgent: id => ipcRenderer.invoke('agent:close', id),
   notify: (title, body) => ipcRenderer.invoke('notify', title, body),
@@ -29,6 +30,7 @@ contextBridge.exposeInMainWorld('deck', {
   onModel: fn => on('agent:model', fn),
   onPermission: fn => on('agent:permission', fn),
   onPermissionCancel: fn => on('agent:permissionCancel', fn),
+  onMode: fn => on('agent:mode', fn),
   onExit: fn => on('agent:exit', fn),
   onSessionsChanged: fn => on('sessions:changed', fn),
 });

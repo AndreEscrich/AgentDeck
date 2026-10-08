@@ -303,3 +303,6 @@ button.danger { color: var(--err); }
 .perm-result { font-size: 12px; color: var(--text-dim); }
 .perm-result.ok { color: var(--ok); }
 .perm-result.err { color: var(--err); }
+
+.composer-pickers { display: flex; gap: 2px; align-items: center; }
+.model-btn.danger-text { color: var(--err); }
