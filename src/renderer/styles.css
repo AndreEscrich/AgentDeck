@@ -810,3 +810,14 @@ video.chat-media { background: #000; }
 .prompt-pin-bar:hover { border-color: var(--text-faint); background: rgba(38, 40, 51, 0.95); }
 .prompt-pin-label { flex-shrink: 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); }
 .prompt-pin-text { font-size: 13px; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
+/* With room beside the chat, the message sits in the right margin (where
+   your messages are) as a card, so it never covers the chat. Narrower
+   windows keep the bar at the top. */
+.chat { container-type: inline-size; }
+@container (min-width: 1160px) {
+  .prompt-pin-bar { left: auto; right: 16px; top: 20px; transform: translateX(8px);
+    width: calc((100cqw - var(--chat-width)) / 2 + 24px - 48px);
+    flex-direction: column; align-items: stretch; gap: 4px; padding: 10px 12px; }
+  .prompt-pin.show .prompt-pin-bar { transform: none; }
+  .prompt-pin-text { font-size: 12.5px; -webkit-line-clamp: 10; }
+}
