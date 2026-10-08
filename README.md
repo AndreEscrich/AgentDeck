@@ -79,7 +79,7 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 | ⌘F | Search history |
 | ⌘\\ | Open or close History |
 | (Windows) | Ctrl instead of ⌘ for every shortcut above |
-| Esc | Stop the current turn |
+| Esc | Back to the Hub from an agent (closes an open menu, panel or review first); the Stop button stops a running turn |
 
 ## How it works
 

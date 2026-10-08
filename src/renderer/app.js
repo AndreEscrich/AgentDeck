@@ -916,11 +916,20 @@ document.addEventListener('keydown', e => {
     if (a) { e.preventDefault(); show('agent', a.id); }
   }
   if (isMod(e) && e.key === 'f') { e.preventDefault(); setHistoryOpen(true); }
-  if (e.key === 'Escape' && state.current?.kind === 'agent') {
-    const a = state.agents.get(state.current.id);
-    if (a?.status === 'working') window.deck.interrupt(a.id);
+  // Esc leaves an agent (or a saved session, or a new agent) for the Hub.
+  // The Stop button in the top bar stops a running turn.
+  if (e.key === 'Escape' && !e.popupWasOpen && ['agent', 'history', 'new'].includes(state.current?.kind)) {
+    e.preventDefault();
+    backToHub();
   }
 });
+
+// Esc first closes whatever is open (a model or permission menu, the group
+// panel, the review view). This runs before those close themselves, so the
+// handler above knows not to go back to the Hub as well.
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') e.popupWasOpen = !!document.querySelector('.model-menu:not(.hidden), .group-panel, .review');
+}, true);
 
 // ---------- history drawer ----------
 
