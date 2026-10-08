@@ -258,8 +258,12 @@ function summarizeTitle(config, text) {
       try {
         const result = JSON.parse(out);
         if (result.is_error || typeof result.result !== 'string') return resolve(null);
-        // One line, no quotes or end punctuation, at most 5 words.
-        const title = result.result.split('\n')[0].replace(/^["'`*#\s]+|["'`*.!?\s]+$/g, '').split(/\s+/).slice(0, 5).join(' ');
+        // One line, no "Title:" label, no quotes or end punctuation, at most 5 words.
+        const title = result.result.split('\n')[0]
+          .replace(/^["'`*#\s]+|["'`*.!?\s]+$/g, '')
+          .replace(/^title\s*:\s*/i, '')
+          .replace(/^["'`*\s]+/, '')
+          .split(/\s+/).slice(0, 5).join(' ');
         resolve(title || null);
       } catch {
         resolve(null);
