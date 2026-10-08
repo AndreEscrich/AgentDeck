@@ -465,8 +465,8 @@ details.other-files details.change-file > summary { padding-left: 24px; }
   opacity: 0; transition: opacity 0.15s, background 0.15s, color 0.15s; }
 .hub-section:hover .section-remove { opacity: 1; }
 .section-remove:hover { background: var(--err); border-color: var(--err); color: #fff; }
-.hub-section { overflow: hidden; transition: border-color 0.2s, background 0.2s; }
-.hub-section.removing-group { pointer-events: none; border-color: var(--err); background: rgba(224, 90, 90, 0.06); }
+.hub-section { transition: border-color 0.2s, background 0.2s; }
+.hub-section.removing-group { overflow: hidden; pointer-events: none; border-color: var(--err); background: rgba(224, 90, 90, 0.06); }
 .hub-section.removing-group .section-remove { opacity: 0; }
 .hub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px; }
 /* Inside a group, all tiles stay on one row: they share its width equally and
@@ -492,7 +492,28 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 .hub-tile.state-idle     { --c1: #74d39d; --c2: #2f8f5a; --glow: rgba(76, 175, 122, 0.22); --wave-speed: 12s; }
 .hub-tile.state-error    { --c1: #ef7f7f; --c2: #b33a3a; --glow: rgba(224, 90, 90, 0.3); --wave-speed: 14s; }
 .hub-tile { box-shadow: 0 0 0 0 var(--glow); }
-.hub-tile.state-working, .hub-tile.state-starting, .hub-tile.state-idle, .hub-tile.state-error { box-shadow: 0 6px 28px -6px var(--glow); }
+/* The light behind a tile is its own layer, so it can breathe slowly while
+   the tile itself plays its other animations. Each tile starts at a random
+   point (--phase), so they do not pulse together. Working tiles breathe a
+   little faster. */
+.hub-tile::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+  box-shadow: 0 6px 28px -6px var(--glow); opacity: 0;
+  animation: glow-breathe 5s ease-in-out infinite; animation-delay: var(--phase, 0s); }
+.hub-tile { isolation: isolate; }
+.hub-tile.state-working::before, .hub-tile.state-starting::before, .hub-tile.state-idle::before, .hub-tile.state-error::before { opacity: 1; }
+.hub-tile.state-working::before, .hub-tile.state-starting::before { animation-duration: 2.8s; }
+@keyframes glow-breathe {
+  0%, 100% { transform: scale(0.97); filter: brightness(0.8); }
+  50% { transform: scale(1.03) translateY(2px); filter: brightness(1.25); }
+}
+/* A working tile floats very slightly. It moves with translate and rotate,
+   so the hover lift (transform) still works on top of it. */
+.hub-tile.state-working { animation: work-float 3.6s ease-in-out infinite; animation-delay: var(--phase, 0s); }
+@keyframes work-float {
+  0%, 100% { translate: 0 0; rotate: 0deg; }
+  30% { translate: 0 -2px; rotate: -0.35deg; }
+  70% { translate: 0 1px; rotate: 0.35deg; }
+}
 .hub-tile.state-waiting { animation: attention 1.4s ease-in-out infinite; }
 @keyframes attention { 50% { box-shadow: 0 0 0 4px var(--glow), 0 6px 30px -4px var(--glow); } }
 

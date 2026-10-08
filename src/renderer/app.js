@@ -652,6 +652,14 @@ const hub = new Hub($('hub-view'), {
   onSettings: () => window.deck.openConfig(),
   // A new agent's message box has flown into its tile.
   onLanded: () => { if (playSounds()) sounds.brew(); },
+  // Catching up after the app was in the background: each tile that changed
+  // plays the sound of its new state as it changes.
+  onReplay: agent => {
+    if (!playSounds()) return;
+    if (agent.status === 'idle') sounds.done();
+    else if (agent.status === 'waiting') sounds.attention();
+    else if (agent.status === 'error') sounds.error();
+  },
   onContext: id => sessionMenu(id.startsWith('p:') ? id.slice(2) : state.agents.get(id)?.sessionId),
 });
 

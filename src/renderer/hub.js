@@ -35,8 +35,9 @@ class Hub {
   // New agents start only from the message box under the Hub.
   // onRemove(agentId) removes a tile's agent; onContext(agentId) shows its
   // right-click menu.
-  constructor(container, { onOpen, onRemove, onRemoveGroup, onContext, onHistory, onSettings, onLanded }) {
+  constructor(container, { onOpen, onRemove, onRemoveGroup, onContext, onHistory, onSettings, onLanded, onReplay }) {
     this.onOpen = onOpen;
+    this.onReplay = onReplay;
     this.onLanded = onLanded;
     this.onRemoveGroup = onRemoveGroup;
     this.onRemove = onRemove;
@@ -71,6 +72,8 @@ class Hub {
     const arrival = this.arrivals.get(agent.id);
     this.arrivals.delete(agent.id);
     const tile = el('div', arrival ? 'hub-tile arriving' : 'hub-tile spawn');
+    // Where in its breathing and floating the tile starts (see styles.css).
+    tile.style.setProperty('--phase', `-${(Math.random() * 5).toFixed(2)}s`);
     tile.addEventListener('animationend', e => { if (e.animationName === 'spawn') tile.classList.remove('spawn'); });
     tile.onclick = () => this.open(agent.id);
     tile.oncontextmenu = e => { e.preventDefault(); this.onContext?.(agent.id); };
@@ -169,8 +172,11 @@ class Hub {
     for (const a of changed) {
       // The tile may have been removed while the replay runs.
       if (!this.tiles.has(a.id)) continue;
+      const before = pending.get(a.id);
       pending.delete(a.id);
       this.render(staged(), this.latest[1], this.latest[2]);
+      // The sound of the new state plays with its animation.
+      this.onReplay?.(a, before);
       await wait(550);
     }
     this.replaying = false;
