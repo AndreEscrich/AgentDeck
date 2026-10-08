@@ -61,6 +61,7 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 | --- | --- |
 | ⌘N | New agent |
 | ⌘0 | Hub |
+| ⌘[ | Back to the Hub (also the ← Hub button in an agent) |
 | ⌘1 … ⌘9 | Switch to running agent 1–9 |
 | ⌘F | Search history |
 | ⌘\\ | Hide or show the sidebar |

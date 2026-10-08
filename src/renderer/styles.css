@@ -554,7 +554,7 @@ body.sidebar-collapsed .review-bar { padding-left: 84px; }
 .zoom-ghost.state-error    { --c1: #ef7f7f; --c2: #b33a3a; }
 .zoom-ghost .liquid { transition: none; }
 .zoom-ghost .liquid::before, .zoom-ghost .liquid::after { animation-duration: 2.4s; }
-.view.entering { animation: enter 0.45s ease-out; }
+.view.entering { animation: enter 0.2s ease-out; }
 @keyframes enter { from { opacity: 0; transform: scale(0.985); } to { opacity: 1; transform: none; } }
 
 /* Sidebar: running agents as small tanks */
@@ -595,3 +595,9 @@ body.sidebar-collapsed .review-bar { padding-left: 84px; }
   45% { transform: scale(0.97, 1.04); }
   100% { transform: none; }
 }
+
+/* Back to the Hub */
+.back-btn { -webkit-app-region: no-drag; flex-shrink: 0; display: flex; align-items: center; gap: 4px;
+  padding: 5px 12px; border-radius: 8px; font-weight: 600; color: var(--text);
+  background: var(--bg-active); border: 1px solid var(--border); }
+.back-btn:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }

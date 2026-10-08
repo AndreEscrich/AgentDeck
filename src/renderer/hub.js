@@ -281,7 +281,7 @@ class Hub {
     document.body.appendChild(ghost);
     entry.el.classList.add('opening');
 
-    const timing = { duration: 460, easing: 'cubic-bezier(.65,0,.25,1)', fill: 'forwards' };
+    const timing = { duration: 260, easing: 'cubic-bezier(.3,0,.2,1)', fill: 'forwards' };
     const grow = ghost.animate([
       { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px`, borderRadius: '14px 14px 22px 22px' },
       { left: `${target.left}px`, top: `${target.top}px`, width: `${target.width}px`, height: `${target.height}px`, borderRadius: '0px' },
@@ -291,10 +291,42 @@ class Hub {
 
     const view = this.onOpen(agentId);
     view?.classList.add('entering');
-    setTimeout(() => view?.classList.remove('entering'), 500);
-    await ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 320, easing: 'ease-out', fill: 'forwards' }).finished.catch(() => {});
+    setTimeout(() => view?.classList.remove('entering'), 220);
+    await ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 150, easing: 'ease-out', fill: 'forwards' }).finished.catch(() => {});
     ghost.remove();
     entry.el.classList.remove('opening');
+    this.opening = false;
+  }
+
+  // Going back: the chat area shrinks into the agent's tank and the liquid
+  // drains to the tile's level. Call it after the Hub is visible again.
+  async returnTo(agentId) {
+    const entry = this.tiles.get(agentId);
+    const from = document.getElementById('views')?.getBoundingClientRect();
+    if (!entry || !from || this.opening) return;
+    const tank = entry.el.querySelector('.tank');
+    tank.scrollIntoView({ block: 'nearest' });
+    const to = tank.getBoundingClientRect();
+    this.opening = true;
+    const ghost = el('div', `zoom-ghost state-${entry.status}`);
+    const liquid = el('div', 'liquid');
+    liquid.style.height = '115%';
+    ghost.appendChild(liquid);
+    Object.assign(ghost.style, { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px` });
+    document.body.appendChild(ghost);
+    entry.el.classList.add('opening');
+
+    const timing = { duration: 260, easing: 'cubic-bezier(.3,0,.2,1)', fill: 'forwards' };
+    const shrink = ghost.animate([
+      { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px`, borderRadius: '0px' },
+      { left: `${to.left}px`, top: `${to.top}px`, width: `${to.width}px`, height: `${to.height}px`, borderRadius: '14px 14px 22px 22px' },
+    ], timing);
+    liquid.animate([{ height: '115%' }, { height: `${entry.level}%` }], timing);
+    await shrink.finished.catch(() => {});
+    entry.el.classList.remove('opening');
+    this.replay(entry.el, 'landed', 600);
+    await ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: 'forwards' }).finished.catch(() => {});
+    ghost.remove();
     this.opening = false;
   }
 

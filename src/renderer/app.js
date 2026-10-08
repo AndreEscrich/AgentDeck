@@ -176,6 +176,7 @@ function makeChatView() {
 
 function show(kind, id) {
   state.current = { kind, id };
+  $('back-to-hub').classList.toggle('hidden', !['agent', 'history', 'new'].includes(kind));
   for (const v of $('views').children) v.classList.add('hidden');
 
   // The Hub also has the message box: a message there starts a new agent.
@@ -224,6 +225,17 @@ function show(kind, id) {
 }
 
 // ---------- hub ----------
+
+// From an agent, the view shrinks back into its tile; from anywhere else the
+// Hub simply opens.
+function backToHub() {
+  const cur = state.current;
+  show('hub');
+  if (cur?.kind === 'agent' && state.agents.has(cur.id)) {
+    requestAnimationFrame(() => hub.returnTo(cur.id));
+  }
+}
+$('back-to-hub').onclick = backToHub;
 
 const hub = new Hub($('hub-view'), {
   onOpen: id => {
@@ -736,6 +748,7 @@ window.deck.onSessionsChanged(loadSessions);
 document.addEventListener('keydown', e => {
   if (e.metaKey && e.key === 'n') { e.preventDefault(); show('new'); }
   if (e.metaKey && e.key === '0') { e.preventDefault(); show('hub'); }
+  if (e.metaKey && e.key === '[') { e.preventDefault(); backToHub(); }
   if (e.metaKey && /^[1-9]$/.test(e.key)) {
     const a = [...state.agents.values()][Number(e.key) - 1];
     if (a) { e.preventDefault(); show('agent', a.id); }
