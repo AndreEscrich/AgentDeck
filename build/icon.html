@@ -4,77 +4,70 @@
 </style></head><body>
 <!-- Agent Hub app icon: three tanks like the agent tiles in the Hub.
      Green on the left (done), amber in the middle with bubbles (working),
-     blue on the right (starting). Render with: npm run icon -->
+     blue on the right (starting). The square fills almost the whole canvas
+     and the tanks fill the square, so the icon reads at taskbar size (16-32
+     px): there it is three bold colored bars. Render with: npm run icon -->
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#2a2d3d"/>
-      <stop offset="1" stop-color="#121319"/>
+      <stop offset="0" stop-color="#30344a"/>
+      <stop offset="1" stop-color="#15161d"/>
     </linearGradient>
     <linearGradient id="amber" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#f2c060"/>
-      <stop offset="1" stop-color="#c98a1c"/>
+      <stop offset="0" stop-color="#ffd27a"/>
+      <stop offset="1" stop-color="#d9921c"/>
     </linearGradient>
     <linearGradient id="green" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#74d39d"/>
-      <stop offset="1" stop-color="#2f8f5a"/>
+      <stop offset="0" stop-color="#86e2ad"/>
+      <stop offset="1" stop-color="#2f9a5e"/>
     </linearGradient>
     <linearGradient id="blue" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#7fa8f0"/>
-      <stop offset="1" stop-color="#3d6bc4"/>
+      <stop offset="0" stop-color="#93b8ff"/>
+      <stop offset="1" stop-color="#3f6fd0"/>
     </linearGradient>
     <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.35"/>
       <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
     </linearGradient>
-    <filter id="iconShadow" x="-10%" y="-10%" width="120%" height="125%">
-      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000" flood-opacity="0.35"/>
-    </filter>
     <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
-      <feDropShadow dx="0" dy="0" stdDeviation="22" flood-color="#e0a83a" flood-opacity="0.45"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="26" flood-color="#f2b13a" flood-opacity="0.55"/>
     </filter>
     <!-- Tank interiors, used to clip the liquid -->
-    <clipPath id="clipLeft"><rect x="190" y="390" width="190" height="290" rx="34"/></clipPath>
-    <clipPath id="clipMid"><rect x="400" y="270" width="224" height="410" rx="40"/></clipPath>
-    <clipPath id="clipRight"><rect x="644" y="390" width="190" height="290" rx="34"/></clipPath>
+    <clipPath id="clipLeft"><rect x="100" y="372" width="230" height="500" rx="52"/></clipPath>
+    <clipPath id="clipMid"><rect x="370" y="160" width="284" height="712" rx="62"/></clipPath>
+    <clipPath id="clipRight"><rect x="694" y="372" width="230" height="500" rx="52"/></clipPath>
   </defs>
 
-  <!-- macOS icon grid: 824px rounded square centered in 1024px -->
-  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)" filter="url(#iconShadow)"/>
-  <rect x="101" y="101" width="822" height="822" rx="184" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2"/>
+  <!-- The square, almost edge to edge -->
+  <rect x="20" y="20" width="984" height="984" rx="216" fill="url(#bg)"/>
+  <rect x="22" y="22" width="980" height="980" rx="214" fill="none" stroke="#ffffff" stroke-opacity="0.10" stroke-width="4"/>
 
-  <!-- The tanks and the shelf, moved down a little to sit in the optical center -->
-  <g transform="translate(0 30)">
   <!-- Left tank: done, almost full -->
-  <rect x="182" y="382" width="206" height="306" rx="40" fill="#0f1016" stroke="#2c2f3d" stroke-width="10"/>
+  <rect x="88" y="360" width="254" height="524" rx="64" fill="#0d0e14" stroke="#454a63" stroke-width="20"/>
   <g clip-path="url(#clipLeft)">
-    <path d="M180 432 C 230 412, 290 452, 390 426 L 390 700 L 180 700 Z" fill="url(#green)"/>
+    <path d="M96 420 C 160 396, 250 444, 336 410 L 336 880 L 96 880 Z" fill="url(#green)"/>
   </g>
-  <rect x="208" y="410" width="16" height="150" rx="8" fill="url(#shine)"/>
+  <rect x="124" y="402" width="26" height="230" rx="13" fill="url(#shine)"/>
 
-  <!-- Right tank: starting, low level -->
-  <rect x="636" y="382" width="206" height="306" rx="40" fill="#0f1016" stroke="#2c2f3d" stroke-width="10"/>
+  <!-- Right tank: starting, a third full -->
+  <rect x="682" y="360" width="254" height="524" rx="64" fill="#0d0e14" stroke="#454a63" stroke-width="20"/>
   <g clip-path="url(#clipRight)">
-    <path d="M634 596 C 690 580, 760 612, 844 590 L 844 700 L 634 700 Z" fill="url(#blue)"/>
+    <path d="M690 690 C 760 668, 850 712, 930 684 L 930 880 L 690 880 Z" fill="url(#blue)"/>
   </g>
-  <rect x="662" y="410" width="16" height="150" rx="8" fill="url(#shine)"/>
+  <rect x="718" y="402" width="26" height="230" rx="13" fill="url(#shine)"/>
 
-  <!-- Middle tank: working, with waves and bubbles -->
+  <!-- Middle tank: working, the tallest, glowing, with bubbles -->
   <g filter="url(#glow)">
-    <rect x="390" y="260" width="244" height="430" rx="46" fill="#0f1016" stroke="#34374a" stroke-width="12"/>
+    <rect x="356" y="146" width="312" height="740" rx="74" fill="#0d0e14" stroke="#575c78" stroke-width="24"/>
   </g>
   <g clip-path="url(#clipMid)">
-    <path d="M396 452 C 460 420, 540 486, 628 440 L 628 700 L 396 700 Z" fill="url(#amber)"/>
-    <path d="M396 452 C 460 420, 540 486, 628 440" fill="none" stroke="#ffffff" stroke-opacity="0.25" stroke-width="6"/>
-    <circle cx="460" cy="600" r="14" fill="#ffffff" fill-opacity="0.15" stroke="#ffffff" stroke-opacity="0.7" stroke-width="5"/>
-    <circle cx="540" cy="530" r="20" fill="#ffffff" fill-opacity="0.15" stroke="#ffffff" stroke-opacity="0.7" stroke-width="5"/>
-    <circle cx="500" cy="380" r="11" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="4"/>
-    <circle cx="575" cy="630" r="9" fill="#ffffff" fill-opacity="0.15" stroke="#ffffff" stroke-opacity="0.7" stroke-width="4"/>
+    <path d="M366 400 C 440 360, 560 440, 660 384 L 660 880 L 366 880 Z" fill="url(#amber)"/>
+    <path d="M366 400 C 440 360, 560 440, 660 384" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="10"/>
+    <circle cx="450" cy="700" r="26" fill="#ffffff" fill-opacity="0.18" stroke="#ffffff" stroke-opacity="0.85" stroke-width="9"/>
+    <circle cx="568" cy="560" r="36" fill="#ffffff" fill-opacity="0.18" stroke="#ffffff" stroke-opacity="0.85" stroke-width="10"/>
+    <circle cx="590" cy="780" r="18" fill="#ffffff" fill-opacity="0.18" stroke="#ffffff" stroke-opacity="0.85" stroke-width="8"/>
+    <circle cx="500" cy="262" r="20" fill="none" stroke="#ffffff" stroke-opacity="0.6" stroke-width="8"/>
   </g>
-  <rect x="420" y="292" width="20" height="230" rx="10" fill="url(#shine)"/>
-
-  <!-- A shelf the tanks stand on -->
-  <rect x="160" y="712" width="704" height="22" rx="11" fill="#2c2f3d"/>
-  </g>
+  <rect x="392" y="196" width="30" height="330" rx="15" fill="url(#shine)"/>
 </svg>
 </body></html>
