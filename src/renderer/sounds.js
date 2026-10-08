@@ -114,6 +114,35 @@ const sounds = (() => {
     } catch { /* no sound is fine */ }
   }
 
+  // A tone that slides from one pitch to another while it fades.
+  function slide(ac, at, from, to, length, volume) {
+    const t = ac.currentTime + at;
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(from, t);
+    osc.frequency.exponentialRampToValueAtTime(to, t + length * 0.88);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(volume, t + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + length);
+    osc.connect(gain).connect(ac.destination);
+    osc.start(t);
+    osc.stop(t + length + 0.04);
+  }
+
+  // A whole group: one short swoosh per tile, each a little lower (timed
+  // with the tiles dropping out), then a soft low thud as the panel folds.
+  function groupRemoved(count) {
+    try {
+      const ac = audio();
+      const n = Math.min(Math.max(count, 1), 8);
+      for (let i = 0; i < n; i++) slide(ac, i * 0.09, 700 - i * 45, 180 - i * 8, 0.26, 0.12);
+      const end = (n - 1) * 0.09 + 0.6;
+      slide(ac, end, 190, 55, 0.35, 0.22);
+      simmer(ac, ac.destination, end + 0.3, 0.02);
+    } catch { /* no sound is fine */ }
+  }
+
   return {
     // The new agent's message lands in its tile in the Hub: it starts to brew.
     brew,
@@ -121,6 +150,8 @@ const sounds = (() => {
     attention: () => play([[880, 0, 0.4], [880, 0.17, 0.6]], 0.2),
     // An agent is removed from the Hub.
     removed: swoosh,
+    // A whole group is removed from the Hub; count is its number of agents.
+    groupRemoved,
     // A new agent: two quick rising notes.
     created: () => play([[659.25, 0, 0.18], [987.77, 0.08, 0.3]], 0.14),
     // An agent finished: a rising major chord, one note after another.

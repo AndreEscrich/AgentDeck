@@ -35,9 +35,10 @@ class Hub {
   // New agents start only from the message box under the Hub.
   // onRemove(agentId) removes a tile's agent; onContext(agentId) shows its
   // right-click menu.
-  constructor(container, { onOpen, onRemove, onContext, onHistory, onSettings, onLanded }) {
+  constructor(container, { onOpen, onRemove, onRemoveGroup, onContext, onHistory, onSettings, onLanded }) {
     this.onOpen = onOpen;
     this.onLanded = onLanded;
+    this.onRemoveGroup = onRemoveGroup;
     this.onRemove = onRemove;
     this.onContext = onContext;
     this.sections = new Map();       // group id ('' for no group) + repository -> { el, name, repo, count, grid }
@@ -237,11 +238,18 @@ class Hub {
       const name = el('span', 'hub-section-name');
       const repoEl = el('span', 'hub-section-repo');
       const count = el('span', 'hub-section-count');
-      head.append(name, repoEl, count);
+      const remove = el('button', 'section-remove', '× Remove group');
+      remove.title = 'Remove this group and all its agents from the Hub';
+      head.append(name, repoEl, count, remove);
       const grid = el('div', 'hub-grid');
       elSec.append(head, grid);
       this.grid.appendChild(elSec);
       sec = { key, groupKey, repo, el: elSec, name, repoEl, count, grid };
+      remove.onclick = e => {
+        e.stopPropagation();
+        const ids = [...this.tiles].filter(([, t]) => t.el.parentNode === grid && !t.removing).map(([id]) => id);
+        if (ids.length) this.onRemoveGroup?.(ids);
+      };
       this.sections.set(key, sec);
     }
     return sec;
@@ -256,6 +264,32 @@ class Hub {
     entry.parts.liquid.style.height = '0%';
     entry.el.classList.add('removing');
     await new Promise(r => setTimeout(r, 650));
+  }
+
+  // Removes a whole group: its tiles drop out one after another, left to
+  // right, then the panel folds shut. Resolves when it is gone.
+  async removeGroup(agentIds) {
+    const entries = agentIds.map(id => this.tiles.get(id)).filter(Boolean);
+    if (!entries.length) return;
+    const sec = [...this.sections.values()].find(s => s.grid.contains(entries[0].el));
+    sec?.el.classList.add('removing-group');
+    const STAGGER = 90;
+    entries.forEach((entry, i) => setTimeout(() => {
+      entry.removing = true;
+      entry.parts.liquid.style.height = '0%';
+      entry.el.classList.add('removing');
+    }, i * STAGGER));
+    await new Promise(r => setTimeout(r, (entries.length - 1) * STAGGER + 600));
+    if (!sec) return;
+    const fold = sec.el.animate([
+      { height: `${sec.el.offsetHeight}px`, opacity: 1, transform: 'none' },
+      { height: '0px', paddingTop: '0px', paddingBottom: '0px', opacity: 0, transform: 'scaleX(0.96)' },
+    ], { duration: 320, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' });
+    await fold.finished.catch(() => {});
+    // The panel stays hidden until a new agent lands in it again.
+    sec.el.classList.add('hidden');
+    sec.el.classList.remove('removing-group');
+    fold.cancel();
   }
 
   updateTimer(agent, node) {

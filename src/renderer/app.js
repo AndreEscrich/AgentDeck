@@ -573,6 +573,7 @@ const hub = new Hub($('hub-view'), {
     return state.agents.get(id)?.view;
   },
   onRemove: removeFromHub,
+  onRemoveGroup: removeGroupFromHub,
   onHistory: () => setHistoryOpen(true),
   onSettings: () => window.deck.openConfig(),
   // A new agent's message box has flown into its tile.
@@ -788,6 +789,32 @@ async function removeFromHub(id) {
   window.deck.closeAgent(id);
   if (state.current?.kind === 'agent' && state.current.id === id) show('hub');
   refreshHub();
+}
+
+// Removes every agent of a Hub group (one panel). Busy agents are stopped,
+// after one question for all of them. Their sessions stay in History.
+async function removeGroupFromHub(ids) {
+  const live = ids.filter(id => !id.startsWith('p:')).map(id => state.agents.get(id)).filter(Boolean);
+  const busy = live.filter(a => ['working', 'waiting', 'starting'].includes(a.status));
+  if (busy.length) {
+    const which = busy.length === 1 ? `"${busy[0].title}" is` : `${busy.length} agents are`;
+    if (!confirm(`${which} still working. Stop ${busy.length === 1 ? 'it' : 'them'} and remove the whole group from the Hub?`)) return;
+  }
+  if (playSounds()) sounds.groupRemoved(ids.length);
+  await hub.removeGroup(ids);
+  for (const id of ids) {
+    if (id.startsWith('p:')) {
+      state.parked.delete(id.slice(2));
+      continue;
+    }
+    const a = state.agents.get(id);
+    if (!a) continue;
+    a.removed = true;
+    window.deck.closeAgent(id);
+  }
+  if (state.current?.kind === 'agent' && ids.includes(state.current.id)) show('hub');
+  refreshHub();
+  saveHub();
 }
 
 function setHeader(title, subtitle, agent) {
