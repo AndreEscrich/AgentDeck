@@ -333,7 +333,10 @@ button.danger { color: var(--err); }
 /* Turns: steps line, answer, changed files */
 .turn { display: flex; flex-direction: column; gap: 10px; }
 .turn-live, .turn-answer { display: flex; flex-direction: column; gap: 10px; }
-.turn-live:empty, .turn-answer:empty { display: none; }
+.turn-live:empty, .turn-answer:empty, .turn-skills:empty { display: none; }
+.turn-skills { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; }
+.skills-label { color: var(--text-faint); margin-right: 2px; }
+.skill-chip { padding: 2px 10px; border-radius: 99px; border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-dim); font-family: var(--mono); }
 details.steps { font-size: 13px; color: var(--text-faint); }
 details.steps > summary {
   display: flex;

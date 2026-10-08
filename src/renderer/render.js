@@ -297,7 +297,9 @@ class Transcript {
       summary: el('summary'),
       body: el('div', 'steps-body'),
       live: el('div', 'turn-live'),
+      skills: el('div', 'turn-skills'),
       answer: el('div', 'turn-answer'),
+      skillNames: new Set(),
       stepCount: 0,
       pendingText: [],      // text written since the last tool call; the last batch is the answer
       changes: new Map(),   // file path -> { path, created, content, hunks }
@@ -305,7 +307,7 @@ class Transcript {
     };
     turn.summary.append(el('span', 'steps-spinner'), el('span', 'steps-text', 'Working…'));
     turn.steps.append(turn.summary, turn.body);
-    turn.el.append(turn.steps, turn.live, turn.answer);
+    turn.el.append(turn.steps, turn.live, turn.skills, turn.answer);
     this.turn = turn;
     this.append(turn.el);
     return turn;
@@ -313,6 +315,26 @@ class Transcript {
 
   ensureTurn() {
     return this.turn || this.startTurn();
+  }
+
+  // The skills the agent ran during the task, in a row above its answer.
+  // Plugin skills ("plugin:name") show their own name; the full name is in
+  // the tooltip.
+  addSkill(turn, name) {
+    const short = name?.split(':').pop();
+    if (!short || turn.skillNames.has(short)) return;
+    turn.skillNames.add(short);
+    if (!turn.skills.childElementCount) turn.skills.appendChild(el('span', 'skills-label', 'Skills'));
+    const chip = el('span', 'skill-chip', short);
+    chip.title = name;
+    this.pinned(() => turn.skills.appendChild(chip));
+  }
+
+  // A message that starts with /name runs that skill. The CLI does not report
+  // it, so the name is checked against the skills it listed at the start.
+  addSlashSkill(turn, text) {
+    const name = String(text || '').trim().match(/^\/([\w:.-]+)/)?.[1];
+    if (name && this.skillList?.has(name)) this.addSkill(turn, name);
   }
 
   addStep(node, activity) {
@@ -411,6 +433,11 @@ class Transcript {
       case 'result': return this.finishTurn(msg);
       case 'system':
         if (msg.subtype === 'init') {
+          if (Array.isArray(msg.skills)) {
+            this.skillList = new Set(msg.skills);
+            // The task's message may have been a /skill command.
+            if (this.turn && this.prompts.length) this.addSlashSkill(this.turn, this.prompts[this.prompts.length - 1].text);
+          }
           this.addStep(el('div', 'note', `Session ready · ${msg.model} · ${msg.permissionMode} · Claude Code ${msg.claude_code_version || ''}`));
         } else if (msg.subtype === 'api_retry' && msg.attempt === 1) {
           this.note(`API error (${msg.error}), retrying…`, true);
@@ -425,6 +452,12 @@ class Transcript {
   // you: it stays out of the chat and does not start a new turn.
   addUser(message, toolUseResult, synthetic) {
     const content = message.content;
+    // A skill you start with /name arrives only as its instructions.
+    if (synthetic && this.turn) {
+      const text = typeof content === 'string' ? content : content.find(b => b.type === 'text')?.text || '';
+      const dir = text.match(/^Base directory for this skill: (.+)/)?.[1];
+      if (dir) this.addSkill(this.turn, dir.trim().split(/[\\/]/).pop());
+    }
     const texts = synthetic ? []
       : typeof content === 'string' ? [content]
       : content.filter(b => b.type === 'text').map(b => b.text);
@@ -435,6 +468,7 @@ class Transcript {
       for (const b of bubbles) this.append(b);
       this.prompts.push({ el: bubbles[0], text: texts.join('\n').trim() });
       this.startTurn();
+      this.addSlashSkill(this.turn, texts.join('\n'));
     }
     if (Array.isArray(content)) {
       for (const block of content) {
@@ -465,6 +499,7 @@ class Transcript {
         d.append(el('summary', null, 'Thinking'), el('pre', null, block.thinking));
         this.addStep(d, 'Thinking…');
       } else if (block.type === 'tool_use') {
+        if (block.name === 'Skill') this.addSkill(turn, block.input?.skill);
         this.clearDraft();
         // Text before a tool call was a note to itself, not the answer.
         turn.pendingText = [];
