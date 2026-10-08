@@ -251,10 +251,13 @@ details.thinking pre { font-family: var(--font); color: var(--text-dim); }
   padding: 10px 24px 18px;
 }
 .composer-box {
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
+  /* Sunken, like the Hub's groups: a dark well with an inner shadow and a
+     faintly lit lower edge. */
+  background: #110d0a;
+  border: 1px solid #0a0806;
   border-radius: 12px;
   padding: 8px 8px 6px 12px;
+  box-shadow: inset 0 3px 10px rgba(0, 0, 0, 0.7), 0 1px 0 rgba(255, 236, 210, 0.05);
 }
 .composer-box:focus-within { border-color: var(--accent); }
 #input { width: 100%; resize: none; max-height: 240px; padding: 2px 0; border: none; background: none; }
@@ -546,7 +549,7 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
 /* Colors per state: --c1 top of the liquid, --c2 bottom, --glow the tile glow. */
 .hub-tile { --c1: #6b708c; --c2: #4a4e66; --glow: transparent; --wave-speed: 9s;
   position: relative; display: flex; flex-direction: column; gap: 10px;
-  padding: 10px; border-radius: 16px; background: #2a221b; border: 1px solid #3d3329;
+  padding: 10px; border-radius: 16px; background: #332a21; border: 1px solid #483b2f;
   /* Sizes inside the tile (cqw) follow the tile's width. */
   container-type: inline-size;
   cursor: pointer; transition: border-color 0.3s, box-shadow 0.4s, transform 0.15s; }
