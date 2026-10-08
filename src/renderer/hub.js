@@ -189,22 +189,6 @@ class Hub {
     // A click opens the agent, unless it was the end of dragging the tile.
     tile.onclick = () => { if (!this.justDragged) this.open(agent.id); };
     tile.addEventListener('pointerdown', e => this.press(e, agent.id));
-    // The tile tilts toward the mouse (see .tilt in styles.css): up to about
-    // 7 degrees at its edges.
-    tile.addEventListener('pointermove', e => {
-      if (this.drag) return;
-      const r = tile.getBoundingClientRect();
-      const x = (e.clientX - r.left) / r.width - 0.5;
-      const y = (e.clientY - r.top) / r.height - 0.5;
-      tile.style.setProperty('--ry', `${(x * 14).toFixed(2)}deg`);
-      tile.style.setProperty('--rx', `${(-y * 12).toFixed(2)}deg`);
-      tile.classList.add('tilt');
-    });
-    tile.addEventListener('pointerleave', () => {
-      tile.classList.remove('tilt');
-      tile.style.removeProperty('--rx');
-      tile.style.removeProperty('--ry');
-    });
     tile.oncontextmenu = e => { e.preventDefault(); this.onContext?.(agent.id); };
     const remove = el('button', 'tile-remove', '×');
     remove.title = 'Remove from the Hub';
