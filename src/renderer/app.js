@@ -488,6 +488,8 @@ function show(kind, id) {
   }
   renderSettingsButton();
   renderSidebar();
+  // Opening an agent can take it off the badge.
+  updateAttention();
   // The context meter shows for a running agent; it asks for numbers the
   // first time you open the agent.
   if (kind === 'agent' && state.agents.get(id) && !state.agents.get(id).context) updateContext(state.agents.get(id));
@@ -669,8 +671,14 @@ const hub = new Hub($('hub-view'), {
 
 // The Dock badge: how many agents wait for you right now.
 let attentionCount = 0;
+// It counts the agents that wait for your answer or approval (they only
+// drop off once you reply), plus the finished agents you have not opened
+// since they finished (they drop off when you open them). It is updated
+// right away, also while the window is minimized and does not redraw.
 function updateAttention() {
-  const n = [...state.agents.values()].filter(a => a.status === 'waiting').length;
+  const items = hubItems();
+  const n = items.filter(i => i.status === 'waiting').length
+    + items.filter(i => i.status === 'idle' && i.unread).length;
   if (n !== attentionCount) {
     attentionCount = n;
     window.deck.setAttention(n, window.deck.platform === 'darwin' ? null : badgeImage(n));
@@ -700,13 +708,13 @@ function badgeImage(n) {
 // Many events can arrive in one frame, so the Hub redraws at most once per frame.
 let hubFrame = 0;
 function refreshHub() {
+  updateAttention();
   if (hubFrame) return;
   hubFrame = requestAnimationFrame(() => {
     hubFrame = 0;
     const items = hubItems();
     hub.update(items, state.current?.kind === 'agent' ? state.current.id : null, state.groups.groups);
     saveHub();
-    updateAttention();
     const agents = items.filter(a => !a.parked);
     const busy = agents.filter(a => ['working', 'starting', 'waiting'].includes(a.status)).length;
     if (state.current?.kind === 'hub') $('view-subtitle').textContent = reviewHint();
@@ -1532,6 +1540,7 @@ window.deck.onStatus((id, status) => {
   else a.waitingSince = null;
   const viewing = state.current?.kind === 'agent' && state.current.id === id;
   if ((status === 'idle' || status === 'error' || status === 'waiting') && !viewing) a.unread = true;
+  updateAttention();
   refreshHeaderIfCurrent(id);
   renderSidebar();
 });
