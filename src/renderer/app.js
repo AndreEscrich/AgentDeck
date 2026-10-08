@@ -61,6 +61,7 @@ const composerPicker = new ModelPicker($('composer-picker'), {
     } else if (cur?.kind === 'hub') {
       ensureDraft().choice = choice;
     }
+    renderSettingsButton();
   },
 });
 
@@ -83,6 +84,7 @@ const composerModePicker = new ModePicker($('composer-mode-picker'), {
     } else if (cur?.kind === 'hub') {
       ensureDraft().mode = mode;
     }
+    renderSettingsButton();
   },
 });
 
@@ -248,6 +250,38 @@ function makeChatView() {
   return view;
 }
 
+// ---------- settings button ----------
+
+// Permissions and model are almost always the defaults (bypass, latest Opus,
+// medium effort), so their menus sit behind a ⚙ button. When the settings on
+// screen differ from the defaults, the button names them.
+function settingsDiffer() {
+  const c = composerPicker.value;
+  const d = defaultChoice();
+  return composerModePicker.value !== defaultMode()
+    || (c.model || 'default') !== (d.model || 'default')
+    || (c.effort || '') !== (d.effort || '')
+    || !!c.fastMode !== !!d.fastMode;
+}
+
+function renderSettingsButton() {
+  const btn = $('composer-settings-btn');
+  const open = !$('composer-settings').classList.contains('hidden');
+  const summary = `${composerModePicker.mode.short} · ${composerPicker.button.textContent.replace(' ▾', '')}`;
+  btn.textContent = !open && settingsDiffer() ? `⚙ ${summary}` : '⚙';
+  btn.title = `${open ? 'Hide' : 'Show'} permissions and model (${summary})`;
+  btn.classList.toggle('active', open);
+  btn.classList.toggle('changed', settingsDiffer());
+}
+
+function setSettingsOpen(open) {
+  $('composer-settings').classList.toggle('hidden', !open);
+  try { localStorage.setItem('composerSettingsOpen', open ? '1' : '0'); } catch { /* not important */ }
+  renderSettingsButton();
+}
+
+$('composer-settings-btn').onclick = () => setSettingsOpen($('composer-settings').classList.contains('hidden'));
+
 function show(kind, id) {
   state.current = { kind, id };
   $('back-to-hub').classList.toggle('hidden', !['agent', 'history'].includes(kind));
@@ -287,6 +321,7 @@ function show(kind, id) {
     renderDraftButtons();
     $('input').placeholder = 'Start a new agent… (↩ to start)';
   }
+  renderSettingsButton();
   renderSidebar();
 }
 
@@ -1059,7 +1094,8 @@ setInterval(renderSidebar, 60_000);
 
 (async () => {
   state.config = await window.deck.getConfig();
-  loadModels();
+  loadModels().then(renderSettingsButton);
+  try { setSettingsOpen(localStorage.getItem('composerSettingsOpen') === '1'); } catch { setSettingsOpen(false); }
   state.groups = { groups: [], assignments: {}, ...(await window.deck.getGroups()) };
   loadHub();
   if (!IS_MAC) {

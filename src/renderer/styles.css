@@ -660,3 +660,10 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 
 /* Under the message box: which agent a new agent continues from */
 .composer-fork { font-size: 12px; color: var(--text-faint); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ⚙ in the message box: shows or hides the permission and model menus */
+.composer-settings { display: contents; }
+.composer-settings.hidden { display: none !important; }
+#composer-settings-btn.active { color: var(--text); background: var(--bg-hover); }
+#composer-settings-btn.changed { color: var(--busy); }
+#composer-settings-btn { font-size: 15px; line-height: 1; padding: 4px 7px; }
