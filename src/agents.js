@@ -49,7 +49,7 @@ class AgentManager {
     this.agents = new Map();
   }
 
-  start({ cwd, resumeId, permissionMode, model, title }) {
+  start({ cwd, resumeId, permissionMode, model, effort, fastMode, title }) {
     const config = this.getConfig();
     const id = randomUUID();
     const args = [
@@ -60,7 +60,9 @@ class AgentManager {
       '--include-partial-messages',
       '--permission-mode', permissionMode || config.defaultPermissionMode,
     ];
-    if (model) args.push('--model', model);
+    if (model && model !== 'default') args.push('--model', model);
+    if (effort) args.push('--effort', effort);
+    if (fastMode) args.push('--settings', JSON.stringify({ fastMode: true }));
     if (resumeId) args.push('--resume', resumeId);
     args.push(...(config.extraArgs || []));
 
@@ -106,7 +108,13 @@ class AgentManager {
       agent.sessionId = msg.session_id;
       this.send('agent:session', agent.id, msg.session_id);
     }
-    if (msg.type === 'system' && msg.subtype === 'init') this.setStatus(agent, agent.status === 'starting' ? 'idle' : agent.status);
+    if (msg.type === 'system' && msg.subtype === 'init') {
+      this.setStatus(agent, agent.status === 'starting' ? 'idle' : agent.status);
+      if (msg.model && msg.model !== agent.model) {
+        agent.model = msg.model;
+        this.send('agent:model', agent.id, msg.model);
+      }
+    }
     if (msg.type === 'assistant' || msg.type === 'stream_event') this.setStatus(agent, 'working');
     if (msg.type === 'result') this.setStatus(agent, msg.is_error ? 'error' : 'idle');
     this.send('agent:event', agent.id, msg);
@@ -124,6 +132,19 @@ class AgentManager {
     const msg = { type: 'user', message: { role: 'user', content: [{ type: 'text', text }] } };
     agent.proc.stdin.write(JSON.stringify(msg) + '\n');
     this.setStatus(agent, 'working');
+  }
+
+  control(id, request) {
+    const agent = this.agents.get(id);
+    if (!agent) return;
+    agent.proc.stdin.write(JSON.stringify({ type: 'control_request', request_id: randomUUID(), request }) + '\n');
+  }
+
+  // Changes model, effort and fast mode from the next turn on, the same as the
+  // /model, /effort and /fast commands in the terminal.
+  setModel(id, { model, effort, fastMode }) {
+    this.control(id, { subtype: 'set_model', model: model && model !== 'default' ? model : null });
+    this.control(id, { subtype: 'apply_flag_settings', settings: { effortLevel: effort || null, fastMode: !!fastMode } });
   }
 
   // Asks Claude to stop the current turn but keeps the process alive, the same
@@ -148,4 +169,31 @@ class AgentManager {
   }
 }
 
-module.exports = { AgentManager };
+// Asks the CLI which models this account can use. This is the same list, with
+// the same descriptions, that the model menu in the Claude desktop app shows.
+// We start a short-lived process, send the "initialize" request and read the
+// "models" field of the answer. No API call is made.
+function fetchModels(config) {
+  return new Promise(resolve => {
+    const proc = spawn(findClaude(config.claudePath),
+      ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'],
+      { cwd: os.homedir(), env: childEnv(config.env), stdio: ['pipe', 'pipe', 'ignore'] });
+    let buffer = '';
+    const finish = models => { clearTimeout(timer); proc.kill(); resolve(models); };
+    const timer = setTimeout(() => finish(null), 15000);
+    proc.on('error', () => finish(null));
+    proc.stdout.on('data', chunk => {
+      buffer += chunk.toString('utf8');
+      for (const line of buffer.split('\n')) {
+        if (!line.includes('"control_response"')) continue;
+        try {
+          const msg = JSON.parse(line);
+          if (msg.response?.request_id === 'models') return finish(msg.response.response?.models || null);
+        } catch { /* incomplete line, wait for more data */ }
+      }
+    });
+    proc.stdin.write(JSON.stringify({ type: 'control_request', request_id: 'models', request: { subtype: 'initialize' } }) + '\n');
+  });
+}
+
+module.exports = { AgentManager, fetchModels };

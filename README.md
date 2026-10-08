@@ -14,6 +14,7 @@ You need Claude Code installed and logged in (`claude` in a terminal, then `/log
 ## What it does
 
 - **History sidebar.** It lists every session Claude Code has saved in `~/.claude/projects`, grouped by project folder. This includes sessions you ran in the terminal or in the Claude desktop app. Click one to read it, and type a message to continue it.
+- **Model menu.** Under the message box and in the New agent form. It lists the same models, with the same descriptions, as the Claude desktop app, because the app asks your installed Claude Code for the list. You can also set the effort level and fast mode. A change applies to the agent on screen from its next message on.
 - **Chat.** Replies stream in as Claude writes them. Each tool call shows as a card that you can open to see its input and its result.
 - **Parallel agents.** Every agent is its own `claude` process. The Running list shows each agent's state: working (amber), waiting for you (green), or error (red). You get a macOS notification when an agent finishes while the window is in the background.
 
@@ -45,7 +46,9 @@ Click **Settings** in the sidebar to open `config.json`, then restart the app af
 
 - `claudePath`: path to the `claude` binary. When it is empty, the app looks in `/opt/homebrew/bin`, `/usr/local/bin` and `~/.local/bin`.
 - `defaultPermissionMode`: `acceptEdits`, `default`, `plan` or `bypassPermissions`.
-- `defaultModel`: for example `opus` or `sonnet`. Empty means Claude Code's own default.
+- `defaultModel`: a model value from the model menu, for example `default`, `opus[1m]` or `sonnet`.
+- `defaultEffort`: `low`, `medium`, `high`, `xhigh` or `max`. Empty means the model's own default.
+- `defaultFastMode`: `true` to turn fast mode on for new agents.
 - `defaultFolder`: prefilled folder in the New agent form.
 - `extraArgs`: extra flags for every agent, for example `["--add-dir", "/some/path"]`.
 - `env`: extra environment variables for every agent.

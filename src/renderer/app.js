@@ -22,6 +22,33 @@ const state = {
   collapsed: new Set(),    // project folders collapsed in the sidebar
 };
 
+// ---------- model menu ----------
+
+function defaultChoice() {
+  return {
+    model: state.config.defaultModel || 'default',
+    effort: state.config.defaultEffort || '',
+    fastMode: !!state.config.defaultFastMode,
+  };
+}
+
+// The menu under the message box changes the agent on screen. For a history
+// session that is not running yet, it sets what the session resumes with.
+const composerPicker = new ModelPicker($('composer-picker'), {
+  onChange: choice => {
+    const cur = state.current;
+    if (cur?.kind === 'agent') {
+      const a = state.agents.get(cur.id);
+      a.choice = choice;
+      window.deck.setModel(a.id, choice);
+      a.transcript.note(`Switched to ${composerPicker.button.textContent.replace(' ▾', '')} from the next message on.`);
+    } else if (cur?.kind === 'history') {
+      state.history.get(cur.id).choice = choice;
+    }
+  },
+});
+const newPicker = new ModelPicker($('new-model-picker'), { openUp: false });
+
 // ---------- views ----------
 
 function makeChatView() {
@@ -46,12 +73,14 @@ function show(kind, id) {
     a.view.classList.remove('hidden');
     a.unread = false;
     setHeader(a.title, a.cwd, a);
+    composerPicker.setValue(a.choice || defaultChoice());
     $('input').placeholder = 'Message the agent… (↩ to send, ⇧↩ for a new line)';
     $('input').focus();
   } else if (kind === 'history') {
     const h = state.history.get(id);
     h.view.classList.remove('hidden');
     setHeader(h.session.title, h.cwd || h.session.cwd, null);
+    composerPicker.setValue(h.choice || defaultChoice());
     $('input').placeholder = 'Send a message to continue this session…';
     $('input').focus();
   } else {
@@ -176,12 +205,15 @@ async function openHistory(session) {
 
 // ---------- agents ----------
 
-async function startAgent({ cwd, prompt, permissionMode, model, resume }) {
+async function startAgent({ cwd, prompt, permissionMode, choice, resume }) {
   const title = resume ? resume.session.title : prompt.split('\n')[0].slice(0, 80);
+  choice = choice || defaultChoice();
   const { id } = await window.deck.startAgent({
     cwd,
     permissionMode,
-    model: model || state.config.defaultModel || undefined,
+    model: choice.model,
+    effort: choice.effort,
+    fastMode: choice.fastMode,
     resumeId: resume?.session.id,
   });
 
@@ -190,7 +222,7 @@ async function startAgent({ cwd, prompt, permissionMode, model, resume }) {
   const transcript = resume ? resume.transcript : new Transcript(view);
   if (resume) state.history.delete(resume.session.id);
 
-  const agent = { id, title, cwd, status: 'starting', sessionId: resume?.session.id || null, view, transcript, unread: false };
+  const agent = { id, title, cwd, status: 'starting', sessionId: resume?.session.id || null, view, transcript, unread: false, choice };
   state.agents.set(id, agent);
   transcript.add({ type: 'user', message: { role: 'user', content: prompt } });
   await window.deck.sendMessage(id, prompt);
@@ -221,6 +253,13 @@ window.deck.onSession((id, sessionId) => {
   if (a) a.sessionId = sessionId;
 });
 
+window.deck.onModel((id, model) => {
+  const a = state.agents.get(id);
+  if (!a) return;
+  a.resolvedModel = model;
+  refreshHeaderIfCurrent(id);
+});
+
 window.deck.onExit((id, { code, stderr }) => {
   const a = state.agents.get(id);
   if (!a) return;
@@ -230,7 +269,7 @@ window.deck.onExit((id, { code, stderr }) => {
   // Keep the chat open as a history entry, so you can read it and resume it.
   state.agents.delete(id);
   const session = { id: a.sessionId || id, title: a.title, cwd: a.cwd, file: null, updatedAt: Date.now() };
-  state.history.set(session.id, { session, view: a.view, transcript: a.transcript, cwd: a.cwd });
+  state.history.set(session.id, { session, view: a.view, transcript: a.transcript, cwd: a.cwd, choice: a.choice });
   if (state.current?.kind === 'agent' && state.current.id === id) show('history', session.id);
   loadSessions();
 });
@@ -255,7 +294,7 @@ async function sendFromComposer() {
       h.transcript.note('This session has no saved folder, so it cannot be resumed.', true);
       return;
     }
-    await startAgent({ cwd, prompt: text, permissionMode: state.config.defaultPermissionMode, resume: h });
+    await startAgent({ cwd, prompt: text, permissionMode: state.config.defaultPermissionMode, choice: h.choice, resume: h });
   }
 }
 
@@ -285,7 +324,7 @@ $('new-form').addEventListener('submit', async e => {
   const prompt = $('new-prompt').value.trim();
   if (!cwd || !prompt) return;
   $('new-prompt').value = '';
-  await startAgent({ cwd, prompt, permissionMode: $('new-permission').value, model: $('new-model').value });
+  await startAgent({ cwd, prompt, permissionMode: $('new-permission').value, choice: newPicker.value });
 });
 $('new-prompt').addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.metaKey) $('new-form').requestSubmit();
@@ -321,7 +360,8 @@ setInterval(renderSidebar, 60_000);
 (async () => {
   state.config = await window.deck.getConfig();
   $('new-permission').value = state.config.defaultPermissionMode;
-  $('new-model').value = state.config.defaultModel || '';
+  newPicker.setValue(defaultChoice());
+  loadModels();
   if (state.config.defaultFolder) $('new-cwd').value = state.config.defaultFolder;
   await loadSessions();
   show('empty');

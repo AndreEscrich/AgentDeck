@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, Notification } = require('electron');
 const fs = require('fs');
 const path = require('path');
-const { AgentManager } = require('./agents');
+const { AgentManager, fetchModels } = require('./agents');
 const { listSessions, loadTranscript, PROJECTS_DIR } = require('./sessions');
 
 // Settings you can edit by hand. The app writes this file with the defaults
@@ -9,7 +9,9 @@ const { listSessions, loadTranscript, PROJECTS_DIR } = require('./sessions');
 const DEFAULT_CONFIG = {
   claudePath: '',                       // empty means: look in the usual install folders
   defaultPermissionMode: 'acceptEdits', // default | acceptEdits | plan | bypassPermissions
-  defaultModel: '',                     // empty means: the model Claude Code would pick
+  defaultModel: 'default',              // a value from the model menu, e.g. "opus[1m]" or "sonnet"
+  defaultEffort: '',                    // low | medium | high | xhigh | max; empty means the model's default
+  defaultFastMode: false,
   defaultFolder: '',
   extraArgs: [],                        // extra command-line flags for every agent
   env: {},                              // extra environment variables for every agent
@@ -83,6 +85,12 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('agent:start', (_e, opts) => agents.start(opts));
   ipcMain.handle('agent:send', (_e, id, text) => agents.sendMessage(id, text));
+  ipcMain.handle('agent:setModel', (_e, id, choice) => agents.setModel(id, choice));
+  let models = null;
+  ipcMain.handle('models:list', async () => {
+    if (!models) models = await fetchModels(getConfig());
+    return models;
+  });
   ipcMain.handle('agent:interrupt', (_e, id) => agents.interrupt(id));
   ipcMain.handle('agent:close', (_e, id) => agents.close(id));
   ipcMain.handle('notify', (_e, title, body) => {

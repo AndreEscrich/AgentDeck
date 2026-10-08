@@ -64,14 +64,9 @@
                 <option value="bypassPermissions">Bypass: may do anything without asking</option>
               </select>
             </label>
-            <label class="grow">Model
-              <select id="new-model">
-                <option value="">Claude Code default</option>
-                <option value="opus">Opus</option>
-                <option value="sonnet">Sonnet</option>
-                <option value="haiku">Haiku</option>
-              </select>
-            </label>
+            <div class="grow field">Model
+              <div id="new-model-picker"></div>
+            </div>
           </div>
           <label>First message
             <textarea id="new-prompt" rows="6" placeholder="What should this agent do?" required></textarea>
@@ -86,14 +81,20 @@
     </section>
 
     <footer id="composer" class="hidden">
-      <textarea id="input" rows="1" placeholder="Message the agent… (↩ to send, ⇧↩ for a new line)"></textarea>
-      <button id="send" class="primary">Send</button>
+      <div class="composer-box">
+        <textarea id="input" rows="1" placeholder="Message the agent… (↩ to send, ⇧↩ for a new line)"></textarea>
+        <div class="composer-bar">
+          <div id="composer-picker"></div>
+          <button id="send" class="primary">Send</button>
+        </div>
+      </div>
     </footer>
   </main>
 
   <script src="../../node_modules/marked/lib/marked.umd.js"></script>
   <script src="../../node_modules/dompurify/dist/purify.min.js"></script>
   <script src="render.js"></script>
+  <script src="picker.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
