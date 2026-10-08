@@ -307,72 +307,67 @@ class Hub {
     if (entry) this.replay(entry.el, 'wake', 900);
   }
 
-  // Clicking a tile: its tank grows until it covers the chat area and the
-  // liquid rises to the top, then the chat fades in.
+  // Clicking a tile opens it: a copy of the tile lifts and fades like a lid,
+  // while the agent's chat shows through the tile's outline, which widens to
+  // the whole chat area. The colors stay those of the dark chat background.
   async open(agentId) {
     const entry = this.tiles.get(agentId);
-    const target = document.getElementById('views')?.getBoundingClientRect();
-    if (!entry || !target || this.opening) {
+    const area = document.getElementById('views');
+    if (!entry || !area || this.opening) {
       this.onOpen(agentId);
       return;
     }
     this.opening = true;
-    const tank = entry.el.querySelector('.tank');
-    const from = tank.getBoundingClientRect();
-    const ghost = el('div', `zoom-ghost state-${entry.status}`);
-    const liquid = el('div', 'liquid');
-    liquid.style.height = `${entry.level}%`;
-    ghost.appendChild(liquid);
-    Object.assign(ghost.style, { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px` });
-    document.body.appendChild(ghost);
-    entry.el.classList.add('opening');
+    const from = entry.el.getBoundingClientRect();
 
-    const timing = { duration: 260, easing: 'cubic-bezier(.3,0,.2,1)', fill: 'forwards' };
-    const grow = ghost.animate([
-      { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px`, borderRadius: '14px 14px 22px 22px' },
-      { left: `${target.left}px`, top: `${target.top}px`, width: `${target.width}px`, height: `${target.height}px`, borderRadius: '0px' },
-    ], timing);
-    liquid.animate([{ height: `${entry.level}%` }, { height: '115%' }], timing);
-    await grow.finished.catch(() => {});
+    const lid = entry.el.cloneNode(true);
+    lid.classList.remove('spawn', 'landed', 'wake', 'celebrate', 'current');
+    lid.classList.add('tile-lid');
+    Object.assign(lid.style, { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px` });
+    document.body.appendChild(lid);
 
     const view = await this.onOpen(agentId);
-    view?.classList.add('entering');
-    setTimeout(() => view?.classList.remove('entering'), 220);
-    await ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 150, easing: 'ease-out', fill: 'forwards' }).finished.catch(() => {});
-    ghost.remove();
-    entry.el.classList.remove('opening');
+    const to = area.getBoundingClientRect();
+    // clip-path inset(): how far each edge of the tile is from the chat area's edges.
+    const outline = r => `inset(${Math.max(0, r.top - to.top)}px ${Math.max(0, to.right - r.right)}px ${Math.max(0, to.bottom - r.bottom)}px ${Math.max(0, r.left - to.left)}px round 16px)`;
+    const reveal = view?.animate(
+      [{ clipPath: outline(from), opacity: 0.5 }, { clipPath: 'inset(0px 0px 0px 0px round 0px)', opacity: 1 }],
+      { duration: 340, easing: 'cubic-bezier(.2,.8,.2,1)' },
+    );
+    const lift = lid.animate(
+      [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(1.1) translateY(-6px)' }],
+      { duration: 220, easing: 'ease-out', fill: 'forwards' },
+    );
+    await Promise.all([reveal?.finished, lift.finished].map(p => p?.catch(() => {})));
+    lid.remove();
     this.opening = false;
   }
 
-  // Going back: the chat area shrinks into the agent's tank and the liquid
-  // drains to the tile's level. Call it after the Hub is visible again.
+  // Going back: a dark panel the size of the chat area shrinks into the
+  // agent's tile, and the tile settles with a small bounce. Call it after the
+  // Hub is visible again.
   async returnTo(agentId) {
     const entry = this.tiles.get(agentId);
-    const from = document.getElementById('views')?.getBoundingClientRect();
-    if (!entry || !from || this.opening) return;
-    const tank = entry.el.querySelector('.tank');
-    tank.scrollIntoView({ block: 'nearest' });
-    const to = tank.getBoundingClientRect();
+    const area = document.getElementById('views');
+    if (!entry || !area || this.opening) return;
+    entry.el.scrollIntoView({ block: 'nearest' });
+    const from = area.getBoundingClientRect();
+    const to = entry.el.getBoundingClientRect();
     this.opening = true;
-    const ghost = el('div', `zoom-ghost state-${entry.status}`);
-    const liquid = el('div', 'liquid');
-    liquid.style.height = '115%';
-    ghost.appendChild(liquid);
-    Object.assign(ghost.style, { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px` });
-    document.body.appendChild(ghost);
+    const panel = el('div', 'close-ghost');
+    Object.assign(panel.style, { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px` });
+    document.body.appendChild(panel);
     entry.el.classList.add('opening');
 
-    const timing = { duration: 260, easing: 'cubic-bezier(.3,0,.2,1)', fill: 'forwards' };
-    const shrink = ghost.animate([
-      { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px`, borderRadius: '0px' },
-      { left: `${to.left}px`, top: `${to.top}px`, width: `${to.width}px`, height: `${to.height}px`, borderRadius: '14px 14px 22px 22px' },
-    ], timing);
-    liquid.animate([{ height: '115%' }, { height: `${entry.level}%` }], timing);
-    await shrink.finished.catch(() => {});
+    const box = r => ({ left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+    await panel.animate(
+      [{ ...box(from), borderRadius: '0px' }, { ...box(to), borderRadius: '16px' }],
+      { duration: 280, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' },
+    ).finished.catch(() => {});
     entry.el.classList.remove('opening');
     this.replay(entry.el, 'landed', 600);
-    await ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: 'forwards' }).finished.catch(() => {});
-    ghost.remove();
+    await panel.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, fill: 'forwards' }).finished.catch(() => {});
+    panel.remove();
     this.opening = false;
   }
 
