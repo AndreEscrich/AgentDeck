@@ -174,35 +174,15 @@ function placeColumns(columns, size, gapX, gapY) {
 
 // ---------- drawing ----------
 
-// A path through points with right angles, the corners slightly rounded.
-function elbowPath(points, radius = 6) {
-  let d = `M${points[0][0]},${points[0][1]}`;
-  for (let i = 1; i < points.length - 1; i++) {
-    const [px, py] = points[i - 1];
-    const [x, y] = points[i];
-    const [nx, ny] = points[i + 1];
-    const r = Math.min(radius, Math.hypot(x - px, y - py) / 2, Math.hypot(nx - x, ny - y) / 2);
-    const inX = x - Math.sign(x - px) * r;
-    const inY = y - Math.sign(y - py) * r;
-    const outX = x + Math.sign(nx - x) * r;
-    const outY = y + Math.sign(ny - y) * r;
-    d += ` L${inX},${inY} Q${x},${y} ${outX},${outY}`;
-  }
-  const [lx, ly] = points[points.length - 1];
-  return `${d} L${lx},${ly}`;
-}
-
-// An arrow from the type that uses to the type it uses, with right angles:
-// out of a side of the one, a run across in the gap right before the other,
-// and into its facing side. The runs of different arrows into one box are
-// spread over that gap, so they do not lie on top of each other. Ends are
-// spread along each side (slots).
+// An arrow from the type that uses to the type it uses: a curve from a side
+// of the one to the facing side of the other. Ends are spread along each
+// side (slots).
 function drawEdge(a, b, edge, slots) {
   const at = (box, side) => {
     const list = slots.get(`${box.id}|${side}`) || [];
     return (list.indexOf(`${edge.from}>${edge.to}`) + 1) / (list.length + 1);
   };
-  let points;
+  let d;
   const side = edgeSides(a, b);
   if (side === 'right' || side === 'left') {
     const right = side === 'right';
@@ -210,22 +190,17 @@ function drawEdge(a, b, edge, slots) {
     const sy = a.y + a.h * at(a, right ? 'right' : 'left');
     const tx = right ? b.x : b.x + b.w;
     const ty = b.y + b.h * at(b, right ? 'left' : 'right');
-    // The turn: just before the target, spread by where the arrow ends.
-    const room = Math.abs(tx - sx);
-    const mx = tx - (right ? 1 : -1) * Math.min(room / 2, 14 + at(b, right ? 'left' : 'right') * Math.min(40, room / 2));
-    points = [[sx, sy], [mx, sy], [mx, ty], [tx, ty]];
+    const dx = Math.max(40, Math.abs(tx - sx) / 2) * (right ? 1 : -1);
+    d = `M${sx},${sy} C${sx + dx},${sy} ${tx - dx},${ty} ${tx},${ty}`;
   } else {
     const down = side === 'down';
     const sx = a.x + a.w * at(a, down ? 'bottom' : 'top');
     const sy = down ? a.y + a.h : a.y;
     const tx = b.x + b.w * at(b, down ? 'top' : 'bottom');
     const ty = down ? b.y : b.y + b.h;
-    // The run across: in the gap right before the target's row.
-    const room = Math.abs(ty - sy);
-    const my = ty - (down ? 1 : -1) * Math.min(room / 2, 12 + at(b, down ? 'top' : 'bottom') * Math.min(44, room / 2));
-    points = Math.abs(tx - sx) < 1 ? [[sx, sy], [tx, ty]] : [[sx, sy], [sx, my], [tx, my], [tx, ty]];
+    const dy = Math.max(30, Math.abs(ty - sy) / 2) * (down ? 1 : -1);
+    d = `M${sx},${sy} C${sx},${sy + dy} ${tx},${ty - dy} ${tx},${ty}`;
   }
-  const d = elbowPath(points);
   const g = svgEl('g', { class: `uml-edge ${edge.kind}${edge.fresh ? ' fresh' : ''}`, 'data-from': edge.from, 'data-to': edge.to });
   g.appendChild(svgEl('path', { d, 'marker-end': `url(#uml-${edge.kind === 'uses' ? 'arrow' : 'triangle'}${edge.fresh ? '-fresh' : ''})` }));
   const words = { inherits: 'inherits from', implements: 'implements', uses: 'uses' };
