@@ -1725,6 +1725,20 @@ async function sendToAgent(agent, text, images = []) {
   await window.deck.sendMessage(agent.id, text, images);
 }
 
+// ---------- comments from the review ----------
+
+// "Send comments to the agent" in the review puts them into the message
+// box of the chat the review was opened from, so you can add to them
+// before you press ↩.
+window.addEventListener('review-comments', e => {
+  const input = $('input');
+  input.value = [input.value.trim(), e.detail.text].filter(Boolean).join('\n\n');
+  autosize();
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+  sfx('pick');
+});
+
 // ---------- two agents, one file ----------
 
 // While a task runs, the app remembers which files the agent edits or

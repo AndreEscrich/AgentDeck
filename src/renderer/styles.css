@@ -482,6 +482,25 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 .platform-win32 .review-bar { padding-right: 150px; }
 .review-bar button { -webkit-app-region: no-drag; margin-left: auto; }
 .review-title { font-weight: 600; }
+.review-bar .review-send { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+.review-bar .review-send:not(.hidden) + button { margin-left: 0; }
+.review-comment-count { flex-shrink: 0; font-size: 11px; color: var(--accent); }
+.diff-line.commentable { cursor: pointer; }
+.diff-line.commentable:hover .ln { color: var(--accent); opacity: 1; }
+.review-comment, .review-comment-editor {
+  margin: 4px 16px 8px 60px; padding: 8px 12px; border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  border-radius: 8px; background: var(--bg-panel); font: 13px/1.45 var(--font); white-space: normal;
+}
+.review-comment { display: flex; align-items: flex-start; gap: 12px; }
+.review-comment .review-comment-actions { margin-top: 0; }
+.review-comment-text { flex: 1; white-space: pre-wrap; word-wrap: break-word; color: var(--text); }
+.review-comment-editor textarea {
+  width: 100%; box-sizing: border-box; resize: vertical; min-height: 60px; font: 13px/1.45 var(--font);
+  background: var(--code-bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px;
+}
+.review-comment-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; }
+.review-comment-actions button { font-size: 12px; padding: 2px 10px; }
+.review-comment-save { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 .review-body { flex: 1; display: flex; min-height: 0; }
 .review-list { width: 280px; flex-shrink: 0; overflow-y: auto; border-right: 1px solid var(--border); padding: 6px; }
 .review-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }

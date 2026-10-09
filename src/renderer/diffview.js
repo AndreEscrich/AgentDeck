@@ -56,22 +56,25 @@ function highlightLine(text, language) {
   }
 }
 
-// One diff table: old line number, new line number, sign, code.
-function renderDiff(file, { maxLines = 3000 } = {}) {
+// One diff table: old line number, new line number, sign, code. With
+// onLine, clicking a line calls onLine(row, { index, line, side, code }).
+function renderDiff(file, { maxLines = 3000, onLine = null } = {}) {
   const language = LANGUAGES[extensionOf(file.path)];
   const diff = el('div', 'diff');
   let oldNo = 0;
   let newNo = 0;
   const lines = file.lines.slice(0, maxLines);
-  for (const [kind, text] of lines) {
+  lines.forEach(([kind, text], index) => {
     const row = el('div', 'diff-line ' + kind);
+    row.dataset.index = String(index);
     if (kind === 'hunk') {
       const m = text.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)/);
       if (m) { oldNo = Number(m[1]); newNo = Number(m[2]); }
       row.append(el('span', 'ln'), el('span', 'ln'), el('span', 'code', text));
       diff.appendChild(row);
-      continue;
+      return;
     }
+    const info = { index, line: kind === 'del' ? oldNo : newNo, side: kind === 'del' ? 'old' : 'new', code: text.slice(1) };
     const oldCell = el('span', 'ln', kind === 'add' ? '' : String(oldNo));
     const newCell = el('span', 'ln', kind === 'del' ? '' : String(newNo));
     if (kind !== 'add') oldNo++;
@@ -82,8 +85,13 @@ function renderDiff(file, { maxLines = 3000 } = {}) {
     if (html != null) code.innerHTML = html || ' ';
     else code.textContent = body || ' ';
     row.append(oldCell, newCell, el('span', 'sign', text[0] === ' ' ? '' : text[0]), code);
+    if (onLine) {
+      row.classList.add('commentable');
+      row.title = 'Click to comment on this line';
+      row.onclick = () => { if (!window.getSelection()?.toString()) onLine(row, info); };
+    }
     diff.appendChild(row);
-  }
+  });
   if (file.lines.length > maxLines) diff.appendChild(el('div', 'diff-line hunk', `… ${file.lines.length - maxLines} more lines`));
   if (!file.lines.length) diff.appendChild(el('div', 'diff-line hunk', 'No text changes to show'));
   return diff;
@@ -294,14 +302,54 @@ function closeReview() {
   reviewEl = null;
 }
 
-function openReview(files, start = 0) {
+// Comments on lines, kept on the file objects (f.comments: diff line index ->
+// { line, side, code, text }), so they survive closing and reopening the
+// review. "Send to agent" turns them into one message in the message box.
+function allComments(files) {
+  const out = [];
+  for (const f of files) {
+    for (const [index, c] of [...(f.comments || new Map())].sort((a, b) => a[0] - b[0])) out.push({ file: f, index, ...c });
+  }
+  return out;
+}
+
+function commentsMessage(files) {
+  const lines = ['Review comments on your changes:', ''];
+  allComments(files).forEach((c, i) => {
+    const code = c.code.trim().slice(0, 120);
+    const where = `${c.file.path}, line ${c.line}${c.side === 'old' ? ' (a removed line)' : ''}`;
+    lines.push(`${i + 1}. ${where}${code ? ': `' + code + '`' : ''}`);
+    lines.push(...c.text.split('\n').map(t => `   ${t}`), '');
+  });
+  lines.push('Please address each comment.');
+  return lines.join('\n');
+}
+
+function openReview(files, start = 0, { cwd = null } = {}) {
   closeReview();
   files = sortFiles(files);
   reviewEl = el('div', 'review');
   const bar = el('div', 'review-bar');
   const close = el('button', null, 'Close (Esc)');
   close.onclick = closeReview;
-  bar.append(el('span', 'review-title', `Review · ${files.length} file${files.length === 1 ? '' : 's'}`), el('span', 'hint', '↑ ↓ to switch files'), close);
+  const sendComments = el('button', 'review-send hidden');
+  sendComments.title = 'Put the comments into the message box, as one message to the agent';
+  sendComments.onclick = () => {
+    const text = commentsMessage(files);
+    for (const f of files) f.comments = null;
+    closeReview();
+    window.dispatchEvent(new CustomEvent('review-comments', { detail: { text, cwd } }));
+  };
+  const refreshSend = () => {
+    const n = allComments(files).length;
+    sendComments.classList.toggle('hidden', !n);
+    sendComments.textContent = `Send ${n} comment${n === 1 ? '' : 's'} to the agent`;
+    items.forEach((item, i) => {
+      const count = files[i].comments?.size || 0;
+      item.querySelector('.review-comment-count').textContent = count ? `💬 ${count}` : '';
+    });
+  };
+  bar.append(el('span', 'review-title', `Review · ${files.length} file${files.length === 1 ? '' : 's'}`), el('span', 'hint', '↑ ↓ to switch files · click a line to comment'), sendComments, close);
 
   const list = el('div', 'review-list');
   const pane = el('div', 'review-pane');
@@ -316,7 +364,7 @@ function openReview(files, start = 0) {
     text.append(el('div', 'review-name', name), el('div', 'review-dir', dir));
     const counts = el('span', 'change-counts');
     counts.append(el('span', 'plus', add ? `+${add}` : ''), el('span', 'minus', del ? ` −${del}` : ''));
-    item.append(el('span', 'change-badge ' + f.status, (BADGES[f.status] || 'Edited')[0]), text, counts);
+    item.append(el('span', 'change-badge ' + f.status, (BADGES[f.status] || 'Edited')[0]), text, el('span', 'review-comment-count'), counts);
     item.title = f.path;
     item.onclick = () => select(i);
     list.appendChild(item);
@@ -331,11 +379,73 @@ function openReview(files, start = 0) {
     items[i].scrollIntoView({ block: 'nearest' });
     pane.innerHTML = '';
     const f = files[i];
-    pane.append(el('div', 'review-path', f.path), renderDiff(f, { maxLines: 20000 }));
+    const diff = renderDiff(f, { maxLines: 20000, onLine: (row, info) => editComment(f, row, info) });
+    pane.append(el('div', 'review-path', f.path), diff);
+    for (const [index, c] of f.comments || []) {
+      const row = diff.querySelector(`.diff-line[data-index="${index}"]`);
+      if (row) row.after(commentBox(f, row, { index, ...c }));
+    }
     pane.scrollTop = 0;
   }
 
+  // A saved comment under its line: the text, Edit and Delete.
+  function commentBox(f, row, info) {
+    const box = el('div', 'review-comment');
+    const actions = el('div', 'review-comment-actions');
+    const editBtn = el('button', null, 'Edit');
+    editBtn.onclick = () => editComment(f, row, info);
+    const del = el('button', null, 'Delete');
+    del.onclick = () => {
+      f.comments.delete(info.index);
+      box.remove();
+      refreshSend();
+    };
+    actions.append(editBtn, del);
+    box.append(el('div', 'review-comment-text', f.comments.get(info.index).text), actions);
+    return box;
+  }
+
+  // Opens the editor for a line's comment (a new one, or the one it has).
+  function editComment(f, row, info) {
+    const next = row.nextElementSibling;
+    if (next?.classList.contains('review-comment-editor')) { next.querySelector('textarea').focus(); return; }
+    if (next?.classList.contains('review-comment')) next.remove();
+    const editor = el('div', 'review-comment-editor');
+    const input = document.createElement('textarea');
+    input.rows = 3;
+    input.placeholder = 'Comment for the agent… (Ctrl+↩ to save, Esc to cancel)';
+    input.value = f.comments?.get(info.index)?.text || '';
+    const save = el('button', 'review-comment-save', 'Comment');
+    const cancel = el('button', null, 'Cancel');
+    const done = keep => {
+      const text = input.value.trim();
+      editor.remove();
+      if (keep && text) {
+        f.comments = f.comments || new Map();
+        f.comments.set(info.index, { line: info.line, side: info.side, code: info.code, text });
+      } else if (keep) {
+        f.comments?.delete(info.index);
+      }
+      if (f.comments?.has(info.index)) row.after(commentBox(f, row, info));
+      refreshSend();
+      reviewEl?.focus();
+    };
+    save.onclick = () => done(true);
+    cancel.onclick = () => done(false);
+    input.addEventListener('keydown', e => {
+      e.stopPropagation();
+      if (e.key === 'Escape') { e.preventDefault(); done(false); }
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); done(true); }
+    });
+    const buttons = el('div', 'review-comment-actions');
+    buttons.append(cancel, save);
+    editor.append(input, buttons);
+    row.after(editor);
+    input.focus();
+  }
+
   reviewEl.addEventListener('keydown', e => {
+    if (e.target.closest?.('textarea')) return;
     if (e.key === 'Escape') { e.stopPropagation(); closeReview(); }
     if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); select(current + 1); }
     if (e.key === 'ArrowUp' || e.key === 'k') { e.preventDefault(); select(current - 1); }
@@ -347,6 +457,7 @@ function openReview(files, start = 0) {
   reviewEl.append(bar, body);
   document.getElementById('main').appendChild(reviewEl);
   select(Math.min(start, files.length - 1));
+  refreshSend();
   reviewEl.focus();
 }
 
