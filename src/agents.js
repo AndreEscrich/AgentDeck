@@ -20,6 +20,24 @@ const MEDIA_PROMPT = [
   'Whenever you create or change a texture, image or video, show it this way.',
 ].join(' ');
 
+// Tells every agent that the app already shows its code changes, so its
+// final message is about what behaves differently, not a second list of
+// the same changes (see the Changes card in diffview.js).
+const CHANGES_PROMPT = [
+  'Under your final message, Agent Hub shows a Changes card: every file you changed with its full diff,',
+  'and for C# a class diagram of the changed types and how they depend on each other.',
+  'So in your final message, do not repeat the code changes: no list or box of changed files (no "CHANGES" box),',
+  'no before/after diagrams of classes, calls or dependencies, and no walkthrough of which class now calls which.',
+  'Instead, focus on behaviour: what the app or game now does differently for the player or the user,',
+  'what stays the same, how to see or test it, and anything you could not check, risks, bugs you noticed and open questions.',
+  'Name a file or type only when the reader needs it to act on something.',
+  'If the project\'s instructions (CLAUDE.md, a skill) ask you to end with a CHANGES box or a visual summary of the code changes,',
+  'the Changes card already is that summary here: keep the visual part for the behaviour instead,',
+  'for example the steps a player goes through now, or what happens when an event fires, before and after.',
+].join(' ');
+
+const SYSTEM_PROMPT = `${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}`;
+
 class AgentManager {
   constructor({ send, getConfig }) {
     this.send = send;          // send(channel, ...args) to the window
@@ -43,7 +61,7 @@ class AgentManager {
       '--permission-prompt-tool', 'stdio',
       // Without this flag the CLI refuses a later switch to bypass mode.
       '--allow-dangerously-skip-permissions',
-      '--append-system-prompt', MEDIA_PROMPT,
+      '--append-system-prompt', SYSTEM_PROMPT,
     ];
     if (model && model !== 'default') args.push('--model', model);
     if (effort) args.push('--effort', effort);
