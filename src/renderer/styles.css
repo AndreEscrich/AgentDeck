@@ -256,8 +256,20 @@ body.history-open #drawer-backdrop { opacity: 1; pointer-events: auto; }
 .msg-text > :last-child { margin-bottom: 0; }
 .msg-text a { color: var(--accent); }
 .msg-text code { font-family: var(--mono); font-size: 0.9em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
-.msg-text pre { background: var(--code-bg); padding: 10px 12px; border-radius: 8px; overflow-x: auto; }
-.msg-text pre code { background: none; padding: 0; }
+/* Long lines wrap (keeping their indentation) instead of scrolling sideways. */
+.msg-text pre { background: var(--code-bg); padding: 10px 12px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg-text pre code { background: none; padding: 0; white-space: inherit; }
+/* Diagrams drawn with line characters (boxcard.js) */
+.text-graph { position: relative; margin: 0 0 0.9em; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--code-bg); }
+.msg-text .text-graph pre { margin: 0; padding: 0; background: none; border-radius: 0; white-space: pre; overflow-wrap: normal; overflow-x: auto;
+  font: 12.5px/1.45 var(--mono); color: var(--text-output); }
+.text-graph .tg-line { color: var(--text-faint); }
+.text-graph .tg-arrow { color: var(--accent); }
+.text-graph .tg-str { color: #9fd3a8; }
+.text-graph .tg-tag { color: var(--info); }
+.text-graph .tg-code { color: var(--text-output-strong); }
+.text-graph .box-toggle { position: absolute; top: 6px; right: 6px; opacity: 0; transition: opacity 0.12s; }
+.text-graph:hover .box-toggle { opacity: 1; }
 .msg-text table { border-collapse: collapse; }
 .msg-text th, .msg-text td { border: 1px solid var(--border); padding: 4px 8px; }
 /* The agent's answer sits in a sunken panel, set into the chat, so the
@@ -1096,6 +1108,16 @@ video.chat-media { background: #000; }
 .box-file { font-family: var(--mono); font-size: 12.5px; color: var(--text); }
 .box-item { color: var(--text); }
 .box-item-note, .box-text { color: var(--text-dim); font-size: 13px; }
+.box-changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.box-change { display: flex; gap: 8px; align-items: baseline; }
+.box-change-sign { flex-shrink: 0; width: 16px; text-align: center; font: 700 13px var(--mono); }
+.box-change.add .box-change-sign { color: var(--ok); }
+.box-change.mod .box-change-sign { color: var(--busy); }
+.box-change.del .box-change-sign { color: var(--err); }
+.box-change.del .box-file { text-decoration: line-through; text-decoration-color: rgba(224, 90, 90, 0.6); }
+.box-change-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.box-change-body > .box-file, .box-change-body > .box-item { display: inline; }
+.box-change-tag { font-size: 11px; color: var(--text-faint); margin-left: 6px; }
 .box-flow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px; }
 .box-arrow { align-self: center; color: var(--text-faint); font-size: 16px; }
 .box-step { display: flex; flex-direction: column; gap: 3px; padding: 7px 10px; border-radius: 8px;

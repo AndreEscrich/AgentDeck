@@ -165,8 +165,10 @@ document.addEventListener('click', e => {
 function markdown(text, cwd) {
   const div = el('div', 'msg-text');
   // Text boxes drawn with ╔═╗ characters become cards (see boxcard.js).
+  // Diagrams drawn with │ ├ └ ▼ get a diagram block (also boxcard.js).
   const { text: rest, boxes } = extractBoxes(text);
-  div.innerHTML = DOMPurify.sanitize(marked.parse(rest), { ADD_ATTR: ['target'] });
+  div.innerHTML = DOMPurify.sanitize(marked.parse(fenceGraphs(rest)), { ADD_ATTR: ['target'] });
+  decorateGraphs(div);
   for (const slot of div.querySelectorAll('[data-boxcard]')) {
     const lines = boxes[Number(slot.dataset.boxcard)];
     try {
