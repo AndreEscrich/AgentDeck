@@ -989,8 +989,10 @@ class Transcript {
     skip.onclick = () => finish({ behavior: 'deny', message: 'The user chose not to answer these questions.' }, 'Skipped');
     const refresh = () => { submit.disabled = !complete(); };
 
-    // One question with one answer: a click on an option sends it right away.
-    const instant = questions.length === 1 && !questions[0].multiSelect;
+    // When every question takes one answer, picking the last missing one sends
+    // them all right away, without a click on Answer.
+    const instant = questions.every(q => !q.multiSelect);
+    const pickers = [];   // per question: pick(labels) marks those options
 
     questions.forEach((q, i) => {
       const block = el('div', 'question');
@@ -1025,6 +1027,12 @@ class Transcript {
         list.appendChild(b);
       });
       block.appendChild(list);
+      pickers[i] = labels => {
+        chosen[i] = new Set(labels);
+        own[i] = '';
+        other.value = '';
+        for (const [k, btn] of buttons.entries()) btn.classList.toggle('selected', chosen[i].has(q.options[k].label));
+      };
 
       const other = document.createElement('input');
       other.className = 'question-other';
@@ -1040,6 +1048,7 @@ class Transcript {
       other.onkeydown = e => {
         if (e.key === 'Enter') {
           e.preventDefault();
+          if (pickByNumber(i, other.value)) refresh();
           send();
         }
       };
@@ -1050,15 +1059,33 @@ class Transcript {
     card.appendChild(footer);
     refresh();
 
-    // A typed answer from the message box answers the first unanswered question.
+    // Typed option numbers ("2", or "1, 3" where more answers are allowed)
+    // count as picking those options. Returns false for any other text.
+    function pickByNumber(i, text) {
+      const q = questions[i];
+      const nums = String(text).trim().split(/\s*[,\s]\s*/).filter(Boolean);
+      if (!nums.length || !nums.every(n => /^\d+$/.test(n))) return false;
+      const labels = nums.map(n => q.options?.[Number(n) - 1]?.label);
+      if (labels.some(l => !l) || (!q.multiSelect && labels.length > 1)) return false;
+      pickers[i](labels);
+      return true;
+    }
+
+    // A typed answer from the message box answers the first unanswered
+    // question. Once every question has an answer, they are sent.
     card.answerWith = text => {
       const i = Math.max(0, questions.findIndex((_, k) => !chosen[k].size && !own[k].trim()));
-      own[i] = text;
-      const field = card.querySelectorAll('.question-other')[i];
-      if (field) field.value = text;
+      if (!pickByNumber(i, text)) {
+        own[i] = text;
+        const field = card.querySelectorAll('.question-other')[i];
+        if (field) field.value = text;
+      }
       refresh();
       send();
     };
+    // Enter in an empty message box sends answers that are complete (after
+    // picking several options with the number keys).
+    card.sendIfComplete = () => { if (complete()) { send(); return true; } return false; };
 
     const turn = this.ensureTurn();
     this.pinned(() => turn.live.appendChild(card));

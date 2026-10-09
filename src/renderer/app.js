@@ -1919,6 +1919,7 @@ $('input').addEventListener('keydown', e => {
   }
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
     e.preventDefault();
+    if (asking && !$('input').value.trim() && asking.card.sendIfComplete?.()) return;
     sendFromComposer();
   }
 });
