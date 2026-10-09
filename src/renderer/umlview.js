@@ -230,14 +230,22 @@ function fitLabel(text, width) {
 // height, order, elementOf }. onOpen(node, line) runs when a box is clicked,
 // with the line of its first change.
 function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
+  // A box with many arrows on one side is taller, so their ends spread out.
+  const ins = new Map();
+  const outs = new Map();
+  for (const e of model.edges) {
+    outs.set(e.from, (outs.get(e.from) || 0) + 1);
+    ins.set(e.to, (ins.get(e.to) || 0) + 1);
+  }
   const boxes = new Map();
   for (const n of model.nodes) {
     const name = n.name + (n.generic || '');
     const w = Math.min(Math.max(Math.ceil(textWidth(name, UML_FONT)) + 40, 110), 340);
-    boxes.set(n.id, { id: n.id, node: n, name, w, h: UML_BOX_H });
+    const h = Math.max(UML_BOX_H, 14 * (Math.max(ins.get(n.id) || 0, outs.get(n.id) || 0) + 1));
+    boxes.set(n.id, { id: n.id, node: n, name, w, h });
   }
-  const GAP_X = 96;     // room for the arrows between columns
-  const GAP_Y = 18;
+  const GAP_X = 120;    // room for the arrows between columns
+  const GAP_Y = 56;     // and between the boxes of a column
   const PAD = 18;
   const TITLE = 28;
   const GROUP_GAP_X = 120;
@@ -254,10 +262,11 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
   for (const g of groups.values()) {
     const inGroup = new Set(g.ids);
     const nodes = g.ids.map(id => boxes.get(id).node);
-    const area = g.ids.reduce((s, id) => s + (boxes.get(id).w + GAP_X) * (UML_BOX_H + GAP_Y), 0);
+    // Columns may be tall: the arrows read better with room between the boxes.
+    const area = g.ids.reduce((s, id) => s + (boxes.get(id).w + GAP_X) * (boxes.get(id).h + GAP_Y), 0);
     const columns = layout(nodes, model.edges.filter(e => inGroup.has(e.from) && inGroup.has(e.to)), {
-      maxLength: Math.max(4 * (UML_BOX_H + GAP_Y), Math.sqrt(area / 2)),
-      sizeOf: () => UML_BOX_H,
+      maxLength: Math.max(5 * (UML_BOX_H + GAP_Y), Math.sqrt(area * 1.2)),
+      sizeOf: id => boxes.get(id).h,
       gap: GAP_Y,
     });
     const size = placeColumns(columns, id => boxes.get(id), GAP_X, GAP_Y);
@@ -341,7 +350,7 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
   for (const e of edges) outgoing.set(e.from, (outgoing.get(e.from) || 0) + 1);
   for (const e of edges) {
     const g = drawEdge(boxes.get(e.from), boxes.get(e.to), e, slots);
-    if (outgoing.get(e.from) > 8 && !e.fresh) g.classList.add('faint');
+    if (outgoing.get(e.from) > 5) g.classList.add('faint');
     edgeLayer.appendChild(g);
   }
   world.appendChild(edgeLayer);
@@ -375,7 +384,7 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
     const top = 44;
     const bottom = 40;
     view.k = Math.min(1.15, (w - 48) / Math.max(1, maxW), (h - top - bottom) / Math.max(1, totalH));
-    if (readable) view.k = Math.max(view.k, 0.7);
+    if (readable) view.k = Math.max(view.k, 0.8);
     view.x = Math.max(24, (w - maxW * view.k) / 2);
     view.y = top + Math.max(0, (h - top - bottom - totalH * view.k) / 2);
     apply();
@@ -654,7 +663,7 @@ function umlPanel(fullModel, { files = [], comments = null, onFull = null, full 
     api = drawUml(stage, model, { onOpen, wheelZooms: full });
     if (!full) {
       const scale = Math.min(1.15, (stage.clientWidth - 48) / Math.max(1, api.width));
-      const wanted = Math.round(api.height * Math.max(scale, 0.7) + 120);
+      const wanted = Math.round(api.height * Math.max(scale, 0.8) + 120);
       panel.style.height = `${Math.round(Math.min(window.innerHeight * 0.82, Math.max(300, wanted)))}px`;
       requestAnimationFrame(() => api.fit({ readable: true }));
     }
