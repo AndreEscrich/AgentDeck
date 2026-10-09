@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('deck', {
   popupMenu: items => ipcRenderer.invoke('menu:popup', items),
   gitSnapshot: cwd => ipcRenderer.invoke('git:snapshot', cwd),
   gitChanges: (cwd, snap) => ipcRenderer.invoke('git:changes', cwd, snap),
+  activity: () => ipcRenderer.invoke('activity:get'),
   connectors: {
     list: cwd => ipcRenderer.invoke('connectors:list', cwd),
     cached: () => ipcRenderer.invoke('connectors:cached'),

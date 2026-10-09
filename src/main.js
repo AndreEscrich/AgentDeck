@@ -9,6 +9,7 @@ const { repoOf } = require('./repos');
 const media = require('./media');
 const jira = require('./jira');
 const connectors = require('./connectors');
+const { activity } = require('./activity');
 
 // The window loads images and videos from disk through media:// (see media.js).
 // "stream" lets video players read a file piece by piece.
@@ -197,6 +198,7 @@ app.whenReady().then(() => {
   media.registerProtocol(protocol, net, path.join(app.getPath('userData'), 'media-previews'));
   ipcMain.handle('media:recent', (_e, cwd, sinceMs) => media.recentMedia(cwd, sinceMs));
   ipcMain.handle('jira:issue', (_e, key) => jira.issue(key));
+  ipcMain.handle('activity:get', () => activity(path.join(app.getPath('userData'), 'activity-cache.json')));
   ipcMain.handle('connectors:list', (_e, cwd) => connectors.list(getConfig(), cwd));
   ipcMain.handle('connectors:cached', () => connectors.cached());
   ipcMain.handle('connectors:login', (_e, id) => connectors.login(getConfig(), id));

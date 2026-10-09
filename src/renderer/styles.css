@@ -1093,3 +1093,45 @@ video.chat-media { background: #000; }
 @keyframes stuck-tip { 0%, 40% { transform: rotate(0deg); } 50%, 90% { transform: rotate(180deg); } 100% { transform: rotate(360deg); } }
 .hub-tile.state-stuck .tile-stop { display: flex; }
 .dot.stuck { background: #9b84d8; }
+
+/* Activity in the empty Hub: totals, a calendar of days, and a table view */
+.hub-activity { width: min(920px, 100%); margin-top: 18px; display: flex; flex-direction: column; gap: 16px;
+  padding: 18px 20px; border-radius: 18px; background: #17130f; border: 1px solid #2c241c; --cell: 13px; }
+.hub-activity:empty { display: none; }
+.act-head { display: flex; align-items: center; gap: 12px; }
+.act-title { flex: 1; font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
+.act-metrics { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: #221c16; }
+.act-metrics button, .act-table-btn { border: none; background: none; font-size: 12px; padding: 4px 10px; border-radius: 6px; color: var(--text-dim); }
+.act-metrics button.on { background: #3a3027; color: var(--text); }
+.act-table-btn { border: 1px solid #2c241c; }
+.act-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+.act-tile { padding: 10px 12px; border-radius: 12px; background: #1e1913; border: 1px solid #2a221a; }
+.act-value { font-size: 22px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.act-label { font-size: 12px; color: var(--text-dim); }
+.act-sub { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+.act-calendar { position: relative; display: flex; flex-direction: column; gap: 4px; overflow-x: auto; padding-bottom: 2px; }
+.act-months { display: grid; gap: 3px; margin-left: 32px; font-size: 10.5px; color: var(--text-faint); height: 14px; }
+.act-months span { white-space: nowrap; overflow: visible; }
+.act-body { display: flex; gap: 6px; }
+.act-weekdays { display: grid; grid-template-rows: repeat(7, var(--cell)); gap: 3px; width: 26px; font-size: 10px; color: var(--text-faint); }
+.act-weekdays span { line-height: var(--cell); }
+.act-grid { display: grid; grid-template-rows: repeat(7, var(--cell)); gap: 3px; }
+.act-cell { width: var(--cell); height: var(--cell); border-radius: 3px; }
+.act-cell:not(.future):hover { outline: 2px solid var(--text); outline-offset: 1px; }
+.act-cell.future { background: transparent; }
+.act-legend { display: flex; align-items: center; gap: 4px; justify-content: flex-end; font-size: 11px; color: var(--text-faint); margin-top: 4px; }
+.act-swatch { width: 11px; height: 11px; border-radius: 3px; }
+.act-legend span:first-child { margin-right: 4px; }
+.act-legend span:last-child { margin-left: 4px; }
+.act-tip { position: absolute; transform: translate(-50%, calc(-100% - 8px)); pointer-events: none; white-space: pre; z-index: 5;
+  font-size: 12px; line-height: 1.4; color: var(--text); background: #2c241c; border: 1px solid #45392c; border-radius: 8px; padding: 6px 9px;
+  box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.6); }
+.act-notes { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; color: var(--text-dim); }
+.act-source { margin-left: auto; color: var(--text-faint); }
+.act-table-wrap { max-height: 280px; overflow-y: auto; }
+.act-table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.act-table th { text-align: left; font-weight: 600; color: var(--text-dim); padding: 4px 8px; border-bottom: 1px solid #2c241c; position: sticky; top: 0; background: #17130f; }
+.act-table td { padding: 4px 8px; color: var(--text); border-bottom: 1px solid #211b15; }
+/* With your activity shown, the empty Hub drops its big tank and moves up. */
+.hub-empty:has(.hub-activity:not(:empty)) { margin-top: 3vh; gap: 8px; }
+.hub-empty:has(.hub-activity:not(:empty)) .hub-empty-tank { display: none; }

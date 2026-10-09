@@ -517,6 +517,7 @@ function show(kind, id) {
     composerModePicker.setValue(d.mode);
     renderDraftButtons();
     $('input').placeholder = 'Start a new agent… (↩ to start)';
+    if (!state.agents.size) activityPanel.load({ ifOlderThan: 10 * 60 * 1000 });
     // Back in the Hub (after leaving or closing an agent): ready to type.
     focusInput();
   }
@@ -722,6 +723,12 @@ const connectorsPanel = new ConnectorsPanel(hub.connectorsBox, {
   folder: () => ensureDraft().folder || state.config.home,
 });
 hub.onConnectorsOpen = () => connectorsPanel.open();
+
+// Your Claude Code activity, shown in the Hub while it has no agents. It is
+// read at startup and again when the empty Hub shows and the numbers are
+// older than 10 minutes.
+const activityPanel = new ActivityPanel(hub.activityBox);
+setTimeout(() => activityPanel.load(), 1500);
 
 // The Dock badge: how many agents wait for you right now.
 let attentionCount = 0;

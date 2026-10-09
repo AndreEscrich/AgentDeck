@@ -67,6 +67,9 @@ class Hub {
     this.grid = el('div', 'hub-board');
     this.empty = el('div', 'hub-empty');
     this.empty.append(el('div', 'hub-empty-tank'), el('p', null, 'No agents yet. Describe a task in the box below to start one.'));
+    // Your Claude Code activity (renderer/activity.js fills it).
+    this.activityBox = el('div', 'hub-activity');
+    this.empty.appendChild(this.activityBox);
 
     this.root.append(this.grid, this.empty);
 
