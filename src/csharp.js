@@ -10,6 +10,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { versions } = require('./undo');
 
 // ---------- text ----------
 
@@ -293,11 +294,6 @@ function diffLines(file) {
   return { added, removed };
 }
 
-// The text of a deleted file, from its diff.
-function deletedText(file) {
-  return (file.lines || []).filter(([kind]) => kind === 'del').map(([, t]) => t.slice(1)).join('\n');
-}
-
 // ---------- the project's types ----------
 
 // Every type declared in the project's own C# files, by name: a list of
@@ -404,13 +400,12 @@ async function model(cwd, files) {
   const changed = [];   // { node, type, file, diff }
   for (const f of (Array.isArray(files) ? files : []).slice(0, 200)) {
     if (!f || typeof f.path !== 'string' || !/\.cs$/i.test(f.path)) continue;
-    const abs = path.isAbsolute(f.path) ? f.path : path.join(cwd || '', f.path);
-    let text = null;
-    if (f.status === 'del') text = deletedText(f);
-    else {
-      try { text = await fs.promises.readFile(abs, 'utf8'); } catch { text = null; }
-      if (text == null) continue;
-    }
+    // The file as the agent left it, rebuilt from the task's diff (see
+    // versions in undo.js), so undoing or reverting it later does not change
+    // the diagram.
+    const v = await versions(cwd, f);
+    if (v.error) continue;
+    const text = (f.status === 'del' ? v.before : v.after || []).join('\n');
     const diff = diffLines(f);
     const changedLines = new Set(diff.added.keys());
     for (const r of diff.removed) changedLines.add(r.at);

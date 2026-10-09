@@ -82,6 +82,19 @@ function unpatch(lines, hunks) {
   return lines;
 }
 
+// Applies the hunks forwards: each block of old lines becomes the new lines.
+// The first hunk goes first, so later ones find their place after it.
+function patch(lines, hunks) {
+  lines = [...lines];
+  for (const h of hunks) {
+    const expected = h.before.length ? h.newStart - 1 : h.newStart;
+    const at = h.before.length ? find(lines, h.before, expected) : Math.min(Math.max(0, expected), lines.length);
+    if (at < 0) return null;
+    lines.splice(at, h.before.length, ...h.after);
+  }
+  return lines;
+}
+
 // Resolves with { ok: true, previous } (base64 of the content before the
 // undo, or null when the file did not exist) or { ok: false, error }.
 async function undoFile(cwd, file) {
@@ -133,25 +146,47 @@ async function restoreFile(cwd, p, previous) {
   }
 }
 
-// The whole file before and after the task, for the full and side-by-side
-// views of a diff: after is the file as it is now, before is that with the
-// diff applied backwards. Resolves with { before, after } (arrays of lines;
-// null for a file that did not exist) or { error }.
+// The whole file before and after the task, as the agent left it, rebuilt
+// from the task's diff (its history), whatever happened to the file since:
+// - a new file: its lines are in the diff (a file written and then edited
+//   in the same task: its first content with the edits applied);
+// - a deleted file: its removed lines;
+// - an edited file: the file on disk, if it still is the agent's version
+//   (the diff applies backwards to it); if it was undone or reverted since,
+//   it is the version before, and the diff applied forwards gives the
+//   agent's version.
+// Used by the full and side-by-side views and the class diagram. Resolves
+// with { before, after } (arrays of lines; null for a file that did not
+// exist) or { error }.
 async function versions(cwd, file) {
   if (!file || typeof file.path !== 'string' || !Array.isArray(file.lines)) return { error: 'No file.' };
   const abs = resolve(cwd, file.path);
   const removed = () => file.lines.filter(([kind]) => kind === 'del').map(([, text]) => clean(text));
   try {
     if (file.status === 'del') return { before: removed(), after: null };
-    if (!fs.existsSync(abs)) return { error: `${path.basename(file.path)} no longer exists.` };
-    const after = splitText(fs.readFileSync(abs, 'utf8')).lines;
-    if (file.status === 'new') return { before: null, after };
-    const before = unpatch(after, hunksOf(file));
-    if (!before) return { error: 'The file was changed again after the task, so its earlier version can\'t be rebuilt.' };
-    return { before, after };
+    if (file.status === 'new') {
+      // Written whole (lines before the first @@), then maybe edited.
+      const first = file.lines.findIndex(([kind]) => kind === 'hunk');
+      const written = file.lines.slice(0, first < 0 ? undefined : first).filter(([kind]) => kind === 'add').map(([, text]) => clean(text));
+      const rest = { lines: first < 0 ? [] : file.lines.slice(first) };
+      const onlyAdds = rest.lines.every(([kind]) => kind === 'hunk' || kind === 'add');
+      if (onlyAdds) return { before: null, after: [...written, ...rest.lines.filter(([kind]) => kind === 'add').map(([, text]) => clean(text))] };
+      const after = patch(written, hunksOf(rest));
+      if (after) return { before: null, after };
+      if (fs.existsSync(abs)) return { before: null, after: splitText(fs.readFileSync(abs, 'utf8')).lines };
+      return { error: `${path.basename(file.path)} can't be rebuilt from the task's changes.` };
+    }
+    if (!fs.existsSync(abs)) return { error: `${path.basename(file.path)} no longer exists, and its version from the task can't be rebuilt without it.` };
+    const now = splitText(fs.readFileSync(abs, 'utf8')).lines;
+    const hunks = hunksOf(file);
+    const before = unpatch(now, hunks);
+    if (before) return { before, after: now };
+    const after = patch(now, hunks);
+    if (after) return { before: now, after };
+    return { error: 'The file was changed in the same lines since the task, so its version from the task can\'t be rebuilt.' };
   } catch (err) {
     return { error: err.message };
   }
 }
 
-module.exports = { undoFile, restoreFile, unpatch, hunksOf, versions };
+module.exports = { undoFile, restoreFile, unpatch, patch, hunksOf, versions };
