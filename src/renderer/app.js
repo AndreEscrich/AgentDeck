@@ -1405,6 +1405,7 @@ async function loadHistory(session) {
     const view = makeChatView();
     const data = await window.deck.loadTranscript(session.file);
     const transcript = new Transcript(view, data.cwd || session.cwd);
+    transcript.onEditPrompt = (index, text, opts) => rewindTo(transcript, index, text, opts);
     for (const m of data.messages) transcript.add(m);
     transcript.finishTurn();
     transcript.note('End of saved session. Send a message to continue it.');
@@ -1577,7 +1578,9 @@ window.deck.onQuitting(() => {
 
 // ---------- agents ----------
 
-async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId, fromRect, forkFrom, images = [], ticket = null }) {
+// rewindAt (going back to one of your messages in a saved session): the
+// answer to continue after ({ uuid, session }), or null to start over.
+async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId, fromRect, forkFrom, images = [], ticket = null, rewindAt }) {
   const title = resume ? resume.session.title : prompt.split('\n')[0].slice(0, 80);
   choice = choice || defaultChoice();
   permissionMode = permissionMode || defaultMode();
@@ -1589,6 +1592,7 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
   // A resumed session keeps its chat container, so its history stays on screen.
   const view = resume ? resume.view : makeChatView();
   const transcript = resume ? resume.transcript : new Transcript(view, cwd);
+  transcript.onEditPrompt = (index, text, opts) => rewindTo(transcript, index, text, opts);
   if (resume) {
     state.history.delete(resume.session.id);
     state.parked.delete(resume.session.id);
@@ -1623,8 +1627,9 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
       model: choice.model,
       effort: choice.effort,
       fastMode: choice.fastMode,
-      resumeId: resume?.session.id || forkFrom?.sessionId,
-      forkSession: !resume && !!forkFrom,
+      ...(rewindAt === undefined
+        ? { resumeId: resume?.session.id || forkFrom?.sessionId, forkSession: !resume && !!forkFrom }
+        : { resumeId: rewindAt?.session || undefined, forkSession: !!rewindAt, resumeSessionAt: rewindAt?.uuid }),
     });
   } catch (err) {
     agent.status = 'error';
@@ -1800,6 +1805,92 @@ function showAwayCard(ids, ms) {
   awayCard = card;
   $('hub-view').prepend(card);
   sfx('pick');
+}
+
+// ---------- going back to one of your messages ----------
+
+// Edit on one of your messages (see Transcript.editPrompt): the conversation
+// continues from just before that message, with the new text. Claude Code
+// resumes the session up to the answer before the message, as a new session
+// (--resume-session-at with --fork-session), so the old one stays in
+// History. A running agent restarts in place, in the same tile; a saved
+// session starts an agent. With undoFiles, the file changes of the tasks
+// that leave the chat are undone first (newest first).
+const exitWaiters = new Map();   // agent id -> called when its process has ended
+
+async function rewindTo(transcript, index, text, { undoFiles, files = [] } = {}) {
+  const prompt = transcript.prompts[index];
+  if (!prompt) return;
+  const agent = [...state.agents.values()].find(a => a.transcript === transcript && !a.removed);
+  const hist = agent ? null : [...state.history.values()].find(h => h.transcript === transcript);
+  if (!agent && !hist) return;
+  const cwd = agent ? agent.cwd : hist.cwd || hist.session.cwd;
+  if (!cwd) {
+    transcript.note('This session has no saved folder, so it cannot continue.', true);
+    return;
+  }
+  if (agent && !(await confirmStop([agent], { action: 'Going back to this message', label: 'Stop and go back' }))) return;
+
+  if (undoFiles) {
+    const problems = [];
+    for (const f of [...files].reverse()) {
+      const r = await window.deck.undoFile(cwd, { path: f.path, status: f.status, lines: f.lines }).catch(err => ({ ok: false, error: String(err) }));
+      if (r.ok) f.undone = { previous: r.previous };
+      else problems.push(r.error);
+    }
+    if (problems.length) transcript.note(`Some files were not undone:\n${problems.join('\n')}`, true);
+  }
+  // Where to continue: after the answer before this message, in the session
+  // that answer belongs to. Without one (your first message), from scratch.
+  const at = prompt.after ? { uuid: prompt.after.uuid, session: prompt.after.session || agent?.sessionId || hist?.session.id } : null;
+  sfx('sent');
+
+  if (hist) {
+    transcript.truncateAt(index);
+    await startAgent({ cwd, prompt: text, permissionMode: hist.mode, choice: hist.choice, resume: hist, rewindAt: at });
+    return;
+  }
+
+  // A running agent: stop its process, then start it again with the same id,
+  // so its tile, group and place in the Hub stay.
+  const ended = new Promise(resolve => exitWaiters.set(agent.id, resolve));
+  window.deck.closeAgent(agent.id);
+  await Promise.race([ended, new Promise(r => setTimeout(r, 8000))]);
+  exitWaiters.delete(agent.id);
+  const place = tileOrder.indexOf(orderKey(agent));
+  if (place >= 0) tileOrder[place] = agent.id;
+  agent.sessionId = null;
+  agent.status = 'starting';
+  agent.queue = [];
+  agent.queueHeld = false;
+  renderQueue(agent);
+  agent.snapshot = null;
+  agent.mediaSince = null;
+  clearClashes(agent);
+  transcript.truncateAt(index);
+  transcript.add({ type: 'user', message: { role: 'user', content: text } });
+  notePrompt(agent, text);
+  refreshHeaderIfCurrent(agent.id);
+  refreshHub();
+  try {
+    await window.deck.startAgent({
+      id: agent.id,
+      cwd,
+      permissionMode: agent.mode,
+      model: agent.choice?.model,
+      effort: agent.choice?.effort,
+      fastMode: agent.choice?.fastMode,
+      resumeId: at?.session,
+      forkSession: !!at,
+      resumeSessionAt: at?.uuid,
+    });
+  } catch (err) {
+    agent.status = 'error';
+    transcript.note(`Could not restart the agent: ${err?.message || err}`, true);
+    refreshHub();
+    return;
+  }
+  await sendToAgent(agent, text);
 }
 
 // ---------- Jira tickets ----------
@@ -2168,6 +2259,13 @@ window.deck.onModel((id, model) => {
 });
 
 window.deck.onExit((id, { code, stderr }) => {
+  // An agent that is going back to one of your messages restarts itself.
+  const waiter = exitWaiters.get(id);
+  if (waiter) {
+    exitWaiters.delete(id);
+    waiter();
+    return;
+  }
   const a = state.agents.get(id);
   if (!a || state.quitting) return;
   clearClashes(a);

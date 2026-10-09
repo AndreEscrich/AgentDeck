@@ -29,7 +29,7 @@ class AgentManager {
 
   // The window may pick the id itself (so it can show the agent's tile before
   // this process has started anything); otherwise a new one is made here.
-  start({ id: wantedId, cwd, resumeId, forkSession, permissionMode, model, effort, fastMode, title }) {
+  start({ id: wantedId, cwd, resumeId, forkSession, resumeSessionAt, permissionMode, model, effort, fastMode, title }) {
     const config = this.getConfig();
     const id = typeof wantedId === 'string' && /^[\w-]{8,64}$/.test(wantedId) && !this.agents.has(wantedId) ? wantedId : randomUUID();
     const args = [
@@ -51,6 +51,8 @@ class AgentManager {
     if (resumeId) args.push('--resume', resumeId);
     // A fork starts a new session that begins with a copy of resumeId's conversation.
     if (resumeId && forkSession) args.push('--fork-session');
+    // Going back to one of your messages: the session up to the answer before it.
+    if (resumeId && typeof resumeSessionAt === 'string' && /^[\w-]{8,64}$/.test(resumeSessionAt)) args.push('--resume-session-at', resumeSessionAt);
     args.push(...(config.extraArgs || []));
 
     const proc = spawnClaude(config.claudePath, args, {

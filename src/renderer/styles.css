@@ -204,6 +204,27 @@ body.history-open #drawer-backdrop { opacity: 1; pointer-events: auto; }
   white-space: pre-wrap;
   word-wrap: break-word;
 }
+/* Edit on your message: in the margin to its left while you point at it */
+.msg-user.editable { position: relative; }
+.msg-edit {
+  position: absolute; right: calc(100% + 8px); top: 6px; font-size: 11px; padding: 2px 9px; white-space: nowrap;
+  opacity: 0; pointer-events: none; transition: opacity 0.12s;
+}
+.msg-user.editable:hover > .msg-edit, .msg-edit:focus-visible { opacity: 1; pointer-events: auto; }
+.msg-user.editing { width: min(620px, 80%); max-width: 80%; }
+.msg-user.editing > .msg-edit, .msg-user.editing > .msg-body { display: none; }
+.msg-edit-box { white-space: normal; }
+.msg-edit-box textarea {
+  width: 100%; box-sizing: border-box; resize: vertical; font: inherit; color: var(--text);
+  background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px;
+}
+.msg-edit-options { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; font-size: 12px; color: var(--text-dim); }
+.msg-edit-undo { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.msg-edit-undo input { accent-color: var(--accent); }
+.msg-edit-note { color: var(--text-faint); }
+.msg-edit-buttons { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+.msg-edit-buttons button { font-size: 12px; padding: 3px 12px; }
+.msg-edit-send { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
 /* Post an answer to the agent's Jira ticket */
 .ticket-post { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12px; }
 .ticket-post button { font-size: 12px; padding: 3px 12px; }

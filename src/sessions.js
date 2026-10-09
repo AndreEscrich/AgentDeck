@@ -117,7 +117,8 @@ function loadTranscript(file) {
     if (e.isSidechain) continue;
     if (!cwd && e.cwd) cwd = e.cwd;
     if (e.type === 'assistant' && e.message) {
-      messages.push({ type: 'assistant', message: e.message });
+      // uuid and session: where going back to your next message continues from.
+      messages.push({ type: 'assistant', message: e.message, uuid: e.uuid, session_id: e.sessionId });
     } else if (e.type === 'user' && e.message && !e.isMeta) {
       const content = e.message.content;
       const hasToolResult = Array.isArray(content) && content.some(c => c.type === 'tool_result');

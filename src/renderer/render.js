@@ -508,6 +508,7 @@ class Transcript {
     this.pinned(() => {
       // The changed files come first, then Claude's message about them.
       const toolFiles = this.toolChanges(turn.changes).filter(f => !isTempFile(f.path));
+      turn.files = toolFiles;
       if (toolFiles.length) turn.answer.appendChild(changesCard(toolFiles, this.cwd));
       // Then drop files that no longer exist, unless the snapshot comparison
       // (showGitChanges) has replaced this card in the meantime.
@@ -515,7 +516,9 @@ class Transcript {
         if (!removed || turn.gitShown) return;
         this.pinned(() => {
           turn.el.querySelector('.changes')?.remove();
-          if (turn.changes.size) turn.answer.prepend(changesCard(this.toolChanges(turn.changes), this.cwd));
+          if (!turn.changes.size) return;
+          turn.files = this.toolChanges(turn.changes);
+          turn.answer.prepend(changesCard(turn.files, this.cwd));
         });
       }).catch(() => {});
       for (const node of turn.pendingText) turn.answer.appendChild(node);
@@ -561,6 +564,9 @@ class Transcript {
   // ---------- messages ----------
 
   add(msg) {
+    // The last answer before each of your messages is where a rewind to that
+    // message continues from (see editPrompt).
+    if (msg.type === 'assistant' && msg.uuid) this.lastAssistant = { uuid: msg.uuid, session: msg.session_id || null };
     switch (msg.type) {
       case 'user': return this.addUser(msg.message, msg.tool_use_result, msg.isSynthetic || msg.isMeta);
       case 'assistant': return this.addAssistant(msg.message);
@@ -618,8 +624,11 @@ class Transcript {
         bubbles[bubbles.length - 1].appendChild(row);
       }
       for (const b of bubbles) this.append(b);
-      this.prompts.push({ el: bubbles[0], text: texts.join('\n').trim() });
+      const prompt = { el: bubbles[0], text: texts.join('\n').trim(), after: this.lastAssistant || null };
+      this.prompts.push(prompt);
+      this.addEditButton(prompt, bubbles[bubbles.length - 1]);
       this.startTurn();
+      prompt.turn = this.turn;
       this.addSlashSkill(this.turn, texts.join('\n'));
     }
     if (Array.isArray(content)) {
@@ -627,6 +636,96 @@ class Transcript {
         if (block.type === 'tool_result') this.fillTool(block, toolUseResult);
       }
     }
+  }
+
+  // ---------- going back to one of your messages ----------
+
+  // Pointing at one of your messages shows Edit. Editing it and sending
+  // continues the conversation from just before that message, with the new
+  // text (the app does that, see rewindTo in app.js); what came after it
+  // leaves the chat.
+  addEditButton(prompt, bubble) {
+    const button = el('button', 'msg-edit', 'Edit');
+    button.type = 'button';
+    button.title = 'Change this message and continue from here';
+    button.onclick = e => {
+      e.stopPropagation();
+      this.editPrompt(prompt);
+    };
+    // The message itself, hidden while you edit it.
+    const body = el('span', 'msg-body');
+    body.append(...bubble.childNodes);
+    bubble.classList.add('editable');
+    bubble.append(body, button);
+    prompt.bubble = bubble;
+  }
+
+  editPrompt(prompt) {
+    const index = this.prompts.indexOf(prompt);
+    const bubble = prompt.bubble || prompt.el;
+    if (index < 0 || !this.onEditPrompt || bubble.querySelector('.msg-edit-box')) return;
+    const box = el('div', 'msg-edit-box');
+    const input = document.createElement('textarea');
+    input.value = prompt.text;
+    input.rows = Math.min(10, Math.max(2, prompt.text.split('\n').length));
+    const later = this.prompts.slice(index);
+    const files = later.flatMap(p => p.turn?.files || []).filter(f => f.status !== 'bin' && !f.undone);
+    const options = el('div', 'msg-edit-options');
+    let undo = null;
+    if (files.length) {
+      const label = el('label', 'msg-edit-undo');
+      undo = document.createElement('input');
+      undo.type = 'checkbox';
+      label.append(undo, document.createTextNode(` Also undo the ${files.length} file change${files.length === 1 ? '' : 's'} made since this message`));
+      options.appendChild(label);
+    }
+    const note = later.length > 1
+      ? `The ${later.length - 1} message${later.length === 2 ? '' : 's'} after it, and the answers, leave the chat.`
+      : 'Its answer leaves the chat.';
+    options.appendChild(el('span', 'msg-edit-note', note));
+    const cancel = el('button', null, 'Cancel');
+    const send = el('button', 'msg-edit-send', 'Send');
+    const buttons = el('div', 'msg-edit-buttons');
+    buttons.append(cancel, send);
+    box.append(input, options, buttons);
+    bubble.classList.add('editing');
+    bubble.appendChild(box);
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+    const close = () => { box.remove(); bubble.classList.remove('editing'); };
+    const submit = () => {
+      const text = input.value.trim();
+      if (!text) return;
+      close();
+      this.onEditPrompt(index, text, { undoFiles: !!undo?.checked, files });
+    };
+    cancel.onclick = e => { e.stopPropagation(); close(); };
+    send.onclick = e => { e.stopPropagation(); submit(); };
+    box.onclick = e => e.stopPropagation();
+    input.addEventListener('keydown', e => {
+      e.stopPropagation();
+      if (e.key === 'Escape') { e.preventDefault(); close(); }
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); }
+    });
+  }
+
+  // Removes your message number index, and everything after it, from the chat.
+  truncateAt(index) {
+    const prompt = this.prompts[index];
+    if (!prompt) return;
+    this.clearDraft();
+    let node = prompt.el;
+    while (node) {
+      const next = node.nextSibling;
+      node.remove();
+      node = next;
+    }
+    this.prompts = this.prompts.slice(0, index);
+    this.turn = null;
+    this.lastAssistant = prompt.after;
+    this.lastFinished = this.prompts[index - 1]?.turn || null;
+    this.pin.classList.remove('show');
+    this.onUpdate?.();
   }
 
   addAssistant(message) {
@@ -848,6 +947,7 @@ class Transcript {
       const seen = new Set(files.map(f => f.path));
       for (const f of this.toolChanges(turn.changes)) if (!seen.has(f.path) && !isTempFile(f.path)) files.push(f);
     }
+    turn.files = files;
     this.pinned(() => {
       turn.el.querySelector('.changes')?.remove();
       if (files.length) turn.answer.prepend(changesCard(files, this.cwd));
