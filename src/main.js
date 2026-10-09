@@ -8,6 +8,7 @@ const git = require('./git');
 const { repoOf } = require('./repos');
 const media = require('./media');
 const jira = require('./jira');
+const connectors = require('./connectors');
 
 // The window loads images and videos from disk through media:// (see media.js).
 // "stream" lets video players read a file piece by piece.
@@ -193,6 +194,12 @@ app.whenReady().then(() => {
   media.registerProtocol(protocol, net, path.join(app.getPath('userData'), 'media-previews'));
   ipcMain.handle('media:recent', (_e, cwd, sinceMs) => media.recentMedia(cwd, sinceMs));
   ipcMain.handle('jira:issue', (_e, key) => jira.issue(key));
+  ipcMain.handle('connectors:list', (_e, cwd) => connectors.list(getConfig(), cwd));
+  ipcMain.handle('connectors:cached', () => connectors.cached());
+  ipcMain.handle('connectors:login', (_e, id) => connectors.login(getConfig(), id));
+  ipcMain.handle('connectors:cancelLogin', (_e, id) => connectors.cancelLogin(id));
+  ipcMain.handle('connectors:add', (_e, spec) => connectors.add(getConfig(), spec));
+  ipcMain.handle('connectors:remove', (_e, spec) => connectors.remove(getConfig(), spec));
   // Shows the Agent Hub icon in the Dock also when you run `npm start`.
   if (app.dock) app.dock.setIcon(path.join(__dirname, '..', 'build', 'icon.png'));
   configPath = path.join(app.getPath('userData'), 'config.json');

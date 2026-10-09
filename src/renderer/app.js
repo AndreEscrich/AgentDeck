@@ -684,6 +684,13 @@ const hub = new Hub($('hub-view'), {
   onContext: id => sessionMenu(id.startsWith('p:') ? id.slice(2) : state.agents.get(id)?.sessionId),
 });
 
+// The Connectors card in the Hub. It lists the connectors for the folder the
+// message box points at (connectors can be set up for one folder only).
+const connectorsPanel = new ConnectorsPanel(hub.connectorsBox, {
+  folder: () => ensureDraft().folder || state.config.home,
+});
+hub.onConnectorsOpen = () => connectorsPanel.open();
+
 // The Dock badge: how many agents wait for you right now.
 let attentionCount = 0;
 // It counts the agents that wait for your answer or approval (they only

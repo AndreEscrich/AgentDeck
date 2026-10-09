@@ -77,11 +77,28 @@ class Hub {
     this.usageTab.type = 'button';
     this.usageTab.title = 'Usage';
     this.usage = el('aside', 'hub-usage');
-    // The floating bar on the left edge (only the usage tab for now).
+    // The Connectors tab opens a second card in the same place (see
+    // renderer/connectors.js); the app fills it and sets onConnectorsOpen.
+    this.connectorsTab = el('button', 'usage-tab connectors-tab');
+    this.connectorsTab.type = 'button';
+    this.connectorsTab.title = 'Connectors';
+    this.connectorsTab.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 2v4M12 2v4M4 6h10v3a5 5 0 0 1-10 0V6zM9 14v2.5"/></svg>';
+    this.connectorsTab.appendChild(el('span', 'usage-tab-label', 'Connectors'));
+    this.connectorsBox = el('aside', 'hub-usage hub-connectors');
+    // The floating bar on the left edge: Usage and Connectors.
     const nav = el('nav', 'hub-nav');
-    nav.append(this.usageTab);
-    this.rail.append(nav, this.usage);
-    this.usageTab.onclick = () => this.rail.classList.toggle('open');
+    nav.append(this.usageTab, this.connectorsTab);
+    this.rail.append(nav, this.usage, this.connectorsBox);
+    // A tab opens its card, or closes it when it is already open.
+    const showPanel = panel => {
+      const same = this.rail.classList.contains('open') && this.rail.dataset.panel === panel;
+      this.rail.dataset.panel = panel;
+      this.rail.classList.toggle('open', !same);
+      if (!same && panel === 'connectors') this.onConnectorsOpen?.();
+    };
+    this.rail.dataset.panel = 'usage';
+    this.usageTab.onclick = () => showPanel('usage');
+    this.connectorsTab.onclick = () => showPanel('connectors');
     document.addEventListener('pointerdown', e => {
       if (this.rail.classList.contains('open') && !this.rail.contains(e.target)) this.rail.classList.remove('open');
     }, true);
