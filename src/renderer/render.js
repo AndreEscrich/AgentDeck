@@ -290,6 +290,10 @@ function plannedWaitMs(input) {
   return ms;
 }
 
+// Tools that only look at things; their calls and results never count as the
+// agent's work.
+const READ_ONLY = new Set(['Read', 'Grep', 'Glob', 'LS', 'WebFetch', 'WebSearch', 'TodoWrite', 'Skill', 'ToolSearch']);
+
 // Splits the output of `git diff` into one entry per file.
 function parseUnifiedDiff(text) {
   const files = [];
@@ -683,6 +687,12 @@ class Transcript {
     if (block.is_error) out.style.color = 'var(--err)';
     tool.card.appendChild(out);
     if (!block.is_error) this.recordChange(tool, toolUseResult);
+    // A tool that makes a file on its own (a Unity recorder, a screenshot
+    // tool) often only names the file in its result. Shell output is left
+    // out: an `ls` there would list other agents' files too.
+    if (!block.is_error && this.turn && !READ_ONLY.has(tool.name) && !['Bash', 'PowerShell'].includes(tool.name)) {
+      (this.turn.results = this.turn.results || []).push(resultText(block.content).slice(0, 20000));
+    }
   }
 
   // ---------- changed files ----------
@@ -712,7 +722,6 @@ class Transcript {
   // of other tools that change things (Unity tools, sub-agents). Read-only
   // tools do not count: reading a file does not change it.
   noteEvidence(turn, block) {
-    const READ_ONLY = new Set(['Read', 'Grep', 'Glob', 'LS', 'WebFetch', 'WebSearch', 'TodoWrite', 'Skill', 'ToolSearch']);
     const SCRIPT = /\.(py|sh|bash|zsh|js|mjs|cjs|ts|rb|pl|ps1|command|bat|cmd)$/i;
     const input = block.input || {};
     turn.touched = turn.touched || new Set();
@@ -768,6 +777,15 @@ class Transcript {
     if (turn.touched?.has(abs) || turn.touched?.has(rel)) return true;
     const name = rel.split('/').pop();
     return (turn.evidence || []).some(text => text.includes(rel) || text.includes(name));
+  }
+
+  // Like agentTouched, for an image or video found in the folder: the agent
+  // named it in a command or a tool's input, or a tool's result named it.
+  agentMadeMedia(turn, file) {
+    const rel = this.relativePath(file);
+    if (turn.touched?.has(file) || this.agentTouched(turn, rel)) return true;
+    const name = rel.split(/[\\/]/).pop();
+    return (turn.results || []).some(text => text.includes(rel) || text.includes(name));
   }
 
   isInside(p) {
@@ -846,7 +864,9 @@ class Transcript {
   showMedia(turn, files) {
     if (!turn || !files?.length) return;
     const shown = new Set([...turn.el.querySelectorAll('.msg-text .chat-media')].map(n => n.dataset.path));
-    files = files.filter(f => !shown.has(f.path) && !isTempFile(f.path));
+    // The search finds every new file in the folder, also those other agents
+    // (or you) made at the same time. Only files this agent made stay.
+    files = files.filter(f => !shown.has(f.path) && !isTempFile(f.path) && this.agentMadeMedia(turn, f.path));
     if (!files.length) return;
     const card = el('div', 'media-card');
     const videos = files.filter(f => f.kind === 'video').length;
