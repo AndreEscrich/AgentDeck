@@ -67,6 +67,86 @@ function mediaElement(file, caption) {
 }
 
 // Markdown images with a file path show the file; a video path becomes a player.
+// ---------- links and Jira tickets ----------
+
+// Web addresses in plain text (your messages, notes, tool output).
+const URL_IN_TEXT = /https?:\/\/[^\s<>"'`]+/g;
+
+// A Jira ticket link: …/browse/KEY, or a board link with ?selectedIssue=KEY.
+function jiraKeyOf(href) {
+  let url;
+  try { url = new URL(href); } catch { return null; }
+  if (!/atlassian\.net$|(^|\.)jira\./i.test(url.hostname)) return null;
+  const m = url.pathname.match(/\/browse\/([A-Z][A-Z0-9_]+-\d+)/) || (url.searchParams.get('selectedIssue') || '').match(/^([A-Z][A-Z0-9_]+-\d+)$/);
+  return m ? m[1] : null;
+}
+
+// Plain text with its web addresses turned into links. Punctuation right
+// after an address (a period at the end of a sentence) stays text.
+function linkify(text) {
+  const frag = document.createDocumentFragment();
+  let last = 0;
+  for (const m of text.matchAll(URL_IN_TEXT)) {
+    let url = m[0];
+    const trail = url.match(/[.,;:!?)\]]+$/);
+    if (trail) url = url.slice(0, -trail[0].length);
+    frag.append(text.slice(last, m.index));
+    const a = document.createElement('a');
+    a.href = url;
+    a.textContent = url;
+    frag.append(a);
+    last = m.index + url.length;
+  }
+  frag.append(text.slice(last));
+  return frag;
+}
+
+// A Jira link as a ticket card: Jira icon, key, title and status. The title
+// and status come from Jira (see src/jira.js); without them the card shows
+// the key alone and still opens the ticket.
+function jiraCard(href, key) {
+  const a = document.createElement('a');
+  a.className = 'jira-card';
+  a.href = href;
+  a.title = `Open ${key} in Jira`;
+  const logo = el('span', 'jira-logo');
+  logo.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="#2684ff" d="M15.4 7.4 8.6.6 8 0 2.9 5.1.6 7.4a.8.8 0 0 0 0 1.2l4.7 4.7L8 16l5.1-5.1.1-.1 2.2-2.2a.8.8 0 0 0 0-1.2zM8 10.2 5.8 8 8 5.8 10.2 8z"/></svg>';
+  const summary = el('span', 'jira-summary');
+  const status = el('span', 'jira-status');
+  a.append(logo, el('span', 'jira-key', key), summary, status);
+  window.deck?.jiraIssue?.(key).then(issue => {
+    if (!issue) return;
+    summary.textContent = issue.summary;
+    status.textContent = issue.status;
+    status.dataset.category = issue.category;
+    a.title = `${issue.type ? issue.type + ' ' : ''}${key}: ${issue.summary}\n${issue.status} · open in Jira`;
+  }).catch(() => {});
+  return a;
+}
+
+// Every link opens in your browser; Jira ticket links become ticket cards.
+function decorateLinks(root) {
+  for (const a of [...root.querySelectorAll('a[href]')]) {
+    if (a.closest('.jira-card')) continue;
+    const href = a.getAttribute('href');
+    if (!/^https?:/i.test(href)) continue;
+    a.target = '_blank';
+    const key = jiraKeyOf(href);
+    if (key) a.replaceWith(jiraCard(href, key));
+  }
+  return root;
+}
+
+// One handler for the whole window: a click on a web link opens it in your
+// normal browser (the main process turns window.open into shell.openExternal).
+document.addEventListener('click', e => {
+  const a = e.target.closest?.('a[href]');
+  if (!a || !/^https?:/i.test(a.getAttribute('href'))) return;
+  e.preventDefault();
+  e.stopPropagation();
+  window.open(a.href, '_blank');
+}, true);
+
 function markdown(text, cwd) {
   const div = el('div', 'msg-text');
   // Text boxes drawn with ╔═╗ characters become cards (see boxcard.js).
@@ -80,7 +160,7 @@ function markdown(text, cwd) {
       slot.replaceWith(el('pre', null, lines.join('\n')));
     }
   }
-  for (const a of div.querySelectorAll('a')) a.target = '_blank';
+  decorateLinks(div);
   for (const img of div.querySelectorAll('img')) {
     const file = resolveMediaPath(img.getAttribute('src'), cwd);
     if (file) img.replaceWith(mediaElement(file, img.getAttribute('alt')));
@@ -281,7 +361,9 @@ class Transcript {
 
   // Notes go into the current turn, under its steps, so they stay visible.
   note(text, isError) {
-    const node = el('div', isError ? 'note err' : 'note', text);
+    const node = el('div', isError ? 'note err' : 'note');
+    node.appendChild(linkify(String(text)));
+    decorateLinks(node);
     if (this.turn) this.pinned(() => this.turn.live.appendChild(node));
     else this.append(node);
   }
@@ -464,7 +546,11 @@ class Transcript {
     if (texts.length) {
       // Your message starts a new turn.
       this.finishTurn();
-      const bubbles = texts.map(t => el('div', 'msg-user', t));
+      const bubbles = texts.map(t => {
+        const b = el('div', 'msg-user');
+        b.appendChild(linkify(t));
+        return decorateLinks(b);
+      });
       for (const b of bubbles) this.append(b);
       this.prompts.push({ el: bubbles[0], text: texts.join('\n').trim() });
       this.startTurn();
@@ -528,7 +614,9 @@ class Transcript {
     const state = tool.card.querySelector('.tool-state');
     state.className = 'tool-state ' + (block.is_error ? 'err' : 'ok');
     state.textContent = block.is_error ? 'failed' : 'done';
-    const out = el('pre', null, clip(resultText(block.content)));
+    const out = el('pre');
+    out.appendChild(linkify(clip(resultText(block.content))));
+    decorateLinks(out);
     if (block.is_error) out.style.color = 'var(--err)';
     tool.card.appendChild(out);
     if (!block.is_error) this.recordChange(tool, toolUseResult);
