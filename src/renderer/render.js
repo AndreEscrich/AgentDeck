@@ -272,6 +272,24 @@ function isTempFile(p) {
   return /(^|[_.\-\s])(tmp|temp)([_.\-\s\d]|$)/i.test(stem);
 }
 
+// How long a tool call says it will wait on purpose, in ms: the sleeps in a
+// command (sleep 60), and inputs that name a duration (duration, seconds,
+// waitSeconds, recordSeconds, delayMs …). Keys ending in "ms" are
+// milliseconds, the others seconds. Bash's timeout is a limit, not a wait.
+function plannedWaitMs(input) {
+  let ms = 0;
+  const command = typeof input.command === 'string' ? input.command : '';
+  for (const m of command.matchAll(/\bsleep\s+(\d+(?:\.\d+)?)([smh]?)\b/g)) {
+    ms += Number(m[1]) * ({ m: 60000, h: 3600000 }[m[2]] || 1000);
+  }
+  for (const [key, value] of Object.entries(input)) {
+    if (key === 'timeout' || typeof value !== 'number' || value <= 0) continue;
+    if (!/duration|seconds|secs|wait|record|delay|length/i.test(key)) continue;
+    ms += /(ms|millis|milliseconds)$/i.test(key) ? value : value * 1000;
+  }
+  return ms;
+}
+
 // Splits the output of `git diff` into one entry per file.
 function parseUnifiedDiff(text) {
   const files = [];
@@ -716,7 +734,7 @@ class Transcript {
   trackTool(turn, block) {
     const summary = toolSummary(block.name, block.input || {});
     turn.openTools = turn.openTools || new Map();
-    turn.openTools.set(block.id, { name: block.name, summary, startedAt: Date.now() });
+    turn.openTools.set(block.id, { name: block.name, summary, startedAt: Date.now(), plannedMs: plannedWaitMs(block.input || {}) });
     const key = `${block.name}|${summary.replace(/\d+/g, '#').slice(0, 160)}`;
     if (turn.streak?.key === key) turn.streak.count++;
     else turn.streak = { key, name: block.name, summary, count: 1, since: Date.now() };
@@ -732,7 +750,9 @@ class Transcript {
     const now = Date.now();
     for (const t of turn.openTools?.values() || []) {
       if (['Task', 'Agent'].includes(t.name)) continue;
-      if (now - t.startedAt >= longMs) return { name: t.name, summary: t.summary, since: t.startedAt };
+      // A call that announced a wait (sleep 60 while recording) only counts
+      // as stuck once that wait is over plus the usual limit.
+      if (now - t.startedAt >= longMs + (t.plannedMs || 0)) return { name: t.name, summary: t.summary, since: t.startedAt };
     }
     const s = turn.streak;
     if (s && !['Task', 'Agent'].includes(s.name) && s.count >= repeatCount && now - s.since >= repeatMs) {
