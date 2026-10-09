@@ -39,9 +39,12 @@ function fileStats(f) {
   return { add, del };
 }
 
-// Code files first, then by path.
+// Code files first; within them (and within the other files) modified
+// files, then added ones, then deleted ones; then by path.
+const STATUS_ORDER = { mod: 0, bin: 0, new: 1, del: 2 };
 function sortFiles(files) {
-  return [...files].sort((a, b) => (isCodeFile(b.path) - isCodeFile(a.path)) || a.path.localeCompare(b.path));
+  const rank = f => STATUS_ORDER[f.status] ?? 0;
+  return [...files].sort((a, b) => (isCodeFile(b.path) - isCodeFile(a.path)) || rank(a) - rank(b) || a.path.localeCompare(b.path));
 }
 
 function highlightLine(text, language) {
