@@ -517,16 +517,15 @@ details.change-file > summary:hover { background: var(--bg-hover); }
 .changes-switch button { border: none; background: none; font-size: 12px; padding: 3px 12px; border-radius: 6px; font-weight: 500; color: var(--text-dim); }
 .changes-switch button.active { background: var(--bg-active); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
 .changes-switch ~ .undo-all-btn, .changes-switch ~ .review-btn { margin-left: 6px; }
-/* With the diagram on, the files hide; the diagram uses more than the chat's width. */
+/* Diagram mode: the files hide and the whole card widens to most of the window. */
 .changes.show-diagram > details.change-file, .changes.show-diagram > details.other-files { display: none; }
 .changes:not(.show-diagram) > .uml-panel { display: none; }
-.uml-waiting { padding: 18px; text-align: center; color: var(--text-faint); font-size: 12px; border: 1px dashed var(--border); border-radius: 10px; }
+.changes-switch button:disabled { opacity: 0.5; cursor: default; }
 
 .uml-panel { position: relative; height: 380px; margin: 8px 0 4px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
   background: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0) 0 0 / 18px 18px, var(--code-bg); }
 .changes > .uml-panel { margin: 8px 0 6px; }
-.changes > .uml-panel.wide { --uml-width: min(calc(100vw - 72px), 1700px); width: var(--uml-width); max-width: none; flex-shrink: 0;
-  margin-left: calc((100% - var(--uml-width)) / 2); margin-right: calc((100% - var(--uml-width)) / 2); }
+.changes > .uml-panel.wide { width: auto; max-width: none; margin: 0; }
 .uml-panel.full { flex: 1; height: auto; margin: 0; border: none; border-radius: 0; }
 .uml-stage { transition: filter 0.3s, opacity 0.3s; }
 .uml-panel.detail-open .uml-stage { filter: blur(2px) saturate(0.6); opacity: 0.35; pointer-events: none; }
@@ -1464,8 +1463,13 @@ video.chat-media { background: #000; }
    its status (green new, amber edited, red deleted), the file name in bold
    with its folder dimmed, and a header that stays on top while you scroll
    through a long diff. */
-.changes { display: flex; flex-direction: column; gap: 10px; border: none; background: none; overflow: visible; }
-.changes-head { border: none; padding: 2px 2px 0; }
+/* One container for the task's changes: its title with Files | Diagram, then
+   the files or the diagram. */
+.changes { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--border); border-radius: 14px; background: rgba(0, 0, 0, 0.16);
+  padding: 10px; overflow: visible; --changes-wide: min(calc(100vw - 72px), 1700px);
+  transition: width 0.25s cubic-bezier(.2,.85,.25,1), margin-left 0.25s cubic-bezier(.2,.85,.25,1); width: 100%; margin-left: 0; box-sizing: border-box; }
+.changes.show-diagram { width: var(--changes-wide); margin-left: calc((100% - var(--changes-wide)) / 2); }
+.changes-head { border: none; padding: 2px 4px 0; }
 details.change-file { border: 1px solid var(--border); border-left: 3px solid var(--busy); border-radius: 10px;
   background: var(--bg-panel); overflow: clip; }
 details.change-file + details.change-file { border-top: 1px solid var(--border); }

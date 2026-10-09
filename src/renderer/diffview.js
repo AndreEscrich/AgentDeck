@@ -298,23 +298,26 @@ function changesCard(files, cwd) {
 }
 
 // The class diagram of the C# changes (see umlview.js; the types come from
-// src/csharp.js). When the task changed C# types, the card shows the diagram
-// instead of the list of files, wider than the chat; Diagram | Files in the
-// card's title switches between them. Until the diagram is ready the card
-// says so; without C# types it shows the files as before.
+// src/csharp.js). The card is one container for the task's changes, with
+// Files | Diagram in its title: Files is the list of files (the default),
+// Diagram the class diagram, for which the whole card widens to most of the
+// window. Diagram waits until the C# has been read, and goes away when the
+// changes declare no types.
 function addDiagram(card, head, files, cwd) {
   const csFiles = files.filter(f => CS_FILE.test(f.path) && f.status !== 'bin');
   if (!csFiles.length || !window.deck?.csModel || !window.umlPanel) return;
-  card.classList.add('has-diagram', 'show-diagram');
-  const waiting = el('div', 'uml-waiting', 'Drawing the class diagram…');
-  card.insertBefore(waiting, head.nextSibling);
-  const showFiles = () => {
-    waiting.remove();
-    card.classList.remove('has-diagram', 'show-diagram');
-  };
+  const switcher = el('div', 'changes-switch');
+  const filesBtn = el('button', 'active', `Files · ${files.length}`);
+  const diagramBtn = el('button', null, 'Diagram…');
+  for (const b of [filesBtn, diagramBtn]) b.type = 'button';
+  diagramBtn.disabled = true;
+  diagramBtn.title = 'Reading the C# changes…';
+  switcher.append(filesBtn, diagramBtn);
+  head.insertBefore(switcher, head.querySelector('.undo-all-btn, .review-btn'));
+
   window.deck.csModel(cwd, csFiles.map(({ path, status, lines }) => ({ path, status, lines }))).then(model => {
     const changed = model?.nodes?.filter(n => n.status === 'new' || n.status === 'mod' || n.status === 'del') || [];
-    if (!changed.length) return showFiles();
+    if (!changed.length) { switcher.remove(); return; }
     const title = `Class diagram · ${changed.length} changed type${changed.length === 1 ? '' : 's'}`;
     const options = {
       files,
@@ -327,25 +330,21 @@ function addDiagram(card, head, files, cwd) {
       onContext: node => window.deck.openFile(node.file),
     };
     const panel = umlPanel(model, { ...options, onFull: () => openUmlFull(model, { ...options, title }) });
-    waiting.replaceWith(panel);
-
-    // Diagram | Files
-    const switcher = el('div', 'changes-switch');
-    const diagramBtn = el('button', null, changed.length > 1 ? `Diagram · ${changed.length} types` : 'Diagram');
-    const filesBtn = el('button', null, `Files · ${files.length}`);
-    for (const b of [diagramBtn, filesBtn]) b.type = 'button';
-    switcher.append(diagramBtn, filesBtn);
-    head.insertBefore(switcher, head.querySelector('.undo-all-btn, .review-btn'));
+    card.insertBefore(panel, head.nextSibling);
+    card.classList.add('has-diagram');
+    diagramBtn.disabled = false;
+    diagramBtn.textContent = changed.length > 1 ? `Diagram · ${changed.length} types` : 'Diagram';
+    diagramBtn.title = 'Class diagram of the C# changes: the changed types and how they depend on each other';
     const setView = diagram => {
       card.classList.toggle('show-diagram', diagram);
       diagramBtn.classList.toggle('active', diagram);
       filesBtn.classList.toggle('active', !diagram);
-      if (diagram) panel.redraw?.();
+      // Drawn at the width the card has once it has widened.
+      if (diagram) setTimeout(() => panel.redraw?.(), 260);
     };
     diagramBtn.onclick = () => { window.uiSound?.('tick'); setView(true); };
     filesBtn.onclick = () => { window.uiSound?.('tick'); setView(false); };
-    setView(true);
-  }).catch(showFiles);
+  }).catch(() => switcher.remove());
 }
 
 // ---------- full-window review ----------
