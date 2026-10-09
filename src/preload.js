@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('deck', {
   saveConfig: values => ipcRenderer.invoke('config:save', values),
   appVersion: () => ipcRenderer.invoke('app:version'),
   latestUpdate: () => ipcRenderer.invoke('update:latest'),
+  changelog: () => ipcRenderer.invoke('app:changelog'),
   applyUpdate: () => ipcRenderer.invoke('update:apply'),
   onUpdate: fn => on('update:available', fn),
   fetchUsage: () => ipcRenderer.invoke('usage:fetch'),

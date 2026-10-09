@@ -78,4 +78,29 @@ function installAndRelaunch(dir, { electronChanged }) {
   }
 }
 
-module.exports = { check, apply, installAndRelaunch };
+// The changelog behind the version in the top bar, made from git: one entry
+// per release tag (vX.Y.Z, newest first) with the commits since the release
+// before it. Commits after the newest release (the dev copy) come first, as
+// "not released yet". Release and merge commits are left out.
+// Resolves with [{ version, date, unreleased, changes: [text] }].
+async function changelog(dir, { releases = 20 } = {}) {
+  const tagList = await run(dir, ['tag', '-l', 'v*', '--sort=-v:refname']);
+  const tags = (tagList || '').split(/\r?\n/).filter(t => /^v\d+\.\d+\.\d+$/.test(t)).slice(0, releases + 1);
+  const subjects = async range => {
+    const out = await run(dir, ['log', '--no-merges', '--format=%s', range]);
+    return (out || '').split(/\r?\n/).filter(s => s && !/^Release v/.test(s) && !/^Merge /.test(s));
+  };
+  const entries = [];
+  const unreleased = tags.length ? await subjects(`${tags[0]}..HEAD`) : [];
+  if (unreleased.length) entries.push({ version: null, date: null, unreleased: true, changes: unreleased });
+  for (let i = 0; i < Math.min(tags.length, releases); i++) {
+    const tag = tags[i];
+    const prev = tags[i + 1];
+    const changes = await subjects(prev ? `${prev}..${tag}` : tag);
+    const date = await run(dir, ['log', '-1', '--format=%cs', tag]);
+    entries.push({ version: tag.slice(1), date, unreleased: false, changes: prev ? changes : changes.slice(0, 40) });
+  }
+  return entries;
+}
+
+module.exports = { check, apply, installAndRelaunch, changelog };

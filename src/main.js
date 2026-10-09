@@ -233,6 +233,7 @@ app.whenReady().then(() => {
   ipcMain.handle('usage:fetch', () => fetchUsage(getConfig()));
   ipcMain.handle('app:version', () => appVersion());
   ipcMain.handle('update:latest', () => latestUpdate);
+  ipcMain.handle('app:changelog', () => updates.changelog(app.getAppPath()));
   ipcMain.handle('update:apply', () => applyUpdate());
   ipcMain.handle('sessions:list', () => listSessions());
   ipcMain.handle('git:snapshot', (_e, cwd) => git.snapshot(cwd, path.join(app.getPath('userData'), 'snapshots')));

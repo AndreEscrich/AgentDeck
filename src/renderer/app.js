@@ -1546,6 +1546,64 @@ function showUpdate(info) {
   btn.title = `Click to update and restart (${info.behind} new commit${info.behind === 1 ? '' : 's'}).${what}`;
 }
 
+// The changelog: click the version next to the title. It comes from git
+// (see changelog in updates.js): each release with its changes, newest first.
+$('app-version').onclick = () => showChangelog();
+async function showChangelog() {
+  if (document.querySelector('.settings-modal')) return;
+  const overlay = el('div', 'settings-modal');
+  const card = el('div', 'settings-card changelog-card');
+  const head = el('div', 'settings-head');
+  head.append(el('div', 'settings-title', "What's new"));
+  const body = el('div', 'settings-body changelog-body');
+  body.appendChild(el('div', 'settings-hint', 'Loading…'));
+  const foot = el('div', 'settings-foot');
+  const close = el('button', 'settings-save', 'Close');
+  close.type = 'button';
+  foot.append(el('span', 'settings-hint', 'Each release lists the changes since the one before.'), close);
+  foot.firstChild.style.marginRight = 'auto';
+  card.append(head, body, foot);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('show'));
+  sfx('open');
+  const shut = () => {
+    document.removeEventListener('keydown', onKey, true);
+    overlay.classList.remove('show');
+    setTimeout(() => overlay.remove(), 200);
+  };
+  const onKey = e => {
+    if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.stopImmediatePropagation(); shut(); }
+  };
+  document.addEventListener('keydown', onKey, true);
+  close.onclick = shut;
+  overlay.onclick = e => { if (e.target === overlay) shut(); };
+  close.focus();
+
+  const [entries, current] = await Promise.all([
+    window.deck.changelog().catch(() => []),
+    window.deck.appVersion().catch(() => ({})),
+  ]);
+  body.innerHTML = '';
+  if (!entries.length) {
+    body.appendChild(el('div', 'settings-hint', 'No releases found. The changelog comes from the version tags in git.'));
+    return;
+  }
+  for (const entry of entries) {
+    const section = el('div', 'changelog-release');
+    const title = el('div', 'changelog-title');
+    title.append(el('span', 'changelog-version', entry.unreleased ? 'Not released yet' : `v${entry.version}`));
+    if (entry.date) title.append(el('span', 'changelog-date', entry.date));
+    const yours = entry.unreleased ? current.dev : !current.dev && entry.version === current.version;
+    if (yours) title.append(el('span', 'changelog-yours', 'Your version'));
+    const list = el('ul', 'changelog-list');
+    for (const change of entry.changes) list.appendChild(el('li', null, change));
+    if (!entry.changes.length) list.appendChild(el('li', 'settings-hint', 'Version number only'));
+    section.append(title, list);
+    body.appendChild(section);
+  }
+}
+
 $('app-update').onclick = async () => {
   const btn = $('app-update');
   const working = [...state.agents.values()].filter(a => !a.removed && BUSY.includes(a.status));

@@ -55,6 +55,8 @@ This moves `master` forward to `dev`, installs packages in the stable copy if th
 npm run promote -- 0.3.0 --push
 ```
 
+Click the version next to the title to see the changelog: every release, newest first, with the changes since the release before it and the date, and "Your version" next to the one you run. It is made from git (the version tags and the commit messages between them), so it needs no writing by hand; in the dev copy, commits since the last release come first as "Not released yet".
+
 The stable copy also updates itself from GitHub. A little after it opens, and then every 30 minutes, it checks whether `master` on GitHub is ahead of it. When it is, an amber "v0.6.6 available" button appears next to the version; point at it to see what's new. Click it to move the stable copy forward and restart the app. Agents that are still working get the same card as quitting, and continue after the restart. When the new version needs other packages, the app installs them after it quits (and rebuilds the clickable app if Electron changed), then opens again. The button is only offered when the stable copy is on `master` without commits of its own; if the folder has uncommitted changes, it says "Update failed" and why. The dev copy never checks.
 
 To go back to an earlier version, check out its tag in the stable copy (`git -C ~/Repositories/AgentDeck-stable checkout v0.2.0`), then reopen the app.
