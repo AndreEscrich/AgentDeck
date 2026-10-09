@@ -592,9 +592,9 @@ function openDetail(panel, api, model, node, line, { files, comments }) {
       // The new type's code may need another height.
       box.classList.add('morphing');
       place(target());
-      setTimeout(() => box.classList.remove('morphing'), 380);
+      setTimeout(() => box.classList.remove('morphing'), 200);
       box.classList.add('shown');
-    }, 120);
+    }, 60);
   };
   const onResize = () => { if (activeDetail?.box === box) place(target()); };
   window.addEventListener('resize', onResize);
@@ -607,7 +607,8 @@ function openDetail(panel, api, model, node, line, { files, comments }) {
   void box.offsetWidth;
   backdrop.classList.add('shown');
   place(target());
-  setTimeout(() => { box.classList.add('shown'); box.classList.remove('morphing'); }, 380);
+  setTimeout(() => box.classList.add('shown'), 120);
+  setTimeout(() => box.classList.remove('morphing'), 200);
   window.uiSound?.('open');
 
   // Shrink: back into the box of the type in the diagram.
@@ -624,7 +625,7 @@ function openDetail(panel, api, model, node, line, { files, comments }) {
     void box.offsetWidth;
     place(rectOf(current.id));
     box.classList.add('closing');
-    setTimeout(() => { box.remove(); backdrop.remove(); }, 360);
+    setTimeout(() => { box.remove(); backdrop.remove(); }, 190);
   };
   activeDetail = { box, panel, close, step: go };
 }
