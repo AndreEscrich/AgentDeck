@@ -326,8 +326,6 @@ function addDiagram(card, head, files, cwd) {
         window.uiSound?.('open');
         openReview(files, files.findIndex(f => f.path === node.file), { cwd, line: line ?? node.line });
       },
-      // A type the task did not change opens in your editor.
-      onContext: node => window.deck.openFile(node.file),
     };
     const panel = umlPanel(model, { ...options, onFull: () => openUmlFull(model, { ...options, title }) });
     card.insertBefore(panel, head.nextSibling);
