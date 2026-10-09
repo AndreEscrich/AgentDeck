@@ -396,44 +396,31 @@ function renderContextMeter() {
 // ---------- first look at a finished agent ----------
 
 // The first time you open an agent after it finished a task, the chat starts
-// at the beginning of that task's output (right under your message) and then
-// scrolls smoothly to the bottom, so you see the whole result go by. Scrolling,
-// clicking or typing yourself stops it.
+// at the beginning of that task's output (right under your message), so you
+// read the result from its start. It stays there: you scroll yourself.
 function revealLatest(view, transcript) {
   const turnEl = transcript?.lastFinished?.el;
-  if (!view || !turnEl) return;
+  if (!view || !turnEl) return scrollToBottom(view);
   view.revealing = true;
-  const startAt = () => view.scrollTop + turnEl.getBoundingClientRect().top - view.getBoundingClientRect().top - 16;
-  view.scrollTop = Math.max(0, startAt());
-
-  let frame = 0;
-  let timer = 0;
+  const place = () => {
+    view.scrollTop = Math.max(0, view.scrollTop + turnEl.getBoundingClientRect().top - view.getBoundingClientRect().top - 16);
+  };
+  // A hidden view loses its scroll position, and its height is only final in
+  // the next frame, so the place is set again then, and once more after the
+  // opening animation, unless you scrolled in the meantime.
+  let moved = false;
   const stop = () => {
-    view.revealing = false;
-    clearTimeout(timer);
-    cancelAnimationFrame(frame);
+    moved = true;
     for (const type of ['wheel', 'mousedown', 'touchstart']) view.removeEventListener(type, stop);
-    document.removeEventListener('keydown', stop, true);
   };
   for (const type of ['wheel', 'mousedown', 'touchstart']) view.addEventListener(type, stop, { passive: true });
-  document.addEventListener('keydown', stop, true);
-
-  // Wait until the opening animation is over and you have seen the start.
-  timer = setTimeout(() => {
-    const from = view.scrollTop;
-    const distance = view.scrollHeight - view.clientHeight - from;
-    if (distance <= 0) return stop();
-    const duration = Math.min(2500, Math.max(600, distance * 0.9));
-    const began = performance.now();
-    const ease = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-    const step = now => {
-      const t = Math.min(1, (now - began) / duration);
-      view.scrollTop = from + (view.scrollHeight - view.clientHeight - from) * ease(t);
-      if (t < 1) frame = requestAnimationFrame(step);
-      else stop();
-    };
-    frame = requestAnimationFrame(step);
-  }, 900);
+  place();
+  requestAnimationFrame(() => { if (!moved) place(); });
+  setTimeout(() => {
+    if (!moved) place();
+    stop();
+    view.revealing = false;
+  }, 500);
 }
 
 // Every other time you open a chat, it starts at the bottom. A hidden view
