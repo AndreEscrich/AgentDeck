@@ -11,6 +11,12 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const UML_FONT = '600 13px Nunito, "Segoe UI", sans-serif';
 const UML_SMALL = '11px Nunito, "Segoe UI", sans-serif';
 const UML_BOX_H = 38;
+const COMPOSER_H = 40;
+
+// "StarterBonusSystemComposer · composition root · wires 12 types"
+function composerLabel(b) {
+  return `⚙ ${b.name}  ·  composition root  ·  wires ${b.wires ?? 0} type${b.wires === 1 ? '' : 's'}`;
+}
 
 function svgEl(tag, attrs = {}, text) {
   const node = document.createElementNS(SVG_NS, tag);
@@ -229,6 +235,20 @@ function fitLabel(text, width) {
   return label;
 }
 
+// Two kinds of type have a role of their own in these projects:
+// - a SystemComposer is the composition root: it creates and wires the
+//   types of its namespace, so it uses almost all of them. It is a bar across
+//   the top of its namespace, and its wiring arrows show only while you point
+//   at it.
+// - a Facade (and its I…Facade interface) is the API other domains use. It
+//   has an "API" tag, and arrows into it from other namespaces stand out.
+function isComposer(n) {
+  return /Composer$/.test(n.name) || (n.bases || []).some(b => /SystemComposer$/.test(b));
+}
+function isFacade(n) {
+  return /Facade$/.test(n.name);
+}
+
 // Draws the diagram into container. Returns { fit, zoom, svg, width,
 // height, order, elementOf }. onOpen(node, line) runs when a box is clicked,
 // with the line of its first change.
@@ -245,7 +265,12 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
     const name = n.name + (n.generic || '');
     const w = Math.min(Math.max(Math.ceil(textWidth(name, UML_FONT)) + 40, 110), 340);
     const h = Math.max(UML_BOX_H, 14 * (Math.max(ins.get(n.id) || 0, outs.get(n.id) || 0) + 1));
-    boxes.set(n.id, { id: n.id, node: n, name, w, h });
+    const composer = isComposer(n);
+    boxes.set(n.id, { id: n.id, node: n, name, w, h: composer ? COMPOSER_H : h, composer, facade: !composer && isFacade(n) });
+  }
+  for (const e of model.edges) {
+    const b = boxes.get(e.from);
+    if (b?.composer) b.wires = (b.wires || 0) + 1;
   }
   const GAP_X = 120;    // room for the arrows between columns
   const GAP_Y = 56;     // and between the boxes of a column
@@ -253,6 +278,7 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
   const PAD = 18;
   const TITLE = 28;
   const GROUP_GAP = 48;
+  const COMPOSER_GAP = 48;   // between the composer bar and the types it wires
   // The width that shows at a readable size: wider chains fold into bands.
   const maxWidth = Math.max(700, ((container.clientWidth || 1100) - 48) / 0.85);
 
@@ -266,15 +292,31 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
     groups.get(key).ids.push(n.id);
   }
   for (const g of groups.values()) {
-    const inGroup = new Set(g.ids);
-    const nodes = g.ids.map(id => boxes.get(id).node);
+    const composers = g.ids.filter(id => boxes.get(id).composer);
+    const typeIds = g.ids.filter(id => !boxes.get(id).composer);
+    const inGroup = new Set(typeIds);
+    const nodes = typeIds.map(id => boxes.get(id).node);
     // Columns may be tall: the arrows read better with room between the boxes.
-    const area = g.ids.reduce((s, id) => s + (boxes.get(id).w + GAP_X) * (boxes.get(id).h + GAP_Y), 0);
+    const area = typeIds.reduce((s, id) => s + (boxes.get(id).w + GAP_X) * (boxes.get(id).h + GAP_Y), 0);
     const columns = layout(nodes, model.edges.filter(e => inGroup.has(e.from) && inGroup.has(e.to)), {
       maxLength: Math.max(5 * (UML_BOX_H + GAP_Y), Math.sqrt(area * 1.2)),
       sizeOf: id => boxes.get(id).h,
       gap: GAP_Y,
     });
+    // A facade's interface stands right above its facade, at the entry of
+    // the namespace, where other domains' arrows reach it first.
+    for (const id of typeIds) {
+      const n = boxes.get(id).node;
+      if (!boxes.get(id).facade || n.kind !== 'interface') continue;
+      const impl = typeIds.find(other => other !== id && boxes.get(other).facade && (boxes.get(other).node.bases || []).includes(n.name));
+      if (!impl) continue;
+      const from = columns.find(col => col.includes(id));
+      const to = columns.find(col => col.includes(impl));
+      if (!from || !to || from === to) continue;
+      from.splice(from.indexOf(id), 1);
+      to.splice(to.indexOf(impl), 0, id);
+    }
+    for (let i = columns.length - 1; i >= 0; i--) if (!columns[i].length) columns.splice(i, 1);
     const innerMax = maxWidth - PAD * 2;
     const widthOf = col => Math.max(...col.map(id => boxes.get(id).w));
     const bands = [];
@@ -288,8 +330,15 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
     }
     if (band.length) bands.push(band);
     const placed = bands.map(cols => placeColumns(cols, id => boxes.get(id), GAP_X, GAP_Y));
-    const innerWidth = Math.max(...placed.map(p => p.width));
+    const composerWidth = Math.max(0, ...composers.map(id => textWidth(composerLabel(boxes.get(id)), UML_FONT) + 60));
+    const innerWidth = Math.max(0, composerWidth, ...placed.map(p => p.width));
+    // The composer bars, across the top.
     let y = 0;
+    for (const id of composers) {
+      Object.assign(boxes.get(id), { x: 0, y, w: innerWidth, lane: `${g.id}|composer` });
+      y += COMPOSER_H + 12;
+    }
+    if (composers.length) y += COMPOSER_GAP - 12;
     bands.forEach((cols, i) => {
       const offsetX = (innerWidth - placed[i].width) / 2;
       for (const id of cols.flat()) {
@@ -300,13 +349,14 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
       }
       y += placed[i].height + BAND_GAP;
     });
-    g.inner = { width: innerWidth, height: y - BAND_GAP };
+    g.inner = { width: innerWidth, height: bands.length ? y - BAND_GAP : y - COMPOSER_GAP };
     g.w = Math.max(innerWidth, Math.min(textWidth(g.id, UML_SMALL) + 24, 260)) + PAD * 2;
     g.h = g.inner.height + TITLE + PAD;
   }
   // Then the namespaces under each other, a namespace above the ones it uses.
   const groupEdges = new Map();
   for (const e of model.edges) {
+    if (boxes.get(e.from)?.composer) continue;
     const a = boxes.get(e.from)?.node.namespace || '(no namespace)';
     const b = boxes.get(e.to)?.node.namespace || '(no namespace)';
     if (a !== b) groupEdges.set(`${a}>${b}`, { from: a, to: b });
@@ -378,8 +428,14 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
   const outgoing = new Map();
   for (const e of edges) outgoing.set(e.from, (outgoing.get(e.from) || 0) + 1);
   for (const e of edges) {
-    const g = drawEdge(boxes.get(e.from), boxes.get(e.to), e, slots);
-    if (outgoing.get(e.from) > 5) g.classList.add('faint');
+    const a = boxes.get(e.from);
+    const b = boxes.get(e.to);
+    const g = drawEdge(a, b, e, slots);
+    // The composer's wiring: only while you point at the composer.
+    if (a.composer) g.classList.add('composition');
+    else if (outgoing.get(e.from) > 5) g.classList.add('faint');
+    // Another domain using this one's API.
+    if (b.facade && !a.composer && a.node.namespace !== b.node.namespace) g.classList.add('api-call');
     edgeLayer.appendChild(g);
   }
   world.appendChild(edgeLayer);
@@ -387,15 +443,25 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
   // The boxes: a stripe in the color of the change, and the name.
   for (const b of boxes.values()) {
     const n = b.node;
-    const g = svgEl('g', { class: `uml-node status-${n.status} kind-${n.kind}`, transform: `translate(${b.x},${b.y})`, 'data-id': n.id });
-    g.appendChild(svgEl('rect', { class: 'uml-box', width: b.w, height: b.h, rx: 8 }));
+    const role = b.composer ? ' composer' : b.facade ? ' facade' : '';
+    const g = svgEl('g', { class: `uml-node status-${n.status} kind-${n.kind}${role}`, transform: `translate(${b.x},${b.y})`, 'data-id': n.id });
+    g.appendChild(svgEl('rect', { class: 'uml-box', width: b.w, height: b.h, rx: b.composer ? 10 : 8 }));
     g.appendChild(svgEl('rect', { class: 'uml-band', width: 4, height: b.h - 12, x: 6, y: 6, rx: 2 }));
-    g.appendChild(svgEl('text', { class: 'uml-name', x: b.w / 2 + 3, y: b.h / 2 + 4.5 }, b.name));
+    if (b.composer) {
+      g.appendChild(svgEl('text', { class: 'uml-name', x: b.w / 2 + 3, y: b.h / 2 + 4.5 }, composerLabel(b)));
+    } else {
+      g.appendChild(svgEl('text', { class: 'uml-name', x: b.w / 2 + 3, y: b.h / 2 + 4.5 }, b.name));
+    }
+    if (b.facade) {
+      g.appendChild(svgEl('rect', { class: 'uml-api-tag', x: b.w - 34, y: -9, width: 30, height: 16, rx: 8 }));
+      g.appendChild(svgEl('text', { class: 'uml-api-text', x: b.w - 19, y: 3 }, 'API'));
+    }
     const changed = n.members.filter(m => m.change).map(m => `${CHANGE_SIGN[m.change]} ${memberLabel(m)}`);
     const words = { new: 'New', mod: 'Changed', del: 'Deleted' };
     const shown = changed.slice(0, 20);
     if (changed.length > 20) shown.push(`… and ${changed.length - 20} more`);
-    g.appendChild(svgEl('title', {}, `${KIND_WORDS[n.kind] || n.kind} ${n.namespace ? n.namespace + '.' : ''}${b.name}\n${words[n.status]} in this task${shown.length ? `\n\n${shown.join('\n')}` : ''}\n\n${n.file}\nClick to open the diff`));
+    const roleText = b.composer ? '\nComposition root: creates and wires the types of its namespace (point at it to see the wiring)' : b.facade ? '\nFacade: the API other domains use' : '';
+    g.appendChild(svgEl('title', {}, `${KIND_WORDS[n.kind] || n.kind} ${n.namespace ? n.namespace + '.' : ''}${b.name}${roleText}\n${words[n.status]} in this task${shown.length ? `\n\n${shown.join('\n')}` : ''}\n\n${n.file}\nClick to open the diff`));
     world.appendChild(g);
   }
   container.appendChild(svg);
@@ -507,6 +573,8 @@ function umlLegend() {
   item('edge-implements', 'Implements');
   item('edge-uses', 'Uses');
   item('edge-fresh', 'New dependency');
+  item('role-composer', 'Composition root');
+  item('role-facade', 'Facade (API)');
   return legend;
 }
 
