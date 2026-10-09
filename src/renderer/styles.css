@@ -204,6 +204,12 @@ body.history-open #drawer-backdrop { opacity: 1; pointer-events: auto; }
   white-space: pre-wrap;
   word-wrap: break-word;
 }
+/* Post an answer to the agent's Jira ticket */
+.ticket-post { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12px; }
+.ticket-post button { font-size: 12px; padding: 3px 12px; }
+.ticket-post-status { color: var(--text-dim); }
+.ticket-post-status.err { color: var(--err); }
+
 /* Messages waiting for the task to end */
 .queue { max-width: var(--chat-width); margin: -24px auto 0; padding: 0 24px 32px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .queued { max-width: 80%; border: 1px dashed var(--text-faint); border-radius: 14px; padding: 8px 14px; background: color-mix(in srgb, var(--user-bubble) 55%, transparent); }

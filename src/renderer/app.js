@@ -1577,7 +1577,7 @@ window.deck.onQuitting(() => {
 
 // ---------- agents ----------
 
-async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId, fromRect, forkFrom, images = [] }) {
+async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId, fromRect, forkFrom, images = [], ticket = null }) {
   const title = resume ? resume.session.title : prompt.split('\n')[0].slice(0, 80);
   choice = choice || defaultChoice();
   permissionMode = permissionMode || defaultMode();
@@ -1599,6 +1599,7 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     // A resumed session stays in its group. A new one goes to the group picked in the form.
     groupId: resume ? groupOf(resume.session.id) : groupId || null };
   state.agents.set(id, agent);
+  if (ticket) agent.ticket = ticket;
   if (forkFrom) {
     agent.forkedFrom = forkFrom;
     transcript.note(`Continues from "${forkFrom.title}", so it knows what that agent did.`);
@@ -1799,6 +1800,63 @@ function showAwayCard(ids, ms) {
   awayCard = card;
   $('hub-view').prepend(card);
   sfx('pick');
+}
+
+// ---------- Jira tickets ----------
+
+// The ticket a new agent's message is about: the message is a ticket key
+// (or starts with one), or it holds a link to a ticket.
+const TICKET_KEY = /^([A-Z][A-Z0-9_]+-\d+)(?=$|[\s:,.])/;
+function ticketIn(text) {
+  const t = text.trim();
+  const lead = t.match(TICKET_KEY);
+  if (lead) return lead[1];
+  for (const m of t.matchAll(URL_IN_TEXT)) {
+    const key = jiraKeyOf(m[0].replace(/[.,;:!?)\]]+$/, ''));
+    if (key) return key;
+  }
+  return null;
+}
+
+// The agent's first message: the ticket, then what you wrote about it.
+function ticketPrompt(t, typed) {
+  let rest = typed.trim().replace(TICKET_KEY, '').replace(/^[\s:,.-]+/, '').trim();
+  // Only the ticket's link: nothing more to say.
+  if (!rest.replace(URL_IN_TEXT, '').replace(/[\s:,.-]/g, '')) rest = '';
+  const lines = [`Jira ticket ${t.key}: ${t.summary}`];
+  const meta = [t.type, t.status].filter(Boolean).join(' · ');
+  if (meta) lines.push(meta);
+  if (t.description) lines.push('', 'Description:', t.description);
+  lines.push('', rest || 'Work on this ticket: do what it asks.');
+  return lines.join('\n');
+}
+
+// After each finished task of an agent that started from a ticket, a button
+// under the answer posts that answer to the ticket as a comment.
+function addTicketPost(agent, turn, answer) {
+  if (!turn || !answer?.trim()) return;
+  const row = el('div', 'ticket-post');
+  const button = el('button', null, `Post this answer to ${agent.ticket}`);
+  button.title = `Adds the answer above as a comment on ${agent.ticket} in Jira`;
+  const status = el('span', 'ticket-post-status');
+  button.onclick = async () => {
+    button.disabled = true;
+    status.textContent = 'Posting…';
+    const body = answer.trim().slice(0, 30000) + `\n\n(Posted from Agent Hub, by the agent "${agent.title}".)`;
+    const r = await window.deck.jiraComment(agent.ticket, body).catch(err => ({ ok: false, error: String(err?.message || err) }));
+    if (r.ok) {
+      status.textContent = `Posted to ${agent.ticket} ✓`;
+      button.remove();
+      sfx('approve');
+    } else {
+      status.textContent = r.error || 'Posting failed.';
+      status.classList.add('err');
+      button.disabled = false;
+      sfx('refuse');
+    }
+  };
+  row.append(button, status);
+  agent.transcript.pinned(() => turn.answer.appendChild(row));
 }
 
 // ---------- comments from the review ----------
@@ -2005,6 +2063,7 @@ window.deck.onEvent((id, msg) => {
       .then(diff => a.transcript.showGitChanges(turn, diff, snap.kind === 'folder'))
       .catch(() => {});
   }
+  if (msg.type === 'result' && !msg.is_error && a.ticket) addTicketPost(a, a.transcript.lastFinished, msg.result);
   if (msg.type === 'result' && !msg.is_error) {
     // Used to find the most recently finished agent of a Group.
     a.finishedAt = Date.now();
@@ -2168,8 +2227,17 @@ async function sendFromComposer() {
     // The next new agent starts with the same folder and group, and the default model.
     state.draft = null;
     const forkFrom = forkSourceFor(d.folder, d.groupId);
+    // A message that is (or starts with) a Jira ticket brings the ticket along.
+    const ticket = ticketIn(text);
+    let prompt = text;
+    if (ticket) {
+      flashComposerNote(`Reading ${ticket} from Jira…`);
+      const details = await window.deck.jiraDetails(ticket).catch(err => ({ error: String(err?.message || err) }));
+      if (details.error) flashComposerNote(`Could not read ${ticket} (${details.error}). The agent gets your message as it is.`);
+      else prompt = ticketPrompt(details, text);
+    }
     if (playSounds()) sounds.created();
-    await startAgent({ cwd: d.folder, prompt: text, permissionMode: d.mode, choice: d.choice, groupId: d.groupId, fromRect, forkFrom, images });
+    await startAgent({ cwd: d.folder, prompt, permissionMode: d.mode, choice: d.choice, groupId: d.groupId, fromRect, forkFrom, images, ticket });
   } else if (state.current.kind === 'agent') {
     const a = state.agents.get(state.current.id);
     if (QUEUE_WHILE.includes(a.status)) {

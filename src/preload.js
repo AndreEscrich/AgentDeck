@@ -38,6 +38,8 @@ contextBridge.exposeInMainWorld('deck', {
     remove: spec => ipcRenderer.invoke('connectors:remove', spec),
   },
   jiraIssue: key => ipcRenderer.invoke('jira:issue', key),
+  jiraDetails: key => ipcRenderer.invoke('jira:details', key),
+  jiraComment: (key, body) => ipcRenderer.invoke('jira:comment', key, body),
   recentMedia: (cwd, sinceMs) => ipcRenderer.invoke('media:recent', cwd, sinceMs),
   listSessions: () => ipcRenderer.invoke('sessions:list'),
   loadTranscript: file => ipcRenderer.invoke('sessions:load', file),

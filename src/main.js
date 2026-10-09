@@ -200,6 +200,8 @@ app.whenReady().then(() => {
   media.registerProtocol(protocol, net, path.join(app.getPath('userData'), 'media-previews'));
   ipcMain.handle('media:recent', (_e, cwd, sinceMs) => media.recentMedia(cwd, sinceMs));
   ipcMain.handle('jira:issue', (_e, key) => jira.issue(key));
+  ipcMain.handle('jira:details', (_e, key) => jira.details(key));
+  ipcMain.handle('jira:comment', (_e, key, body) => jira.comment(key, body));
   ipcMain.handle('activity:get', () => activity(path.join(app.getPath('userData'), 'activity-cache.json')));
   ipcMain.handle('connectors:list', (_e, cwd) => connectors.list(getConfig(), cwd));
   ipcMain.handle('connectors:cached', () => connectors.cached());
