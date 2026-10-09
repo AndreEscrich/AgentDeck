@@ -717,12 +717,14 @@ const hub = new Hub($('hub-view'), {
   onContext: id => sessionMenu(id.startsWith('p:') ? id.slice(2) : state.agents.get(id)?.sessionId),
 });
 
-// The Connectors card in the Hub. It lists the connectors for the folder the
-// message box points at (connectors can be set up for one folder only).
-const connectorsPanel = new ConnectorsPanel(hub.connectorsBox, {
+// The Connectors dialog, opened from the Hub's settings button. It lists the
+// connectors for the folder the message box points at (connectors can be set
+// up for one folder only).
+const connectorsDialog = new ConnectorsDialog({
   folder: () => ensureDraft().folder || state.config.home,
 });
-hub.onConnectorsOpen = () => connectorsPanel.open();
+hub.onOpenConnectors = () => connectorsDialog.open();
+hub.onOpenSettings = () => window.deck.openConfig();
 
 // Your Claude Code activity, shown in the Hub while it has no agents. It is
 // read at startup and again when the empty Hub shows and the numbers are

@@ -81,28 +81,38 @@ class Hub {
     this.usageTab.type = 'button';
     this.usageTab.title = 'Usage';
     this.usage = el('aside', 'hub-usage');
-    // The Connectors tab opens a second card in the same place (see
-    // renderer/connectors.js); the app fills it and sets onConnectorsOpen.
-    this.connectorsTab = el('button', 'usage-tab connectors-tab');
-    this.connectorsTab.type = 'button';
-    this.connectorsTab.title = 'Connectors';
-    this.connectorsTab.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 2v4M12 2v4M4 6h10v3a5 5 0 0 1-10 0V6zM9 14v2.5"/></svg>';
-    this.connectorsTab.appendChild(el('span', 'usage-tab-label', 'Connectors'));
-    this.connectorsBox = el('aside', 'hub-usage hub-connectors');
-    // The floating bar on the left edge: Usage and Connectors.
+    // A small settings button above the usage tab opens a short menu in the
+    // same place: Connectors (a dialog, see renderer/connectors.js) and the
+    // settings file. The app sets onOpenConnectors and onOpenSettings.
+    this.settingsBtn = el('button', 'hub-settings-btn');
+    this.settingsBtn.type = 'button';
+    this.settingsBtn.title = 'Settings';
+    this.settingsBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
+    this.settingsMenu = el('aside', 'hub-usage hub-settings-menu');
+    const menuItem = (label, hint, action) => {
+      const b = el('button', 'hub-menu-item');
+      b.type = 'button';
+      b.append(el('span', 'hub-menu-label', label), el('span', 'hub-menu-hint', hint));
+      b.onclick = () => { this.rail.classList.remove('open'); action(); };
+      return b;
+    };
+    this.settingsMenu.append(
+      menuItem('Connectors…', 'Jira, Slack, Notion and more for your agents', () => this.onOpenConnectors?.()),
+      menuItem('Settings file…', 'Defaults, limits and the claude path', () => this.onOpenSettings?.()),
+    );
+    // The floating bar on the left edge: the settings button, then Usage.
     const nav = el('nav', 'hub-nav');
-    nav.append(this.usageTab, this.connectorsTab);
-    this.rail.append(nav, this.usage, this.connectorsBox);
-    // A tab opens its card, or closes it when it is already open.
+    nav.append(this.settingsBtn, this.usageTab);
+    this.rail.append(nav, this.usage, this.settingsMenu);
+    // A button opens its card, or closes it when it is already open.
     const showPanel = panel => {
       const same = this.rail.classList.contains('open') && this.rail.dataset.panel === panel;
       this.rail.dataset.panel = panel;
       this.rail.classList.toggle('open', !same);
-      if (!same && panel === 'connectors') this.onConnectorsOpen?.();
     };
     this.rail.dataset.panel = 'usage';
     this.usageTab.onclick = () => showPanel('usage');
-    this.connectorsTab.onclick = () => showPanel('connectors');
+    this.settingsBtn.onclick = () => showPanel('settings');
     document.addEventListener('pointerdown', e => {
       if (this.rail.classList.contains('open') && !this.rail.contains(e.target)) this.rail.classList.remove('open');
     }, true);
