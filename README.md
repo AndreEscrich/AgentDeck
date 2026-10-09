@@ -55,6 +55,8 @@ This moves `master` forward to `dev`, installs packages in the stable copy if th
 npm run promote -- 0.3.0 --push
 ```
 
+The stable copy also updates itself from GitHub. A little after it opens, and then every 30 minutes, it checks whether `master` on GitHub is ahead of it. When it is, an amber "v0.6.6 available" button appears next to the version; point at it to see what's new. Click it to move the stable copy forward and restart the app. Agents that are still working get the same card as quitting, and continue after the restart. When the new version needs other packages, the app installs them after it quits (and rebuilds the clickable app if Electron changed), then opens again. The button is only offered when the stable copy is on `master` without commits of its own; if the folder has uncommitted changes, it says "Update failed" and why. The dev copy never checks.
+
 To go back to an earlier version, check out its tag in the stable copy (`git -C ~/Repositories/AgentDeck-stable checkout v0.2.0`), then reopen the app.
 
 ## What it does
@@ -113,6 +115,7 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 | `src/sessions.js` | Reads the saved `.jsonl` session files for the History drawer and the session view. |
 | `src/media.js` | Serves images and videos to the window (`media://`), converts Unity formats, and finds the media a task created. |
 | `src/git.js` | Takes a snapshot before each turn and lists the files that changed during it. |
+| `src/updates.js` | Checks GitHub for a newer `master` in the stable copy, moves it forward, and restarts the app. |
 | `src/preload.js` | The list of functions the window is allowed to call. |
 | `src/renderer/hub.js` | The Hub: one animated tile per running agent. |
 | `src/renderer/diffview.js` | Draws diffs: line numbers, syntax colors, code files first, and the full-window review view. |

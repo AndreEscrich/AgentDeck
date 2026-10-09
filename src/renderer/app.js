@@ -1529,6 +1529,46 @@ async function confirmStop(agents, { action, label }) {
   });
 }
 
+// A newer version on GitHub (stable copy only): a button next to the version
+// number. Clicking it updates and restarts the app; working agents get the
+// same card as quitting and continue after the restart.
+window.deck.onUpdate(showUpdate);
+function showUpdate(info) {
+  const btn = $('app-update');
+  btn.classList.toggle('hidden', !info);
+  btn.classList.remove('failed');
+  if (!info) return;
+  btn.disabled = false;
+  btn.textContent = info.version ? `v${info.version} available` : 'Update available';
+  const what = info.commits.length ? `\n\nWhat's new:\n${info.commits.map(c => `• ${c}`).join('\n')}` : '';
+  btn.title = `Click to update and restart (${info.behind} new commit${info.behind === 1 ? '' : 's'}).${what}`;
+}
+
+$('app-update').onclick = async () => {
+  const btn = $('app-update');
+  const working = [...state.agents.values()].filter(a => !a.removed && BUSY.includes(a.status));
+  if (working.length) {
+    const one = working.length === 1;
+    const ok = await confirmCard({
+      title: one ? '1 agent is still working' : `${working.length} agents are still working`,
+      text: `Updating restarts Agent Hub. ${one ? 'It stops' : 'They stop'} now, then ${one ? 'restarts' : 'restart'} and ${one ? 'continues' : 'continue'} where ${one ? 'it' : 'they'} left off.`,
+      agents: working,
+      confirmLabel: 'Update and restart',
+      busyText: 'Updating…',
+    });
+    if (!ok) return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Updating…';
+  const result = await window.deck.applyUpdate().catch(err => ({ ok: false, error: String(err) }));
+  if (result.ok) return;
+  document.querySelector('.quit-modal')?.remove();
+  btn.disabled = false;
+  btn.classList.add('failed');
+  btn.textContent = 'Update failed';
+  btn.title = `${result.error}\n\nClick to try again.`;
+};
+
 window.deck.onQuitting(() => {
   saveHub();
   state.quitting = true;
@@ -2122,6 +2162,7 @@ setInterval(checkStuck, 3000);
     $('app-version').textContent = `v${version}${dev ? ' dev' : ''}`;
     $('app-version').classList.toggle('dev', dev);
   }).catch(() => {});
+  window.deck.latestUpdate().then(showUpdate).catch(() => {});
   loadModels().then(renderSettingsButton);
   try { setSettingsOpen(localStorage.getItem('composerSettingsOpen') === '1'); } catch { setSettingsOpen(false); }
   state.groups = { groups: [], assignments: {}, ...(await window.deck.getGroups()) };

@@ -175,6 +175,14 @@ body.history-open #drawer-backdrop { opacity: 1; pointer-events: auto; }
 .title-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 #app-version { flex-shrink: 0; font-size: 11px; color: var(--text-faint); font-family: var(--mono); }
 #app-version.dev { color: var(--busy); }
+#app-update {
+  -webkit-app-region: no-drag; flex-shrink: 0; align-self: center;
+  font-size: 11px; font-family: var(--mono); padding: 1px 8px; border-radius: 99px;
+  color: var(--busy); background: transparent; border: 1px solid currentColor; cursor: pointer;
+}
+#app-update:hover:not(:disabled) { background: var(--bg-hover); }
+#app-update:disabled { opacity: 0.6; cursor: default; }
+#app-update.failed { color: var(--err); }
 #view-subtitle { font-size: 12px; color: var(--text-faint); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
 .status-pill { font-size: 12px; padding: 2px 10px; border-radius: 99px; background: var(--bg-panel); color: var(--text-dim); display: flex; align-items: center; gap: 6px; }

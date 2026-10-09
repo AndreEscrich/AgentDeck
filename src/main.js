@@ -10,6 +10,7 @@ const media = require('./media');
 const jira = require('./jira');
 const connectors = require('./connectors');
 const { activity } = require('./activity');
+const updates = require('./updates');
 
 // The window loads images and videos from disk through media:// (see media.js).
 // "stream" lets video players read a file piece by piece.
@@ -216,6 +217,8 @@ app.whenReady().then(() => {
   ipcMain.handle('app:quit', () => quitNow());
   ipcMain.handle('usage:fetch', () => fetchUsage(getConfig()));
   ipcMain.handle('app:version', () => appVersion());
+  ipcMain.handle('update:latest', () => latestUpdate);
+  ipcMain.handle('update:apply', () => applyUpdate());
   ipcMain.handle('sessions:list', () => listSessions());
   ipcMain.handle('git:snapshot', (_e, cwd) => git.snapshot(cwd, path.join(app.getPath('userData'), 'snapshots')));
   ipcMain.handle('git:changes', (_e, cwd, snap) => git.changesSince(cwd, snap));
@@ -297,6 +300,7 @@ app.whenReady().then(() => {
 
   registerForNotifications();
   createWindow();
+  watchForUpdates();
   watchSessions();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
@@ -329,6 +333,34 @@ function allowStop(event) {
   send('app:confirmQuit');
   return false;
 }
+
+// The stable copy looks for a new version on GitHub a little after it
+// opens, then every 30 minutes, and tells the window when there is one.
+let latestUpdate = null;
+function watchForUpdates() {
+  const look = async () => {
+    const found = await updates.check(app.getAppPath());
+    if (JSON.stringify(found) === JSON.stringify(latestUpdate)) return;
+    latestUpdate = found;
+    send('update:available', found);
+  };
+  setTimeout(look, 15 * 1000);
+  setInterval(look, 30 * 60 * 1000);
+}
+
+// Moves the stable copy to the new version and restarts the app. The window
+// has already asked about busy agents; like quitting, they continue after
+// the restart. When the new version needs other packages, a separate shell
+// installs them after the app has quit, then opens it again.
+async function applyUpdate() {
+  const result = await updates.apply(app.getAppPath());
+  if (!result.ok) return result;
+  if (result.packagesChanged) updates.installAndRelaunch(app.getAppPath(), result);
+  else app.relaunch({ args: [app.getAppPath()] });
+  quitNow();
+  return result;
+}
+
 
 // The agents' state is saved by the window (app:quitting), then the app quits.
 function quitNow() {
