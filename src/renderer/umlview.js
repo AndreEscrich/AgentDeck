@@ -1,8 +1,9 @@
 // The class diagram of a task's C# changes (the model comes from
 // src/csharp.js): one box per type the task added, changed or removed, with
-// just its name, and arrows for how the types depend on each other. The
-// dependencies flow down: a type stands above the types it uses. Types of the
-// same folder stand together, under a small folder label. Drag to move around, Ctrl+wheel (or the
+// just its name, in a box per namespace, and arrows for how the types depend
+// on each other. The dependencies flow down: a type stands above the types it
+// uses, and a namespace above the namespaces it uses. Inside a namespace,
+// each folder has a lane of its own, under its name. Drag to move around, Ctrl+wheel (or the
 // buttons) to zoom; in the full-window view the wheel zooms by itself. Point
 // at a box for its changed members; click it to open its diff.
 
@@ -290,8 +291,12 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
   }
   const GAP_X = 36;     // between the boxes of a row
   const GAP_Y = 84;     // room for the arrows between rows
-  const LABEL = 18;     // the folder labels above the boxes
-  const COMPOSER_GAP = 56;
+  const LANE_GAP = 56;  // between the folder lanes of a namespace
+  const LABEL = 26;     // the folder names over their lanes
+  const COMPOSER_GAP = 40;
+  const PAD = 18;
+  const TITLE = 30;     // the namespace's name
+  const GROUP_GAP = 56;
   // The width that shows at a readable size: wider rows wrap.
   const maxWidth = Math.max(700, ((container.clientWidth || 1100) - 48) / 0.85);
 
@@ -299,89 +304,102 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
   const labelOf = folderLabels(model.nodes);
   for (const b of boxes.values()) b.folder = labelOf(b.node);
 
-  // Rows: a type above the types it uses (composers aside, see below).
-  const composers = [...boxes.values()].filter(b => b.composer);
-  const types = model.nodes.filter(n => !boxes.get(n.id).composer);
-  const typeIds = new Set(types.map(n => n.id));
-  const rows = layout(types, model.edges.filter(e => typeIds.has(e.from) && typeIds.has(e.to)), {
-    maxLength: maxWidth,
-    sizeOf: id => boxes.get(id).w,
-    gap: GAP_X,
-  });
-  // Types of the same domain (the first folder) stand together in each row,
-  // and inside it those of the same folder; domains and folders in the order
-  // their types come on average, so each keeps its side of every row.
-  const place = new Map();
-  for (const row of rows) row.forEach((id, i) => place.set(id, i / Math.max(1, row.length - 1)));
-  const domainOf = id => boxes.get(id).folder.split('/')[0];
-  const average = keyOf => {
+  // One box per namespace, laid out on its own.
+  const groups = new Map();
+  for (const n of model.nodes) {
+    const key = n.namespace || '(no namespace)';
+    if (!groups.has(key)) groups.set(key, { id: key, ids: [] });
+    groups.get(key).ids.push(n.id);
+  }
+  const folderLanes = [];   // { folder, x, right, y } for the lane names
+  for (const g of groups.values()) {
+    // Rows: a type above the types it uses (its composer aside, see below).
+    const composers = g.ids.map(id => boxes.get(id)).filter(b => b.composer);
+    const types = g.ids.map(id => boxes.get(id).node).filter(n => !boxes.get(n.id).composer);
+    const typeIds = new Set(types.map(n => n.id));
+    const rows = layout(types, model.edges.filter(e => typeIds.has(e.from) && typeIds.has(e.to)), {
+      maxLength: maxWidth - PAD * 2,
+      sizeOf: id => boxes.get(id).w,
+      gap: GAP_X,
+    });
+    // Each folder has a lane, the same strip in every row; the folders in
+    // the order their types come on average, so the arrows cross little.
+    const place = new Map();
+    for (const row of rows) row.forEach((id, i) => place.set(id, i / Math.max(1, row.length - 1)));
     const sums = new Map();
     for (const [id, p] of place) {
-      const k = keyOf(id);
-      const v = sums.get(k) || { sum: 0, n: 0 };
+      const f = boxes.get(id).folder;
+      const v = sums.get(f) || { sum: 0, n: 0 };
       v.sum += p;
       v.n++;
-      sums.set(k, v);
+      sums.set(f, v);
     }
-    return k => sums.get(k).sum / sums.get(k).n;
-  };
-  const domainRank = average(domainOf);
-  const folderRank = average(id => boxes.get(id).folder);
-  for (const row of rows) {
-    row.sort((a, b) => domainRank(domainOf(a)) - domainRank(domainOf(b))
-      || folderRank(boxes.get(a).folder) - folderRank(boxes.get(b).folder)
-      || place.get(a) - place.get(b));
-  }
-
-  // Positions: each domain has a lane of its own, the same strip from top
-  // to bottom, so its types stand together in every row (no box around
-  // them); in a row, a domain's types are centred in its lane.
-  const showFolders = new Set([...boxes.values()].filter(b => !b.composer).map(b => b.folder)).size > 1;
-  const LANE_GAP = 72;
-  const domains = [...new Set(types.map(n => domainOf(n.id)))].sort((a, b) => domainRank(a) - domainRank(b));
-  const runWidth = ids => ids.reduce((sum, id) => sum + boxes.get(id).w, 0) + GAP_X * Math.max(0, ids.length - 1);
-  const laneWidth = new Map(domains.map(d => [d, Math.max(...rows.map(row => runWidth(row.filter(id => domainOf(id) === d))))]));
-  const lanesWidth = domains.reduce((sum, d) => sum + laneWidth.get(d), 0) + LANE_GAP * Math.max(0, domains.length - 1);
-  const maxW = Math.max(0, lanesWidth, ...composers.map(b => textWidth(composerLabel(b), UML_FONT) + 60));
-  const laneX = new Map();
-  let laneStart = (maxW - lanesWidth) / 2;
-  for (const d of domains) {
-    laneX.set(d, laneStart);
-    laneStart += laneWidth.get(d) + LANE_GAP;
-  }
-  let y = 0;
-  for (const b of composers) {
-    Object.assign(b, { x: 0, y, w: maxW, lane: 'composer' });
-    y += COMPOSER_H + 12;
-  }
-  if (composers.length) y += COMPOSER_GAP - 12;
-  rows.forEach((row, r) => {
-    if (showFolders) y += LABEL;
-    for (const d of domains) {
-      const ids = row.filter(id => domainOf(id) === d);
-      let x = laneX.get(d) + (laneWidth.get(d) - runWidth(ids)) / 2;
-      for (const id of ids) {
-        const b = boxes.get(id);
-        Object.assign(b, { x, y, row: r });
-        x += b.w + GAP_X;
+    const folders = [...sums.keys()].sort((a, b) => sums.get(a).sum / sums.get(a).n - sums.get(b).sum / sums.get(b).n);
+    const runWidth = ids => ids.reduce((sum, id) => sum + boxes.get(id).w, 0) + GAP_X * Math.max(0, ids.length - 1);
+    const laneWidth = new Map(folders.map(f => [f, Math.max(
+      Math.min(textWidth(f, UML_SMALL) + 8, 240),
+      ...rows.map(row => runWidth(row.filter(id => boxes.get(id).folder === f))),
+    )]));
+    const lanesWidth = folders.reduce((sum, f) => sum + laneWidth.get(f), 0) + LANE_GAP * Math.max(0, folders.length - 1);
+    const innerWidth = Math.max(lanesWidth, ...composers.map(b => textWidth(composerLabel(b), UML_FONT) + 60), Math.min(textWidth(g.id, UML_SMALL) + 24, 280));
+    const laneX = new Map();
+    let x0 = (innerWidth - lanesWidth) / 2;
+    for (const f of folders) {
+      laneX.set(f, x0);
+      x0 += laneWidth.get(f) + LANE_GAP;
+    }
+    // From the top: the composer bars, the folder names, then the rows.
+    let y = 0;
+    for (const b of composers) {
+      Object.assign(b, { x: 0, y, w: innerWidth, lane: `composer|${g.id}`, row: `composer|${g.id}` });
+      y += COMPOSER_H + 12;
+    }
+    if (composers.length) y += COMPOSER_GAP - 12;
+    const lanesTop = y;
+    if (folders.length) y += LABEL;
+    rows.forEach((row, r) => {
+      for (const f of folders) {
+        const ids = row.filter(id => boxes.get(id).folder === f);
+        let x = laneX.get(f) + (laneWidth.get(f) - runWidth(ids)) / 2;
+        for (const id of ids) {
+          Object.assign(boxes.get(id), { x, y, row: `${g.id}|${r}` });
+          x += boxes.get(id).w + GAP_X;
+        }
       }
-    }
-    y += UML_BOX_H + GAP_Y;
-  });
-  const totalH = Math.max(0, y - GAP_Y);
-  // A label over each run of types of one folder in a row.
-  const folderRuns = [];
-  if (showFolders) {
-    for (const row of rows) {
-      let run = null;
-      for (const id of row) {
-        const b = boxes.get(id);
-        if (run && run.folder === b.folder) { run.right = b.x + b.w; continue; }
-        run = { folder: b.folder, x: b.x, right: b.x + b.w, y: b.y };
-        folderRuns.push(run);
-      }
-    }
+      y += UML_BOX_H + GAP_Y;
+    });
+    g.lanes = folders.map(f => ({ folder: f, x: laneX.get(f), right: laneX.get(f) + laneWidth.get(f), y: lanesTop, bottom: y - GAP_Y }));
+    g.inner = { width: innerWidth, height: rows.length ? y - GAP_Y : Math.max(0, y - COMPOSER_GAP) };
+    g.w = innerWidth + PAD * 2;
+    g.h = g.inner.height + TITLE + PAD;
   }
+  // The namespaces under each other, a namespace above the ones it uses
+  // (a composer's wiring does not count).
+  const groupEdges = new Map();
+  for (const e of model.edges) {
+    if (boxes.get(e.from)?.composer) continue;
+    const a = boxes.get(e.from)?.node.namespace || '(no namespace)';
+    const b = boxes.get(e.to)?.node.namespace || '(no namespace)';
+    if (a !== b) groupEdges.set(`${a}>${b}`, { from: a, to: b });
+  }
+  const groupOrder = layout([...groups.values()], [...groupEdges.values()], { maxLength: Infinity, sizeOf: () => 1, gap: 0 }).flat();
+  const maxW = Math.max(0, ...[...groups.values()].map(g => g.w));
+  let groupY = 0;
+  for (const id of groupOrder) {
+    const g = groups.get(id);
+    g.x = (maxW - g.w) / 2;
+    g.y = groupY;
+    groupY += g.h + GROUP_GAP;
+    const dx = g.x + PAD;
+    const dy = g.y + TITLE;
+    for (const boxId of g.ids) {
+      const b = boxes.get(boxId);
+      b.x += dx;
+      b.y += dy;
+    }
+    for (const lane of g.lanes) folderLanes.push({ folder: lane.folder, x: lane.x + dx, right: lane.right + dx, y: lane.y + dy, bottom: lane.bottom + dy, single: g.lanes.length === 1 });
+  }
+  const totalH = Math.max(0, groupY - GROUP_GAP);
 
   const svg = svgEl('svg', { class: 'uml-svg' });
   const defs = svgEl('defs');
@@ -396,13 +414,24 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
   const world = svgEl('g', { class: 'uml-world' });
   svg.appendChild(world);
 
-  // The folder labels, with a thin line over their types.
+  // The namespace boxes, behind everything else.
+  const groupLayer = svgEl('g', { class: 'uml-groups' });
+  for (const g of groups.values()) {
+    const box = svgEl('g', { class: 'uml-group', transform: `translate(${g.x},${g.y})` });
+    box.appendChild(svgEl('rect', { width: g.w, height: g.h, rx: 14 }));
+    box.appendChild(svgEl('text', { x: 14, y: 20 }, fitLabel(g.id, g.w - 28)));
+    box.appendChild(svgEl('title', {}, `namespace ${g.id}\n${g.ids.length} changed type${g.ids.length === 1 ? '' : 's'}`));
+    groupLayer.appendChild(box);
+  }
+  world.appendChild(groupLayer);
+
+  // Each folder lane: its name and a faint strip behind its types.
   const folderLayer = svgEl('g', { class: 'uml-folders' });
-  for (const run of folderRuns) {
+  for (const lane of folderLanes) {
     const g = svgEl('g', { class: 'uml-folder' });
-    g.appendChild(svgEl('line', { x1: run.x, x2: run.right, y1: run.y - 6, y2: run.y - 6 }));
-    g.appendChild(svgEl('text', { x: run.x + 2, y: run.y - 10 }, fitLabel(run.folder, Math.max(60, run.right - run.x))));
-    g.appendChild(svgEl('title', {}, run.folder));
+    g.appendChild(svgEl('rect', { class: 'uml-lane', x: lane.x - 10, y: lane.y - 4, width: lane.right - lane.x + 20, height: lane.bottom - lane.y + 14, rx: 10 }));
+    g.appendChild(svgEl('text', { x: lane.x, y: lane.y + 13 }, fitLabel(lane.folder, Math.max(60, lane.right - lane.x))));
+    g.appendChild(svgEl('title', {}, `folder ${lane.folder}`));
     folderLayer.appendChild(g);
   }
   world.appendChild(folderLayer);
@@ -440,7 +469,7 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
     if (a.composer) g.classList.add('composition');
     else if (outgoing.get(e.from) > 5) g.classList.add('faint');
     // Another domain using this one's API.
-    if (b.facade && !a.composer && a.folder !== b.folder) g.classList.add('api-call');
+    if (b.facade && !a.composer && a.node.namespace !== b.node.namespace) g.classList.add('api-call');
     edgeLayer.appendChild(g);
   }
   world.appendChild(edgeLayer);

@@ -593,9 +593,11 @@ details.change-file > summary:hover { background: var(--bg-hover); }
 .uml-stereo { font: 11px var(--font); fill: var(--text-faint); text-anchor: middle; }
 .uml-name { font: 600 13px var(--font); fill: var(--text); text-anchor: middle; }
 .uml-node.kind-interface .uml-name { font-style: italic; }
-/* Folder labels: types of one folder stand together under their label */
-.uml-folder line { stroke: rgba(233, 162, 59, 0.35); stroke-width: 1.5; }
-.uml-folder text { font: 600 11px var(--font); fill: var(--accent); opacity: 0.8; letter-spacing: 0.02em; }
+/* Namespace boxes, and a lane per folder inside them */
+.uml-group rect { fill: rgba(255, 255, 255, 0.025); stroke: rgba(233, 162, 59, 0.28); stroke-width: 1.2; }
+.uml-group text { font: 600 11px var(--font); fill: var(--accent); letter-spacing: 0.03em; opacity: 0.85; }
+.uml-lane { fill: rgba(255, 255, 255, 0.025); stroke: none; }
+.uml-folder text { font: 600 11px var(--font); fill: var(--text-dim); letter-spacing: 0.02em; }
 /* The composition root: a bar across its namespace; its wiring shows on hover */
 .uml-node.composer .uml-box { fill: rgba(233, 162, 59, 0.07); stroke-dasharray: 6 4; }
 .uml-node.composer .uml-name { font-weight: 600; fill: var(--text-dim); }
