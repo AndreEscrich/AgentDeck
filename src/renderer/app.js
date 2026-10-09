@@ -620,14 +620,13 @@ function reviewQueue() {
   const items = hubItems();
   const waiting = items.filter(i => i.status === 'waiting' && i.unread)
     .sort((a, b) => (a.waitingSince || 0) - (b.waitingSince || 0));
-  // Stuck agents probably need you too: right after the ones that wait for you.
-  const stuck = items.filter(i => i.status === 'stuck')
-    .sort((a, b) => (a.stuck?.since || 0) - (b.stuck?.since || 0));
+  // Stuck agents are left out: they are still working, and the Hub shows
+  // them with their own look.
   const unseen = items.filter(i => i.unread && i.status === 'idle')
     .sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
   const unanswered = items.filter(i => i.status === 'waiting' && !i.unread)
     .sort((a, b) => (a.waitingSince || 0) - (b.waitingSince || 0));
-  return [...waiting, ...stuck, ...unseen, ...unanswered];
+  return [...waiting, ...unseen, ...unanswered];
 }
 
 // A new press of Enter starts a round. Within a round, agents already opened
