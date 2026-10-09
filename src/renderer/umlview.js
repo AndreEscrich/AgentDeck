@@ -13,6 +13,8 @@ const UML_FONT = '600 13px Nunito, "Segoe UI", sans-serif';
 const UML_SMALL = '11px Nunito, "Segoe UI", sans-serif';
 const UML_BOX_H = 38;
 const COMPOSER_H = 40;
+const COMPOSER_W = 40;       // the composer's bar down the left of its namespace
+const COMPOSER_MIN_H = 220;
 
 // "⚙ StarterBonusSystemComposer · wires 12 types"
 function composerLabel(b) {
@@ -219,6 +221,7 @@ function drawEdge(a, b, edge, slots) {
 }
 
 function edgeSides(a, b) {
+  if (a.composer) return 'right';
   // Between rows (and from a composer) the arrow goes down or up; in a row, sideways.
   if (a.lane !== b.lane || a.row !== b.row) return b.y > a.y ? 'down' : 'up';
   if (b.x >= a.x + a.w + 8) return 'right';
@@ -256,10 +259,12 @@ function fitLabel(text, width) {
 
 // Two kinds of type have a role of their own in these projects:
 // - a SystemComposer creates and wires the types of its feature, so it uses
-//   almost all of them. It is a bar across the top of the diagram, and its
-//   wiring arrows show only while you point at it.
+//   almost all of them. It is a bar down the left side of its namespace, and
+//   its wiring arrows show only while you point at it.
 // - a Facade (and its I…Facade interface) is the API other domains use. It
-//   has an "API" tag, and arrows into it from other domains stand out.
+//   has an "API" tag, the interface stands on a row of its own at the bottom
+//   of its namespace (where the other domains come in), and arrows into it
+//   from other namespaces stand out.
 function isComposer(n) {
   return /Composer$/.test(n.name) || (n.bases || []).some(b => /SystemComposer$/.test(b));
 }
@@ -314,15 +319,23 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
   }
   const folderLanes = [];   // { folder, x, right, y } for the lane names
   for (const g of groups.values()) {
-    // Rows: a type above the types it uses (its composer aside, see below).
+    // Rows: a type above the types it uses. The composer and the facade's
+    // interface have places of their own (see below).
     const composers = g.ids.map(id => boxes.get(id)).filter(b => b.composer);
-    const types = g.ids.map(id => boxes.get(id).node).filter(n => !boxes.get(n.id).composer);
+    const entries = g.ids.map(id => boxes.get(id)).filter(b => b.facade && b.node.kind === 'interface');
+    const types = g.ids.map(id => boxes.get(id).node).filter(n => !boxes.get(n.id).composer && !entries.includes(boxes.get(n.id)));
     const typeIds = new Set(types.map(n => n.id));
+    const composerSpace = composers.length ? composers.length * (COMPOSER_W + 12) + 28 : 0;
     const rows = layout(types, model.edges.filter(e => typeIds.has(e.from) && typeIds.has(e.to)), {
-      maxLength: maxWidth - PAD * 2,
+      maxLength: maxWidth - PAD * 2 - composerSpace,
       sizeOf: id => boxes.get(id).w,
       gap: GAP_X,
     });
+    // From the top: the rows from the lowest level up (the types the others
+    // use first), then the facade's interface on a row of its own at the
+    // bottom: it is where the other domains come in.
+    rows.reverse();
+    if (entries.length) rows.push(entries.map(b => b.id));
     // Each folder has a lane, the same strip in every row; the folders in
     // the order their types come on average, so the arrows cross little.
     const place = new Map();
@@ -342,16 +355,13 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
       ...rows.map(row => runWidth(row.filter(id => boxes.get(id).folder === f))),
     )]));
     const lanesWidth = folders.reduce((sum, f) => sum + laneWidth.get(f), 0) + LANE_GAP * Math.max(0, folders.length - 1);
-    const innerWidth = Math.max(lanesWidth, ...composers.map(b => textWidth(composerLabel(b), UML_FONT) + 60), Math.min(textWidth(g.id, UML_SMALL) + 24, 280));
+    const innerWidth = composerSpace + Math.max(lanesWidth, Math.min(textWidth(g.id, UML_SMALL) + 24, 280));
     const laneX = new Map();
-    let x0 = (innerWidth - lanesWidth) / 2;
+    let x0 = composerSpace + (innerWidth - composerSpace - lanesWidth) / 2;
     for (const f of folders) {
       laneX.set(f, x0);
       x0 += laneWidth.get(f) + LANE_GAP;
     }
-    // From the top: the folder names, the rows from the lowest level up (the
-    // types the others use first), then the composer bars, which use them all.
-    rows.reverse();
     let y = 0;
     const lanesTop = y;
     if (folders.length) y += LABEL;
@@ -366,13 +376,14 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
       }
       y += UML_BOX_H + GAP_Y;
     });
-    g.lanes = folders.map(f => ({ folder: f, x: laneX.get(f), right: laneX.get(f) + laneWidth.get(f), y: lanesTop, bottom: y - GAP_Y }));
-    if (rows.length) y += COMPOSER_GAP - GAP_Y;
-    for (const b of composers) {
-      Object.assign(b, { x: 0, y, w: innerWidth, lane: `composer|${g.id}`, row: `composer|${g.id}` });
-      y += COMPOSER_H + 12;
-    }
-    g.inner = { width: innerWidth, height: composers.length ? y - 12 : rows.length ? y - (COMPOSER_GAP - GAP_Y) - GAP_Y : 0 };
+    const height = rows.length ? y - GAP_Y : Math.max(COMPOSER_MIN_H, 0);
+    g.lanes = folders.map(f => ({ folder: f, x: laneX.get(f), right: laneX.get(f) + laneWidth.get(f), y: lanesTop, bottom: height }));
+    // The composer: a bar down the left side, as tall as the namespace's
+    // types; its wiring goes out to the right.
+    composers.forEach((b, i) => {
+      Object.assign(b, { x: i * (COMPOSER_W + 12), y: 0, w: COMPOSER_W, h: Math.max(COMPOSER_MIN_H, height), lane: `composer|${g.id}`, row: `composer|${g.id}` });
+    });
+    g.inner = { width: innerWidth, height: Math.max(height, composers.length ? COMPOSER_MIN_H : 0) };
     g.w = innerWidth + PAD * 2;
     g.h = g.inner.height + TITLE + PAD;
   }
@@ -485,7 +496,7 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
     g.appendChild(svgEl('rect', { class: 'uml-box', width: b.w, height: b.h, rx: b.composer ? 10 : 8 }));
     g.appendChild(svgEl('rect', { class: 'uml-band', width: 4, height: b.h - 12, x: 6, y: 6, rx: 2 }));
     if (b.composer) {
-      g.appendChild(svgEl('text', { class: 'uml-name', x: b.w / 2 + 3, y: b.h / 2 + 4.5 }, composerLabel(b)));
+      g.appendChild(svgEl('text', { class: 'uml-name', x: b.w / 2 + 3, y: b.h / 2 + 4.5, transform: `rotate(-90 ${b.w / 2 + 3} ${b.h / 2})` }, fitLabel(composerLabel(b), b.h - 24)));
     } else {
       g.appendChild(svgEl('text', { class: 'uml-name', x: b.w / 2 + 3, y: b.h / 2 + 4.5 }, b.name));
     }
