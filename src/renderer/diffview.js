@@ -266,7 +266,7 @@ function addDiagram(card, head, files, cwd, comments) {
     filesBtn.classList.add('active');
   };
 
-  window.deck.csModel(cwd, csFiles.map(({ path, status, lines }) => ({ path, status, lines }))).then(model => {
+  window.deck.csModel(cwd, csFiles.map(({ path, status, lines, earlier }) => ({ path, status, lines, earlier }))).then(model => {
     const changed = model?.nodes?.filter(n => n.status === 'new' || n.status === 'mod' || n.status === 'del') || [];
     showFiles();
     if (!changed.length) { switcher.remove(); return; }
@@ -532,7 +532,7 @@ function fileViews(f, cwd, changesView) {
   }
   box.append(bar, body);
   const versions = () => {
-    if (!f.versions) f.versions = window.deck?.fileVersions ? window.deck.fileVersions(cwd, { path: f.path, status: f.status, lines: f.lines }) : Promise.resolve({ error: 'Not available.' });
+    if (!f.versions) f.versions = window.deck?.fileVersions ? window.deck.fileVersions(cwd, { path: f.path, status: f.status, lines: f.lines, earlier: f.earlier }) : Promise.resolve({ error: 'Not available.' });
     return f.versions;
   };
   let current = null;

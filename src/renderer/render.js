@@ -515,16 +515,19 @@ class Transcript {
       // The changed files come first, then Claude's message about them.
       const toolFiles = this.toolChanges(turn.changes).filter(f => !isTempFile(f.path));
       turn.files = toolFiles;
-      if (toolFiles.length) turn.answer.appendChild(changesCard(toolFiles, this.cwd));
+      if (toolFiles.length) turn.answer.appendChild(changesCard(this.withEarlier(turn, toolFiles), this.cwd));
       // Then drop files that no longer exist, unless the snapshot comparison
-      // (showGitChanges) has replaced this card in the meantime.
-      this.pruneMissing(turn).then(removed => {
+      // (showGitChanges) has replaced this card in the meantime. Only for a
+      // task that just ended (it has a result): in a saved session, a file
+      // that is gone now may have been reverted since, and it still is part
+      // of what the agent did.
+      if (result) this.pruneMissing(turn).then(removed => {
         if (!removed || turn.gitShown) return;
         this.pinned(() => {
           turn.el.querySelector('.changes')?.remove();
           if (!turn.changes.size) return;
           turn.files = this.toolChanges(turn.changes);
-          turn.answer.prepend(changesCard(turn.files, this.cwd));
+          turn.answer.prepend(changesCard(this.withEarlier(turn, turn.files), this.cwd));
         });
       }).catch(() => {});
       for (const node of turn.pendingText) turn.answer.appendChild(node);
@@ -920,6 +923,23 @@ class Transcript {
     return removed;
   }
 
+  // The changes of the same files in the tasks before this one, oldest first
+  // (f.earlier: [{ status, lines }]), so a file's version from this task can
+  // be rebuilt from the session's history after the files were reverted (see
+  // versions in src/undo.js).
+  withEarlier(turn, files) {
+    const key = p => String(p).replace(/\\/g, '/').toLowerCase();
+    const before = [];
+    for (const p of this.prompts) {
+      if (p.turn === turn) break;
+      if (p.turn?.files) before.push(p.turn.files);
+    }
+    for (const f of files) {
+      f.earlier = before.flatMap(list => list.filter(e => key(e.path) === key(f.path)).map(e => ({ status: e.status, lines: e.lines })));
+    }
+    return files;
+  }
+
   relativePath(p) {
     if (this.cwd && (p.startsWith(this.cwd + '/') || p.startsWith(this.cwd + '\\'))) return p.slice(this.cwd.length + 1);
     return p;
@@ -959,7 +979,7 @@ class Transcript {
     turn.files = files;
     this.pinned(() => {
       turn.el.querySelector('.changes')?.remove();
-      if (files.length) turn.answer.prepend(changesCard(files, this.cwd));
+      if (files.length) turn.answer.prepend(changesCard(this.withEarlier(turn, files), this.cwd));
     });
     if (this.lastFinished === turn && this.lastTurn) {
       this.lastTurn.changedFiles = files.length;

@@ -45,6 +45,8 @@ function hunksOf(file) {
       h = { newStart: Number(m[1]), newCount: m[2] == null ? 1 : Number(m[2]), before: [], after: [] };
       hunks.push(h);
     } else if (h) {
+      // "\ No newline at end of file" is a note, not a line of the file.
+      if (text.startsWith('\\')) continue;
       if (kind !== 'add') h.before.push(clean(text));
       if (kind !== 'del') h.after.push(clean(text));
     }
@@ -52,9 +54,13 @@ function hunksOf(file) {
   return hunks;
 }
 
+// Lines match when only their whitespace differs: Claude Code's edit reports
+// show tabs as spaces, and trailing spaces do not count.
+const sameLine = (a, b) => a === b || a.replace(/\s+/g, ' ').trim() === b.replace(/\s+/g, ' ').trim();
+
 function matchesAt(lines, block, at) {
   if (at < 0 || at + block.length > lines.length) return false;
-  for (let i = 0; i < block.length; i++) if (lines[at + i] !== block[i]) return false;
+  for (let i = 0; i < block.length; i++) if (!sameLine(lines[at + i], block[i])) return false;
   return true;
 }
 
@@ -146,43 +152,66 @@ async function restoreFile(cwd, p, previous) {
   }
 }
 
+// A new file's content from its diff: written whole (the added lines before
+// the first @@), then maybe edited in the same task. null when it doesn't fit.
+function writtenContent(file) {
+  const first = file.lines.findIndex(([kind]) => kind === 'hunk');
+  const written = file.lines.slice(0, first < 0 ? undefined : first).filter(([kind]) => kind === 'add').map(([, text]) => clean(text));
+  const rest = { lines: first < 0 ? [] : file.lines.slice(first) };
+  if (rest.lines.every(([kind]) => kind === 'hunk' || kind === 'add')) {
+    return [...written, ...rest.lines.filter(([kind]) => kind === 'add').map(([, text]) => clean(text))];
+  }
+  return patch(written, hunksOf(rest));
+}
+
+// One task's change of a file, from what the file was before it (lines, or
+// null when it did not exist). Returns { before, after } or null when the
+// change does not fit. When the file already is past this change (the
+// change applies backwards), before is rebuilt and after is the file.
+function step(current, change) {
+  const removed = change.lines.filter(([kind]) => kind === 'del').map(([, text]) => clean(text));
+  if (change.status === 'del') return { before: current || removed, after: null };
+  if (change.status === 'new') {
+    const after = writtenContent(change);
+    return after ? { before: null, after } : null;
+  }
+  if (!current) return null;
+  const hunks = hunksOf(change);
+  const back = unpatch(current, hunks);
+  if (back) return { before: back, after: current };
+  const forward = patch(current, hunks);
+  return forward ? { before: current, after: forward } : null;
+}
+
 // The whole file before and after the task, as the agent left it, rebuilt
-// from the task's diff (its history), whatever happened to the file since:
-// - a new file: its lines are in the diff (a file written and then edited
-//   in the same task: its first content with the edits applied);
+// from the session's history, whatever happened to the file since. It starts
+// from the file on disk and replays the file's changes in the earlier tasks
+// (file.earlier, oldest first), then this task's change:
+// - a new file: its lines are in the diff;
 // - a deleted file: its removed lines;
-// - an edited file: the file on disk, if it still is the agent's version
-//   (the diff applies backwards to it); if it was undone or reverted since,
-//   it is the version before, and the diff applied forwards gives the
-//   agent's version.
+// - an edited file: the diff applies backwards when the file already is the
+//   agent's version, or forwards when it is the version before (because it
+//   was undone or reverted since, maybe together with earlier tasks).
 // Used by the full and side-by-side views and the class diagram. Resolves
 // with { before, after } (arrays of lines; null for a file that did not
 // exist) or { error }.
 async function versions(cwd, file) {
   if (!file || typeof file.path !== 'string' || !Array.isArray(file.lines)) return { error: 'No file.' };
   const abs = resolve(cwd, file.path);
-  const removed = () => file.lines.filter(([kind]) => kind === 'del').map(([, text]) => clean(text));
   try {
-    if (file.status === 'del') return { before: removed(), after: null };
-    if (file.status === 'new') {
-      // Written whole (lines before the first @@), then maybe edited.
-      const first = file.lines.findIndex(([kind]) => kind === 'hunk');
-      const written = file.lines.slice(0, first < 0 ? undefined : first).filter(([kind]) => kind === 'add').map(([, text]) => clean(text));
-      const rest = { lines: first < 0 ? [] : file.lines.slice(first) };
-      const onlyAdds = rest.lines.every(([kind]) => kind === 'hunk' || kind === 'add');
-      if (onlyAdds) return { before: null, after: [...written, ...rest.lines.filter(([kind]) => kind === 'add').map(([, text]) => clean(text))] };
-      const after = patch(written, hunksOf(rest));
-      if (after) return { before: null, after };
-      if (fs.existsSync(abs)) return { before: null, after: splitText(fs.readFileSync(abs, 'utf8')).lines };
-      return { error: `${path.basename(file.path)} can't be rebuilt from the task's changes.` };
+    const disk = fs.existsSync(abs) ? splitText(fs.readFileSync(abs, 'utf8')).lines : null;
+    // Replay the earlier tasks' changes of this file from the disk version
+    // (each one is skipped when the file is already past it), then this one.
+    let current = disk;
+    for (const change of Array.isArray(file.earlier) ? file.earlier : []) {
+      if (!change || !Array.isArray(change.lines)) continue;
+      const s = step(current, change);
+      if (s) current = s.after;
     }
-    if (!fs.existsSync(abs)) return { error: `${path.basename(file.path)} no longer exists, and its version from the task can't be rebuilt without it.` };
-    const now = splitText(fs.readFileSync(abs, 'utf8')).lines;
-    const hunks = hunksOf(file);
-    const before = unpatch(now, hunks);
-    if (before) return { before, after: now };
-    const after = patch(now, hunks);
-    if (after) return { before: now, after };
+    const replayed = step(current, file);
+    if (replayed) return replayed;
+    const direct = step(disk, file);
+    if (direct) return direct;
     return { error: 'The file was changed in the same lines since the task, so its version from the task can\'t be rebuilt.' };
   } catch (err) {
     return { error: err.message };
