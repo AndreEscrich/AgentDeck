@@ -510,17 +510,20 @@ details.change-file > summary:hover { background: var(--bg-hover); }
 
 .changes-head { display: flex; align-items: center; gap: 4px; }
 .changes-title { margin-right: 4px; }
-.review-btn { margin-left: auto; font-size: 12px; padding: 3px 12px; font-weight: 500; }
 /* Class diagram of the C# changes (umlview.js) */
 /* Diagram | Files in the card's title */
 .changes-switch { margin-left: auto; display: inline-flex; padding: 2px; border-radius: 8px; background: var(--code-bg); border: 1px solid var(--border); }
 .changes-switch button { border: none; background: none; font-size: 12px; padding: 3px 12px; border-radius: 6px; font-weight: 500; color: var(--text-dim); }
 .changes-switch button.active { background: var(--bg-active); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
-.changes-switch ~ .undo-all-btn, .changes-switch ~ .review-btn { margin-left: 6px; }
 /* Diagram mode: the files hide and the whole card widens to most of the window. */
 .changes.show-diagram > details.change-file, .changes.show-diagram > details.other-files { display: none; }
 .changes:not(.show-diagram) > .uml-panel { display: none; }
 .changes-switch button:disabled { opacity: 0.5; cursor: default; }
+/* Send N comments (comments on diff lines) */
+.comments-send { font-size: 12px; padding: 3px 12px; font-weight: 600; background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.comments-send.hidden { display: none; }
+.changes-head .comments-send { margin-left: auto; }
+.changes-switch ~ .comments-send { margin-left: 6px; }
 
 .uml-panel { position: relative; height: 380px; margin: 8px 0 4px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
   background: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0) 0 0 / 18px 18px, var(--code-bg); }
@@ -616,10 +619,6 @@ details.change-file > summary:hover { background: var(--bg-hover); }
 .diff-line.flash { animation: diff-flash 1.6s ease-out; }
 @keyframes diff-flash { 0%, 40% { box-shadow: inset 3px 0 0 var(--accent); background: rgba(233, 162, 59, 0.22); } }
 
-.undo-all-btn { margin-left: auto; font-size: 12px; padding: 3px 12px; font-weight: 500; }
-.undo-all-btn + .review-btn { margin-left: 6px; }
-.undo-btn { flex-shrink: 0; font-size: 11px; padding: 1px 8px; opacity: 0; transition: opacity 0.12s; }
-details.change-file > summary:hover .undo-btn, .undo-btn:focus-visible, details.change-file.undone .undo-btn { opacity: 1; }
 details.change-file.undone > summary .change-path, details.change-file.undone > summary .change-counts { text-decoration: line-through; opacity: 0.55; }
 details.change-file.undone > summary .change-badge { opacity: 0.55; }
 .changes-problem { padding: 6px 12px; font-size: 12px; color: var(--err); white-space: pre-wrap; }
@@ -631,15 +630,11 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 
 /* Full-window review */
 #main { position: relative; }
-.review { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column; background: var(--bg); outline: none; }
 .review-bar { height: 52px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 16px; border-bottom: 1px solid var(--border); -webkit-app-region: drag; }
 .platform-darwin .review-bar { padding-left: 84px; }
 .platform-win32 .review-bar { padding-right: 150px; }
 .review-bar button { -webkit-app-region: no-drag; margin-left: auto; }
 .review-title { font-weight: 600; }
-.review-bar .review-send { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
-.review-bar .review-send:not(.hidden) + button { margin-left: 0; }
-.review-comment-count { flex-shrink: 0; font-size: 11px; color: var(--accent); }
 .diff-line.commentable { cursor: pointer; }
 .diff-line.commentable:hover .ln { color: var(--accent); opacity: 1; }
 .review-comment, .review-comment-editor {
@@ -656,19 +651,6 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 .review-comment-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; }
 .review-comment-actions button { font-size: 12px; padding: 2px 10px; }
 .review-comment-save { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
-.review-body { flex: 1; display: flex; min-height: 0; }
-.review-list { width: 280px; flex-shrink: 0; overflow-y: auto; border-right: 1px solid var(--border); padding: 6px; }
-.review-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
-.review-item:hover { background: var(--bg-hover); }
-.review-item.active { background: var(--bg-active); }
-.review-item.other { opacity: 0.6; }
-.review-item .change-badge { width: 20px; text-align: center; padding: 1px 0; }
-.review-item-text { flex: 1; min-width: 0; }
-.review-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.review-dir { font-size: 11px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.review-pane { flex: 1; min-width: 0; overflow: auto; }
-.review-path { position: sticky; top: 0; z-index: 1; padding: 8px 16px; font: 12px var(--mono); color: var(--text-dim); background: var(--bg-panel); border-bottom: 1px solid var(--border); }
-.review-pane .diff { max-height: none; border-top: none; font-size: 12.5px; }
 
 /* ---------- Hub ---------- */
 
@@ -971,6 +953,8 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
 .tile-stop:hover { background: var(--busy); border-color: var(--busy); }
 .tile-stop:hover span { background: #1a150f; }
 /* The same in the message box of a working agent, next to Send. */
+.composer-undo { padding: 4px 12px; border-radius: 8px; margin-right: 6px; font-size: 12.5px; }
+.composer-undo.hidden { display: none; }
 .composer-stop { display: inline-flex; align-items: center; gap: 7px; padding: 4px 12px; border-radius: 8px; margin-right: 6px; }
 .composer-stop.hidden { display: none; }
 .composer-stop span { width: 8px; height: 8px; border-radius: 2px; background: currentColor; }

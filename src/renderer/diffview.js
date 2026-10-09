@@ -61,8 +61,9 @@ function highlightLine(text, language) {
 function renderDiff(file, { maxLines = 3000, onLine = null } = {}) {
   const language = LANGUAGES[extensionOf(file.path)];
   const diff = el('div', 'diff');
-  let oldNo = 0;
-  let newNo = 0;
+  // A new file written whole has no @@ line: its lines count from 1.
+  let oldNo = 1;
+  let newNo = 1;
   const lines = file.lines.slice(0, maxLines);
   lines.forEach(([kind, text], index) => {
     const row = el('div', 'diff-line ' + kind);
@@ -163,7 +164,7 @@ function fileSummary(f) {
 }
 
 // The card under the answer. Every file starts collapsed: click one to see
-// its diff, or open them all in the review view.
+// its diff. Click a line in a diff to comment on it (see lineComments).
 function changesCard(files, cwd) {
   files = sortFiles(files);
   const code = files.filter(f => isCodeFile(f.path));
@@ -178,67 +179,20 @@ function changesCard(files, cwd) {
 
   const card = el('div', 'changes');
   const head = el('div', 'changes-head');
-  const review = el('button', 'review-btn', 'Review');
-  review.title = 'Open the changes in the whole window';
-  review.onclick = () => openReview(files, 0, { cwd });
-  const undoable = files.filter(f => f.status !== 'bin');
-  const undoAll = el('button', 'undo-all-btn', 'Undo all');
-  undoAll.title = 'Put every file back the way it was before this task';
+  const comments = lineComments(files, cwd);
+  const send = comments.sendButton();
   head.append(
     el('span', 'changes-title', `Changed ${files.length} file${files.length === 1 ? '' : 's'}`),
     el('span', 'plus', ` +${totalAdd}`),
     el('span', 'minus', ` −${totalDel}`),
-    review,
+    send,
   );
-  if (undoable.length && window.deck?.undoFile) head.insertBefore(undoAll, review);
   card.appendChild(head);
-  const problem = el('div', 'changes-problem hidden');
 
-  // Undo puts a file back the way it was before the task (see src/undo.js);
-  // Redo puts the agent's version back. Each row has its own button, and
-  // "Undo all" does every file that is not undone yet.
-  const rows = new Map();   // file -> { row, button }
-  const showProblems = errors => {
-    problem.textContent = errors.join('\n');
-    problem.classList.toggle('hidden', !errors.length);
-  };
-  const refreshUndoAll = () => {
-    const allUndone = undoable.every(f => f.undone);
-    undoAll.textContent = allUndone ? 'Redo all' : 'Undo all';
-    undoAll.title = allUndone ? 'Put back every change of this task' : 'Put every file back the way it was before this task';
-  };
-  const toggle = async f => {
-    if (f.undone) {
-      const r = await window.deck.restoreFile(cwd, f.path, f.undone.previous);
-      if (!r.ok) return r.error;
-      f.undone = null;
-    } else {
-      const r = await window.deck.undoFile(cwd, { path: f.path, status: f.status, lines: f.lines });
-      if (!r.ok) return r.error;
-      f.undone = { previous: r.previous };
-    }
-    const { row, button } = rows.get(f);
-    row.classList.toggle('undone', !!f.undone);
-    button.textContent = f.undone ? 'Redo' : 'Undo';
-    button.title = f.undone ? 'Put the agent\'s change back' : 'Put this file back the way it was before this task';
-    return null;
-  };
-  const run = async list => {
-    undoAll.disabled = true;
-    const errors = [];
-    for (const f of list) {
-      const err = await toggle(f).catch(e => String(e?.message || e));
-      if (err) errors.push(err);
-    }
-    undoAll.disabled = false;
-    refreshUndoAll();
-    showProblems(errors);
-    window.uiSound?.(errors.length ? 'refuse' : 'detach');
-  };
-  undoAll.onclick = () => {
-    const allUndone = undoable.every(f => f.undone);
-    run(undoable.filter(f => !!f.undone === allUndone));
-  };
+  // Undo is in the message box ("Undo last prompt", see app.js); files it
+  // put back are crossed out here. card.syncUndone() redraws that.
+  const rows = new Map();   // file -> its row
+  card.syncUndone = () => { for (const [f, row] of rows) row.classList.toggle('undone', !!f.undone); };
 
   const titles = [];   // [file, its summary], to show namespaces once they are known
   const addFile = (parent, f) => {
@@ -246,23 +200,12 @@ function changesCard(files, cwd) {
     row.title = f.path;
     const summary = fileSummary(f);
     titles.push([f, summary]);
-    if (f.status !== 'bin' && window.deck?.undoFile) {
-      const button = el('button', 'undo-btn', 'Undo');
-      button.title = 'Put this file back the way it was before this task';
-      // The button sits in the row's summary; a click must not open the diff.
-      button.onclick = e => {
-        e.preventDefault();
-        e.stopPropagation();
-        run([f]);
-      };
-      summary.appendChild(button);
-      rows.set(f, { row, button });
-      if (f.undone) { row.classList.add('undone'); button.textContent = 'Redo'; }
-    }
+    rows.set(f, row);
+    if (f.undone) row.classList.add('undone');
     row.appendChild(summary);
     // Drawing happens when the file is first opened, so big changes stay fast.
     const draw = () => {
-      if (!row.querySelector('.diff')) row.appendChild(renderDiff(f));
+      if (!row.querySelector('.diff')) row.appendChild(comments.diff(f));
     };
     row.addEventListener('toggle', () => { if (row.open) draw(); });
     parent.appendChild(row);
@@ -278,8 +221,6 @@ function changesCard(files, cwd) {
     if (!code.length) group.open = true;
     card.appendChild(group);
   }
-  card.appendChild(problem);
-  refreshUndoAll();
   loadNamespaces(files, cwd, () => {
     for (const [f, summary] of titles) {
       const { front, name } = titleParts(f);
@@ -287,7 +228,7 @@ function changesCard(files, cwd) {
       summary.querySelector('.change-name').textContent = name;
     }
   });
-  addDiagram(card, head, files, cwd);
+  addDiagram(card, head, files, cwd, comments);
   return card;
 }
 
@@ -297,7 +238,7 @@ function changesCard(files, cwd) {
 // Diagram the class diagram, for which the whole card widens to most of the
 // window. Diagram waits until the C# has been read, and goes away when the
 // changes declare no types.
-function addDiagram(card, head, files, cwd) {
+function addDiagram(card, head, files, cwd, comments) {
   const csFiles = files.filter(f => CS_FILE.test(f.path) && f.status !== 'bin');
   if (!csFiles.length || !window.deck?.csModel || !window.umlPanel) return;
   const switcher = el('div', 'changes-switch');
@@ -307,20 +248,13 @@ function addDiagram(card, head, files, cwd) {
   diagramBtn.disabled = true;
   diagramBtn.title = 'Reading the C# changes…';
   switcher.append(filesBtn, diagramBtn);
-  head.insertBefore(switcher, head.querySelector('.undo-all-btn, .review-btn'));
+  head.insertBefore(switcher, head.querySelector('.comments-send'));
 
   window.deck.csModel(cwd, csFiles.map(({ path, status, lines }) => ({ path, status, lines }))).then(model => {
     const changed = model?.nodes?.filter(n => n.status === 'new' || n.status === 'mod' || n.status === 'del') || [];
     if (!changed.length) { switcher.remove(); return; }
     const title = `Class diagram · ${changed.length} changed type${changed.length === 1 ? '' : 's'}`;
-    const options = {
-      files,
-      // The review at a type, from its diff's Review button.
-      onReview: (node, line) => {
-        window.uiSound?.('open');
-        openReview(files, files.findIndex(f => f.path === node.file), { cwd, line: line ?? node.line });
-      },
-    };
+    const options = { files, comments };
     const panel = umlPanel(model, { ...options, onFull: () => openUmlFull(model, { ...options, title }) });
     card.insertBefore(panel, head.nextSibling);
     card.classList.add('has-diagram');
@@ -339,125 +273,68 @@ function addDiagram(card, head, files, cwd) {
   }).catch(() => switcher.remove());
 }
 
-// ---------- full-window review ----------
+// ---------- comments on lines ----------
 
-let reviewEl = null;
+// Click a line of a diff (in the Files list, or in a type's diff from the
+// diagram) to comment on it. Comments are kept on the file objects
+// (f.comments: diff line index -> { line, side, code, text }), so they stay
+// when a file is closed and opened again. "Send N comments" in the card's
+// title (and in a type's diff) puts them all into the message box, as one
+// message to the agent. Returns { diff(f), sendButton(), count(), send(),
+// onChange(fn) }.
+function lineComments(files, cwd) {
+  const listeners = new Set();
+  const count = () => files.reduce((n, f) => n + (f.comments?.size || 0), 0);
+  const changed = () => { for (const fn of listeners) fn(count()); };
 
-function closeReview() {
-  reviewEl?.remove();
-  reviewEl = null;
-}
-
-// Comments on lines, kept on the file objects (f.comments: diff line index ->
-// { line, side, code, text }), so they survive closing and reopening the
-// review. "Send to agent" turns them into one message in the message box.
-function allComments(files) {
-  const out = [];
-  for (const f of files) {
-    for (const [index, c] of [...(f.comments || new Map())].sort((a, b) => a[0] - b[0])) out.push({ file: f, index, ...c });
-  }
-  return out;
-}
-
-function commentsMessage(files) {
-  const lines = ['Review comments on your changes:', ''];
-  allComments(files).forEach((c, i) => {
-    const code = c.code.trim().slice(0, 120);
-    const where = `${c.file.path}, line ${c.line}${c.side === 'old' ? ' (a removed line)' : ''}`;
-    lines.push(`${i + 1}. ${where}${code ? ': `' + code + '`' : ''}`);
-    lines.push(...c.text.split('\n').map(t => `   ${t}`), '');
-  });
-  lines.push('Please address each comment.');
-  return lines.join('\n');
-}
-
-// line: show that line of the first file (from the class diagram): the diff
-// scrolls to the nearest changed or shown line and marks it for a moment.
-function openReview(files, start = 0, { cwd = null, line = null } = {}) {
-  closeReview();
-  files = sortFiles(files);
-  reviewEl = el('div', 'review');
-  const bar = el('div', 'review-bar');
-  const close = el('button', null, 'Close (Esc)');
-  close.onclick = closeReview;
-  const sendComments = el('button', 'review-send hidden');
-  sendComments.title = 'Put the comments into the message box, as one message to the agent';
-  sendComments.onclick = () => {
-    const text = commentsMessage(files);
+  const message = () => {
+    const lines = ['Review comments on your changes:', ''];
+    let i = 0;
+    for (const f of files) {
+      for (const [, c] of [...(f.comments || new Map())].sort((x, y) => x[0] - y[0])) {
+        const code = c.code.trim().slice(0, 120);
+        const where = `${f.path}, line ${c.line}${c.side === 'old' ? ' (a removed line)' : ''}`;
+        lines.push(`${++i}. ${where}${code ? ': `' + code + '`' : ''}`);
+        lines.push(...c.text.split('\n').map(t => `   ${t}`), '');
+      }
+    }
+    lines.push('Please address each comment.');
+    return lines.join('\n');
+  };
+  const boxes = new Set();   // the comment boxes on screen, removed after sending
+  const send = () => {
+    if (!count()) return;
+    const text = message();
     for (const f of files) f.comments = null;
-    closeReview();
+    for (const box of boxes) box.remove();
+    boxes.clear();
+    changed();
     window.dispatchEvent(new CustomEvent('review-comments', { detail: { text, cwd } }));
   };
-  const refreshSend = () => {
-    const n = allComments(files).length;
-    sendComments.classList.toggle('hidden', !n);
-    sendComments.textContent = `Send ${n} comment${n === 1 ? '' : 's'} to the agent`;
-    items.forEach((item, i) => {
-      const count = files[i].comments?.size || 0;
-      item.querySelector('.review-comment-count').textContent = count ? `💬 ${count}` : '';
-    });
-  };
-  bar.append(el('span', 'review-title', `Review · ${files.length} file${files.length === 1 ? '' : 's'}`), el('span', 'hint', '↑ ↓ to switch files · click a line to comment'), sendComments, close);
-
-  const list = el('div', 'review-list');
-  const pane = el('div', 'review-pane');
-  let current = -1;
-  const items = files.map((f, i) => {
-    const item = el('div', 'review-item' + (isCodeFile(f.path) ? '' : ' other'));
-    const { add, del } = fileStats(f);
-    const parts = titleParts(f);
-    const name = parts.name;
-    const dir = parts.front.replace(/( - |\/)$/, '');
-    const text = el('div', 'review-item-text');
-    text.append(el('div', 'review-name', name), el('div', 'review-dir', dir));
-    const counts = el('span', 'change-counts');
-    counts.append(el('span', 'plus', add ? `+${add}` : ''), el('span', 'minus', del ? ` −${del}` : ''));
-    item.append(el('span', 'change-badge ' + f.status, (BADGES[f.status] || 'Edited')[0]), text, el('span', 'review-comment-count'), counts);
-    item.title = f.path;
-    item.onclick = () => select(i);
-    list.appendChild(item);
-    return item;
-  });
-
-  function select(i) {
-    if (i < 0 || i >= files.length || i === current) return;
-    items[current]?.classList.remove('active');
-    current = i;
-    items[i].classList.add('active');
-    items[i].scrollIntoView({ block: 'nearest' });
-    pane.innerHTML = '';
-    const f = files[i];
-    const diff = renderDiff(f, { maxLines: 20000, onLine: (row, info) => editComment(f, row, info) });
-    pane.append(el('div', 'review-path', f.path), diff);
-    for (const [index, c] of f.comments || []) {
-      const row = diff.querySelector(`.diff-line[data-index="${index}"]`);
-      if (row) row.after(commentBox(f, row, { index, ...c }));
-    }
-    pane.scrollTop = 0;
-  }
 
   // A saved comment under its line: the text, Edit and Delete.
-  function commentBox(f, row, info) {
+  const commentBox = (f, row, info) => {
     const box = el('div', 'review-comment');
     const actions = el('div', 'review-comment-actions');
     const editBtn = el('button', null, 'Edit');
-    editBtn.onclick = () => editComment(f, row, info);
+    editBtn.onclick = () => edit(f, row, info);
     const del = el('button', null, 'Delete');
     del.onclick = () => {
       f.comments.delete(info.index);
       box.remove();
-      refreshSend();
+      boxes.delete(box);
+      changed();
     };
     actions.append(editBtn, del);
     box.append(el('div', 'review-comment-text', f.comments.get(info.index).text), actions);
+    boxes.add(box);
     return box;
-  }
-
-  // Opens the editor for a line's comment (a new one, or the one it has).
-  function editComment(f, row, info) {
+  };
+  // The editor for a line's comment (a new one, or the one it has).
+  const edit = (f, row, info) => {
     const next = row.nextElementSibling;
     if (next?.classList.contains('review-comment-editor')) { next.querySelector('textarea').focus(); return; }
-    if (next?.classList.contains('review-comment')) next.remove();
+    if (next?.classList.contains('review-comment')) { next.remove(); boxes.delete(next); }
     const editor = el('div', 'review-comment-editor');
     const input = document.createElement('textarea');
     input.rows = 3;
@@ -475,8 +352,7 @@ function openReview(files, start = 0, { cwd = null, line = null } = {}) {
         f.comments?.delete(info.index);
       }
       if (f.comments?.has(info.index)) row.after(commentBox(f, row, info));
-      refreshSend();
-      reviewEl?.focus();
+      changed();
     };
     save.onclick = () => done(true);
     cancel.onclick = () => done(false);
@@ -490,38 +366,37 @@ function openReview(files, start = 0, { cwd = null, line = null } = {}) {
     editor.append(input, buttons);
     row.after(editor);
     input.focus();
-  }
+  };
 
-  reviewEl.addEventListener('keydown', e => {
-    if (e.target.closest?.('textarea')) return;
-    if (e.key === 'Escape') { e.stopPropagation(); closeReview(); }
-    if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); select(current + 1); }
-    if (e.key === 'ArrowUp' || e.key === 'k') { e.preventDefault(); select(current - 1); }
-  });
-  reviewEl.tabIndex = -1;
-
-  const body = el('div', 'review-body');
-  body.append(list, pane);
-  reviewEl.append(bar, body);
-  document.getElementById('main').appendChild(reviewEl);
-  select(Math.min(start, files.length - 1));
-  refreshSend();
-  reviewEl.focus();
-  if (line != null) {
-    // A deleted file has only old line numbers.
-    const no = row => Number(row.dataset.newLine ?? row.dataset.oldLine);
-    let best = null;
-    for (const row of pane.querySelectorAll('.diff-line[data-new-line], .diff-line[data-old-line]')) {
-      if (!best || Math.abs(no(row) - line) < Math.abs(no(best) - line)) best = row;
-    }
-    if (best) {
-      best.scrollIntoView({ block: 'center' });
-      best.classList.add('flash');
-      setTimeout(() => best.classList.remove('flash'), 1600);
-    }
-  }
+  return {
+    count,
+    send,
+    onChange: fn => { listeners.add(fn); return () => listeners.delete(fn); },
+    // A file's diff where a click on a line comments on it, with the
+    // comments it already has.
+    diff: (f, options = {}) => {
+      const diff = renderDiff(f, { ...options, onLine: (row, info) => edit(f, row, info) });
+      for (const [index, c] of f.comments || []) {
+        const row = diff.querySelector(`.diff-line[data-index="${index}"]`);
+        if (row) row.after(commentBox(f, row, { index, ...c }));
+      }
+      return diff;
+    },
+    // "Send N comments", shown while there are comments.
+    sendButton: () => {
+      const button = el('button', 'comments-send hidden');
+      button.type = 'button';
+      button.title = 'Put the comments into the message box, as one message to the agent';
+      button.onclick = e => { e.stopPropagation(); send(); };
+      const refresh = n => {
+        button.classList.toggle('hidden', !n);
+        button.textContent = `Send ${n} comment${n === 1 ? '' : 's'}`;
+      };
+      listeners.add(refresh);
+      refresh(count());
+      return button;
+    },
+  };
 }
 
 window.changesCard = changesCard;
-window.openReview = openReview;
-window.closeReview = closeReview;

@@ -1153,6 +1153,7 @@ function setHeader(title, subtitle, agent) {
   }
   $('btn-interrupt').classList.toggle('hidden', !agent || !['working', 'stuck'].includes(agent.status));
   $('composer-stop').classList.toggle('hidden', !agent || !['working', 'stuck'].includes(agent.status));
+  renderUndoButton(agent);
   $('btn-close').classList.toggle('hidden', !agent || agent.status === 'exited');
 }
 
@@ -1782,6 +1783,12 @@ function userContent(text, images = []) {
 }
 
 async function sendToAgent(agent, text, images = []) {
+  // After "Undo last prompt", the agent learns that its files are back as
+  // they were before its last task (the chat shows your message as you wrote it).
+  if (agent.undoNote) {
+    text = `(Before this message I undid every file change of your previous task, so these files are back the way they were before it: ${agent.undoNote.join(', ')}.)\n\n${text}`;
+    agent.undoNote = null;
+  }
   // Images and videos changed after this moment count as the task's media.
   // A second of slack covers clocks that round file times.
   if (!agent.mediaSince) agent.mediaSince = Date.now() - 1000;
@@ -2037,6 +2044,67 @@ window.addEventListener('review-comments', e => {
   sfx('pick');
 });
 
+// ---------- undo the last prompt ----------
+
+// "Undo last prompt" in the message box puts every file the agent's last
+// task changed back the way it was before that task (newest change first,
+// see src/undo.js); then it says "Redo last prompt", which puts the agent's
+// version back. The files show crossed out in the task's Changes card, and
+// the agent is told with your next message. Only while the agent is not
+// working, and only when its last task changed files.
+function lastTaskFiles(agent) {
+  return (agent?.transcript?.lastFinished?.files || []).filter(f => f.status !== 'bin');
+}
+
+function renderUndoButton(agent) {
+  const button = $('composer-undo');
+  const files = agent && !BUSY.includes(agent.status) ? lastTaskFiles(agent) : [];
+  button.classList.toggle('hidden', !files.length || state.current?.kind !== 'agent');
+  if (!files.length) return;
+  const undone = files.every(f => f.undone);
+  const n = files.length;
+  button.textContent = undone ? '↷ Redo last prompt' : '↶ Undo last prompt';
+  button.title = undone
+    ? `Put back the agent's changes to ${n} file${n === 1 ? '' : 's'}`
+    : `Put the ${n} file${n === 1 ? '' : 's'} your last message changed back the way ${n === 1 ? 'it was' : 'they were'} before it`;
+}
+
+async function undoLastPrompt(agent) {
+  const files = lastTaskFiles(agent);
+  if (!files.length) return;
+  const turn = agent.transcript.lastFinished;
+  const redo = files.every(f => f.undone);
+  const button = $('composer-undo');
+  button.disabled = true;
+  const problems = [];
+  const done = [];
+  for (const f of redo ? files : [...files].reverse().filter(x => !x.undone)) {
+    const r = redo
+      ? await window.deck.restoreFile(agent.cwd, f.path, f.undone.previous).catch(err => ({ ok: false, error: String(err) }))
+      : await window.deck.undoFile(agent.cwd, { path: f.path, status: f.status, lines: f.lines }).catch(err => ({ ok: false, error: String(err) }));
+    if (!r.ok) { problems.push(r.error); continue; }
+    f.undone = redo ? null : { previous: r.previous };
+    done.push(f.path);
+  }
+  button.disabled = false;
+  turn?.el.querySelector('.changes')?.syncUndone?.();
+  if (done.length) {
+    const list = done.length <= 4 ? done.map(p => p.split(SEP).pop()).join(', ') : `${done.length} files`;
+    agent.transcript.note(redo ? `Put the changes of your last message back (${list}).` : `Undid the changes of your last message (${list}). The agent hears about it with your next message.`);
+  }
+  if (problems.length) agent.transcript.note(`Some files were not ${redo ? 'put back' : 'undone'}:\n${problems.join('\n')}`, true);
+  // What the agent should know with the next message: the files that are
+  // undone now.
+  const undoneNow = files.filter(f => f.undone).map(f => f.path);
+  agent.undoNote = undoneNow.length ? undoneNow : null;
+  sfx(problems.length ? 'refuse' : 'detach');
+  renderUndoButton(agent);
+}
+
+$('composer-undo').onclick = () => {
+  if (state.current?.kind === 'agent') undoLastPrompt(state.current && state.agents.get(state.current.id));
+};
+
 // ---------- two agents, one file ----------
 
 // While a task runs, the app remembers which files the agent edits or
@@ -2225,6 +2293,7 @@ window.deck.onEvent((id, msg) => {
     a.snapshot = null;
     window.deck.gitChanges(a.cwd, snap)
       .then(diff => a.transcript.showGitChanges(turn, diff, snap.kind === 'folder'))
+      .then(() => refreshHeaderIfCurrent(a.id))
       .catch(() => {});
   }
   if (msg.type === 'result' && !msg.is_error && a.ticket) addTicketPost(a, a.transcript.lastFinished, msg.result);
@@ -2534,14 +2603,14 @@ document.addEventListener('keydown', e => {
   // Enter in the Hub, with no text field active: open the next agent that needs you.
   const typing = e.target.closest?.('input, textarea, select, [contenteditable="true"]');
   if (e.key === 'Enter' && !e.shiftKey && !isMod(e) && !e.altKey && !typing && state.current?.kind === 'hub'
-      && !document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .review, .uml-full, .settings-modal')) {
+      && !document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .uml-full, .settings-modal')) {
     e.preventDefault();
     reviewNext();
   }
   // Tab never moves the focus around the app; it opens the next agent to check.
   if (e.key === 'Tab' && !isMod(e) && !e.altKey && !e.target.closest?.('.settings-modal')) {
     e.preventDefault();
-    if (!document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .review, .uml-full')) checkNext();
+    if (!document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .uml-full')) checkNext();
   }
   // Esc leaves an agent (or a saved session, or a new agent) for the Hub.
   // The Stop button in the top bar stops a running turn.
@@ -2562,7 +2631,7 @@ document.addEventListener('keydown', e => {
 // panel, the review view). This runs before those close themselves, so the
 // handler above knows not to go back to the Hub as well.
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') e.popupWasOpen = !!document.querySelector('.model-menu:not(.hidden), .group-panel, .review, .uml-full');
+  if (e.key === 'Escape') e.popupWasOpen = !!document.querySelector('.model-menu:not(.hidden), .group-panel, .uml-full, .uml-detail');
 }, true);
 
 // ---------- history drawer ----------
@@ -2605,7 +2674,7 @@ window.addEventListener('focus', () => focusInput());
 function focusInput() {
   const active = document.activeElement;
   if (active && active !== $('input') && active.matches?.('input, textarea, select, [contenteditable="true"]')) return;
-  if (document.querySelector('.quit-modal, .settings-modal, .group-panel, .model-menu:not(.hidden), .lightbox, .review, .uml-full, .usage-rail.open')) return;
+  if (document.querySelector('.quit-modal, .settings-modal, .group-panel, .model-menu:not(.hidden), .lightbox, .uml-full, .uml-detail, .usage-rail.open')) return;
   if ($('composer').classList.contains('hidden')) return;
   $('input').focus();
 }

@@ -478,10 +478,11 @@ function umlLegend() {
 // first change (like an agent's tile growing into its chat). The panel pops
 // up over the chat, as tall as the code needs, up to the whole chat area;
 // the chat dims behind it. Back, Esc or a click beside it shrinks it into
-// the box again. ‹ › (or ← →) step to the previous or next type.
+// the box again. ‹ › (or ← →) step to the previous or next type. Click a
+// line to comment on it.
 let activeDetail = null;
 
-function openDetail(panel, api, model, node, line, { files, onReview }) {
+function openDetail(panel, api, model, node, line, { files, comments }) {
   activeDetail?.close(true);
   const ids = api.order;
   const host = document.getElementById('main');
@@ -513,6 +514,7 @@ function openDetail(panel, api, model, node, line, { files, onReview }) {
   const place = r => Object.assign(box.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
 
   let current = node;
+  let unwatch = null;
   const fill = (n, at) => {
     current = n;
     head.innerHTML = '';
@@ -533,20 +535,29 @@ function openDetail(panel, api, model, node, line, { files, onReview }) {
     const where = el('div', 'uml-detail-where', `${n.namespace ? n.namespace + ' · ' : ''}${n.file}`);
     const text = el('div', 'uml-detail-text');
     text.append(title, where);
-    const review = el('button', null, 'Review');
-    review.type = 'button';
-    review.title = 'Open all changes in the whole window, at this type';
-    review.onclick = () => onReview?.(n, at);
+    // Click a line to comment on it; Send puts the comments into the
+    // message box and goes back to the chat.
+    const send = el('button', 'comments-send hidden');
+    send.type = 'button';
+    send.title = 'Put the comments into the message box, as one message to the agent';
+    send.onclick = () => { comments?.send(); close(); };
+    const refresh = c => {
+      send.classList.toggle('hidden', !c);
+      send.textContent = `Send ${c} comment${c === 1 ? '' : 's'}`;
+    };
+    refresh(comments?.count() || 0);
+    unwatch?.();
+    unwatch = comments?.onChange(refresh);
     const back = el('button', 'uml-detail-back', 'Back');
     back.type = 'button';
     back.title = 'Back to the diagram (Esc)';
     back.onclick = () => close();
-    head.append(step('‹', 'Previous type (←)', -1), step('›', 'Next type (→)', 1), text, review, back);
+    head.append(step('‹', 'Previous type (←)', -1), step('›', 'Next type (→)', 1), text, send, back);
     if (!file) {
       body.appendChild(el('div', 'uml-detail-empty', 'No diff for this type.'));
       return;
     }
-    const diff = renderDiff(file, { maxLines: 20000 });
+    const diff = comments ? comments.diff(file, { maxLines: 20000 }) : renderDiff(file, { maxLines: 20000 });
     body.appendChild(diff);
     // To the change: the diff line nearest to it, marked for a moment.
     requestAnimationFrame(() => {
@@ -594,6 +605,7 @@ function openDetail(panel, api, model, node, line, { files, onReview }) {
   const close = (instant = false) => {
     if (activeDetail?.box !== box) return;
     activeDetail = null;
+    unwatch?.();
     window.removeEventListener('resize', onResize);
     if (instant) { box.remove(); backdrop.remove(); return; }
     window.uiSound?.('close');
@@ -610,12 +622,12 @@ function openDetail(panel, api, model, node, line, { files, onReview }) {
 
 // A diagram with its buttons, for the Changes card or the full window.
 // Returns the element. files: the card's files, for the diffs of the boxes;
-// onReview(node, line) opens the review at a type.
-function umlPanel(fullModel, { files = [], onReview, onFull = null, full = false } = {}) {
+// comments: the card's line comments (see lineComments in diffview.js).
+function umlPanel(fullModel, { files = [], comments = null, onFull = null, full = false } = {}) {
   const model = changedModel(fullModel);
   const panel = el('div', `uml-panel${full ? ' full' : ' wide'}`);
   const onOpen = (node, line) => {
-    if (api && files.some(f => f.path === node.file)) openDetail(panel, api, model, node, line, { files, onReview });
+    if (api && files.some(f => f.path === node.file)) openDetail(panel, api, model, node, line, { files, comments });
   };
   const stage = el('div', 'uml-stage');
   const tools = el('div', 'uml-tools');
@@ -678,8 +690,9 @@ function openUmlFull(model, { title, ...options }) {
 // Esc closes a type's diff first, then the full-window diagram; a review on
 // top of them closes by itself first. ← → step through the types' diffs.
 document.addEventListener('keydown', e => {
-  if (document.querySelector('.review')) return;
+  // Keys in a comment box stay there (Esc cancels the comment).
   const typing = e.target.closest?.('input, textarea, [contenteditable="true"]');
+  if (typing && e.key === 'Escape') return;
   const stop = () => { e.preventDefault(); e.stopImmediatePropagation(); };
   if (e.key === 'Escape' && activeDetail) { stop(); activeDetail.close(); return; }
   if (e.key === 'Escape' && umlFullEl) { stop(); closeUmlFull(); return; }
