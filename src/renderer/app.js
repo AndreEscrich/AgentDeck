@@ -1725,6 +1725,81 @@ async function sendToAgent(agent, text, images = []) {
   await window.deck.sendMessage(agent.id, text, images);
 }
 
+// ---------- queued messages ----------
+
+// A message you send while the agent works waits in a queue under the chat
+// and goes out when the task ends, one message per task. Until then you can
+// edit it, remove it, or send it right away (Claude Code then reads it in
+// the middle of the task). After you stop a task yourself, the queue waits
+// for you to send it.
+const QUEUE_WHILE = ['working', 'stuck', 'starting'];
+
+function queueMessage(agent, text, images) {
+  agent.queue = agent.queue || [];
+  agent.queue.push({ text, images });
+  sfx('attach');
+  renderQueue(agent);
+  agent.view.scrollTop = agent.view.scrollHeight;
+}
+
+function renderQueue(agent) {
+  if (!agent.view) return;
+  if (!agent.queueBox) {
+    agent.queueBox = el('div', 'queue');
+    agent.view.appendChild(agent.queueBox);
+  }
+  const box = agent.queueBox;
+  box.innerHTML = '';
+  const items = agent.queue || [];
+  box.classList.toggle('hidden', !items.length);
+  items.forEach((item, i) => {
+    const row = el('div', 'queued');
+    const text = el('div', 'queued-text', item.text);
+    const label = i === 0 ? (agent.queueHeld ? 'Waiting for you: the task was stopped' : 'Sends when the agent is done')
+      : `Sends after ${i === 1 ? 'the message above' : `the ${i} messages above`}`;
+    const actions = el('div', 'queued-actions');
+    const now = el('button', null, 'Send now');
+    now.title = 'Send it right away; Claude reads it in the middle of the task';
+    now.onclick = () => sendQueued(agent, i);
+    const editBtn = el('button', null, 'Edit');
+    editBtn.title = 'Take it back into the message box';
+    editBtn.onclick = () => {
+      agent.queue.splice(i, 1);
+      renderQueue(agent);
+      const input = $('input');
+      input.value = [item.text, input.value].filter(Boolean).join('\n\n');
+      autosize();
+      input.focus();
+    };
+    const remove = el('button', 'queued-remove', '×');
+    remove.title = 'Remove it from the queue';
+    remove.onclick = () => {
+      agent.queue.splice(i, 1);
+      sfx('detach');
+      renderQueue(agent);
+    };
+    actions.append(el('span', 'queued-label', label), now, editBtn, remove);
+    row.append(text, actions);
+    box.appendChild(row);
+  });
+  refreshHub();
+}
+
+async function sendQueued(agent, index = 0) {
+  const [item] = (agent.queue || []).splice(index, 1);
+  if (!item) return;
+  agent.queueHeld = false;
+  renderQueue(agent);
+  sfx('sent');
+  agent.transcript.add({ type: 'user', message: { role: 'user', content: userContent(item.text, item.images) } });
+  // The queue stays under the newest message.
+  if (agent.queueBox) agent.view.appendChild(agent.queueBox);
+  notePrompt(agent, item.text);
+  if (agent.status === 'idle') agent.status = 'working';
+  hub.wake(agent.id);
+  await sendToAgent(agent, item.text, item.images);
+}
+
 // Your plan's usage, as Claude Code reports it with each agent's replies,
 // and the tokens your agents used since the app opened. The last limits are
 // remembered, so the Hub shows them right after a restart.
@@ -1796,6 +1871,15 @@ window.deck.onEvent((id, msg) => {
     if (playSounds()) {
       if (!msg.is_error) sounds.done();
       else if (!a.stopping) sounds.error();
+    }
+    // The next queued message goes out now, unless you stopped the task.
+    if (a.queue?.length) {
+      if (a.stopping) {
+        a.queueHeld = true;
+        renderQueue(a);
+      } else {
+        setTimeout(() => sendQueued(a), 400);
+      }
     }
     a.stopping = false;
   }
@@ -1941,6 +2025,16 @@ async function sendFromComposer() {
     await startAgent({ cwd: d.folder, prompt: text, permissionMode: d.mode, choice: d.choice, groupId: d.groupId, fromRect, forkFrom, images });
   } else if (state.current.kind === 'agent') {
     const a = state.agents.get(state.current.id);
+    if (QUEUE_WHILE.includes(a.status)) {
+      queueMessage(a, text, images);
+      return;
+    }
+    // Messages still queued from a stopped task go first, in order.
+    if (a.queue?.length) {
+      queueMessage(a, text, images);
+      sendQueued(a);
+      return;
+    }
     sfx('sent');
     a.transcript.add({ type: 'user', message: { role: 'user', content: userContent(text, images) } });
     notePrompt(a, text);

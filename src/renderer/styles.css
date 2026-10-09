@@ -204,6 +204,14 @@ body.history-open #drawer-backdrop { opacity: 1; pointer-events: auto; }
   white-space: pre-wrap;
   word-wrap: break-word;
 }
+/* Messages waiting for the task to end */
+.queue { max-width: var(--chat-width); margin: -24px auto 0; padding: 0 24px 32px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.queued { max-width: 80%; border: 1px dashed var(--text-faint); border-radius: 14px; padding: 8px 14px; background: color-mix(in srgb, var(--user-bubble) 55%, transparent); }
+.queued-text { white-space: pre-wrap; word-wrap: break-word; color: var(--text-dim); }
+.queued-actions { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; }
+.queued-label { color: var(--text-faint); margin-right: auto; padding-right: 10px; }
+.queued-actions button { font-size: 11px; padding: 1px 8px; }
+.queued-actions .queued-remove { padding: 1px 7px; }
 .msg-text { word-wrap: break-word; color: var(--text-output); }
 .msg-text strong, .msg-text b, .msg-text h1, .msg-text h2, .msg-text h3, .msg-text h4 { color: var(--text-output-strong); }
 .msg-text > :first-child { margin-top: 0; }
