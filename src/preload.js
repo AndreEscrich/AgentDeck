@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld('deck', {
   repoOf: cwd => ipcRenderer.invoke('repo:of', cwd),
   existingFiles: paths => ipcRenderer.invoke('fs:existing', paths),
   csNamespaces: paths => ipcRenderer.invoke('cs:namespaces', paths),
+  csModel: (cwd, files) => ipcRenderer.invoke('cs:model', cwd, files),
+  openFile: p => ipcRenderer.invoke('file:open', p),
   getGroups: () => ipcRenderer.invoke('groups:get'),
   saveGroups: data => ipcRenderer.invoke('groups:save', data),
   popupMenu: items => ipcRenderer.invoke('menu:popup', items),

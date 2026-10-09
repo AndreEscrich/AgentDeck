@@ -2519,14 +2519,14 @@ document.addEventListener('keydown', e => {
   // Enter in the Hub, with no text field active: open the next agent that needs you.
   const typing = e.target.closest?.('input, textarea, select, [contenteditable="true"]');
   if (e.key === 'Enter' && !e.shiftKey && !isMod(e) && !e.altKey && !typing && state.current?.kind === 'hub'
-      && !document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .review, .settings-modal')) {
+      && !document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .review, .uml-full, .settings-modal')) {
     e.preventDefault();
     reviewNext();
   }
   // Tab never moves the focus around the app; it opens the next agent to check.
   if (e.key === 'Tab' && !isMod(e) && !e.altKey && !e.target.closest?.('.settings-modal')) {
     e.preventDefault();
-    if (!document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .review')) checkNext();
+    if (!document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .review, .uml-full')) checkNext();
   }
   // Esc leaves an agent (or a saved session, or a new agent) for the Hub.
   // The Stop button in the top bar stops a running turn.
@@ -2547,7 +2547,7 @@ document.addEventListener('keydown', e => {
 // panel, the review view). This runs before those close themselves, so the
 // handler above knows not to go back to the Hub as well.
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') e.popupWasOpen = !!document.querySelector('.model-menu:not(.hidden), .group-panel, .review');
+  if (e.key === 'Escape') e.popupWasOpen = !!document.querySelector('.model-menu:not(.hidden), .group-panel, .review, .uml-full');
 }, true);
 
 // ---------- history drawer ----------
@@ -2590,7 +2590,7 @@ window.addEventListener('focus', () => focusInput());
 function focusInput() {
   const active = document.activeElement;
   if (active && active !== $('input') && active.matches?.('input, textarea, select, [contenteditable="true"]')) return;
-  if (document.querySelector('.quit-modal, .settings-modal, .group-panel, .model-menu:not(.hidden), .lightbox, .review, .usage-rail.open')) return;
+  if (document.querySelector('.quit-modal, .settings-modal, .group-panel, .model-menu:not(.hidden), .lightbox, .review, .uml-full, .usage-rail.open')) return;
   if ($('composer').classList.contains('hidden')) return;
   $('input').focus();
 }

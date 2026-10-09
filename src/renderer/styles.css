@@ -499,6 +499,72 @@ details.change-file > summary:hover { background: var(--bg-hover); }
 .changes-head { display: flex; align-items: center; gap: 4px; }
 .changes-title { margin-right: 4px; }
 .review-btn { margin-left: auto; font-size: 12px; padding: 3px 12px; font-weight: 500; }
+/* Class diagram of the C# changes (umlview.js) */
+.diagram-btn { margin-left: auto; font-size: 12px; padding: 3px 12px; font-weight: 500; }
+.diagram-btn.active { border-color: var(--accent); color: var(--accent); }
+.diagram-btn:not(.hidden) ~ .undo-all-btn, .diagram-btn:not(.hidden) ~ .review-btn { margin-left: 6px; }
+.uml-panel { position: relative; height: 380px; margin: 8px 0 4px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  background: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0) 0 0 / 18px 18px, var(--code-bg); }
+.changes > .uml-panel { margin: 8px 0 6px; }
+.uml-panel.full { flex: 1; height: auto; margin: 0; border: none; border-radius: 0; }
+.uml-stage { position: absolute; inset: 0; }
+.uml-svg { width: 100%; height: 100%; display: block; cursor: grab; user-select: none; touch-action: none; }
+.uml-svg.dragging { cursor: grabbing; }
+.uml-tools { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
+.uml-tools button { min-width: 28px; padding: 2px 8px; font-size: 13px; background: var(--bg-panel); }
+.uml-hint { position: absolute; top: 10px; left: 12px; font-size: 11px; color: var(--text-faint); pointer-events: none; }
+.uml-legend { position: absolute; left: 10px; bottom: 8px; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--text-dim);
+  padding: 4px 8px; border-radius: 8px; background: rgba(16, 13, 10, 0.75); max-width: calc(100% - 20px); }
+.uml-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.uml-swatch { width: 12px; height: 8px; border-radius: 2px; display: inline-block; }
+.uml-swatch.new { background: var(--ok); }
+.uml-swatch.mod { background: var(--busy); }
+.uml-swatch.del { background: var(--err); }
+.uml-swatch.context { background: transparent; border: 1px dashed var(--text-faint); }
+.uml-swatch[class*="edge-"] { height: 0; width: 18px; border-radius: 0; border-top: 2px solid var(--text-dim); }
+.uml-swatch.edge-implements, .uml-swatch.edge-uses { border-top-style: dashed; }
+.uml-swatch.edge-uses { border-top-color: var(--text-faint); }
+.uml-swatch.edge-fresh { border-top-color: var(--accent); }
+
+.uml-node { cursor: pointer; transition: opacity 0.15s; }
+.uml-node.dim { opacity: 0.3; }
+.uml-box { fill: var(--bg-panel); stroke: var(--border); stroke-width: 1.2; }
+.uml-node:hover .uml-box { stroke: var(--text-dim); }
+.uml-band { fill: var(--text-faint); }
+.uml-node.status-new .uml-box { stroke: rgba(76, 175, 122, 0.7); }
+.uml-node.status-new .uml-band { fill: var(--ok); }
+.uml-node.status-mod .uml-box { stroke: rgba(224, 168, 58, 0.6); }
+.uml-node.status-mod .uml-band { fill: var(--busy); }
+.uml-node.status-del .uml-box { stroke: rgba(224, 90, 90, 0.7); }
+.uml-node.status-del .uml-band { fill: var(--err); }
+.uml-node.status-del .uml-name { text-decoration: line-through; }
+.uml-node.status-context .uml-box, .uml-node.status-same .uml-box { fill: transparent; stroke: var(--text-faint); stroke-dasharray: 4 3; }
+.uml-node.status-context .uml-band, .uml-node.status-same .uml-band { display: none; }
+.uml-node.status-context text, .uml-node.status-same text { opacity: 0.7; }
+.uml-stereo { font: 11px var(--font); fill: var(--text-faint); text-anchor: middle; }
+.uml-name { font: 600 13px var(--font); fill: var(--text); text-anchor: middle; }
+.uml-sub { font: 11px var(--font); fill: var(--text-faint); text-anchor: middle; }
+.uml-divider { stroke: var(--border); }
+.uml-member { font: 12px var(--mono); fill: var(--text-dim); white-space: pre; }
+.uml-member.new { fill: var(--ok); }
+.uml-member.mod { fill: var(--busy); }
+.uml-member.del { fill: var(--err); text-decoration: line-through; }
+.uml-member.faint { font: italic 11px var(--font); fill: var(--text-faint); }
+.uml-member[data-line]:hover { text-decoration: underline; }
+.uml-edge path { fill: none; stroke: var(--text-dim); stroke-width: 1.4; transition: opacity 0.15s; }
+.uml-edge.implements path { stroke-dasharray: 6 4; }
+.uml-edge.uses path { stroke: var(--text-faint); stroke-dasharray: 3 4; }
+.uml-edge.fresh path { stroke: var(--accent); stroke-width: 2; }
+.uml-edges.focus .uml-edge:not(.lit) path { opacity: 0.15; }
+.uml-edge.lit path { stroke-width: 2.4; }
+.uml-marker-triangle { fill: var(--code-bg); stroke: var(--text-dim); stroke-width: 1.2; }
+.uml-marker-triangle-fresh { fill: var(--code-bg); stroke: var(--accent); stroke-width: 1.4; }
+.uml-marker-arrow { fill: none; stroke: var(--text-faint); stroke-width: 1.4; }
+.uml-marker-arrow-fresh { fill: none; stroke: var(--accent); stroke-width: 1.6; }
+.uml-full { position: absolute; inset: 0; z-index: 19; display: flex; flex-direction: column; background: var(--bg); outline: none; }
+.diff-line.flash { animation: diff-flash 1.6s ease-out; }
+@keyframes diff-flash { 0%, 40% { box-shadow: inset 3px 0 0 var(--accent); background: rgba(233, 162, 59, 0.22); } }
+
 .undo-all-btn { margin-left: auto; font-size: 12px; padding: 3px 12px; font-weight: 500; }
 .undo-all-btn + .review-btn { margin-left: 6px; }
 .undo-btn { flex-shrink: 0; font-size: 11px; padding: 1px 8px; opacity: 0; transition: opacity 0.12s; }

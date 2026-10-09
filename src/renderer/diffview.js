@@ -75,6 +75,9 @@ function renderDiff(file, { maxLines = 3000, onLine = null } = {}) {
       return;
     }
     const info = { index, line: kind === 'del' ? oldNo : newNo, side: kind === 'del' ? 'old' : 'new', code: text.slice(1) };
+    // For jumping to a line from the class diagram.
+    if (kind !== 'del') row.dataset.newLine = String(newNo);
+    else row.dataset.oldLine = String(oldNo);
     const oldCell = el('span', 'ln', kind === 'add' ? '' : String(oldNo));
     const newCell = el('span', 'ln', kind === 'del' ? '' : String(newNo));
     if (kind !== 'add') oldNo++;
@@ -290,7 +293,47 @@ function changesCard(files, cwd) {
       summary.querySelector('.change-name').textContent = name;
     }
   });
+  addDiagram(card, head, files, cwd);
   return card;
+}
+
+// The class diagram of the C# changes, under the card's title (see
+// umlview.js; the types come from src/csharp.js). It opens by itself when the
+// task changed two or more types, or a type that depends on another one, up
+// to 16 types (a bigger one is better read in the whole window, ⤢);
+// otherwise the Diagram button shows it.
+function addDiagram(card, head, files, cwd) {
+  const csFiles = files.filter(f => CS_FILE.test(f.path) && f.status !== 'bin');
+  if (!csFiles.length || !window.deck?.csModel || !window.umlPanel) return;
+  const toggle = el('button', 'diagram-btn hidden', 'Diagram');
+  toggle.title = 'Class diagram of the C# changes: which types changed and how they depend on each other';
+  head.insertBefore(toggle, head.querySelector('.undo-all-btn, .review-btn'));
+  window.deck.csModel(cwd, csFiles.map(({ path, status, lines }) => ({ path, status, lines }))).then(model => {
+    const changed = model?.nodes?.filter(n => n.status === 'new' || n.status === 'mod' || n.status === 'del') || [];
+    if (!changed.length) return;
+    const title = `Class diagram · ${changed.length} changed type${changed.length === 1 ? '' : 's'}`;
+    // A box opens its diff at the type; a type the task did not change opens
+    // in your editor.
+    const open = (node, line) => {
+      if (node.status === 'context' || !files.some(f => f.path === node.file)) {
+        window.deck.openFile(node.file);
+        return;
+      }
+      window.uiSound?.('open');
+      openReview(files, files.findIndex(f => f.path === node.file), { cwd, line: line ?? node.line });
+    };
+    const full = () => openUmlFull(model, { onOpen: open, title });
+    const panel = umlPanel(model, { onOpen: open, onFull: full });
+    card.insertBefore(panel, head.nextSibling);
+    toggle.classList.remove('hidden');
+    const setOpen = on => {
+      panel.classList.toggle('hidden', !on);
+      toggle.classList.toggle('active', on);
+      toggle.textContent = on ? 'Hide diagram' : changed.length > 1 ? `Diagram · ${changed.length} types` : 'Diagram';
+    };
+    setOpen(changed.length <= 16 && (changed.length >= 2 || model.edges.some(e => changed.some(n => n.id === e.from))));
+    toggle.onclick = () => setOpen(panel.classList.contains('hidden'));
+  }).catch(() => {});
 }
 
 // ---------- full-window review ----------
@@ -325,7 +368,9 @@ function commentsMessage(files) {
   return lines.join('\n');
 }
 
-function openReview(files, start = 0, { cwd = null } = {}) {
+// line: show that line of the first file (from the class diagram): the diff
+// scrolls to the nearest changed or shown line and marks it for a moment.
+function openReview(files, start = 0, { cwd = null, line = null } = {}) {
   closeReview();
   files = sortFiles(files);
   reviewEl = el('div', 'review');
@@ -459,6 +504,19 @@ function openReview(files, start = 0, { cwd = null } = {}) {
   select(Math.min(start, files.length - 1));
   refreshSend();
   reviewEl.focus();
+  if (line != null) {
+    // A deleted file has only old line numbers.
+    const no = row => Number(row.dataset.newLine ?? row.dataset.oldLine);
+    let best = null;
+    for (const row of pane.querySelectorAll('.diff-line[data-new-line], .diff-line[data-old-line]')) {
+      if (!best || Math.abs(no(row) - line) < Math.abs(no(best) - line)) best = row;
+    }
+    if (best) {
+      best.scrollIntoView({ block: 'center' });
+      best.classList.add('flash');
+      setTimeout(() => best.classList.remove('flash'), 1600);
+    }
+  }
 }
 
 window.changesCard = changesCard;

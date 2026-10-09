@@ -12,6 +12,7 @@ const connectors = require('./connectors');
 const { activity } = require('./activity');
 const updates = require('./updates');
 const undo = require('./undo');
+const csharp = require('./csharp');
 
 // The window loads images and videos from disk through media:// (see media.js).
 // "stream" lets video players read a file piece by piece.
@@ -245,7 +246,10 @@ app.whenReady().then(() => {
   ipcMain.handle('fs:existing', (_e, paths) => (Array.isArray(paths) ? paths : []).filter(p => typeof p === 'string' && fs.existsSync(p)));
   // The namespace of C# files, for their titles in the Changes card: the
   // first "namespace X" line in the first 256 KB, or null.
-  ipcMain.handle('cs:namespaces', (_e, paths) => Promise.all((Array.isArray(paths) ? paths : []).slice(0, 500).map(async p => {
+  ipcMain.handle('cs:model', (_e, cwd, files) => csharp.model(cwd, files));
+  // A file the diagram shows but the task did not change: open it in your editor.
+  ipcMain.handle('file:open', (_e, p) => (typeof p === 'string' && fs.existsSync(p) ? shell.openPath(p) : 'Not found'));
+  ipcMain.handle('cs:namespaces',(_e, paths) => Promise.all((Array.isArray(paths) ? paths : []).slice(0, 500).map(async p => {
     if (typeof p !== 'string' || !/\.cs$/i.test(p)) return null;
     try {
       const handle = await fs.promises.open(p, 'r');
