@@ -83,8 +83,6 @@ function openSettings(config, { onSaved } = {}) {
 
   // Stuck agents
   const stuckAfter = settingsInput('number', config.stuckAfterSeconds, { min: 5, step: 5 });
-  const repeatCount = settingsInput('number', config.stuckRepeatCount, { min: 2, step: 1 });
-  const repeatSeconds = settingsInput('number', config.stuckRepeatSeconds, { min: 5, step: 5 });
 
   // Claude Code
   const claudePath = settingsInput('text', config.claudePath, { placeholder: 'Found by itself: the newest Claude Code installed' });
@@ -109,9 +107,7 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('Notifications', 'When an agent finishes or needs you while the app is in the background', notify),
       settingsField('Sounds', 'For everything you and the agents do', sounds)),
     section('Stuck agents',
-      settingsField('One tool call runs for', 'Seconds', stuckAfter),
-      settingsField('Or the same call in a row', 'Times', repeatCount),
-      settingsField('…over at least', 'Seconds', repeatSeconds)),
+      settingsField('Waiting for Unity for', 'Seconds. An agent only counts as stuck while it waits for Unity to be ready', stuckAfter)),
     section('Claude Code',
       settingsField('Claude Code program', 'Empty: the app finds it', claudePath),
       settingsField('Extra flags', 'Added to every agent', extraArgs),
@@ -167,8 +163,6 @@ function openSettings(config, { onSaved } = {}) {
       notifyWhenDone: notify.checked,
       sounds: sounds.checked,
       stuckAfterSeconds: number(stuckAfter, 30),
-      stuckRepeatCount: Math.round(number(repeatCount, 4)),
-      stuckRepeatSeconds: number(repeatSeconds, 30),
       claudePath: claudePath.value.trim(),
       extraArgs: extraArgs.value.split('\n').map(l => l.trim()).filter(Boolean),
       env: envVars,

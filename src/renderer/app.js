@@ -2625,11 +2625,7 @@ setInterval(renderSidebar, 60_000);
 // it does something else. The limits are in Settings.
 function checkStuck() {
   const c = state.config;
-  const limits = {
-    longMs: (c.stuckAfterSeconds || 30) * 1000,
-    repeatCount: c.stuckRepeatCount || 4,
-    repeatMs: (c.stuckRepeatSeconds || 30) * 1000,
-  };
+  const limits = { longMs: (c.stuckAfterSeconds || 30) * 1000 };
   for (const a of state.agents.values()) {
     if (!['working', 'stuck'].includes(a.status)) continue;
     const info = a.transcript.stuckInfo(limits);

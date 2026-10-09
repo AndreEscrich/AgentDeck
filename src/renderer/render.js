@@ -296,6 +296,10 @@ function plannedWaitMs(input) {
 
 // Tools that only look at things; their calls and results never count as the
 // agent's work.
+// The Unity tools (Unity MCP) that wait for the editor to be ready: an agent
+// is only "stuck" while it waits on these (see stuckInfo).
+const UNITY_WAIT = /^mcp__unity__\w*(wait_for_ready|status|recompile|refresh|compile)/i;
+
 const READ_ONLY = new Set(['Read', 'Grep', 'Glob', 'LS', 'WebFetch', 'WebSearch', 'TodoWrite', 'Skill', 'ToolSearch']);
 
 // Splits the output of `git diff` into one entry per file.
@@ -779,6 +783,7 @@ class Transcript {
 
   fillTool(block, toolUseResult) {
     this.turn?.openTools?.delete(block.tool_use_id);
+    if (this.turn?.unityWait?.ids.has(block.tool_use_id)) this.turn.unityWait.lastEnd = Date.now();
     const tool = this.tools.get(block.tool_use_id);
     if (!tool) return;
     const state = tool.card.querySelector('.tool-state');
@@ -840,37 +845,39 @@ class Transcript {
 
   // ---------- stuck agents ----------
 
-  // Remembers which tool calls are still running, and how often the agent
-  // has made the same call in a row. Numbers do not count as a difference,
-  // so "sleep 5" and "sleep 10" are the same call.
+  // Remembers which tool calls are still running, and since when the agent
+  // has been waiting for Unity.
   trackTool(turn, block) {
     const summary = toolSummary(block.name, block.input || {});
     turn.openTools = turn.openTools || new Map();
     turn.openTools.set(block.id, { name: block.name, summary, startedAt: Date.now(), plannedMs: plannedWaitMs(block.input || {}) });
-    const key = `${block.name}|${summary.replace(/\d+/g, '#').slice(0, 160)}`;
-    if (turn.streak?.key === key) turn.streak.count++;
-    else turn.streak = { key, name: block.name, summary, count: 1, since: Date.now() };
+    // Waiting for Unity: the Unity tools that wait for it to be ready
+    // (wait_for_ready, status, recompile, refresh), one after another.
+    // Any other tool call ends the wait.
+    if (UNITY_WAIT.test(block.name)) {
+      if (!turn.unityWait) turn.unityWait = { since: Date.now(), count: 0, ids: new Set(), lastEnd: 0 };
+      turn.unityWait.count++;
+      turn.unityWait.ids.add(block.id);
+      turn.unityWait.summary = block.name.replace(/^mcp__unity__/, '');
+    } else {
+      turn.unityWait = null;
+    }
   }
 
-  // Whether the task in progress looks stuck: one tool call running for at
-  // least longMs, or the same call made repeatCount times in a row over at
-  // least repeatMs. Sub-agents are left out: they often run long on purpose.
+  // Whether the task in progress looks stuck: it has been waiting for Unity
+  // to be ready (UNITY_WAIT calls, one after another) for at least longMs.
+  // Other tool calls never count, however long they run.
   // Returns { name, summary, since, count? } or null.
-  stuckInfo({ longMs, repeatCount, repeatMs }) {
-    const turn = this.turn;
-    if (!turn) return null;
+  stuckInfo({ longMs }) {
+    const w = this.turn?.unityWait;
+    if (!w) return null;
     const now = Date.now();
-    for (const t of turn.openTools?.values() || []) {
-      if (['Task', 'Agent'].includes(t.name)) continue;
-      // A call that announced a wait (sleep 60 while recording) only counts
-      // as stuck once that wait is over plus the usual limit.
-      if (now - t.startedAt >= longMs + (t.plannedMs || 0)) return { name: t.name, summary: t.summary, since: t.startedAt };
-    }
-    const s = turn.streak;
-    if (s && !['Task', 'Agent'].includes(s.name) && s.count >= repeatCount && now - s.since >= repeatMs) {
-      return { name: s.name, summary: s.summary, since: s.since, count: s.count };
-    }
-    return null;
+    // Still waiting: a Unity call is running, or the last one ended a moment
+    // ago (between two polls). Once the agent does something else, it is not.
+    const open = [...w.ids].some(id => this.turn.openTools?.has(id));
+    if (!open && now - w.lastEnd > 10000) return null;
+    if (now - w.since < longMs) return null;
+    return { name: 'waiting for Unity', summary: w.summary, since: w.since, count: w.count > 1 ? w.count : undefined };
   }
 
   // True when the agent changed this file (path relative to its folder): it
