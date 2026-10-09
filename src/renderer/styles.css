@@ -1193,3 +1193,32 @@ video.chat-media { background: #000; }
 /* Completed and not opened yet: a slower, softer pulse than before. */
 .hub-tile.state-idle.unread .tank { animation: done-unseen calc(3s * var(--tempo, 1)) cubic-bezier(.45, 0, .55, 1) infinite; animation-delay: var(--phase, 0s); }
 .hub-tile.state-idle.unread .tank-icon { animation: done-unseen-icon calc(3s * var(--tempo, 1)) cubic-bezier(.45, 0, .55, 1) infinite; animation-delay: var(--phase, 0s); }
+
+/* ---------- Changes card: every file in its own box ----------
+   A gap between files, a border around each, a colored stripe on the left for
+   its status (green new, amber edited, red deleted), the file name in bold
+   with its folder dimmed, and a header that stays on top while you scroll
+   through a long diff. */
+.changes { display: flex; flex-direction: column; gap: 10px; border: none; background: none; overflow: visible; }
+.changes-head { border: none; padding: 2px 2px 0; }
+details.change-file { border: 1px solid var(--border); border-left: 3px solid var(--busy); border-radius: 10px;
+  background: var(--bg-panel); overflow: clip; }
+details.change-file + details.change-file { border-top: 1px solid var(--border); }
+details.change-file.status-new { border-left-color: var(--ok); }
+details.change-file.status-del { border-left-color: var(--err); }
+details.change-file.status-bin { border-left-color: var(--info); }
+details.change-file > summary { position: sticky; top: 0; z-index: 2; padding: 9px 12px; background: #241e18; }
+details.change-file[open] > summary { border-bottom: 1px solid var(--border); }
+details.change-file > summary:hover { background: #2b241d; }
+.change-chevron { width: 8px; flex-shrink: 0; color: var(--text-faint); font-size: 10px; }
+.change-chevron::before { content: "▸"; }
+details.change-file[open] .change-chevron::before { content: "▾"; }
+.change-path { display: flex; min-width: 0; font-size: 12.5px; }
+.change-folder { color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1; min-width: 0; }
+.change-name { color: var(--text); font-weight: 700; white-space: nowrap; flex-shrink: 0; }
+.diff { border-top: none; }
+details.other-files { border: 1px dashed var(--border); border-radius: 10px; padding: 2px 8px 8px; display: flex; flex-direction: column; gap: 8px; }
+details.other-files[open] { gap: 8px; }
+details.other-files > summary { padding: 6px 4px; }
+details.other-files details.change-file { margin-top: 8px; }
+details.other-files details.change-file > summary { padding-left: 12px; }

@@ -92,10 +92,16 @@ function fileSummary(f) {
   const { add, del } = fileStats(f);
   const counts = el('span', 'change-counts');
   counts.append(el('span', 'plus', add ? `+${add}` : ''), el('span', 'minus', del ? ` −${del}` : ''));
+  // The file name stands out; its folder is dimmed in front of it.
+  const name = f.path.split('/').pop();
+  const folder = f.path.slice(0, f.path.length - name.length);
+  const pathEl = el('span', 'change-path');
+  pathEl.append(el('span', 'change-folder', folder), el('span', 'change-name', name));
   const summary = el('summary');
   summary.append(
+    el('span', 'change-chevron'),
     el('span', 'change-badge ' + f.status, BADGES[f.status] || 'Edited'),
-    el('span', 'change-path', f.path),
+    pathEl,
     counts,
   );
   return summary;
@@ -130,7 +136,7 @@ function changesCard(files) {
 
   let openBudget = 400; // diff lines shown open in the chat
   const addFile = (parent, f, open) => {
-    const row = el('details', 'change-file');
+    const row = el('details', `change-file status-${f.status}`);
     row.title = f.path;
     const summary = fileSummary(f);
     row.appendChild(summary);
