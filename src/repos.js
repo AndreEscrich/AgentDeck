@@ -28,8 +28,8 @@ function repoOf(cwd) {
   }
   const folder = path.resolve(cwd);
   // The repository's name plus the folder inside it, for example
-  // "MergeTavern/Unity" when .svn is in MergeTavern and the agent works in
-  // MergeTavern/Unity. Without a repository: the folder's last two parts.
+  // "MyGame/Unity" when .svn is in MyGame and the agent works in
+  // MyGame/Unity. Without a repository: the folder's last two parts.
   const name = root
     ? [path.basename(root), path.relative(root, folder)].filter(Boolean).join('/')
     : folder.split(path.sep).filter(Boolean).slice(-2).join('/');
