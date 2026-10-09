@@ -88,15 +88,56 @@ function renderDiff(file, { maxLines = 3000 } = {}) {
 
 const BADGES = { new: 'New', mod: 'Edited', del: 'Deleted', bin: 'Binary' };
 
+// ---------- C# files: namespace and class name instead of the path ----------
+
+// A C# file is named by its namespace and its file name, the way you find
+// it in code: "Client.QuestPass - QuestPassMainView". The full path stays in
+// the tooltip. The namespace comes from the file on disk (the main process
+// reads its "namespace" line), or, for a deleted or new file, from the
+// diff, which then holds every line of it.
+const CS_FILE = /\.cs$/i;
+const NAMESPACE_LINE = /^[+\- ]?[ \t]*namespace[ \t]+([A-Za-z_][\w.]*)/;
+
+function namespaceInDiff(f) {
+  for (const [, text] of f.lines || []) {
+    const m = NAMESPACE_LINE.exec(text || '');
+    if (m) return m[1];
+  }
+  return null;
+}
+
+// The two parts of a file's title: dimmed in front, and the name.
+function titleParts(f) {
+  const base = f.path.split(/[\\/]/).pop();
+  if (CS_FILE.test(base)) {
+    return { front: f.namespace ? `${f.namespace} - ` : '', name: base.replace(CS_FILE, '') };
+  }
+  return { front: f.path.slice(0, f.path.length - base.length), name: base };
+}
+
+// Finds the namespace of every C# file in the list (f.namespace), then
+// calls done(). cwd: the agent's folder, for paths relative to it.
+function loadNamespaces(files, cwd, done) {
+  const cs = files.filter(f => CS_FILE.test(f.path) && f.namespace === undefined);
+  for (const f of cs) f.namespace = namespaceInDiff(f);
+  const missing = cs.filter(f => !f.namespace && f.status !== 'del');
+  if (!missing.length || !window.deck?.csNamespaces) return done();
+  const abs = p => (p.startsWith('/') || /^[a-z]:[\\/]/i.test(p) || !cwd ? p : `${cwd.replace(/[\\/]$/, '')}/${p}`);
+  window.deck.csNamespaces(missing.map(f => abs(f.path)))
+    .then(names => { missing.forEach((f, i) => { if (names?.[i]) f.namespace = names[i]; }); })
+    .catch(() => {})
+    .finally(done);
+}
+
 function fileSummary(f) {
   const { add, del } = fileStats(f);
   const counts = el('span', 'change-counts');
   counts.append(el('span', 'plus', add ? `+${add}` : ''), el('span', 'minus', del ? ` −${del}` : ''));
-  // The file name stands out; its folder is dimmed in front of it.
-  const name = f.path.split('/').pop();
-  const folder = f.path.slice(0, f.path.length - name.length);
+  // The file name stands out; its folder (or a C# file's namespace) is
+  // dimmed in front of it.
+  const { front, name } = titleParts(f);
   const pathEl = el('span', 'change-path');
-  pathEl.append(el('span', 'change-folder', folder), el('span', 'change-name', name));
+  pathEl.append(el('span', 'change-folder', front), el('span', 'change-name', name));
   const summary = el('summary');
   summary.append(
     el('span', 'change-chevron'),
@@ -109,7 +150,7 @@ function fileSummary(f) {
 
 // The card under the answer. Code files start open, up to a size that keeps
 // the chat readable; you can open the rest, or the review view, yourself.
-function changesCard(files) {
+function changesCard(files, cwd) {
   files = sortFiles(files);
   const code = files.filter(f => isCodeFile(f.path));
   const other = files.filter(f => !isCodeFile(f.path));
@@ -135,10 +176,12 @@ function changesCard(files) {
   card.appendChild(head);
 
   let openBudget = 400; // diff lines shown open in the chat
+  const titles = [];   // [file, its summary], to show namespaces once they are known
   const addFile = (parent, f, open) => {
     const row = el('details', `change-file status-${f.status}`);
     row.title = f.path;
     const summary = fileSummary(f);
+    titles.push([f, summary]);
     row.appendChild(summary);
     // Drawing happens when the file is first opened, so big changes stay fast.
     const draw = () => {
@@ -163,6 +206,13 @@ function changesCard(files) {
     if (!code.length) group.open = true;
     card.appendChild(group);
   }
+  loadNamespaces(files, cwd, () => {
+    for (const [f, summary] of titles) {
+      const { front, name } = titleParts(f);
+      summary.querySelector('.change-folder').textContent = front;
+      summary.querySelector('.change-name').textContent = name;
+    }
+  });
   return card;
 }
 
@@ -190,8 +240,9 @@ function openReview(files, start = 0) {
   const items = files.map((f, i) => {
     const item = el('div', 'review-item' + (isCodeFile(f.path) ? '' : ' other'));
     const { add, del } = fileStats(f);
-    const name = f.path.split(/[\\/]/).pop();
-    const dir = f.path.slice(0, -name.length).replace(/\/$/, '');
+    const parts = titleParts(f);
+    const name = parts.name;
+    const dir = parts.front.replace(/( - |\/)$/, '');
     const text = el('div', 'review-item-text');
     text.append(el('div', 'review-name', name), el('div', 'review-dir', dir));
     const counts = el('span', 'change-counts');

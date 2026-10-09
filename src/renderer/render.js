@@ -508,14 +508,14 @@ class Transcript {
     this.pinned(() => {
       // The changed files come first, then Claude's message about them.
       const toolFiles = this.toolChanges(turn.changes).filter(f => !isTempFile(f.path));
-      if (toolFiles.length) turn.answer.appendChild(changesCard(toolFiles));
+      if (toolFiles.length) turn.answer.appendChild(changesCard(toolFiles, this.cwd));
       // Then drop files that no longer exist, unless the snapshot comparison
       // (showGitChanges) has replaced this card in the meantime.
       this.pruneMissing(turn).then(removed => {
         if (!removed || turn.gitShown) return;
         this.pinned(() => {
           turn.el.querySelector('.changes')?.remove();
-          if (turn.changes.size) turn.answer.prepend(changesCard(this.toolChanges(turn.changes)));
+          if (turn.changes.size) turn.answer.prepend(changesCard(this.toolChanges(turn.changes), this.cwd));
         });
       }).catch(() => {});
       for (const node of turn.pendingText) turn.answer.appendChild(node);
@@ -850,7 +850,7 @@ class Transcript {
     }
     this.pinned(() => {
       turn.el.querySelector('.changes')?.remove();
-      if (files.length) turn.answer.prepend(changesCard(files));
+      if (files.length) turn.answer.prepend(changesCard(files, this.cwd));
     });
     if (this.lastFinished === turn && this.lastTurn) {
       this.lastTurn.changedFiles = files.length;

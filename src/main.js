@@ -222,6 +222,22 @@ app.whenReady().then(() => {
   ipcMain.handle('repo:of', (_e, cwd) => repoOf(cwd));
   // Which of these files still exist (for the Changes card).
   ipcMain.handle('fs:existing', (_e, paths) => (Array.isArray(paths) ? paths : []).filter(p => typeof p === 'string' && fs.existsSync(p)));
+  // The namespace of C# files, for their titles in the Changes card: the
+  // first "namespace X" line in the first 256 KB, or null.
+  ipcMain.handle('cs:namespaces', (_e, paths) => Promise.all((Array.isArray(paths) ? paths : []).slice(0, 500).map(async p => {
+    if (typeof p !== 'string' || !/\.cs$/i.test(p)) return null;
+    try {
+      const handle = await fs.promises.open(p, 'r');
+      try {
+        const { buffer, bytesRead } = await handle.read(Buffer.alloc(256 * 1024), 0, 256 * 1024, 0);
+        return /^[ \t]*namespace[ \t]+([A-Za-z_][\w.]*)/m.exec(buffer.toString('utf8', 0, bytesRead))?.[1] || null;
+      } finally {
+        await handle.close();
+      }
+    } catch {
+      return null;
+    }
+  })));
   ipcMain.handle('groups:get', () => readGroups());
   ipcMain.handle('groups:save', (_e, data) => fs.writeFileSync(groupsPath, JSON.stringify(data, null, 2)));
   ipcMain.handle('menu:popup', (_e, items) => popupMenu(items));

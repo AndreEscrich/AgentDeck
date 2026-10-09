@@ -1294,3 +1294,6 @@ details.other-files details.change-file > summary { padding-left: 12px; }
 .hub-tile .liquid::before { bottom: calc(100% - clamp(4px, 4.1cqw, 9px)); }
 .hub-tile .liquid::after { bottom: calc(100% - clamp(5px, 5.5cqw, 12px)); }
 .hub-tile .tank-shine { top: clamp(4px, 4.6cqw, 10px); left: clamp(5px, 5.5cqw, 12px); width: clamp(4px, 4.6cqw, 10px); }
+/* Keeps the space in "Client.QuestPass - " before the name (a flex item
+   drops trailing spaces otherwise). */
+.change-folder { white-space: pre; }

@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('deck', {
   fetchUsage: () => ipcRenderer.invoke('usage:fetch'),
   repoOf: cwd => ipcRenderer.invoke('repo:of', cwd),
   existingFiles: paths => ipcRenderer.invoke('fs:existing', paths),
+  csNamespaces: paths => ipcRenderer.invoke('cs:namespaces', paths),
   getGroups: () => ipcRenderer.invoke('groups:get'),
   saveGroups: data => ipcRenderer.invoke('groups:save', data),
   popupMenu: items => ipcRenderer.invoke('menu:popup', items),
