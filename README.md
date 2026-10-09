@@ -126,6 +126,7 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 | `src/renderer/hub.js` | The Hub: one animated tile per running agent. |
 | `src/renderer/diffview.js` | Draws diffs: line numbers, syntax colors, code files first, and the full-window review view. |
 | `src/renderer/boxcard.js` | Turns ╔═╗ text boxes from agents into cards. |
+| `src/renderer/settings.js` | The Settings screen. |
 | `src/renderer/render.js` | Draws each turn: the collapsed steps, the final answer, the Changes card and permission cards. |
 | `src/renderer/app.js` | Window state: the History drawer, switching between the Hub and agents, and the message box. |
 | `src/renderer/styles.css` | All styling. The colors, fonts and sizes are variables at the top of the file. |
@@ -134,7 +135,7 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 
 ## Settings
 
-Click **Settings** in the Hub (or at the bottom of History) to open `config.json`, then restart the app after you edit it.
+Click **Settings** in the Hub (or at the bottom of History) to open the Settings screen: every setting below as a form, in four parts (New agents, The app, Stuck agents, Claude Code). **Save** (or Ctrl+↩) writes them to `config.json` and they apply right away; Esc or Cancel leaves them as they were. **Open config.json** at the bottom opens the file itself, for settings the screen does not show; after editing the file by hand, restart the app.
 
 - `claudePath`: path to the `claude` binary. When it is empty, the app finds every Claude Code installation (Homebrew, `~/.local/bin`, and the copy inside the Claude desktop app) and uses the newest one. A newer Claude Code knows about newer models.
 - `defaultPermissionMode`: `bypassPermissions` (the default), `auto`, `acceptEdits`, `default` or `plan`. You can change the mode of a running agent with the menu under the message box.

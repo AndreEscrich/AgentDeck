@@ -778,7 +778,7 @@ const connectorsDialog = new ConnectorsDialog({
   folder: () => ensureDraft().folder || state.config.home,
 });
 hub.onOpenConnectors = () => connectorsDialog.open();
-hub.onOpenSettings = () => { sfx('tick'); window.deck.openConfig(); };
+hub.onOpenSettings = () => showSettings();
 
 // Your Claude Code activity, shown in the Hub while it has no agents. It is
 // read at startup and again when the empty Hub shows and the numbers are
@@ -2330,7 +2330,24 @@ $('btn-close').onclick = async () => {
 $('search').addEventListener('input', renderSidebar);
 $('refresh').onclick = loadSessions;
 $('new-group-btn').onclick = () => createGroup();
-$('open-settings').onclick = () => window.deck.openConfig();
+$('open-settings').onclick = () => { setHistoryOpen(false); showSettings(); };
+
+// The Settings screen (settings.js). Saved settings apply right away: new
+// agents use the new defaults, and the Hub's message box picks them up.
+function showSettings() {
+  openSettings(state.config, {
+    onSaved: config => {
+      state.config = config;
+      if (state.current?.kind === 'hub' && state.draft) {
+        state.draft.choice = defaultChoice();
+        state.draft.mode = defaultMode();
+        show('hub');
+      }
+      renderSettingsButton();
+      sfx('approve');
+    },
+  });
+}
 window.deck.onSessionsChanged(loadSessions);
 
 document.addEventListener('keydown', e => {
@@ -2346,12 +2363,12 @@ document.addEventListener('keydown', e => {
   // Enter in the Hub, with no text field active: open the next agent that needs you.
   const typing = e.target.closest?.('input, textarea, select, [contenteditable="true"]');
   if (e.key === 'Enter' && !e.shiftKey && !isMod(e) && !e.altKey && !typing && state.current?.kind === 'hub'
-      && !document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .review')) {
+      && !document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .review, .settings-modal')) {
     e.preventDefault();
     reviewNext();
   }
   // Tab never moves the focus around the app; it opens the next agent to check.
-  if (e.key === 'Tab' && !isMod(e) && !e.altKey) {
+  if (e.key === 'Tab' && !isMod(e) && !e.altKey && !e.target.closest?.('.settings-modal')) {
     e.preventDefault();
     if (!document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .review')) checkNext();
   }
@@ -2417,7 +2434,7 @@ window.addEventListener('focus', () => focusInput());
 function focusInput() {
   const active = document.activeElement;
   if (active && active !== $('input') && active.matches?.('input, textarea, select, [contenteditable="true"]')) return;
-  if (document.querySelector('.quit-modal, .group-panel, .model-menu:not(.hidden), .lightbox, .review, .usage-rail.open')) return;
+  if (document.querySelector('.quit-modal, .settings-modal, .group-panel, .model-menu:not(.hidden), .lightbox, .review, .usage-rail.open')) return;
   if ($('composer').classList.contains('hidden')) return;
   $('input').focus();
 }

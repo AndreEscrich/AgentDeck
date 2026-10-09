@@ -217,6 +217,18 @@ app.whenReady().then(() => {
 
   ipcMain.handle('config:get', () => ({ ...getConfig(), home: require('os').homedir() }));
   ipcMain.handle('config:open', () => shell.openPath(configPath));
+  // The Settings screen: its values replace those in config.json; settings
+  // it does not show (added by hand) stay.
+  ipcMain.handle('config:save', (_e, values) => {
+    let current = {};
+    try { current = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch { /* start from the defaults */ }
+    const next = { ...DEFAULT_CONFIG, ...current };
+    for (const [key, value] of Object.entries(values || {})) {
+      if (key in DEFAULT_CONFIG && typeof value === typeof DEFAULT_CONFIG[key] && Array.isArray(value) === Array.isArray(DEFAULT_CONFIG[key])) next[key] = value;
+    }
+    fs.writeFileSync(configPath, JSON.stringify(next, null, 2));
+    return { ...getConfig(), home: require('os').homedir() };
+  });
   ipcMain.handle('app:quit', () => quitNow());
   ipcMain.handle('usage:fetch', () => fetchUsage(getConfig()));
   ipcMain.handle('app:version', () => appVersion());

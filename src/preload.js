@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('deck', {
   platform: process.platform,   // 'darwin' on macOS, 'win32' on Windows
   getConfig: () => ipcRenderer.invoke('config:get'),
   openConfig: () => ipcRenderer.invoke('config:open'),
+  saveConfig: values => ipcRenderer.invoke('config:save', values),
   appVersion: () => ipcRenderer.invoke('app:version'),
   latestUpdate: () => ipcRenderer.invoke('update:latest'),
   applyUpdate: () => ipcRenderer.invoke('update:apply'),
