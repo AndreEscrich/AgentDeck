@@ -234,24 +234,41 @@ function changesCard(files, cwd) {
 
 // The class diagram of the C# changes (see umlview.js; the types come from
 // src/csharp.js). The card is one container for the task's changes, with
-// Files | Diagram in its title: Files is the list of files (the default),
-// Diagram the class diagram, for which the whole card widens to most of the
-// window. Diagram waits until the C# has been read, and goes away when the
-// changes declare no types.
+// Diagram | Files in its title: Diagram is the class diagram (where it
+// starts, with the whole card widened to most of the window), Files the list
+// of files. While the C# is read the card says so; when the changes declare
+// no types, it shows the files.
 function addDiagram(card, head, files, cwd, comments) {
   const csFiles = files.filter(f => CS_FILE.test(f.path) && f.status !== 'bin');
   if (!csFiles.length || !window.deck?.csModel || !window.umlPanel) return;
   const switcher = el('div', 'changes-switch');
-  const filesBtn = el('button', 'active', `Files · ${files.length}`);
-  const diagramBtn = el('button', null, 'Diagram…');
-  for (const b of [filesBtn, diagramBtn]) b.type = 'button';
+  const diagramBtn = el('button', 'active', 'Diagram…');
+  const filesBtn = el('button', null, `Files · ${files.length}`);
+  for (const b of [diagramBtn, filesBtn]) b.type = 'button';
   diagramBtn.disabled = true;
   diagramBtn.title = 'Reading the C# changes…';
-  switcher.append(filesBtn, diagramBtn);
+  switcher.append(diagramBtn, filesBtn);
   head.insertBefore(switcher, head.querySelector('.comments-send'));
+  // Until the diagram is ready: a line that says so instead of the files
+  // (unless you ask for the files).
+  let choseFiles = false;
+  const waiting = el('div', 'uml-waiting', 'Drawing the class diagram…');
+  card.insertBefore(waiting, head.nextSibling);
+  card.classList.add('diagram-waiting');
+  const showFiles = () => {
+    waiting.remove();
+    card.classList.remove('diagram-waiting');
+  };
+  filesBtn.onclick = () => {
+    choseFiles = true;
+    showFiles();
+    diagramBtn.classList.remove('active');
+    filesBtn.classList.add('active');
+  };
 
   window.deck.csModel(cwd, csFiles.map(({ path, status, lines }) => ({ path, status, lines }))).then(model => {
     const changed = model?.nodes?.filter(n => n.status === 'new' || n.status === 'mod' || n.status === 'del') || [];
+    showFiles();
     if (!changed.length) { switcher.remove(); return; }
     const title = `Class diagram · ${changed.length} changed type${changed.length === 1 ? '' : 's'}`;
     const options = { files, comments };
@@ -270,7 +287,8 @@ function addDiagram(card, head, files, cwd, comments) {
     };
     diagramBtn.onclick = () => { window.uiSound?.('tick'); setView(true); };
     filesBtn.onclick = () => { window.uiSound?.('tick'); setView(false); };
-  }).catch(() => switcher.remove());
+    setView(!choseFiles);
+  }).catch(() => { showFiles(); switcher.remove(); });
 }
 
 // ---------- comments on lines ----------
