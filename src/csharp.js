@@ -265,6 +265,8 @@ function parseFile(text) {
       t.words.get(m[0]).add(line);
     }
   }
+  // The namespaces the file imports, to tell apart types with the same name.
+  types.usings = [...clean.matchAll(/^\s*(?:global\s+)?using\s+(?:static\s+)?([A-Za-z_][\w.]*)\s*;/gm)].map(m => m[1]);
   return types;
 }
 
@@ -298,8 +300,9 @@ function deletedText(file) {
 
 // ---------- the project's types ----------
 
-// Every type declared in the project's C# files, by name: { file, kind,
-// namespace }. Unity's generated folders are skipped. Kept for 5 minutes.
+// Every type declared in the project's C# files, by name: a list of { file,
+// kind, namespace } (one name can be declared in several namespaces).
+// Unity's generated folders are skipped. Kept for 5 minutes.
 const SKIP_DIRS = new Set(['Library', 'Temp', 'Logs', 'obj', 'bin', 'Build', 'Builds', 'node_modules', '.git', '.svn', '.vs', '.idea', 'UserSettings', 'MemoryCaptures', 'Recordings']);
 const indexes = new Map();   // folder -> { at, promise }
 
@@ -335,7 +338,9 @@ async function projectIndex(root) {
           // Skip words in comments: the line must not start with // or *.
           const lineStart = text.lastIndexOf('\n', m.index) + 1;
           if (/^\s*(\/\/|\*|\/\*)/.test(text.slice(lineStart, m.index))) continue;
-          if (!byName.has(m[2])) byName.set(m[2], { file, kind: m[1] === 'record' ? 'class' : m[1], namespace: ns });
+          const list = byName.get(m[2]) || [];
+          if (list.length < 12 && !list.some(d => d.namespace === ns)) list.push({ file, kind: m[1] === 'record' ? 'class' : m[1], namespace: ns });
+          byName.set(m[2], list);
         }
       }));
     }
@@ -449,63 +454,95 @@ async function model(cwd, files) {
           namespace: t.namespace,
           status,
           file: f.path,
+          folder: path.dirname(f.path).split(path.sep).join('/'),
           line: t.line,
           members,
           bases: t.bases,
         },
         type: t,
+        usings: types.usings,
         added: diff.added,
       });
     }
   }
-  // Types of the changed files that did not change themselves stay only when
-  // the changed ones use them, or they use a changed one.
-  const byName = new Map();
-  for (const c of changed) if (!byName.has(c.node.name) || c.node.status !== 'same') byName.set(c.node.name, c);
-
   let index = new Map();
   if (cwd && fs.existsSync(cwd)) {
     try { index = await projectIndex(projectRoot(cwd)); } catch { index = new Map(); }
   }
+  // Which type a name means, seen from a type in namespace ns whose file
+  // imports usings: the one in the same namespace, else in an imported or
+  // enclosing namespace, else the only one. Types of the changes come first.
+  // Returns { id, kind, info } (info: for a type outside the changes) or null.
+  const changedByName = new Map();
+  for (const c of changed) {
+    if (!changedByName.has(c.node.name)) changedByName.set(c.node.name, []);
+    changedByName.get(c.node.name).push(c);
+  }
+  const score = (candidateNs, ns, usings) => {
+    if (candidateNs === ns) return 3;
+    if (usings.includes(candidateNs) || (candidateNs && ns.startsWith(candidateNs + '.'))) return 2;
+    if (!candidateNs) return 1;
+    return 0;
+  };
+  const resolve = (name, ns, usings) => {
+    let best = null;
+    for (const c of changedByName.get(name) || []) {
+      const sc = score(c.node.namespace, ns, usings) + 0.5;
+      if (!best || sc > best.score) best = { score: sc, id: c.node.id, kind: c.node.kind };
+    }
+    if (!COMMON.has(name)) {
+      for (const d of index.get(name) || []) {
+        const sc = score(d.namespace, ns, usings);
+        if (!best || sc > best.score) best = { score: sc, id: `ctx#${d.namespace}.${name}`, kind: d.kind, info: d };
+      }
+    }
+    // Several types of that name and none of them in reach: better no arrow
+    // than a wrong one.
+    const count = (changedByName.get(name)?.length || 0) + (index.get(name)?.length || 0);
+    if (best && best.score < 1 && count > 1) return null;
+    return best;
+  };
+
   const edges = [];
-  const contextUse = new Map();   // name -> times used by changed types
-  const kindOf = name => byName.get(name)?.node.kind || (COMMON.has(name) ? null : index.get(name)?.kind) || null;
+  const contextInfo = new Map();   // context id -> { name, info, uses }
+  const relevantIds = new Set(changed.filter(c => c.node.status !== 'same').map(c => c.node.id));
+  const link = (c, name, kind, fresh, line) => {
+    const target = resolve(name, c.node.namespace, c.usings || []);
+    if (!target || target.id === c.node.id) return false;
+    if (target.info) {
+      const ctx = contextInfo.get(target.id) || { name, info: target.info, uses: 0 };
+      if (relevantIds.has(c.node.id)) ctx.uses++;
+      contextInfo.set(target.id, ctx);
+    }
+    edges.push({ from: c.node.id, to: target.id, kind: typeof kind === 'function' ? kind(target.kind) : kind, fresh, line });
+    return true;
+  };
   for (const c of changed) {
     const t = c.type;
     const seen = new Set();
     for (const base of t.bases) {
       if (base === t.name) continue;
-      const k = kindOf(base);
-      if (!k) continue;
-      const implementsIt = k === 'interface' && t.kind !== 'interface';
-      edges.push({ from: c.node.id, toName: base, kind: implementsIt ? 'implements' : 'inherits', fresh: c.added.has(t.line) && c.node.status !== 'new', line: t.line });
-      seen.add(base);
+      const linked = link(c, base, k => (k === 'interface' && t.kind !== 'interface' ? 'implements' : 'inherits'), c.added.has(t.line) && c.node.status !== 'new', t.line);
+      if (linked) seen.add(base);
     }
     for (const [word, lines] of t.words) {
-      if (seen.has(word) || !kindOf(word)) continue;
+      if (seen.has(word)) continue;
       // A use is new when it is only on lines the diff added.
       const fresh = c.node.status === 'mod' && [...lines].every(l => c.added.has(l));
-      edges.push({ from: c.node.id, toName: word, kind: 'uses', fresh, line: Math.min(...lines) });
-      seen.add(word);
+      if (link(c, word, 'uses', fresh, Math.min(...lines))) seen.add(word);
     }
   }
-  // Where each arrow goes: a type of the changes, or a type elsewhere in the
-  // project (a "context" box, faded, for the most used ones only).
+  // Types outside the changes: only the most used ones get a (faded) box.
   const nodes = changed.map(c => c.node);
-  const relevant = new Set(nodes.filter(n => n.status !== 'same').map(n => n.id));
-  for (const e of edges) {
-    const target = byName.get(e.toName);
-    if (target) e.to = target.node.id;
-    else contextUse.set(e.toName, (contextUse.get(e.toName) || 0) + (relevant.has(e.from) ? 1 : 0));
-  }
-  const context = [...contextUse].filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]).slice(0, MAX_CONTEXT).map(([name]) => name);
-  for (const name of context) {
-    const info = index.get(name);
+  const relevant = relevantIds;
+  const context = [...contextInfo].filter(([, c]) => c.uses > 0).sort((a, b) => b[1].uses - a[1].uses).slice(0, MAX_CONTEXT);
+  for (const [id, { name, info }] of context) {
     // A type from a Unity package names its package (com.company.name).
     const pkg = /[\\/]PackageCache[\\/]([^\\/@]+)/.exec(info.file)?.[1] || null;
-    nodes.push({ id: `ctx#${name}`, name, kind: info.kind, namespace: info.namespace, package: pkg, status: 'context', file: info.file, line: 1, members: [], bases: [] });
+    nodes.push({ id, name, kind: info.kind, namespace: info.namespace, package: pkg, status: 'context', file: info.file, line: 1, members: [], bases: [] });
   }
-  for (const e of edges) if (!e.to && context.includes(e.toName)) e.to = `ctx#${e.toName}`;
+  const nodeIds = new Set(nodes.map(n => n.id));
+  for (const e of edges) if (!nodeIds.has(e.to)) e.to = null;
   let kept = edges.filter(e => e.to && e.to !== e.from);
   // Unchanged types stay when they are connected to a changed one.
   const touchesChanged = new Set();

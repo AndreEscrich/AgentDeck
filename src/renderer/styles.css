@@ -512,13 +512,48 @@ details.change-file > summary:hover { background: var(--bg-hover); }
 .changes-title { margin-right: 4px; }
 .review-btn { margin-left: auto; font-size: 12px; padding: 3px 12px; font-weight: 500; }
 /* Class diagram of the C# changes (umlview.js) */
-.diagram-btn { margin-left: auto; font-size: 12px; padding: 3px 12px; font-weight: 500; }
-.diagram-btn.active { border-color: var(--accent); color: var(--accent); }
-.diagram-btn:not(.hidden) ~ .undo-all-btn, .diagram-btn:not(.hidden) ~ .review-btn { margin-left: 6px; }
+/* Diagram | Files in the card's title */
+.changes-switch { margin-left: auto; display: inline-flex; padding: 2px; border-radius: 8px; background: var(--code-bg); border: 1px solid var(--border); }
+.changes-switch button { border: none; background: none; font-size: 12px; padding: 3px 12px; border-radius: 6px; font-weight: 500; color: var(--text-dim); }
+.changes-switch button.active { background: var(--bg-active); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
+.changes-switch ~ .undo-all-btn, .changes-switch ~ .review-btn { margin-left: 6px; }
+/* With the diagram on, the files hide; the diagram uses more than the chat's width. */
+.changes.show-diagram > details.change-file, .changes.show-diagram > details.other-files { display: none; }
+.changes:not(.show-diagram) > .uml-panel { display: none; }
+.uml-waiting { padding: 18px; text-align: center; color: var(--text-faint); font-size: 12px; border: 1px dashed var(--border); border-radius: 10px; }
+
 .uml-panel { position: relative; height: 380px; margin: 8px 0 4px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
   background: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0) 0 0 / 18px 18px, var(--code-bg); }
 .changes > .uml-panel { margin: 8px 0 6px; }
+.changes > .uml-panel.wide { --uml-width: min(calc(100vw - 72px), 1700px); width: var(--uml-width); max-width: none; flex-shrink: 0;
+  margin-left: calc((100% - var(--uml-width)) / 2); margin-right: calc((100% - var(--uml-width)) / 2); }
 .uml-panel.full { flex: 1; height: auto; margin: 0; border: none; border-radius: 0; }
+.uml-stage { transition: filter 0.3s, opacity 0.3s; }
+.uml-panel.detail-open .uml-stage { filter: blur(2px) saturate(0.6); opacity: 0.35; pointer-events: none; }
+.uml-panel.detail-open .uml-tools, .uml-panel.detail-open .uml-legend, .uml-panel.detail-open .uml-hint { opacity: 0; pointer-events: none; }
+/* Package boxes: one per namespace */
+.uml-group rect { fill: rgba(255, 255, 255, 0.025); stroke: rgba(233, 162, 59, 0.28); stroke-width: 1.2; }
+.uml-group.context rect { fill: none; stroke: var(--border); stroke-dasharray: 5 4; }
+.uml-group text { font: 600 11px var(--font); fill: var(--accent); letter-spacing: 0.03em; opacity: 0.85; }
+.uml-group.context text { fill: var(--text-faint); }
+/* A type's diff, grown out of its box */
+.uml-detail { position: absolute; z-index: 5; display: flex; flex-direction: column; overflow: hidden; border-radius: 12px;
+  background: var(--bg-panel); border: 1px solid var(--border); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55); }
+.uml-detail.morphing { transition: left 0.38s cubic-bezier(.2,.85,.25,1), top 0.38s cubic-bezier(.2,.85,.25,1), width 0.38s cubic-bezier(.2,.85,.25,1), height 0.38s cubic-bezier(.2,.85,.25,1), border-radius 0.38s; }
+.uml-detail.closing { opacity: 0; transition: left 0.34s cubic-bezier(.4,0,.2,1), top 0.34s cubic-bezier(.4,0,.2,1), width 0.34s cubic-bezier(.4,0,.2,1), height 0.34s cubic-bezier(.4,0,.2,1), opacity 0.2s 0.16s; }
+.uml-detail-head, .uml-detail-body { opacity: 0; transition: opacity 0.16s; }
+.uml-detail.shown .uml-detail-head, .uml-detail.shown .uml-detail-body { opacity: 1; }
+.uml-detail-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.uml-detail-step { padding: 2px 10px; font-size: 15px; line-height: 20px; }
+.uml-detail-text { flex: 1; min-width: 0; margin-left: 4px; }
+.uml-detail-title { display: flex; align-items: center; gap: 8px; }
+.uml-detail-name { font-weight: 700; font-size: 14px; }
+.uml-detail-where { font: 11px var(--mono); color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+.uml-detail-head > button:not(.uml-detail-step) { font-size: 12px; padding: 3px 12px; }
+.uml-detail-back { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+.uml-detail-body { flex: 1; overflow: auto; }
+.uml-detail-body .diff { max-height: none; border-top: none; font-size: 12.5px; }
+.uml-detail-empty { padding: 20px; color: var(--text-faint); }
 .uml-stage { position: absolute; inset: 0; }
 .uml-svg { width: 100%; height: 100%; display: block; cursor: grab; user-select: none; touch-action: none; }
 .uml-svg.dragging { cursor: grabbing; }
@@ -567,7 +602,9 @@ details.change-file > summary:hover { background: var(--bg-hover); }
 .uml-edge.implements path { stroke-dasharray: 6 4; }
 .uml-edge.uses path { stroke: var(--text-faint); stroke-dasharray: 3 4; }
 .uml-edge.fresh path { stroke: var(--accent); stroke-width: 2; }
+.uml-edge.faint path { opacity: 0.18; }
 .uml-edges.focus .uml-edge:not(.lit) path { opacity: 0.15; }
+.uml-edges.focus .uml-edge.lit path { opacity: 1; }
 .uml-edge.lit path { stroke-width: 2.4; }
 .uml-marker-triangle { fill: var(--code-bg); stroke: var(--text-dim); stroke-width: 1.2; }
 .uml-marker-triangle-fresh { fill: var(--code-bg); stroke: var(--accent); stroke-width: 1.4; }

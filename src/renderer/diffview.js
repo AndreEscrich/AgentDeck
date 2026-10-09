@@ -297,43 +297,55 @@ function changesCard(files, cwd) {
   return card;
 }
 
-// The class diagram of the C# changes, under the card's title (see
-// umlview.js; the types come from src/csharp.js). It opens by itself when the
-// task changed two or more types, or a type that depends on another one, up
-// to 16 types (a bigger one is better read in the whole window, ⤢);
-// otherwise the Diagram button shows it.
+// The class diagram of the C# changes (see umlview.js; the types come from
+// src/csharp.js). When the task changed C# types, the card shows the diagram
+// instead of the list of files, wider than the chat; Diagram | Files in the
+// card's title switches between them. Until the diagram is ready the card
+// says so; without C# types it shows the files as before.
 function addDiagram(card, head, files, cwd) {
   const csFiles = files.filter(f => CS_FILE.test(f.path) && f.status !== 'bin');
   if (!csFiles.length || !window.deck?.csModel || !window.umlPanel) return;
-  const toggle = el('button', 'diagram-btn hidden', 'Diagram');
-  toggle.title = 'Class diagram of the C# changes: which types changed and how they depend on each other';
-  head.insertBefore(toggle, head.querySelector('.undo-all-btn, .review-btn'));
+  card.classList.add('has-diagram', 'show-diagram');
+  const waiting = el('div', 'uml-waiting', 'Drawing the class diagram…');
+  card.insertBefore(waiting, head.nextSibling);
+  const showFiles = () => {
+    waiting.remove();
+    card.classList.remove('has-diagram', 'show-diagram');
+  };
   window.deck.csModel(cwd, csFiles.map(({ path, status, lines }) => ({ path, status, lines }))).then(model => {
     const changed = model?.nodes?.filter(n => n.status === 'new' || n.status === 'mod' || n.status === 'del') || [];
-    if (!changed.length) return;
+    if (!changed.length) return showFiles();
     const title = `Class diagram · ${changed.length} changed type${changed.length === 1 ? '' : 's'}`;
-    // A box opens its diff at the type; a type the task did not change opens
-    // in your editor.
-    const open = (node, line) => {
-      if (node.status === 'context' || !files.some(f => f.path === node.file)) {
-        window.deck.openFile(node.file);
-        return;
-      }
-      window.uiSound?.('open');
-      openReview(files, files.findIndex(f => f.path === node.file), { cwd, line: line ?? node.line });
+    const options = {
+      files,
+      // The review at a type, from its diff's Review button.
+      onReview: (node, line) => {
+        window.uiSound?.('open');
+        openReview(files, files.findIndex(f => f.path === node.file), { cwd, line: line ?? node.line });
+      },
+      // A type the task did not change opens in your editor.
+      onContext: node => window.deck.openFile(node.file),
     };
-    const full = () => openUmlFull(model, { onOpen: open, title });
-    const panel = umlPanel(model, { onOpen: open, onFull: full });
-    card.insertBefore(panel, head.nextSibling);
-    toggle.classList.remove('hidden');
-    const setOpen = on => {
-      panel.classList.toggle('hidden', !on);
-      toggle.classList.toggle('active', on);
-      toggle.textContent = on ? 'Hide diagram' : changed.length > 1 ? `Diagram · ${changed.length} types` : 'Diagram';
+    const panel = umlPanel(model, { ...options, onFull: () => openUmlFull(model, { ...options, title }) });
+    waiting.replaceWith(panel);
+
+    // Diagram | Files
+    const switcher = el('div', 'changes-switch');
+    const diagramBtn = el('button', null, changed.length > 1 ? `Diagram · ${changed.length} types` : 'Diagram');
+    const filesBtn = el('button', null, `Files · ${files.length}`);
+    for (const b of [diagramBtn, filesBtn]) b.type = 'button';
+    switcher.append(diagramBtn, filesBtn);
+    head.insertBefore(switcher, head.querySelector('.undo-all-btn, .review-btn'));
+    const setView = diagram => {
+      card.classList.toggle('show-diagram', diagram);
+      diagramBtn.classList.toggle('active', diagram);
+      filesBtn.classList.toggle('active', !diagram);
+      if (diagram) panel.redraw?.();
     };
-    setOpen(changed.length <= 16 && (changed.length >= 2 || model.edges.some(e => changed.some(n => n.id === e.from))));
-    toggle.onclick = () => setOpen(panel.classList.contains('hidden'));
-  }).catch(() => {});
+    diagramBtn.onclick = () => { window.uiSound?.('tick'); setView(true); };
+    filesBtn.onclick = () => { window.uiSound?.('tick'); setView(false); };
+    setView(true);
+  }).catch(showFiles);
 }
 
 // ---------- full-window review ----------
