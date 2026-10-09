@@ -300,16 +300,25 @@ function deletedText(file) {
 
 // ---------- the project's types ----------
 
-// Every type declared in the project's C# files, by name: a list of { file,
-// kind, namespace } (one name can be declared in several namespaces).
-// Unity's generated folders are skipped. Kept for 5 minutes.
+// Every type declared in the project's own C# files, by name: a list of
+// { file, kind, namespace } (one name can be declared in several namespaces).
+// It only helps tell apart types of the changes that share a name with
+// another type, so the diagram never waits for it: indexFor() gives what is
+// ready (or nothing), and builds or refreshes the index in the background.
+// Unity's generated folders and its package cache are skipped.
 const SKIP_DIRS = new Set(['Library', 'Temp', 'Logs', 'obj', 'bin', 'Build', 'Builds', 'node_modules', '.git', '.svn', '.vs', '.idea', 'UserSettings', 'MemoryCaptures', 'Recordings']);
-const indexes = new Map();   // folder -> { at, promise }
+const indexes = new Map();   // folder -> { at, promise, value }
 
-async function projectIndex(root) {
+function indexFor(root) {
   const hit = indexes.get(root);
-  if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit.promise;
-  const promise = (async () => {
+  if (!hit || (Date.now() - hit.at > 5 * 60 * 1000 && hit.value)) projectIndex(root);
+  return hit?.value || indexes.get(root)?.value || new Map();
+}
+
+function projectIndex(root) {
+  const previous = indexes.get(root);
+  const entry = { at: Date.now(), promise: null, value: previous?.value || null };
+  entry.promise = (async () => {
     const byName = new Map();
     const files = [];
     const walk = async dir => {
@@ -326,8 +335,6 @@ async function projectIndex(root) {
       }
     };
     await walk(root);
-    // Unity packages live in Library/PackageCache; their types count too.
-    await walk(path.join(root, 'Library', 'PackageCache'));
     const DECL = /\b(class|interface|struct|enum|record)\s+([A-Za-z_]\w*)/g;
     for (let i = 0; i < files.length; i += 64) {
       await Promise.all(files.slice(i, i + 64).map(async file => {
@@ -344,10 +351,11 @@ async function projectIndex(root) {
         }
       }));
     }
+    entry.value = byName;
     return byName;
-  })();
-  indexes.set(root, { at: Date.now(), promise });
-  return promise;
+  })().catch(() => entry.value || new Map());
+  indexes.set(root, entry);
+  return entry.promise;
 }
 
 // The folder to index: the Unity project (the folder with Assets) or the
@@ -467,7 +475,7 @@ async function model(cwd, files) {
   }
   let index = new Map();
   if (cwd && fs.existsSync(cwd)) {
-    try { index = await projectIndex(projectRoot(cwd)); } catch { index = new Map(); }
+    try { index = indexFor(projectRoot(cwd)); } catch { index = new Map(); }
   }
   // Which type a name means, seen from a type in namespace ns whose file
   // imports usings: the one in the same namespace, else in an imported or
