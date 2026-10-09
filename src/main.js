@@ -11,6 +11,7 @@ const jira = require('./jira');
 const connectors = require('./connectors');
 const { activity } = require('./activity');
 const updates = require('./updates');
+const undo = require('./undo');
 
 // The window loads images and videos from disk through media:// (see media.js).
 // "stream" lets video players read a file piece by piece.
@@ -222,6 +223,8 @@ app.whenReady().then(() => {
   ipcMain.handle('sessions:list', () => listSessions());
   ipcMain.handle('git:snapshot', (_e, cwd) => git.snapshot(cwd, path.join(app.getPath('userData'), 'snapshots')));
   ipcMain.handle('git:changes', (_e, cwd, snap) => git.changesSince(cwd, snap));
+  ipcMain.handle('files:undo', (_e, cwd, file) => undo.undoFile(cwd, file));
+  ipcMain.handle('files:restore', (_e, cwd, p, previous) => undo.restoreFile(cwd, p, previous));
   ipcMain.handle('repo:of', (_e, cwd) => repoOf(cwd));
   // Which of these files still exist (for the Changes card).
   ipcMain.handle('fs:existing', (_e, paths) => (Array.isArray(paths) ? paths : []).filter(p => typeof p === 'string' && fs.existsSync(p)));

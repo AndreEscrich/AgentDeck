@@ -453,6 +453,13 @@ details.change-file > summary:hover { background: var(--bg-hover); }
 .changes-head { display: flex; align-items: center; gap: 4px; }
 .changes-title { margin-right: 4px; }
 .review-btn { margin-left: auto; font-size: 12px; padding: 3px 12px; font-weight: 500; }
+.undo-all-btn { margin-left: auto; font-size: 12px; padding: 3px 12px; font-weight: 500; }
+.undo-all-btn + .review-btn { margin-left: 6px; }
+.undo-btn { flex-shrink: 0; font-size: 11px; padding: 1px 8px; opacity: 0; transition: opacity 0.12s; }
+details.change-file > summary:hover .undo-btn, .undo-btn:focus-visible, details.change-file.undone .undo-btn { opacity: 1; }
+details.change-file.undone > summary .change-path, details.change-file.undone > summary .change-counts { text-decoration: line-through; opacity: 0.55; }
+details.change-file.undone > summary .change-badge { opacity: 0.55; }
+.changes-problem { padding: 6px 12px; font-size: 12px; color: var(--err); white-space: pre-wrap; }
 details.other-files { border-top: 1px solid var(--border); }
 details.other-files > summary { padding: 6px 12px; cursor: pointer; list-style: none; color: var(--text-dim); font-size: 12px; }
 details.other-files > summary::before { content: "▸ "; }

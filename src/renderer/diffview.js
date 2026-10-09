@@ -169,14 +169,65 @@ function changesCard(files, cwd) {
   const head = el('div', 'changes-head');
   const review = el('button', 'review-btn', 'Review');
   review.title = 'Open the changes in the whole window';
-  review.onclick = () => openReview(files);
+  review.onclick = () => openReview(files, 0, { cwd });
+  const undoable = files.filter(f => f.status !== 'bin');
+  const undoAll = el('button', 'undo-all-btn', 'Undo all');
+  undoAll.title = 'Put every file back the way it was before this task';
   head.append(
     el('span', 'changes-title', `Changed ${files.length} file${files.length === 1 ? '' : 's'}`),
     el('span', 'plus', ` +${totalAdd}`),
     el('span', 'minus', ` −${totalDel}`),
     review,
   );
+  if (undoable.length && window.deck?.undoFile) head.insertBefore(undoAll, review);
   card.appendChild(head);
+  const problem = el('div', 'changes-problem hidden');
+
+  // Undo puts a file back the way it was before the task (see src/undo.js);
+  // Redo puts the agent's version back. Each row has its own button, and
+  // "Undo all" does every file that is not undone yet.
+  const rows = new Map();   // file -> { row, button }
+  const showProblems = errors => {
+    problem.textContent = errors.join('\n');
+    problem.classList.toggle('hidden', !errors.length);
+  };
+  const refreshUndoAll = () => {
+    const allUndone = undoable.every(f => f.undone);
+    undoAll.textContent = allUndone ? 'Redo all' : 'Undo all';
+    undoAll.title = allUndone ? 'Put back every change of this task' : 'Put every file back the way it was before this task';
+  };
+  const toggle = async f => {
+    if (f.undone) {
+      const r = await window.deck.restoreFile(cwd, f.path, f.undone.previous);
+      if (!r.ok) return r.error;
+      f.undone = null;
+    } else {
+      const r = await window.deck.undoFile(cwd, { path: f.path, status: f.status, lines: f.lines });
+      if (!r.ok) return r.error;
+      f.undone = { previous: r.previous };
+    }
+    const { row, button } = rows.get(f);
+    row.classList.toggle('undone', !!f.undone);
+    button.textContent = f.undone ? 'Redo' : 'Undo';
+    button.title = f.undone ? 'Put the agent\'s change back' : 'Put this file back the way it was before this task';
+    return null;
+  };
+  const run = async list => {
+    undoAll.disabled = true;
+    const errors = [];
+    for (const f of list) {
+      const err = await toggle(f).catch(e => String(e?.message || e));
+      if (err) errors.push(err);
+    }
+    undoAll.disabled = false;
+    refreshUndoAll();
+    showProblems(errors);
+    window.uiSound?.(errors.length ? 'refuse' : 'detach');
+  };
+  undoAll.onclick = () => {
+    const allUndone = undoable.every(f => f.undone);
+    run(undoable.filter(f => !!f.undone === allUndone));
+  };
 
   let openBudget = 400; // diff lines shown open in the chat
   const titles = [];   // [file, its summary], to show namespaces once they are known
@@ -185,6 +236,19 @@ function changesCard(files, cwd) {
     row.title = f.path;
     const summary = fileSummary(f);
     titles.push([f, summary]);
+    if (f.status !== 'bin' && window.deck?.undoFile) {
+      const button = el('button', 'undo-btn', 'Undo');
+      button.title = 'Put this file back the way it was before this task';
+      // The button sits in the row's summary; a click must not open the diff.
+      button.onclick = e => {
+        e.preventDefault();
+        e.stopPropagation();
+        run([f]);
+      };
+      summary.appendChild(button);
+      rows.set(f, { row, button });
+      if (f.undone) { row.classList.add('undone'); button.textContent = 'Redo'; }
+    }
     row.appendChild(summary);
     // Drawing happens when the file is first opened, so big changes stay fast.
     const draw = () => {
@@ -209,6 +273,8 @@ function changesCard(files, cwd) {
     if (!code.length) group.open = true;
     card.appendChild(group);
   }
+  card.appendChild(problem);
+  refreshUndoAll();
   loadNamespaces(files, cwd, () => {
     for (const [f, summary] of titles) {
       const { front, name } = titleParts(f);
