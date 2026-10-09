@@ -474,26 +474,41 @@ function umlLegend() {
 
 // ---------- a type's diff, grown out of its box ----------
 
-// Clicking a box grows it into a panel over the diagram with that file's
-// diff, at the type's first change (like an agent's tile growing into its
-// chat). Back, or Esc, shrinks it into the box again. ‹ › (or ← →) step to
-// the previous or next type. The diagram stays dimmed underneath.
+// Clicking a box grows it into a panel with that file's diff, at the type's
+// first change (like an agent's tile growing into its chat). The panel pops
+// up over the chat, as tall as the code needs, up to the whole chat area;
+// the chat dims behind it. Back, Esc or a click beside it shrinks it into
+// the box again. ‹ › (or ← →) step to the previous or next type.
 let activeDetail = null;
 
 function openDetail(panel, api, model, node, line, { files, onReview }) {
   activeDetail?.close(true);
   const ids = api.order;
+  const host = document.getElementById('main');
+  const backdrop = el('div', 'uml-detail-backdrop');
   const box = el('div', 'uml-detail');
   const head = el('div', 'uml-detail-head');
   const body = el('div', 'uml-detail-body');
   box.append(head, body);
-  panel.appendChild(box);
+  host.append(backdrop, box);
 
+  const relative = r => {
+    const h = host.getBoundingClientRect();
+    return { left: r.left - h.left, top: r.top - h.top, width: r.width, height: r.height };
+  };
   const rectOf = id => {
     const g = api.elementOf(id)?.querySelector('.uml-box');
     const p = panel.getBoundingClientRect();
-    const r = g ? g.getBoundingClientRect() : { left: p.left + p.width / 2 - 60, top: p.top + p.height / 2 - 20, width: 120, height: 40 };
-    return { left: r.left - p.left, top: r.top - p.top, width: r.width, height: r.height };
+    return relative(g ? g.getBoundingClientRect() : { left: p.left + p.width / 2 - 60, top: p.top + p.height / 2 - 20, width: 120, height: 40 });
+  };
+  // Over the chat: its width (up to a readable one), as tall as the code.
+  const target = () => {
+    const area = relative(document.getElementById('views').getBoundingClientRect());
+    const margin = 16;
+    const width = Math.min(area.width - margin * 2, 1400);
+    const needed = head.offsetHeight + body.scrollHeight + 2;
+    const height = Math.min(Math.max(needed, 160), area.height - margin * 2);
+    return { left: area.left + (area.width - width) / 2, top: area.top + (area.height - height) / 2, width, height };
   };
   const place = r => Object.assign(box.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
 
@@ -554,40 +569,43 @@ function openDetail(panel, api, model, node, line, { files, onReview }) {
     setTimeout(() => {
       const first = next.members.filter(m => m.change).sort((a, b) => a.line - b.line)[0];
       fill(next, first?.line ?? next.line);
+      // The new type's code may need another height.
+      box.classList.add('morphing');
+      place(target());
+      setTimeout(() => box.classList.remove('morphing'), 380);
       box.classList.add('shown');
     }, 120);
   };
+  const onResize = () => { if (activeDetail?.box === box) place(target()); };
+  window.addEventListener('resize', onResize);
+  backdrop.onclick = () => close();
 
-  // Grow: from the box to the whole panel.
+  // Grow: from the box to its place over the chat.
+  fill(node, line);
   place(rectOf(node.id));
   box.classList.add('morphing');
-  panel.classList.add('detail-open');
   void box.offsetWidth;
-  const inset = 12;
-  place({ left: inset, top: inset, width: panel.clientWidth - inset * 2, height: panel.clientHeight - inset * 2 });
-  fill(node, line);
-  setTimeout(() => { box.classList.add('shown'); box.classList.remove('morphing'); Object.assign(box.style, { width: '', height: '', right: `${inset}px`, bottom: `${inset}px` }); }, 380);
+  backdrop.classList.add('shown');
+  place(target());
+  setTimeout(() => { box.classList.add('shown'); box.classList.remove('morphing'); }, 380);
   window.uiSound?.('open');
 
-  // Shrink: back into the box of the type on screen.
+  // Shrink: back into the box of the type in the diagram.
   const close = (instant = false) => {
     if (activeDetail?.box !== box) return;
     activeDetail = null;
-    panel.classList.remove('detail-open');
-    if (instant) { box.remove(); return; }
+    window.removeEventListener('resize', onResize);
+    if (instant) { box.remove(); backdrop.remove(); return; }
     window.uiSound?.('close');
     box.classList.remove('shown');
-    const from = box.getBoundingClientRect();
-    const p = panel.getBoundingClientRect();
-    Object.assign(box.style, { right: '', bottom: '' });
-    place({ left: from.left - p.left, top: from.top - p.top, width: from.width, height: from.height });
+    backdrop.classList.remove('shown');
     box.classList.add('morphing');
     void box.offsetWidth;
     place(rectOf(current.id));
     box.classList.add('closing');
-    setTimeout(() => box.remove(), 360);
+    setTimeout(() => { box.remove(); backdrop.remove(); }, 360);
   };
-  activeDetail = { box, close, step: go };
+  activeDetail = { box, panel, close, step: go };
 }
 
 // A diagram with its buttons, for the Changes card or the full window.
@@ -639,7 +657,7 @@ function umlPanel(fullModel, { files = [], onReview, onFull = null, full = false
 // The diagram in the whole window, over the chat (Esc closes it).
 let umlFullEl = null;
 function closeUmlFull() {
-  if (activeDetail && umlFullEl?.contains(activeDetail.box)) activeDetail.close(true);
+  if (activeDetail && umlFullEl?.contains(activeDetail.panel)) activeDetail.close(true);
   umlFullEl?.remove();
   umlFullEl = null;
 }
