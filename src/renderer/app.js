@@ -1638,11 +1638,18 @@ function afterSend(agent, wake) {
   // then hops back to work.
   const cur = state.current;
   const fromChat = (cur?.kind === 'agent' && cur.id === agent.id) || cur?.kind === 'history';
+  // The agent reports "working" a moment after it gets the message, which
+  // would be in the middle of the animation below. The tile changes look and
+  // place then, so the chat would shrink into a picture of the old tile and
+  // jump at the end. The tile shows "working" right away instead.
+  if (wake && agent.status === 'idle') agent.status = 'working';
   show('hub');
   if (fromChat && agent.view) {
     // The tile of a continued session is new: draw it now, not in the next frame.
     hub.update(hubItems(), null, state.groups.groups);
-    const back = hub.returnTo(agent.id, agent.view).then(() => { if (wake) hub.wake(agent.id); });
+    // The hop starts once the tile has faded in under the chat's last frame
+    // (see returnTo), not at the same time.
+    const back = hub.returnTo(agent.id, agent.view).then(() => { if (wake) setTimeout(() => hub.wake(agent.id), 320); });
     continueReview(cur, back);
     return;
   }
