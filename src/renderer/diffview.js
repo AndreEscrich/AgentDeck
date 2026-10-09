@@ -162,8 +162,8 @@ function fileSummary(f) {
   return summary;
 }
 
-// The card under the answer. Code files start open, up to a size that keeps
-// the chat readable; you can open the rest, or the review view, yourself.
+// The card under the answer. Every file starts collapsed: click one to see
+// its diff, or open them all in the review view.
 function changesCard(files, cwd) {
   files = sortFiles(files);
   const code = files.filter(f => isCodeFile(f.path));
@@ -240,9 +240,8 @@ function changesCard(files, cwd) {
     run(undoable.filter(f => !!f.undone === allUndone));
   };
 
-  let openBudget = 400; // diff lines shown open in the chat
   const titles = [];   // [file, its summary], to show namespaces once they are known
-  const addFile = (parent, f, open) => {
+  const addFile = (parent, f) => {
     const row = el('details', `change-file status-${f.status}`);
     row.title = f.path;
     const summary = fileSummary(f);
@@ -266,21 +265,16 @@ function changesCard(files, cwd) {
       if (!row.querySelector('.diff')) row.appendChild(renderDiff(f));
     };
     row.addEventListener('toggle', () => { if (row.open) draw(); });
-    if (open) { row.open = true; draw(); }
     parent.appendChild(row);
   };
 
-  for (const f of code) {
-    const open = openBudget > 0;
-    openBudget -= f.lines.length;
-    addFile(card, f, open);
-  }
+  for (const f of code) addFile(card, f);
   if (other.length) {
     const group = el('details', 'other-files');
     const s = el('summary', null, `Other files (${other.length})`);
     group.appendChild(s);
-    for (const f of other) addFile(group, f, false);
-    // Without code files, the other files are what there is to see.
+    for (const f of other) addFile(group, f);
+    // Without code files, the list of other files is what there is to see.
     if (!code.length) group.open = true;
     card.appendChild(group);
   }
