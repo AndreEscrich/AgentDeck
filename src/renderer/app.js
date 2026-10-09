@@ -756,6 +756,7 @@ const hub = new Hub($('hub-view'), {
   onRemoveGroup: removeGroupFromHub,
   onTab: () => checkNext(),
   onReorder: ids => saveTileOrder(ids),
+  onReorderGroups: keys => saveGroupOrder(keys),
   onDragSound: kind => { if (playSounds()) sounds[kind]?.(); },
   // A new agent's message box has flown into its tile.
   onLanded: () => { if (playSounds()) sounds.brew(); },
@@ -1017,6 +1018,21 @@ function saveTileOrder(ids) {
   if (places.length === keys.length) keys.forEach((k, n) => { tileOrder[places[n]] = k; });
   else tileOrder = [...tileOrder.filter(k => !keys.includes(k)), ...keys];
   try { localStorage.setItem('hubOrder', JSON.stringify(tileOrder)); } catch { /* not important */ }
+  refreshHub();
+}
+
+// The order of the group panels, after you drag one: their keys (Category
+// id + "\n" + repository) from top to bottom. Groups you have not placed yet
+// (new ones) come below them. Kept in this computer's local storage, like
+// the order of the tiles.
+let groupOrder = [];
+try { groupOrder = JSON.parse(localStorage.getItem('hubGroupOrder') || '[]'); } catch { /* unsorted */ }
+hub.groupOrder = groupOrder;
+function saveGroupOrder(keys) {
+  // Panels that are not on screen now keep their places after the others.
+  groupOrder = [...keys, ...groupOrder.filter(k => !keys.includes(k))];
+  hub.groupOrder = groupOrder;
+  try { localStorage.setItem('hubGroupOrder', JSON.stringify(groupOrder)); } catch { /* not important */ }
   refreshHub();
 }
 

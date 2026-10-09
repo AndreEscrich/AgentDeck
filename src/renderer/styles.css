@@ -1262,3 +1262,35 @@ details.other-files details.change-file > summary { padding-left: 12px; }
 .usage-activity .act-months { gap: 3px; }
 .usage-activity .act-table-wrap { max-height: 220px; }
 .usage-activity .act-table th { background: #211b15; }
+
+/* Sorting groups by dragging their title row: the panel you hold is lifted
+   (a little bigger, with a deep shadow) and a dashed slot shows where it
+   will land. */
+.hub-section-head { cursor: grab; }
+.hub-section.dragging-group { z-index: 60; pointer-events: none;
+  transform: scale(1.015) rotate(var(--sway, 0deg)); border-color: var(--text-faint);
+  box-shadow: inset 0 3px 10px rgba(0, 0, 0, 0.7), 0 40px 60px -20px rgba(0, 0, 0, 0.85);
+  transition: transform 0.2s cubic-bezier(.3,1.5,.5,1), box-shadow 0.2s; }
+.hub-section.dropping-group { z-index: 60; pointer-events: none; }
+.hub-section-slot { box-sizing: border-box; border-radius: 18px; border: 2px dashed #4a3d30; background: rgba(255, 236, 210, 0.025);
+  animation: slot-in 0.25s ease-out; }
+/* The tiles' widest size, made smaller when the groups do not fit the
+   window's height (see fitToHeight in hub.js). */
+.hub-section .hub-tile, .hub-section .hub-tile-slot { max-width: var(--tile-max, 240px); }
+/* Many groups for the window's height: tighter panels (see fitToHeight). */
+.hub-board.tight { gap: 10px; }
+.hub-board.tight .hub-section { padding: 8px 12px 10px; border-radius: 14px; }
+.hub-board.tight .hub-section-head { margin-bottom: 7px; }
+.hub-board.tight .hub-section .hub-grid { gap: 10px; }
+
+/* The tank keeps its shape at every tile size: its corners, the depth of the
+   wave on the liquid, its inner shadow and the shine scale with the tile's
+   width (cqw, see container-type on .hub-tile). At full size (240px tiles)
+   they are the same as before; fixed pixel corners turned a small tank into
+   a bowl. */
+.hub-tile .tank {
+  border-radius: clamp(5px, 6.4cqw, 14px) clamp(5px, 6.4cqw, 14px) clamp(8px, 10cqw, 22px) clamp(8px, 10cqw, 22px);
+  box-shadow: inset 0 0 clamp(10px, 11cqw, 24px) rgba(0, 0, 0, 0.6); }
+.hub-tile .liquid::before { bottom: calc(100% - clamp(4px, 4.1cqw, 9px)); }
+.hub-tile .liquid::after { bottom: calc(100% - clamp(5px, 5.5cqw, 12px)); }
+.hub-tile .tank-shine { top: clamp(4px, 4.6cqw, 10px); left: clamp(5px, 5.5cqw, 12px); width: clamp(4px, 4.6cqw, 10px); }

@@ -36,13 +36,14 @@ class Hub {
   // New agents start only from the message box under the Hub.
   // onRemove(agentId) removes a tile's agent; onContext(agentId) shows its
   // right-click menu.
-  constructor(container, { onOpen, onRemove, onInterrupt, onRemoveGroup, onContext, onLanded, onReplay, onTab, onReorder, onDragSound, onPickGroup }) {
+  constructor(container, { onOpen, onRemove, onInterrupt, onRemoveGroup, onContext, onLanded, onReplay, onTab, onReorder, onReorderGroups, onDragSound, onPickGroup }) {
     // Clicking a Group panel (not a tile) points the message box at that Group.
     this.onPickGroup = onPickGroup;
     this.selectedKey = null;
     this.onOpen = onOpen;
     this.onInterrupt = onInterrupt;
     this.onReorder = onReorder;
+    this.onReorderGroups = onReorderGroups;
     this.onDragSound = onDragSound;
     this.onReplay = onReplay;
     this.onLanded = onLanded;
@@ -134,6 +135,9 @@ class Hub {
       }
     }, true);
     container.append(this.rail, this.root);
+    // The groups shrink to fit the window's height (see fitToHeight).
+    this.container = container;
+    new ResizeObserver(() => requestAnimationFrame(() => this.fitToHeight())).observe(container);
     this.setUsage(null);
   }
 
@@ -433,11 +437,15 @@ class Hub {
     }
 
     // A panel is a Group: one Category plus one folder; its agents share
-    // context. Panels stand in the order their first agent came (agents
-    // arrive in the order they started, see hubItems in app.js), so a new
-    // group appears below the others. Empty panels hide.
+    // context. Panels you have dragged stand in the order you gave them
+    // (groupOrder, set by the app); the others follow in the order their
+    // first agent came (agents arrive in the order they started, see
+    // hubItems in app.js), so a new group appears below the others. Empty
+    // panels hide.
+    const placed = new Map((this.groupOrder || []).map((key, i) => [key, i]));
     const rank = sec => (firstAt.has(sec.key) ? firstAt.get(sec.key) : Infinity);
-    const sorted = [...this.sections.values()].sort((a, b) => rank(a) - rank(b));
+    const place = sec => (placed.has(sec.key) ? placed.get(sec.key) : Infinity);
+    const sorted = [...this.sections.values()].sort((a, b) => place(a) - place(b) || rank(a) - rank(b));
     sorted.forEach((sec, i) => {
       const n = counts.get(sec.key) || 0;
       sec.el.classList.toggle('hidden', !n);
@@ -448,6 +456,7 @@ class Hub {
     });
 
     this.empty.classList.toggle('hidden', agents.length > 0);
+    requestAnimationFrame(() => this.fitToHeight());
     this.grid.classList.toggle('hidden', agents.length === 0);
   }
 
@@ -469,8 +478,11 @@ class Hub {
       sec = { key, groupKey, repo, el: elSec, name, repoEl, count, grid, cwd: null };
       elSec.classList.toggle('selected', key === this.selectedKey);
       elSec.title = 'Click to start the next agent in this group';
+      // The title row is the handle for dragging the whole panel.
+      head.title = 'Drag to move this group';
+      head.addEventListener('pointerdown', e => this.pressGroup(e, sec));
       elSec.addEventListener('click', e => {
-        if (e.target.closest('.hub-tile, button')) return;
+        if (this.justDragged || e.target.closest('.hub-tile, button')) return;
         if (sec.cwd) this.onPickGroup?.(sec.groupKey || null, sec.cwd);
       });
       remove.onclick = e => {
@@ -631,6 +643,194 @@ class Hub {
       .map(t => [...this.tiles].find(([, entry]) => entry.el === t)?.[0])
       .filter(Boolean);
     this.onReorder?.(ids);
+    if (this.latest) this.render(...this.latest);
+  }
+
+  // ---------- fitting the groups to the window ----------
+
+  // Inside a group the tiles share the row's width, so more agents make
+  // them narrower. This does the same for the height: when the groups do
+  // not fit under each other in the window, every tile gets narrower (and,
+  // because the tank keeps its shape, shorter) until they all fit. The
+  // tiles never get wider than 240px or narrower than 90px; below that the
+  // Hub scrolls. When the tiles get small (under 170px), the groups also
+  // tighten their padding and the space between them ("tight"), and they
+  // loosen again once there is room for tiles of 215px.
+  //
+  // A tile's height follows its width: the tank's height is its width times
+  // its shape (3/4), plus the fixed parts (padding, title, status). Those are
+  // measured on one tile of each group, so the width that fits can be
+  // computed at once instead of tried out.
+  fitToHeight() {
+    const view = this.container;
+    if (!view || this.drag || !view.clientHeight || view.classList.contains('hidden')) return;
+    const sections = [...this.sections.values()].map(s => s.el).filter(s => !s.classList.contains('hidden') && !s.classList.contains('removing-group'));
+    if (!sections.length) return;
+    const avail = view.clientHeight - (this.root.offsetHeight - this.grid.offsetHeight);
+    const gap = parseFloat(getComputedStyle(this.grid).rowGap) || 0;
+    // Per group: its height without the tiles' tanks, the tank's shape, and
+    // the widest a tile can be in its row (the row's width shared by its tiles).
+    const parts = [];
+    let fixed = gap * (sections.length - 1);
+    for (const sec of sections) {
+      const tiles = [...sec.querySelectorAll('.hub-tile')].filter(t => !t.classList.contains('removing') && !t.classList.contains('dragging'));
+      const tank = tiles[0]?.querySelector('.tank');
+      if (!tank?.offsetWidth) { fixed += sec.offsetHeight; continue; }
+      const tile = tiles[0];
+      const row = tile.parentNode;
+      const rowGap = parseFloat(getComputedStyle(row).columnGap) || 0;
+      parts.push({
+        shape: tank.offsetHeight / tank.offsetWidth,
+        padX: tile.offsetWidth - tank.offsetWidth,
+        share: (row.clientWidth - rowGap * (tiles.length - 1)) / tiles.length,
+      });
+      fixed += sec.offsetHeight - tank.offsetHeight;
+    }
+    if (!parts.length) return;
+    const height = w => fixed + parts.reduce((sum, p) => sum + (Math.min(w, p.share) - p.padX) * p.shape, 0);
+    // The widest tile size (90–240px) at which everything fits. A few pixels
+    // to spare: a title can wrap onto a second line when the tile gets narrower.
+    let lo = 90;
+    let hi = 240;
+    if (height(hi) <= avail - 8) lo = hi;
+    else for (let i = 0; i < 12; i++) { const mid = (lo + hi) / 2; if (height(mid) <= avail - 8) lo = mid; else hi = mid; }
+    const width = Math.round(lo);
+    const tight = this.grid.classList.contains('tight');
+    if ((!tight && width < 170) || (tight && width >= 215)) {
+      // The padding changes the measurements: fit again with the new padding.
+      this.grid.classList.toggle('tight', !tight);
+      requestAnimationFrame(() => this.fitToHeight());
+      return;
+    }
+    if (Math.abs(width - (this.tileMax || 240)) < 2) return;
+    this.tileMax = width;
+    this.grid.style.setProperty('--tile-max', `${width}px`);
+  }
+
+  // ---------- sorting groups by dragging them ----------
+
+  // Like a tile: a press on a panel's title row becomes a drag once the
+  // mouse has moved a few pixels. The panel is lifted and follows the mouse
+  // up and down, a dashed slot shows where it lands, and the other panels
+  // slide out of the way.
+  pressGroup(e, sec) {
+    if (e.button !== 0 || e.target.closest('button') || this.drag || this.opening) return;
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const move = ev => {
+      if (!this.drag) {
+        if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
+        this.startGroupDrag(sec, sy);
+      }
+      if (this.drag?.kind === 'group') this.moveGroupDrag(ev);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      if (this.drag?.kind === 'group') this.endGroupDrag();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  }
+
+  startGroupDrag(sec, sy) {
+    const panel = sec.el;
+    const r = panel.getBoundingClientRect();
+    const byOrder = (a, b) => Number(a.style.order) - Number(b.style.order);
+    const list = [...this.grid.children]
+      .filter(c => c.classList.contains('hub-section') && !c.classList.contains('hidden') && !c.classList.contains('removing-group'))
+      .sort(byOrder);
+    const slot = el('div', 'hub-section-slot');
+    slot.style.height = `${r.height}px`;
+    slot.style.order = panel.style.order;
+    this.grid.appendChild(slot);
+    this.drag = {
+      kind: 'group', panel, slot,
+      siblings: list.filter(p => p !== panel),
+      orders: list.map(p => p.style.order),
+      index: list.indexOf(panel),
+      offY: sy - r.top,
+      lastY: sy,
+      centers: new Map(),
+    };
+    for (const s of this.drag.siblings) {
+      const sr = s.getBoundingClientRect();
+      this.drag.centers.set(s, sr.top + sr.height / 2);
+    }
+    Object.assign(panel.style, { position: 'fixed', left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, margin: '0' });
+    panel.classList.add('dragging-group');
+    document.body.classList.add('grabbing');
+    this.onDragSound?.('pick');
+  }
+
+  moveGroupDrag(ev) {
+    const d = this.drag;
+    d.panel.style.top = `${ev.clientY - d.offY}px`;
+    // It tilts a little with the movement, like a tray carried by one end.
+    const sway = Math.max(-0.35, Math.min(0.35, (ev.clientY - d.lastY) * 0.03));
+    d.lastY = ev.clientY;
+    d.panel.style.setProperty('--sway', `${sway.toFixed(2)}deg`);
+    // The slot goes before the first panel whose middle is below the mouse.
+    const index = d.siblings.filter(s => d.centers.get(s) < ev.clientY).length;
+    if (index !== d.index) {
+      d.index = index;
+      this.placeGroupSlot();
+      this.onDragSound?.('shift');
+    }
+  }
+
+  // Moves the slot to d.index; the panels around it slide to their new
+  // places (measured before and after, then animated from old to new).
+  placeGroupSlot() {
+    const d = this.drag;
+    const list = [...d.siblings];
+    list.splice(d.index, 0, d.slot);
+    const before = new Map(list.map(e => [e, e.getBoundingClientRect()]));
+    for (const e of list) for (const a of e.getAnimations()) if (a.id === 'flip') a.cancel();
+    list.forEach((e, i) => { e.style.order = d.orders[i]; });
+    for (const e of list) {
+      const after = e.getBoundingClientRect();
+      if (e !== d.slot) d.centers.set(e, after.top + after.height / 2);
+      const dy = before.get(e).top - after.top;
+      if (Math.abs(dy) < 0.5) continue;
+      const a = e.animate([{ transform: `translateY(${dy}px)` }, { transform: 'translateY(0)' }],
+        { duration: 340, easing: 'cubic-bezier(.2,.9,.25,1.06)' });
+      a.id = 'flip';
+    }
+  }
+
+  // Drops the panel into the slot, where it settles; then the new order of
+  // the groups is saved (onReorderGroups).
+  async endGroupDrag() {
+    const d = this.drag;
+    this.justDragged = true;
+    setTimeout(() => { this.justDragged = false; }, 60);
+    for (const a of d.slot.getAnimations()) a.cancel();
+    const to = d.slot.getBoundingClientRect();
+    const from = d.panel.getBoundingClientRect();
+    d.panel.classList.remove('dragging-group');
+    d.panel.classList.add('dropping-group');
+    const fall = d.panel.animate([
+      { top: `${from.top}px`, transform: `scale(1.015) rotate(${d.panel.style.getPropertyValue('--sway') || '0deg'})` },
+      { top: `${to.top}px`, transform: 'scale(0.995, 0.99) rotate(0deg)', offset: 0.75 },
+      { top: `${to.top}px`, transform: 'scale(1)' },
+    ], { duration: 380, easing: 'cubic-bezier(.35,.0,.25,1)' });
+    setTimeout(() => this.onDragSound?.('drop'), 260);
+    await fall.finished.catch(() => {});
+    d.panel.style.order = d.slot.style.order;
+    for (const p of ['position', 'left', 'top', 'width', 'margin', '--sway']) d.panel.style.removeProperty(p);
+    d.panel.classList.remove('dropping-group');
+    document.body.classList.remove('grabbing');
+    d.slot.remove();
+    this.drag = null;
+    const keys = [...this.grid.children]
+      .filter(c => c.classList.contains('hub-section') && !c.classList.contains('hidden'))
+      .sort((a, b) => Number(a.style.order) - Number(b.style.order))
+      .map(p => [...this.sections.values()].find(s => s.el === p)?.key)
+      .filter(k => k != null);
+    this.onReorderGroups?.(keys);
     if (this.latest) this.render(...this.latest);
   }
 
