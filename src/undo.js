@@ -133,4 +133,25 @@ async function restoreFile(cwd, p, previous) {
   }
 }
 
-module.exports = { undoFile, restoreFile, unpatch, hunksOf };
+// The whole file before and after the task, for the full and side-by-side
+// views of a diff: after is the file as it is now, before is that with the
+// diff applied backwards. Resolves with { before, after } (arrays of lines;
+// null for a file that did not exist) or { error }.
+async function versions(cwd, file) {
+  if (!file || typeof file.path !== 'string' || !Array.isArray(file.lines)) return { error: 'No file.' };
+  const abs = resolve(cwd, file.path);
+  const removed = () => file.lines.filter(([kind]) => kind === 'del').map(([, text]) => clean(text));
+  try {
+    if (file.status === 'del') return { before: removed(), after: null };
+    if (!fs.existsSync(abs)) return { error: `${path.basename(file.path)} no longer exists.` };
+    const after = splitText(fs.readFileSync(abs, 'utf8')).lines;
+    if (file.status === 'new') return { before: null, after };
+    const before = unpatch(after, hunksOf(file));
+    if (!before) return { error: 'The file was changed again after the task, so its earlier version can\'t be rebuilt.' };
+    return { before, after };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+module.exports = { undoFile, restoreFile, unpatch, hunksOf, versions };

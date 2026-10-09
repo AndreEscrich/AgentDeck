@@ -495,7 +495,7 @@ details.change-file > summary:hover { background: var(--bg-hover); }
 .change-badge.bin { background: rgba(90, 141, 224, 0.18); color: var(--info); }
 .change-path { flex: 1; font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .change-counts { flex-shrink: 0; font-size: 12px; }
-.diff { font: 12px/1.55 var(--mono); max-height: 520px; overflow: auto; border-top: 1px solid var(--border); background: var(--code-bg); }
+.diff { tab-size: 4; font: 12px/1.55 var(--mono); max-height: 520px; overflow: auto; border-top: 1px solid var(--border); background: var(--code-bg); }
 .diff-line { display: flex; white-space: pre; min-width: max-content; }
 .diff-line .ln { flex-shrink: 0; width: 44px; padding-right: 8px; text-align: right; color: var(--text-faint); user-select: none; opacity: 0.7; }
 .diff-line .sign { flex-shrink: 0; width: 16px; text-align: center; user-select: none; }
@@ -507,6 +507,21 @@ details.change-file > summary:hover { background: var(--bg-hover); }
 .diff-line.hunk { color: var(--info); background: rgba(90, 141, 224, 0.08); }
 .diff-line.hunk .code { color: var(--info); }
 .diff-line .hljs-comment { font-style: italic; }
+/* Changes | Full file | Side by side, over an opened file */
+.file-views-bar { position: sticky; top: 0; z-index: 2; display: flex; gap: 2px; padding: 6px 10px; background: var(--bg-panel); border-top: 1px solid var(--border); }
+.file-views-bar.hidden { display: none; }
+.file-views-bar button { border: none; background: none; font-size: 11.5px; padding: 2px 10px; border-radius: 6px; color: var(--text-dim); }
+.file-views-bar button.active { background: var(--bg-active); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
+.uml-detail-body .file-views-bar { border-top: none; border-bottom: 1px solid var(--border); }
+.diff.sbs { display: block; }
+.sbs-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.sbs-cell { display: flex; min-width: 0; }
+.sbs-cell + .sbs-cell { border-left: 1px solid var(--border); }
+.sbs-cell .ln { flex-shrink: 0; width: 44px; padding-right: 8px; text-align: right; color: var(--text-faint); user-select: none; opacity: 0.7; }
+.sbs-cell .code { flex: 1; min-width: 0; padding-right: 12px; color: #c9d1d9; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sbs-cell.del { background: rgba(224, 90, 90, 0.13); }
+.sbs-cell.add { background: rgba(76, 175, 122, 0.13); }
+.sbs-cell.empty { background: repeating-linear-gradient(135deg, transparent 0 6px, rgba(255, 255, 255, 0.025) 6px 12px); }
 
 .changes-head { display: flex; align-items: center; gap: 4px; }
 .changes-title { margin-right: 4px; }
@@ -1470,7 +1485,7 @@ video.chat-media { background: #000; }
 .changes { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--border); border-radius: 14px; background: rgba(0, 0, 0, 0.16);
   padding: 10px; overflow: visible; --changes-wide: min(calc(100vw - 72px), 1700px);
   transition: width 0.25s cubic-bezier(.2,.85,.25,1), margin-left 0.25s cubic-bezier(.2,.85,.25,1); width: 100%; margin-left: 0; box-sizing: border-box; }
-.changes.show-diagram { width: var(--changes-wide); margin-left: calc((100% - var(--changes-wide)) / 2); }
+.changes.show-diagram, .changes:has(details.change-file[open] .file-views[data-mode="sbs"]) { width: var(--changes-wide); margin-left: calc((100% - var(--changes-wide)) / 2); }
 .changes-head { border: none; padding: 2px 4px 0; }
 details.change-file { border: 1px solid var(--border); border-left: 3px solid var(--busy); border-radius: 10px;
   background: var(--bg-panel); overflow: clip; }

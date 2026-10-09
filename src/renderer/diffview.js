@@ -205,7 +205,7 @@ function changesCard(files, cwd) {
     row.appendChild(summary);
     // Drawing happens when the file is first opened, so big changes stay fast.
     const draw = () => {
-      if (!row.querySelector('.diff')) row.appendChild(comments.diff(f));
+      if (!row.querySelector('.file-views')) row.appendChild(fileViews(f, cwd, () => comments.diff(f)));
     };
     row.addEventListener('toggle', () => { if (row.open) draw(); });
     parent.appendChild(row);
@@ -387,6 +387,7 @@ function lineComments(files, cwd) {
   };
 
   return {
+    cwd,
     count,
     send,
     onChange: fn => { listeners.add(fn); return () => listeners.delete(fn); },
@@ -416,5 +417,156 @@ function lineComments(files, cwd) {
     },
   };
 }
+
+// ---------- the whole file, and side by side ----------
+
+// A line diff of two versions (Myers' algorithm): the lines of both in order
+// as [kind, text] with kind ctx, add or del, the way renderDiff wants them.
+// null when the versions are too different to compare quickly.
+function lineDiff(a, b) {
+  const n = a.length;
+  const m = b.length;
+  const v = { 1: 0 };
+  const trace = [];
+  for (let d = 0; d <= n + m; d++) {
+    const step = {};
+    for (let k = -d; k <= d; k += 2) {
+      let x = k === -d || (k !== d && v[k - 1] < v[k + 1]) ? v[k + 1] : v[k - 1] + 1;
+      let y = x - k;
+      while (x < n && y < m && a[x] === b[y]) { x++; y++; }
+      v[k] = x;
+      step[k] = x;
+      if (x >= n && y >= m) {
+        trace.push(step);
+        return backtrack(trace, a, b);
+      }
+    }
+    trace.push(step);
+    if (d > 4000) return null;
+  }
+  return null;
+}
+
+function backtrack(trace, a, b) {
+  const out = [];
+  let x = a.length;
+  let y = b.length;
+  for (let d = trace.length - 1; d >= 0; d--) {
+    const k = x - y;
+    const prev = d > 0 ? trace[d - 1] : { 1: 0 };
+    const prevK = d === 0 ? k : k === -d || (k !== d && (prev[k - 1] ?? -1) < (prev[k + 1] ?? -1)) ? k + 1 : k - 1;
+    const prevX = d === 0 ? 0 : prev[prevK];
+    const prevY = prevX - prevK;
+    while (x > prevX && y > prevY) { out.push(['ctx', ' ' + a[x - 1]]); x--; y--; }
+    if (d > 0) {
+      if (x === prevX) { out.push(['add', '+' + b[y - 1]]); y--; } else { out.push(['del', '-' + a[x - 1]]); x--; }
+    }
+  }
+  return out.reverse();
+}
+
+// The two versions side by side: one row per line, before on the left and
+// after on the right, removed and added lines facing each other.
+function renderSideBySide(path, merged) {
+  const language = LANGUAGES[extensionOf(path)];
+  const rows = [];
+  let i = 0;
+  let oldNo = 1;
+  let newNo = 1;
+  while (i < merged.length) {
+    if (merged[i][0] === 'ctx') {
+      rows.push([{ no: oldNo++, text: merged[i][1].slice(1) }, { no: newNo++, text: merged[i][1].slice(1) }, 'ctx']);
+      i++;
+      continue;
+    }
+    const dels = [];
+    const adds = [];
+    while (i < merged.length && merged[i][0] !== 'ctx') {
+      (merged[i][0] === 'del' ? dels : adds).push(merged[i][1].slice(1));
+      i++;
+    }
+    for (let j = 0; j < Math.max(dels.length, adds.length); j++) {
+      rows.push([j < dels.length ? { no: oldNo++, text: dels[j] } : null, j < adds.length ? { no: newNo++, text: adds[j] } : null, 'change']);
+    }
+  }
+  const grid = el('div', 'diff sbs');
+  const cell = (side, data, kind) => {
+    const c = el('div', `sbs-cell ${data ? (kind === 'ctx' ? 'ctx' : side) : 'empty'}`);
+    c.append(el('span', 'ln', data ? String(data.no) : ''));
+    const code = el('span', 'code');
+    if (data) {
+      const html = highlightLine(data.text, language);
+      if (html != null) code.innerHTML = html || ' ';
+      else code.textContent = data.text || ' ';
+    }
+    c.append(code);
+    if (data && side === 'add') c.dataset.newLine = String(data.no);
+    return c;
+  };
+  for (const [left, right, kind] of rows) {
+    const row = el('div', 'sbs-row');
+    row.append(cell('del', left, kind), cell('add', right, kind));
+    grid.appendChild(row);
+  }
+  if (!rows.length) grid.appendChild(el('div', 'diff-line hunk', 'The file is empty'));
+  return grid;
+}
+
+// The views of one file's change: Changes (the diff, made by changesView,
+// where you can comment on lines), Full file (all of it, the changes marked
+// in place) and Side by side (before and after). The last view you picked is
+// the one the next file opens in.
+let lastFileView = 'changes';
+function fileViews(f, cwd, changesView) {
+  const box = el('div', 'file-views');
+  const bar = el('div', 'file-views-bar');
+  const body = el('div', 'file-views-body');
+  const modes = [['changes', 'Changes'], ['full', 'Full file'], ['sbs', 'Side by side']];
+  const buttons = new Map();
+  for (const [mode, label] of modes) {
+    const b = el('button', null, label);
+    b.type = 'button';
+    b.onclick = e => { e.stopPropagation(); window.uiSound?.('tick'); show(mode); };
+    buttons.set(mode, b);
+    bar.appendChild(b);
+  }
+  box.append(bar, body);
+  const versions = () => {
+    if (!f.versions) f.versions = window.deck?.fileVersions ? window.deck.fileVersions(cwd, { path: f.path, status: f.status, lines: f.lines }) : Promise.resolve({ error: 'Not available.' });
+    return f.versions;
+  };
+  let current = null;
+  const show = async mode => {
+    current = mode;
+    lastFileView = mode;
+    box.dataset.mode = mode;
+    for (const [m, b] of buttons) b.classList.toggle('active', m === mode);
+    if (mode === 'changes') {
+      body.replaceChildren(changesView());
+      return;
+    }
+    body.replaceChildren(el('div', 'diff-line hunk', 'Reading the file…'));
+    const v = await versions().catch(err => ({ error: String(err?.message || err) }));
+    if (current !== mode) return;
+    if (v.error) {
+      body.replaceChildren(el('div', 'diff-line hunk', v.error));
+      return;
+    }
+    const merged = lineDiff(v.before || [], v.after || []);
+    if (!merged) {
+      body.replaceChildren(el('div', 'diff-line hunk', 'The two versions are too different to compare here.'));
+      return;
+    }
+    body.replaceChildren(mode === 'full'
+      ? renderDiff({ path: f.path, status: f.status, lines: merged }, { maxLines: 50000 })
+      : renderSideBySide(f.path, merged));
+  };
+  show(f.status === 'bin' ? 'changes' : lastFileView);
+  if (f.status === 'bin') bar.classList.add('hidden');
+  box.showMode = show;
+  return box;
+}
+
+window.fileViews = fileViews;
 
 window.changesCard = changesCard;

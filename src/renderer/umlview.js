@@ -728,7 +728,9 @@ function openDetail(panel, api, model, node, line, { files, comments }) {
       body.appendChild(el('div', 'uml-detail-empty', 'No diff for this type.'));
       return;
     }
-    const diff = comments ? comments.diff(file, { maxLines: 20000 }) : renderDiff(file, { maxLines: 20000 });
+    // Changes, Full file or Side by side (see fileViews in diffview.js).
+    const views = fileViews(file, comments?.cwd, () => (comments ? comments.diff(file, { maxLines: 20000 }) : renderDiff(file, { maxLines: 20000 })));
+    const diff = views;
     body.appendChild(diff);
     // To the change: the diff line nearest to it, marked for a moment.
     requestAnimationFrame(() => {
