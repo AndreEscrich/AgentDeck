@@ -1725,6 +1725,58 @@ async function sendToAgent(agent, text, images = []) {
   await window.deck.sendMessage(agent.id, text, images);
 }
 
+// ---------- two agents, one file ----------
+
+// While a task runs, the app remembers which files the agent edits or
+// writes. When a second working agent edits one of the same files, both
+// chats get a warning and both tiles say so, until one of the tasks ends.
+const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+
+function fileKey(cwd, file) {
+  let p = String(file).replace(/\\/g, '/');
+  if (!/^([a-z]:)?\//i.test(p) && cwd) p = `${cwd.replace(/\\/g, '/').replace(/\/$/, '')}/${p}`;
+  return IS_MAC ? p : p.toLowerCase();
+}
+
+function noteClashes(agent, message) {
+  for (const block of message?.content || []) {
+    if (block.type !== 'tool_use' || !EDIT_TOOLS.has(block.name)) continue;
+    const file = block.input?.file_path || block.input?.notebook_path;
+    if (!file) continue;
+    const key = fileKey(agent.cwd, file);
+    agent.editing = agent.editing || new Map();
+    agent.editing.set(key, file);
+    for (const other of state.agents.values()) {
+      if (other === agent || other.removed || !BUSY.includes(other.status) || !other.editing?.has(key)) continue;
+      addClash(agent, other, key, file);
+      addClash(other, agent, key, other.editing.get(key));
+    }
+  }
+}
+
+function addClash(agent, other, key, file) {
+  agent.clashes = agent.clashes || new Map();
+  const clash = agent.clashes.get(other.id) || { title: other.latestTitle || other.title, files: new Set() };
+  agent.clashes.set(other.id, clash);
+  if (clash.files.has(key)) return;
+  clash.files.add(key);
+  const name = String(file).split(SEP).pop();
+  agent.transcript.note(`⚠ "${clash.title}" is also changing ${name} in its current task. Check that one change does not undo the other.`);
+  sfx('stuck');
+  refreshHub();
+}
+
+// A task ended: its files are no longer in the way of other agents.
+function clearClashes(agent) {
+  agent.editing = null;
+  for (const otherId of agent.clashes?.keys() || []) {
+    const other = state.agents.get(otherId);
+    other?.clashes?.delete(agent.id);
+  }
+  agent.clashes = null;
+  refreshHub();
+}
+
 // ---------- queued messages ----------
 
 // A message you send while the agent works waits in a queue under the chat
@@ -1843,6 +1895,8 @@ window.deck.onEvent((id, msg) => {
   const a = state.agents.get(id);
   if (!a) return;
   a.transcript.add(msg);
+  if (msg.type === 'assistant') noteClashes(a, msg.message);
+  if (msg.type === 'result') clearClashes(a);
   // New textures and videos from this task (see showMedia). Your home folder
   // is too big to search.
   if (msg.type === 'result' && a.mediaSince) {
@@ -1965,6 +2019,7 @@ window.deck.onModel((id, model) => {
 window.deck.onExit((id, { code, stderr }) => {
   const a = state.agents.get(id);
   if (!a || state.quitting) return;
+  clearClashes(a);
   if (code !== 0 && stderr.trim()) a.transcript.note(stderr.trim().split('\n').slice(-12).join('\n'), true);
   a.transcript.note(`Agent process ended (exit code ${code}).`);
   a.status = 'exited';

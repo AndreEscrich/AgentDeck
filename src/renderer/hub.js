@@ -278,10 +278,12 @@ class Hub {
     const statusText = el('span');
     const timer = el('span', 'hub-timer');
     statusRow.append(statusDot, statusText, timer);
-    info.append(title, statusRow);
+    // Another working agent changes the same file (see noteClashes in app.js).
+    const clash = el('div', 'hub-clash hidden');
+    info.append(title, statusRow, clash);
 
     tile.append(remove, stop, tank, info);
-    const entry = { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, badge, title, statusDot, statusText, timer } };
+    const entry = { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, badge, title, statusDot, statusText, timer, clash } };
     this.tiles.set(agent.id, entry);
     return entry;
   }
@@ -427,6 +429,13 @@ class Hub {
         parts.statusText.title = '';
       }
       this.updateTimer(agent, parts.timer);
+      const clashes = agent.clashes ? [...agent.clashes.values()] : [];
+      parts.clash.classList.toggle('hidden', !clashes.length);
+      if (clashes.length) {
+        const files = [...new Set(clashes.flatMap(c => [...c.files]))];
+        parts.clash.textContent = `⚠ Same file${files.length === 1 ? '' : 's'}`;
+        parts.clash.title = `Also being changed by ${clashes.map(c => `"${c.title}"`).join(', ')}:\n${files.join('\n')}`;
+      }
     }
 
     for (const [id, entry] of this.tiles) {
