@@ -2,7 +2,8 @@
 // src/csharp.js): one box per type the task added, changed or removed, with
 // just its name, in a package box per namespace, and arrows for how the types
 // depend on each other. The dependencies flow from left to right: a type
-// stands left of the types it uses. Drag to move around, Ctrl+wheel (or the
+// stands left of the types it uses; a long chain folds into bands below
+// each other, and namespaces stand under each other. Drag to move around, Ctrl+wheel (or the
 // buttons) to zoom; in the full-window view the wheel zooms by itself. Point
 // at a box for its changed members; click it to open its diff.
 
@@ -211,6 +212,8 @@ function drawEdge(a, b, edge, slots) {
 }
 
 function edgeSides(a, b) {
+  // Between bands (or namespaces) the arrow goes down or up.
+  if (a.lane !== b.lane) return b.y > a.y ? 'down' : 'up';
   if (b.x >= a.x + a.w + 8) return 'right';
   if (b.x + b.w <= a.x - 8) return 'left';
   return b.y > a.y ? 'down' : 'up';
@@ -246,13 +249,16 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
   }
   const GAP_X = 120;    // room for the arrows between columns
   const GAP_Y = 56;     // and between the boxes of a column
+  const BAND_GAP = 72;  // between the bands of a long chain
   const PAD = 18;
   const TITLE = 28;
-  const GROUP_GAP_X = 120;
-  const GROUP_GAP_Y = 40;
-  const aspect = container.clientWidth && container.clientHeight ? container.clientWidth / container.clientHeight : 1.8;
+  const GROUP_GAP = 48;
+  // The width that shows at a readable size: wider chains fold into bands.
+  const maxWidth = Math.max(700, ((container.clientWidth || 1100) - 48) / 0.85);
 
-  // One group per namespace, laid out on its own: columns of types.
+  // One group per namespace, laid out on its own: columns of types, a type
+  // left of the types it uses. When the columns would be wider than the
+  // view, they fold: the next columns continue in a band below.
   const groups = new Map();
   for (const n of model.nodes) {
     const key = n.namespace || '(no namespace)';
@@ -269,35 +275,58 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
       sizeOf: id => boxes.get(id).h,
       gap: GAP_Y,
     });
-    const size = placeColumns(columns, id => boxes.get(id), GAP_X, GAP_Y);
-    g.w = Math.max(size.width, Math.min(textWidth(g.id, UML_SMALL) + 24, 260)) + PAD * 2;
-    g.h = size.height + TITLE + PAD;
-    g.inner = size;
+    const innerMax = maxWidth - PAD * 2;
+    const widthOf = col => Math.max(...col.map(id => boxes.get(id).w));
+    const bands = [];
+    let band = [];
+    let bandWidth = 0;
+    for (const col of columns) {
+      const w = widthOf(col);
+      if (band.length && bandWidth + GAP_X + w > innerMax) { bands.push(band); band = []; bandWidth = 0; }
+      bandWidth += (band.length ? GAP_X : 0) + w;
+      band.push(col);
+    }
+    if (band.length) bands.push(band);
+    const placed = bands.map(cols => placeColumns(cols, id => boxes.get(id), GAP_X, GAP_Y));
+    const innerWidth = Math.max(...placed.map(p => p.width));
+    let y = 0;
+    bands.forEach((cols, i) => {
+      const offsetX = (innerWidth - placed[i].width) / 2;
+      for (const id of cols.flat()) {
+        const b = boxes.get(id);
+        b.x += offsetX;
+        b.y += y;
+        b.lane = `${g.id}|${i}`;
+      }
+      y += placed[i].height + BAND_GAP;
+    });
+    g.inner = { width: innerWidth, height: y - BAND_GAP };
+    g.w = Math.max(innerWidth, Math.min(textWidth(g.id, UML_SMALL) + 24, 260)) + PAD * 2;
+    g.h = g.inner.height + TITLE + PAD;
   }
-  // Then the groups, the same way: a namespace stands left of the ones it uses.
+  // Then the namespaces under each other, a namespace above the ones it uses.
   const groupEdges = new Map();
   for (const e of model.edges) {
     const a = boxes.get(e.from)?.node.namespace || '(no namespace)';
     const b = boxes.get(e.to)?.node.namespace || '(no namespace)';
     if (a !== b) groupEdges.set(`${a}>${b}`, { from: a, to: b });
   }
-  const groupArea = [...groups.values()].reduce((s, g) => s + (g.w + GROUP_GAP_X) * (g.h + GROUP_GAP_Y), 0);
-  const groupColumns = layout([...groups.values()], [...groupEdges.values()], {
-    maxLength: Math.max(...[...groups.values()].map(g => g.h), Math.sqrt(groupArea / aspect) * 1.1),
-    sizeOf: id => groups.get(id).h,
-    gap: GROUP_GAP_Y,
-  });
-  const total = placeColumns(groupColumns, id => groups.get(id), GROUP_GAP_X, GROUP_GAP_Y);
-  for (const g of groups.values()) {
+  const order = layout([...groups.values()], [...groupEdges.values()], { maxLength: Infinity, sizeOf: () => 1, gap: 0 }).flat();
+  const maxW = Math.max(...[...groups.values()].map(g => g.w));
+  let groupY = 0;
+  for (const id of order) {
+    const g = groups.get(id);
+    g.x = (maxW - g.w) / 2;
+    g.y = groupY;
+    groupY += g.h + GROUP_GAP;
     const offsetX = g.x + PAD + (g.w - PAD * 2 - g.inner.width) / 2;
-    for (const id of g.ids) {
-      const b = boxes.get(id);
+    for (const boxId of g.ids) {
+      const b = boxes.get(boxId);
       b.x += offsetX;
       b.y += g.y + TITLE;
     }
   }
-  const maxW = total.width;
-  const totalH = total.height;
+  const totalH = Math.max(0, groupY - GROUP_GAP);
 
   const svg = svgEl('svg', { class: 'uml-svg' });
   const defs = svgEl('defs');
@@ -457,10 +486,10 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
   requestAnimationFrame(() => fit({ readable: true }));
   // The boxes in reading order (group by group, left to right, top to
   // bottom), for stepping from one type's diff to the next.
-  const order = [...groups.values()].sort((a, b) => a.x - b.x || a.y - b.y)
-    .flatMap(g => g.ids.map(id => boxes.get(id)).sort((a, b) => a.x - b.x || a.y - b.y).map(b => b.id));
+  const readingOrder = [...groups.values()].sort((a, b) => a.y - b.y)
+    .flatMap(g => g.ids.map(id => boxes.get(id)).sort((a, b) => (a.lane > b.lane ? 1 : a.lane < b.lane ? -1 : 0) || a.x - b.x || a.y - b.y).map(b => b.id));
   const elementOf = id => world.querySelector(`.uml-node[data-id="${CSS.escape(id)}"]`);
-  return { fit, zoom, svg, width: maxW, height: totalH, order, elementOf };
+  return { fit, zoom, svg, width: maxW, height: totalH, order: readingOrder, elementOf };
 }
 
 // The legend under the diagram.
@@ -657,16 +686,16 @@ function umlPanel(fullModel, { files = [], comments = null, onFull = null, full 
   if (onFull) button('⤢', 'Open in the whole window', onFull);
   if (!full) panel.appendChild(el('div', 'uml-hint', 'Drag to move · Ctrl+wheel to zoom · point at a box for its changes, click it for its diff'));
   // Drawn once the panel is in the page and has a size. In the chat, the
-  // panel then takes the diagram's height at the width it has (within
-  // limits), so the names show at a readable size.
+  // panel then grows to the diagram's whole height at the width it has (the
+  // diagram folds to that width, see drawUml), so all of it shows at a
+  // readable size without moving around; the chat scrolls past it.
   const draw = () => {
     if (api || !stage.isConnected || !stage.clientWidth) return false;
     api = drawUml(stage, model, { onOpen, wheelZooms: full });
     if (!full) {
       const scale = Math.min(1.15, (stage.clientWidth - 48) / Math.max(1, api.width));
-      const wanted = Math.round(api.height * Math.max(scale, 0.8) + 120);
-      panel.style.height = `${Math.round(Math.min(window.innerHeight * 0.82, Math.max(300, wanted)))}px`;
-      requestAnimationFrame(() => api.fit({ readable: true }));
+      panel.style.height = `${Math.max(260, Math.round(api.height * scale + 90))}px`;
+      requestAnimationFrame(() => api.fit());
     }
     return true;
   };
