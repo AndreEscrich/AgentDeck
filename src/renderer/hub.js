@@ -11,7 +11,7 @@
 // animations do not restart every time an event comes in.
 
 const HUB_STATUS_TEXT = {
-  starting: 'Starting',
+  starting: 'Booting up…',
   working: 'Working',
   waiting: 'Needs you',
   stuck: 'Stuck',
@@ -203,8 +203,12 @@ class Hub {
     const arrival = this.arrivals.get(agent.id);
     this.arrivals.delete(agent.id);
     const tile = el('div', arrival ? 'hub-tile arriving' : 'hub-tile spawn');
-    // Where in its breathing and floating the tile starts (see styles.css).
-    tile.style.setProperty('--phase', `-${(Math.random() * 5).toFixed(2)}s`);
+    // Each tile gets its own starting point (--phase), pace (--tempo, 85-120%)
+    // and wave position (--wave-delay) for every looping animation, so tiles
+    // side by side never move in step (see styles.css).
+    tile.style.setProperty('--phase', `-${(Math.random() * 9).toFixed(2)}s`);
+    tile.style.setProperty('--tempo', (0.85 + Math.random() * 0.35).toFixed(3));
+    tile.style.setProperty('--wave-delay', `-${(Math.random() * 30).toFixed(2)}s`);
     tile.addEventListener('animationend', e => { if (e.animationName === 'spawn') tile.classList.remove('spawn'); });
     // A click opens the agent, unless it was the end of dragging the tile.
     tile.onclick = () => { if (!this.justDragged) this.open(agent.id); };
@@ -226,6 +230,7 @@ class Hub {
       const b = el('span');
       b.style.setProperty('--x', `${10 + Math.random() * 80}%`);
       b.style.setProperty('--d', `${(Math.random() * 2.4).toFixed(2)}s`);
+      b.style.setProperty('--bd', `${(2.1 + Math.random() * 1.4).toFixed(2)}s`);   // each bubble rises at its own speed
       b.style.setProperty('--s', `${4 + Math.round(Math.random() * 6)}px`);
       bubbles.appendChild(b);
     }

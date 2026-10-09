@@ -27,9 +27,11 @@ class AgentManager {
     this.agents = new Map();
   }
 
-  start({ cwd, resumeId, forkSession, permissionMode, model, effort, fastMode, title }) {
+  // The window may pick the id itself (so it can show the agent's tile before
+  // this process has started anything); otherwise a new one is made here.
+  start({ id: wantedId, cwd, resumeId, forkSession, permissionMode, model, effort, fastMode, title }) {
     const config = this.getConfig();
-    const id = randomUUID();
+    const id = typeof wantedId === 'string' && /^[\w-]{8,64}$/.test(wantedId) && !this.agents.has(wantedId) ? wantedId : randomUUID();
     const args = [
       '-p',
       '--input-format', 'stream-json',

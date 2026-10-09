@@ -74,6 +74,20 @@ function summarize(file) {
   };
 }
 
+// The History entry of each file, kept while the file does not change. While
+// agents work, the list is read again every few seconds, and reading all
+// files each time blocked the app for about 200 ms.
+const summaries = new Map();   // file -> { mtimeMs, size, summary }
+
+function summarizeCached(file) {
+  const stat = fs.statSync(file);
+  const hit = summaries.get(file);
+  if (hit && hit.mtimeMs === stat.mtimeMs && hit.size === stat.size) return hit.summary;
+  const summary = summarize(file);
+  summaries.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, summary });
+  return summary;
+}
+
 function listSessions() {
   if (!fs.existsSync(PROJECTS_DIR)) return [];
   const sessions = [];
@@ -84,7 +98,7 @@ function listSessions() {
     for (const f of files) {
       if (!f.endsWith('.jsonl')) continue;
       try {
-        const s = summarize(path.join(full, f));
+        const s = summarizeCached(path.join(full, f));
         if (s) sessions.push(s);
       } catch { /* skip unreadable files */ }
     }

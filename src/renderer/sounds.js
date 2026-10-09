@@ -144,6 +144,10 @@ const sounds = (() => {
   }
 
   return {
+    // Creating the audio engine takes about 180 ms, once. The app does that
+    // while you are idle after it starts, not on the first sound (which is
+    // when you press Enter to create an agent).
+    warm: () => { try { audio(); } catch { /* no audio */ } },
     // The new agent's message lands in its tile in the Hub: it starts to brew.
     brew,
     // An agent asks you a question or needs your approval: two bell taps.

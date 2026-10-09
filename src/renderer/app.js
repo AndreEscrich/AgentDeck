@@ -729,6 +729,8 @@ hub.onConnectorsOpen = () => connectorsPanel.open();
 // older than 10 minutes.
 const activityPanel = new ActivityPanel(hub.activityBox);
 setTimeout(() => activityPanel.load(), 1500);
+// The audio engine is set up ahead of the first sound (see sounds.warm).
+setTimeout(() => { if (playSounds()) (window.requestIdleCallback || setTimeout)(() => sounds.warm()); }, 2500);
 
 // The Dock badge: how many agents wait for you right now.
 let attentionCount = 0;
@@ -1463,15 +1465,10 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
   const title = resume ? resume.session.title : prompt.split('\n')[0].slice(0, 80);
   choice = choice || defaultChoice();
   permissionMode = permissionMode || defaultMode();
-  const { id } = await window.deck.startAgent({
-    cwd,
-    permissionMode,
-    model: choice.model,
-    effort: choice.effort,
-    fastMode: choice.fastMode,
-    resumeId: resume?.session.id || forkFrom?.sessionId,
-    forkSession: !resume && !!forkFrom,
-  });
+  // The agent and its tile exist right away, with the status "starting"
+  // ("Booting up…" in the Hub); Claude Code starts in the background. The
+  // main process can be busy for a moment, and the tile should not wait for it.
+  const id = crypto.randomUUID();
 
   // A resumed session keeps its chat container, so its history stays on screen.
   const view = resume ? resume.view : makeChatView();
@@ -1499,6 +1496,24 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     show('hub');
   } else {
     afterSend(agent, false);
+  }
+
+  try {
+    await window.deck.startAgent({
+      id,
+      cwd,
+      permissionMode,
+      model: choice.model,
+      effort: choice.effort,
+      fastMode: choice.fastMode,
+      resumeId: resume?.session.id || forkFrom?.sessionId,
+      forkSession: !resume && !!forkFrom,
+    });
+  } catch (err) {
+    agent.status = 'error';
+    transcript.note(`Could not start the agent: ${err?.message || err}`, true);
+    refreshHub();
+    return;
   }
   await sendToAgent(agent, prompt);
 }
