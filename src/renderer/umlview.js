@@ -174,9 +174,9 @@ function placeColumns(columns, size, gapX, gapY) {
 
 // ---------- drawing ----------
 
-// An arrow from the type that uses to the type it uses: from the right side
-// of the one to the left side of the other, or around when they stand in the
-// same column. Ends are spread along each side (slots).
+// An arrow from the type that uses to the type it uses: a straight line from
+// a side of the one to the facing side of the other. Ends are spread along
+// each side (slots).
 function drawEdge(a, b, edge, slots) {
   const at = (box, side) => {
     const list = slots.get(`${box.id}|${side}`) || [];
@@ -189,29 +189,25 @@ function drawEdge(a, b, edge, slots) {
     const sy = a.y + a.h * at(a, 'right');
     const tx = b.x;
     const ty = b.y + b.h * at(b, 'left');
-    const dx = Math.max(40, (tx - sx) / 2);
-    d = `M${sx},${sy} C${sx + dx},${sy} ${tx - dx},${ty} ${tx},${ty}`;
+    d = `M${sx},${sy} L${tx},${ty}`;
   } else if (side === 'left') {
     const sx = a.x;
     const sy = a.y + a.h * at(a, 'left');
     const tx = b.x + b.w;
     const ty = b.y + b.h * at(b, 'right');
-    const dx = Math.max(40, (sx - tx) / 2);
-    d = `M${sx},${sy} C${sx - dx},${sy} ${tx + dx},${ty} ${tx},${ty}`;
+    d = `M${sx},${sy} L${tx},${ty}`;
   } else if (side === 'down') {
     const sx = a.x + a.w * at(a, 'bottom');
     const sy = a.y + a.h;
     const tx = b.x + b.w * at(b, 'top');
     const ty = b.y;
-    const dy = Math.max(20, (ty - sy) / 2);
-    d = `M${sx},${sy} C${sx},${sy + dy} ${tx},${ty - dy} ${tx},${ty}`;
+    d = `M${sx},${sy} L${tx},${ty}`;
   } else {
     const sx = a.x + a.w * at(a, 'top');
     const sy = a.y;
     const tx = b.x + b.w * at(b, 'bottom');
     const ty = b.y + b.h;
-    const dy = Math.max(20, (sy - ty) / 2);
-    d = `M${sx},${sy} C${sx},${sy - dy} ${tx},${ty + dy} ${tx},${ty}`;
+    d = `M${sx},${sy} L${tx},${ty}`;
   }
   const g = svgEl('g', { class: `uml-edge ${edge.kind}${edge.fresh ? ' fresh' : ''}`, 'data-from': edge.from, 'data-to': edge.to });
   g.appendChild(svgEl('path', { d, 'marker-end': `url(#uml-${edge.kind === 'uses' ? 'arrow' : 'triangle'}${edge.fresh ? '-fresh' : ''})` }));
@@ -318,11 +314,15 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
     groups.get(key).ids.push(n.id);
   }
   const folderLanes = [];   // { folder, x, right, y } for the lane names
+  // How many types of other namespaces use a type (composers do not count).
+  const externalUsers = id => new Set(model.edges
+    .filter(e => e.to === id && !boxes.get(e.from)?.composer && boxes.get(e.from)?.node.namespace !== boxes.get(id).node.namespace)
+    .map(e => e.from)).size;
   for (const g of groups.values()) {
     // Rows: a type above the types it uses. The composer and the facade's
     // interface have places of their own (see below).
     const composers = g.ids.map(id => boxes.get(id)).filter(b => b.composer);
-    const entries = g.ids.map(id => boxes.get(id)).filter(b => b.facade && b.node.kind === 'interface');
+    const entries = g.ids.map(id => boxes.get(id)).filter(b => b.node.kind === 'interface' && (b.facade || externalUsers(b.id) >= 2));
     const types = g.ids.map(id => boxes.get(id).node).filter(n => !boxes.get(n.id).composer && !entries.includes(boxes.get(n.id)));
     const typeIds = new Set(types.map(n => n.id));
     const composerSpace = composers.length ? composers.length * (COMPOSER_W + 12) + 28 : 0;
@@ -332,8 +332,9 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
       gap: GAP_X,
     });
     // From the top: the rows from the lowest level up (the types the others
-    // use first), then the facade's interface on a row of its own at the
-    // bottom: it is where the other domains come in.
+    // use first), then the entry points on a row of their own at the bottom:
+    // facade interfaces and seams, the interfaces several types of other
+    // namespaces depend on. That is where the other domains come in.
     rows.reverse();
     if (entries.length) rows.push(entries.map(b => b.id));
     // Each folder has a lane, the same strip in every row; the folders in
