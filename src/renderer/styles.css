@@ -536,10 +536,6 @@ details.change-file > summary:hover { background: var(--bg-hover); }
 .uml-panel.detail-open .uml-stage { filter: blur(2px) saturate(0.6); opacity: 0.35; pointer-events: none; }
 .uml-panel.detail-open .uml-tools, .uml-panel.detail-open .uml-legend, .uml-panel.detail-open .uml-hint { opacity: 0; pointer-events: none; }
 /* Package boxes: one per namespace */
-.uml-group rect { fill: rgba(255, 255, 255, 0.025); stroke: rgba(233, 162, 59, 0.28); stroke-width: 1.2; }
-.uml-group.context rect { fill: none; stroke: var(--border); stroke-dasharray: 5 4; }
-.uml-group text { font: 600 11px var(--font); fill: var(--accent); letter-spacing: 0.03em; opacity: 0.85; }
-.uml-group.context text { fill: var(--text-faint); }
 /* A type's diff, grown out of its box */
 .uml-detail-backdrop { position: absolute; inset: 0; z-index: 30; background: rgba(8, 9, 12, 0.55); backdrop-filter: blur(2px); opacity: 0; transition: opacity 0.15s; }
 .uml-detail-backdrop.shown { opacity: 1; }
@@ -597,6 +593,9 @@ details.change-file > summary:hover { background: var(--bg-hover); }
 .uml-stereo { font: 11px var(--font); fill: var(--text-faint); text-anchor: middle; }
 .uml-name { font: 600 13px var(--font); fill: var(--text); text-anchor: middle; }
 .uml-node.kind-interface .uml-name { font-style: italic; }
+/* Folder labels: types of one folder stand together under their label */
+.uml-folder line { stroke: rgba(233, 162, 59, 0.35); stroke-width: 1.5; }
+.uml-folder text { font: 600 11px var(--font); fill: var(--accent); opacity: 0.8; letter-spacing: 0.02em; }
 /* The composition root: a bar across its namespace; its wiring shows on hover */
 .uml-node.composer .uml-box { fill: rgba(233, 162, 59, 0.07); stroke-dasharray: 6 4; }
 .uml-node.composer .uml-name { font-weight: 600; fill: var(--text-dim); }
