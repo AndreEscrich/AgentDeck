@@ -12,11 +12,13 @@ const { execFile } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { Readable } = require('stream');
 const { pathToFileURL } = require('url');
 
 const IMAGE = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif', 'ico']);
 const CONVERT = new Set(['tga', 'psd', 'exr', 'tif', 'tiff', 'hdr', 'heic']);
 const VIDEO = new Set(['mp4', 'webm', 'mov', 'm4v']);
+const VIDEO_TYPE = { mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime' };
 
 // Folders that are never searched for new media: Unity's caches and build
 // output, version control and packages.
@@ -59,9 +61,32 @@ function registerProtocol(protocol, net, cacheDir) {
       source = await convertedPreview(file, cacheDir);
       if (!source) return new Response('This format cannot be shown here', { status: 415 });
     }
-    // Passing the request's headers on keeps Range requests working, which
-    // video players use to jump around in a file.
-    return net.fetch(pathToFileURL(source).toString(), { headers: request.headers });
+    if (kind === 'video') return videoResponse(source, request.headers.get('range'));
+    return net.fetch(pathToFileURL(source).toString());
+  });
+}
+
+// A video player jumps to a point in the clip by asking for that part of the
+// file ("Range: bytes=1000-"). A file:// fetch ignores that and sends the
+// whole file, so the player cannot seek and keeps playing. This answers with
+// exactly the bytes asked for (status 206).
+function videoResponse(file, rangeHeader) {
+  let size;
+  try { size = fs.statSync(file).size; } catch { return new Response('Not found', { status: 404 }); }
+  const headers = { 'Content-Type': VIDEO_TYPE[extensionOf(file)] || 'application/octet-stream', 'Accept-Ranges': 'bytes' };
+  const m = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader || '');
+  if (!m || (!m[1] && !m[2])) {
+    return new Response(Readable.toWeb(fs.createReadStream(file)), { status: 200, headers: { ...headers, 'Content-Length': String(size) } });
+  }
+  // "bytes=-500" means the last 500 bytes.
+  let start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]));
+  let end = m[1] && m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
+  if (start >= size || start > end) {
+    return new Response(null, { status: 416, headers: { ...headers, 'Content-Range': `bytes */${size}` } });
+  }
+  return new Response(Readable.toWeb(fs.createReadStream(file, { start, end })), {
+    status: 206,
+    headers: { ...headers, 'Content-Length': String(end - start + 1), 'Content-Range': `bytes ${start}-${end}/${size}` },
   });
 }
 
