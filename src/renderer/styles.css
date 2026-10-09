@@ -1025,3 +1025,9 @@ video.chat-media { background: #000; }
   .prompt-pin.show .prompt-pin-bar { transform: none; }
   .prompt-pin-text { font-size: 12.5px; -webkit-line-clamp: 10; }
 }
+
+/* Hub: clicking a Group panel points the message box at it; that panel is outlined */
+.hub-section { cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s; }
+.hub-section .hub-tile { cursor: pointer; }
+.hub-section:hover { border-color: var(--text-faint); }
+.hub-section.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }

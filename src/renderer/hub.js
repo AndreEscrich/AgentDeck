@@ -35,7 +35,10 @@ class Hub {
   // New agents start only from the message box under the Hub.
   // onRemove(agentId) removes a tile's agent; onContext(agentId) shows its
   // right-click menu.
-  constructor(container, { onOpen, onRemove, onInterrupt, onRemoveGroup, onContext, onLanded, onReplay, onTab, onReorder, onDragSound }) {
+  constructor(container, { onOpen, onRemove, onInterrupt, onRemoveGroup, onContext, onLanded, onReplay, onTab, onReorder, onDragSound, onPickGroup }) {
+    // Clicking a Group panel (not a tile) points the message box at that Group.
+    this.onPickGroup = onPickGroup;
+    this.selectedKey = null;
     this.onOpen = onOpen;
     this.onInterrupt = onInterrupt;
     this.onReorder = onReorder;
@@ -298,6 +301,7 @@ class Hub {
   }
 
   render(agents, currentId, groups = []) {
+    const seenSections = new Set();   // the first agent of each panel gives the panel its folder
     const seen = new Set();
     const counts = new Map();
     const firstAt = new Map();   // panel key -> place of its first agent
@@ -312,7 +316,9 @@ class Hub {
       const key = `${groupKey}\n${agent.repo || ''}`;
       counts.set(key, (counts.get(key) || 0) + 1);
       if (!firstAt.has(key)) firstAt.set(key, order);
-      const grid = this.section(key, groupKey, agent.repo || '').grid;
+      const sec = this.section(key, groupKey, agent.repo || '');
+      if (!seenSections.has(sec)) { seenSections.add(sec); sec.cwd = agent.cwd; }
+      const grid = sec.grid;
       if (tile.parentNode !== grid) grid.appendChild(tile);
       if (entry.arrival) {
         const info = entry.arrival;
@@ -400,7 +406,13 @@ class Hub {
       const grid = el('div', 'hub-grid');
       elSec.append(head, grid);
       this.grid.appendChild(elSec);
-      sec = { key, groupKey, repo, el: elSec, name, repoEl, count, grid };
+      sec = { key, groupKey, repo, el: elSec, name, repoEl, count, grid, cwd: null };
+      elSec.classList.toggle('selected', key === this.selectedKey);
+      elSec.title = 'Click to start the next agent in this group';
+      elSec.addEventListener('click', e => {
+        if (e.target.closest('.hub-tile, button')) return;
+        if (sec.cwd) this.onPickGroup?.(sec.groupKey || null, sec.cwd);
+      });
       remove.onclick = e => {
         e.stopPropagation();
         const ids = [...this.tiles].filter(([, t]) => t.el.parentNode === grid && !t.removing).map(([id]) => id);
@@ -409,6 +421,12 @@ class Hub {
       this.sections.set(key, sec);
     }
     return sec;
+  }
+
+  // Outlines the panel the message box points at (key: Category id + "\n" + repository).
+  markSelected(key) {
+    this.selectedKey = key;
+    for (const sec of this.sections.values()) sec.el.classList.toggle('selected', sec.key === key);
   }
 
   // The tank drains, the tile tips over and shrinks with a puff of

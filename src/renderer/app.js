@@ -153,6 +153,12 @@ function renderDraftButtons() {
   const group = state.groups.groups.find(g => g.id === d.groupId);
   $('composer-group').textContent = (group ? '# ' + group.name : '# No category') + ' ▾';
   $('composer-group').title = 'The category the new agent goes into. Category and folder together make its Group.';
+  // Outline the Hub panel this message box points at. (At startup the Hub
+  // does not exist yet; it picks the outline up on its first update.)
+  try {
+    const category = state.groups.groups.some(g => g.id === d.groupId) ? d.groupId : '';
+    hub.markSelected(d.folder ? `${category}\n${repoName(d.folder)}` : null);
+  } catch { /* the Hub is not created yet */ }
   // Which agent the next one continues from (see forkSourceFor).
   const source = forkSourceFor(d.folder, d.groupId);
   const fork = $('composer-fork');
@@ -644,6 +650,16 @@ function continueReview(left, closing) {
 $('back-to-hub').onclick = backToHub;
 
 const hub = new Hub($('hub-view'), {
+  // Clicking a Group panel: the next agent goes into that Group (its folder
+  // and Category), so it continues from the Group's latest agent.
+  onPickGroup: (categoryId, folder) => {
+    const d = ensureDraft();
+    d.folder = folder;
+    d.groupId = categoryId;
+    setFolderHidden(folder, false);
+    renderDraftButtons();
+    $('input').focus();
+  },
   onOpen: async id => {
     if (id.startsWith('p:')) return openParked(id.slice(2));
     show('agent', id);
