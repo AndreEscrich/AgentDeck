@@ -1,8 +1,9 @@
 // The class diagram of a task's C# changes (the model comes from
 // src/csharp.js): one box per type the task added, changed or removed, with
 // just its name, in a box per namespace, and arrows for how the types depend
-// on each other. The dependencies flow down: a type stands above the types it
-// uses, and a namespace above the namespaces it uses. Inside a namespace,
+// on each other. The lower levels stand on top: a type stands below the types
+// it uses (its arrows point up), and a namespace below the namespaces it
+// uses. Inside a namespace,
 // each folder has a lane of its own, under its name. Drag to move around, Ctrl+wheel (or the
 // buttons) to zoom; in the full-window view the wheel zooms by itself. Point
 // at a box for its changed members; click it to open its diff.
@@ -348,13 +349,10 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
       laneX.set(f, x0);
       x0 += laneWidth.get(f) + LANE_GAP;
     }
-    // From the top: the composer bars, the folder names, then the rows.
+    // From the top: the folder names, the rows from the lowest level up (the
+    // types the others use first), then the composer bars, which use them all.
+    rows.reverse();
     let y = 0;
-    for (const b of composers) {
-      Object.assign(b, { x: 0, y, w: innerWidth, lane: `composer|${g.id}`, row: `composer|${g.id}` });
-      y += COMPOSER_H + 12;
-    }
-    if (composers.length) y += COMPOSER_GAP - 12;
     const lanesTop = y;
     if (folders.length) y += LABEL;
     rows.forEach((row, r) => {
@@ -369,11 +367,16 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
       y += UML_BOX_H + GAP_Y;
     });
     g.lanes = folders.map(f => ({ folder: f, x: laneX.get(f), right: laneX.get(f) + laneWidth.get(f), y: lanesTop, bottom: y - GAP_Y }));
-    g.inner = { width: innerWidth, height: rows.length ? y - GAP_Y : Math.max(0, y - COMPOSER_GAP) };
+    if (rows.length) y += COMPOSER_GAP - GAP_Y;
+    for (const b of composers) {
+      Object.assign(b, { x: 0, y, w: innerWidth, lane: `composer|${g.id}`, row: `composer|${g.id}` });
+      y += COMPOSER_H + 12;
+    }
+    g.inner = { width: innerWidth, height: composers.length ? y - 12 : rows.length ? y - (COMPOSER_GAP - GAP_Y) - GAP_Y : 0 };
     g.w = innerWidth + PAD * 2;
     g.h = g.inner.height + TITLE + PAD;
   }
-  // The namespaces under each other, a namespace above the ones it uses
+  // The namespaces under each other, a namespace below the ones it uses
   // (a composer's wiring does not count).
   const groupEdges = new Map();
   for (const e of model.edges) {
@@ -382,7 +385,7 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
     const b = boxes.get(e.to)?.node.namespace || '(no namespace)';
     if (a !== b) groupEdges.set(`${a}>${b}`, { from: a, to: b });
   }
-  const groupOrder = layout([...groups.values()], [...groupEdges.values()], { maxLength: Infinity, sizeOf: () => 1, gap: 0 }).flat();
+  const groupOrder = layout([...groups.values()], [...groupEdges.values()], { maxLength: Infinity, sizeOf: () => 1, gap: 0 }).flat().reverse();
   const maxW = Math.max(0, ...[...groups.values()].map(g => g.w));
   let groupY = 0;
   for (const id of groupOrder) {
