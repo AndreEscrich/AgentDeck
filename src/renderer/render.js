@@ -586,6 +586,7 @@ class Transcript {
         this.addStep(d, 'Thinking…');
       } else if (block.type === 'tool_use') {
         if (block.name === 'Skill') this.addSkill(turn, block.input?.skill);
+        this.noteEvidence(turn, block);
         this.clearDraft();
         // Text before a tool call was a note to itself, not the answer.
         turn.pendingText = [];
@@ -644,6 +645,34 @@ class Transcript {
     this.turn.changes.set(path, entry);
   }
 
+  // What the agent did during the task that can change files: the files it
+  // edited or wrote, the commands it ran, the scripts it wrote, and the input
+  // of other tools that change things (Unity tools, sub-agents). Read-only
+  // tools do not count: reading a file does not change it.
+  noteEvidence(turn, block) {
+    const READ_ONLY = new Set(['Read', 'Grep', 'Glob', 'LS', 'WebFetch', 'WebSearch', 'TodoWrite', 'Skill', 'ToolSearch']);
+    const SCRIPT = /\.(py|sh|bash|zsh|js|mjs|cjs|ts|rb|pl|ps1|command|bat|cmd)$/i;
+    const input = block.input || {};
+    turn.touched = turn.touched || new Set();
+    turn.evidence = turn.evidence || [];
+    const file = input.file_path || input.notebook_path;
+    if (file) turn.touched.add(file);
+    if (block.name === 'Bash' || block.name === 'PowerShell') turn.evidence.push(String(input.command || ''));
+    else if (block.name === 'Write' && SCRIPT.test(file || '')) turn.evidence.push(String(input.content || ''));
+    else if (!READ_ONLY.has(block.name) && !['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(block.name)) {
+      try { turn.evidence.push(JSON.stringify(input)); } catch { /* not important */ }
+    }
+  }
+
+  // True when the agent changed this file (path relative to its folder): it
+  // edited or wrote it, or named it in a command, a script or a tool's input.
+  agentTouched(turn, rel) {
+    const abs = this.cwd ? `${this.cwd.replace(/[\\/]$/, '')}/${rel}` : rel;
+    if (turn.touched?.has(abs) || turn.touched?.has(rel)) return true;
+    const name = rel.split('/').pop();
+    return (turn.evidence || []).some(text => text.includes(rel) || text.includes(name));
+  }
+
   isInside(p) {
     if (!this.cwd) return true;
     return p === this.cwd || p.startsWith(this.cwd + '/') || p.startsWith(this.cwd + '\\');
@@ -694,7 +723,9 @@ class Transcript {
   async showGitChanges(turn, diffText, merge) {
     if (!turn || diffText == null) return;
     turn.gitShown = true;
-    const files = parseUnifiedDiff(diffText);
+    // The snapshot also catches changes you (or other agents) made in the same
+    // folder while this agent worked. Only files the agent touched stay.
+    const files = parseUnifiedDiff(diffText).filter(f => this.agentTouched(turn, f.path));
     if (merge) {
       await this.pruneMissing(turn).catch(() => {});
       const seen = new Set(files.map(f => f.path));
