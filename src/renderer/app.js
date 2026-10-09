@@ -447,7 +447,34 @@ function scrollToBottom(view) {
   });
 }
 
+// ---------- one message box per view ----------
+
+// The Hub, every agent and every saved session keep their own text in the
+// message box: leaving a view remembers what you typed there, and coming back
+// puts it back. Sending empties only the box of the view you sent from.
+const inputDrafts = new Map();   // view key -> text
+
+function viewKey(view) {
+  if (!view) return null;
+  if (view.kind === 'agent' || view.kind === 'history') return `${view.kind}:${view.id}`;
+  return view.kind; // 'hub', 'new'
+}
+
+function saveInputDraft() {
+  const key = viewKey(state.current);
+  if (!key) return;
+  const text = $('input').value;
+  if (text) inputDrafts.set(key, text);
+  else inputDrafts.delete(key);
+}
+
+function restoreInputDraft() {
+  $('input').value = inputDrafts.get(viewKey(state.current)) || '';
+  autosize();
+}
+
 function show(kind, id) {
+  saveInputDraft();
   state.current = { kind, id };
   requestAnimationFrame(updateNextHint);
   $('back-to-hub').classList.toggle('hidden', !['agent', 'history'].includes(kind));
@@ -501,6 +528,7 @@ function show(kind, id) {
   // first time you open the agent.
   if (kind === 'agent' && state.agents.get(id) && !state.agents.get(id).context) updateContext(state.agents.get(id));
   renderContextMeter();
+  restoreInputDraft();
 }
 
 // ---------- hub ----------
