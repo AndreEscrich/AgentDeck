@@ -25,9 +25,9 @@ const DEFAULT_CONFIG = {
   defaultModel: 'opus',                 // a value from the model menu; "opus" is always the latest Opus
   defaultEffort: 'medium',              // low | medium | high | xhigh | max; empty means the model's default
   defaultFastMode: false,
-  stuckAfterSeconds: 120,               // one tool call running this long marks the agent as stuck
+  stuckAfterSeconds: 30,                // one tool call running this long marks the agent as stuck
   stuckRepeatCount: 4,                  // …or the same tool call this many times in a row
-  stuckRepeatSeconds: 90,               //    over at least this long
+  stuckRepeatSeconds: 30,               //    over at least this long
   defaultFolder: '',
   extraArgs: [],                        // extra command-line flags for every agent
   env: {},                              // extra environment variables for every agent
@@ -231,7 +231,7 @@ app.whenReady().then(() => {
     return r.canceled ? null : r.filePaths[0];
   });
   ipcMain.handle('agent:start', (_e, opts) => agents.start(opts));
-  ipcMain.handle('agent:send', (_e, id, text) => agents.sendMessage(id, text));
+  ipcMain.handle('agent:send', (_e, id, text, images) => agents.sendMessage(id, text, images));
   ipcMain.handle('agent:setModel', (_e, id, choice) => agents.setModel(id, choice));
   let models = null;
   ipcMain.handle('models:list', async () => {

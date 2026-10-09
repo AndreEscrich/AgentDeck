@@ -447,6 +447,62 @@ function scrollToBottom(view) {
   });
 }
 
+// ---------- images and videos for the agent ----------
+
+// Drop images or videos on the window (while a message box is shown), or
+// paste an image into the message box: they go with your next message (see
+// renderer/attachments.js).
+const attachments = new Attachments($('composer-attachments'), {
+  key: () => viewKey(state.current),
+});
+
+{
+  let depth = 0;   // drag events fire for every element the pointer crosses
+  const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
+  const box = () => document.querySelector('.composer-box');
+  const canDrop = () => !$('composer').classList.contains('hidden');
+  document.addEventListener('dragenter', e => {
+    if (!hasFiles(e)) return;
+    depth++;
+    if (canDrop()) box().classList.add('drag-over');
+  });
+  document.addEventListener('dragleave', e => {
+    if (!hasFiles(e)) return;
+    depth = Math.max(0, depth - 1);
+    if (!depth) box().classList.remove('drag-over');
+  });
+  document.addEventListener('dragover', e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = canDrop() ? 'copy' : 'none';
+  });
+  // A file dropped anywhere must never replace the app's page with the file.
+  document.addEventListener('drop', e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    depth = 0;
+    box().classList.remove('drag-over');
+    if (!canDrop()) return;
+    const skipped = attachments.add([...e.dataTransfer.files]);
+    if (skipped.length) flashComposerNote(`Only images and videos can be attached (${skipped.join(', ')} skipped).`);
+    $('input').focus();
+  });
+  $('input').addEventListener('paste', e => {
+    const files = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/'));
+    if (!files.length) return;
+    // A pasted screenshot is attached; pasted text still goes into the box.
+    if (!e.clipboardData.getData('text')) e.preventDefault();
+    attachments.add(files);
+  });
+}
+
+// A short note over the message box that fades out again.
+function flashComposerNote(text) {
+  const note = el('div', 'composer-flash', text);
+  document.querySelector('.composer-box').appendChild(note);
+  setTimeout(() => note.remove(), 3500);
+}
+
 // ---------- one message box per view ----------
 
 // The Hub, every agent and every saved session keep their own text in the
@@ -471,6 +527,7 @@ function saveInputDraft() {
 function restoreInputDraft() {
   $('input').value = inputDrafts.get(viewKey(state.current)) || '';
   autosize();
+  attachments.render();
 }
 
 function show(kind, id) {
@@ -1463,7 +1520,7 @@ window.deck.onQuitting(() => {
 
 // ---------- agents ----------
 
-async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId, fromRect, forkFrom }) {
+async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId, fromRect, forkFrom, images = [] }) {
   const title = resume ? resume.session.title : prompt.split('\n')[0].slice(0, 80);
   choice = choice || defaultChoice();
   permissionMode = permissionMode || defaultMode();
@@ -1489,7 +1546,7 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     agent.forkedFrom = forkFrom;
     transcript.note(`Continues from "${forkFrom.title}", so it knows what that agent did.`);
   }
-  transcript.add({ type: 'user', message: { role: 'user', content: prompt } });
+  transcript.add({ type: 'user', message: { role: 'user', content: userContent(prompt, images) } });
   if (!resume) summarizeTitle(agent, prompt);
   else if (prompt !== RESUME_PROMPT) notePrompt(agent, prompt);
   if (fromRect) {
@@ -1517,7 +1574,7 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     refreshHub();
     return;
   }
-  await sendToAgent(agent, prompt);
+  await sendToAgent(agent, prompt, images);
 }
 
 // ---------- titles ----------
@@ -1589,14 +1646,20 @@ function afterSend(agent, wake) {
 
 // Before each message, remember the state of the files (only in a git
 // repository), so that after the turn we can list every file the agent changed.
-async function sendToAgent(agent, text) {
+// Your message as the chat shows it: the text, plus the images you attached.
+function userContent(text, images = []) {
+  if (!images.length) return text;
+  return [{ type: 'text', text }, ...images.map(i => ({ type: 'image', source: { type: 'base64', media_type: i.mediaType, data: i.data } }))];
+}
+
+async function sendToAgent(agent, text, images = []) {
   // Images and videos changed after this moment count as the task's media.
   // A second of slack covers clocks that round file times.
   if (!agent.mediaSince) agent.mediaSince = Date.now() - 1000;
   if (!agent.snapshot) {
     try { agent.snapshot = await window.deck.gitSnapshot(agent.cwd); } catch { agent.snapshot = null; }
   }
-  await window.deck.sendMessage(agent.id, text);
+  await window.deck.sendMessage(agent.id, text, images);
 }
 
 // Your plan's usage, as Claude Code reports it with each agent's replies,
@@ -1768,15 +1831,29 @@ window.deck.onExit((id, { code, stderr }) => {
 
 async function sendFromComposer() {
   const input = $('input');
-  const text = input.value.trim();
+  const typed = input.value.trim();
+  const hasFiles = attachments.current().length > 0;
   // Enter in the Hub's empty message box also opens the next agent that needs you.
-  if (!text && state.current?.kind === 'hub') {
+  if (!typed && !hasFiles && state.current?.kind === 'hub') {
     reviewNext();
     return;
   }
-  if (!text || !state.current) return;
+  if ((!typed && !hasFiles) || !state.current) return;
+  // While Claude waits for an answer to its question, what you type is the
+  // answer; dropped files stay for your next message.
+  const waitingAgent = state.current.kind === 'agent' ? state.agents.get(state.current.id) : null;
+  if (waitingAgent?.pendingQuestion && typed) {
+    input.value = '';
+    autosize();
+    waitingAgent.pendingQuestion.card.answerWith(typed);
+    return;
+  }
   input.value = '';
   autosize();
+  // Dropped images and videos go with the message; the text names their files.
+  const { images, note } = hasFiles ? await attachments.take() : { images: [], note: '' };
+  const text = [typed || (images.length ? 'Take a look at the attached files.' : ''), note].filter(Boolean).join('\n\n');
+  if (!text) return;
 
   if (state.current.kind === 'hub') {
     // The message box morphs into the new agent's tile.
@@ -1795,18 +1872,13 @@ async function sendFromComposer() {
     state.draft = null;
     const forkFrom = forkSourceFor(d.folder, d.groupId);
     if (playSounds()) sounds.created();
-    await startAgent({ cwd: d.folder, prompt: text, permissionMode: d.mode, choice: d.choice, groupId: d.groupId, fromRect, forkFrom });
+    await startAgent({ cwd: d.folder, prompt: text, permissionMode: d.mode, choice: d.choice, groupId: d.groupId, fromRect, forkFrom, images });
   } else if (state.current.kind === 'agent') {
     const a = state.agents.get(state.current.id);
-    // While Claude waits for an answer to its question, what you type is the answer.
-    if (a.pendingQuestion) {
-      a.pendingQuestion.card.answerWith(text);
-      return;
-    }
-    a.transcript.add({ type: 'user', message: { role: 'user', content: text } });
+    a.transcript.add({ type: 'user', message: { role: 'user', content: userContent(text, images) } });
     notePrompt(a, text);
     afterSend(a, true);
-    await sendToAgent(a, text);
+    await sendToAgent(a, text, images);
   } else if (state.current.kind === 'history') {
     const h = state.history.get(state.current.id);
     const cwd = h.cwd || h.session.cwd;
@@ -1815,7 +1887,7 @@ async function sendFromComposer() {
       return;
     }
     if (playSounds()) sounds.created();
-    await startAgent({ cwd, prompt: text, permissionMode: h.mode, choice: h.choice, resume: h });
+    await startAgent({ cwd, prompt: text, permissionMode: h.mode, choice: h.choice, resume: h, images });
   }
 }
 
@@ -1981,9 +2053,9 @@ setInterval(renderSidebar, 60_000);
 function checkStuck() {
   const c = state.config;
   const limits = {
-    longMs: (c.stuckAfterSeconds || 120) * 1000,
+    longMs: (c.stuckAfterSeconds || 30) * 1000,
     repeatCount: c.stuckRepeatCount || 4,
-    repeatMs: (c.stuckRepeatSeconds || 90) * 1000,
+    repeatMs: (c.stuckRepeatSeconds || 30) * 1000,
   };
   for (const a of state.agents.values()) {
     if (!['working', 'stuck'].includes(a.status)) continue;

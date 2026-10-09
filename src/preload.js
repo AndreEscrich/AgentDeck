@@ -1,7 +1,7 @@
 // The only functions the window can call. Everything else (files, processes)
 // stays in the main process.
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 function on(channel, fn) {
   const listener = (_e, ...args) => fn(...args);
@@ -37,7 +37,9 @@ contextBridge.exposeInMainWorld('deck', {
   loadTranscript: file => ipcRenderer.invoke('sessions:load', file),
   pickFolder: () => ipcRenderer.invoke('dialog:pickFolder'),
   startAgent: opts => ipcRenderer.invoke('agent:start', opts),
-  sendMessage: (id, text) => ipcRenderer.invoke('agent:send', id, text),
+  sendMessage: (id, text, images) => ipcRenderer.invoke('agent:send', id, text, images),
+  // Where a dropped file is on disk (Electron no longer puts it on the File).
+  pathForFile: file => { try { return webUtils.getPathForFile(file) || null; } catch { return null; } },
   setModel: (id, choice) => ipcRenderer.invoke('agent:setModel', id, choice),
   listModels: () => ipcRenderer.invoke('models:list'),
   respondPermission: (id, requestId, decision) => ipcRenderer.invoke('agent:respondPermission', id, requestId, decision),

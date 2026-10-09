@@ -33,6 +33,19 @@ function resolveMediaPath(src, cwd) {
   return cwd.replace(/[\\/]$/, '') + '/' + p.replace(/^\.\//, '');
 }
 
+// An attached image at full size; Esc or a click closes it.
+function openImageOverlay(src) {
+  const box = el('div', 'lightbox');
+  const img = document.createElement('img');
+  img.src = src;
+  box.appendChild(img);
+  const close = () => { box.remove(); document.removeEventListener('keydown', onKey, true); };
+  const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+  box.onclick = close;
+  document.addEventListener('keydown', onKey, true);
+  document.body.appendChild(box);
+}
+
 // Full size on click; Esc or another click closes it.
 function openLightbox(file) {
   const box = el('div', 'lightbox');
@@ -567,6 +580,19 @@ class Transcript {
         b.appendChild(linkify(t));
         return decorateLinks(b);
       });
+      // Images you attached show as small pictures in your message.
+      const pictures = Array.isArray(content) ? content.filter(b => b.type === 'image' && b.source?.type === 'base64') : [];
+      if (pictures.length) {
+        const row = el('div', 'msg-images');
+        for (const p of pictures) {
+          const img = document.createElement('img');
+          img.src = `data:${p.source.media_type};base64,${p.source.data}`;
+          img.alt = 'Attached image';
+          img.onclick = () => openImageOverlay(img.src);
+          row.appendChild(img);
+        }
+        bubbles[bubbles.length - 1].appendChild(row);
+      }
       for (const b of bubbles) this.append(b);
       this.prompts.push({ el: bubbles[0], text: texts.join('\n').trim() });
       this.startTurn();

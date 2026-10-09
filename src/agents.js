@@ -170,10 +170,15 @@ class AgentManager {
     this.send('agent:status', agent.id, status);
   }
 
-  sendMessage(id, text) {
+  // images: [{ mediaType, data }] (base64), sent before the text so Claude
+  // sees them. Claude reads png, jpeg, gif and webp.
+  sendMessage(id, text, images = []) {
     const agent = this.agents.get(id);
     if (!agent) throw new Error('Agent is not running');
-    const msg = { type: 'user', message: { role: 'user', content: [{ type: 'text', text }] } };
+    const pictures = (Array.isArray(images) ? images : [])
+      .filter(i => /^image\/(png|jpeg|gif|webp)$/.test(i?.mediaType) && typeof i.data === 'string')
+      .map(i => ({ type: 'image', source: { type: 'base64', media_type: i.mediaType, data: i.data } }));
+    const msg = { type: 'user', message: { role: 'user', content: [...pictures, { type: 'text', text }] } };
     agent.proc.stdin.write(JSON.stringify(msg) + '\n');
     this.setStatus(agent, 'working');
   }
