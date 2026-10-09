@@ -587,6 +587,7 @@ class Transcript {
       } else if (block.type === 'tool_use') {
         if (block.name === 'Skill') this.addSkill(turn, block.input?.skill);
         this.noteEvidence(turn, block);
+        this.trackTool(turn, block);
         this.clearDraft();
         // Text before a tool call was a note to itself, not the answer.
         turn.pendingText = [];
@@ -610,6 +611,7 @@ class Transcript {
   }
 
   fillTool(block, toolUseResult) {
+    this.turn?.openTools?.delete(block.tool_use_id);
     const tool = this.tools.get(block.tool_use_id);
     if (!tool) return;
     const state = tool.card.querySelector('.tool-state');
@@ -662,6 +664,39 @@ class Transcript {
     else if (!READ_ONLY.has(block.name) && !['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(block.name)) {
       try { turn.evidence.push(JSON.stringify(input)); } catch { /* not important */ }
     }
+  }
+
+  // ---------- stuck agents ----------
+
+  // Remembers which tool calls are still running, and how often the agent
+  // has made the same call in a row. Numbers do not count as a difference,
+  // so "sleep 5" and "sleep 10" are the same call.
+  trackTool(turn, block) {
+    const summary = toolSummary(block.name, block.input || {});
+    turn.openTools = turn.openTools || new Map();
+    turn.openTools.set(block.id, { name: block.name, summary, startedAt: Date.now() });
+    const key = `${block.name}|${summary.replace(/\d+/g, '#').slice(0, 160)}`;
+    if (turn.streak?.key === key) turn.streak.count++;
+    else turn.streak = { key, name: block.name, summary, count: 1, since: Date.now() };
+  }
+
+  // Whether the task in progress looks stuck: one tool call running for at
+  // least longMs, or the same call made repeatCount times in a row over at
+  // least repeatMs. Sub-agents are left out: they often run long on purpose.
+  // Returns { name, summary, since, count? } or null.
+  stuckInfo({ longMs, repeatCount, repeatMs }) {
+    const turn = this.turn;
+    if (!turn) return null;
+    const now = Date.now();
+    for (const t of turn.openTools?.values() || []) {
+      if (['Task', 'Agent'].includes(t.name)) continue;
+      if (now - t.startedAt >= longMs) return { name: t.name, summary: t.summary, since: t.startedAt };
+    }
+    const s = turn.streak;
+    if (s && !['Task', 'Agent'].includes(s.name) && s.count >= repeatCount && now - s.since >= repeatMs) {
+      return { name: s.name, summary: s.summary, since: s.since, count: s.count };
+    }
+    return null;
   }
 
   // True when the agent changed this file (path relative to its folder): it

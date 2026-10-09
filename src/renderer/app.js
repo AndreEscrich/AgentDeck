@@ -18,6 +18,7 @@ const STATUS_TEXT = {
   working: 'Working',
   idle: 'Waiting for you',
   waiting: 'Needs approval',
+  stuck: 'Stuck',
   error: 'Error',
   exited: 'Stopped',
 };
@@ -542,11 +543,14 @@ function reviewQueue() {
   const items = hubItems();
   const waiting = items.filter(i => i.status === 'waiting' && i.unread)
     .sort((a, b) => (a.waitingSince || 0) - (b.waitingSince || 0));
+  // Stuck agents probably need you too: right after the ones that wait for you.
+  const stuck = items.filter(i => i.status === 'stuck')
+    .sort((a, b) => (a.stuck?.since || 0) - (b.stuck?.since || 0));
   const unseen = items.filter(i => i.unread && i.status === 'idle')
     .sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
   const unanswered = items.filter(i => i.status === 'waiting' && !i.unread)
     .sort((a, b) => (a.waitingSince || 0) - (b.waitingSince || 0));
-  return [...waiting, ...unseen, ...unanswered];
+  return [...waiting, ...stuck, ...unseen, ...unanswered];
 }
 
 // A new press of Enter starts a round. Within a round, agents already opened
@@ -738,7 +742,7 @@ function refreshHub() {
     hub.update(items, state.current?.kind === 'agent' ? state.current.id : null, state.groups.groups);
     saveHub();
     const agents = items.filter(a => !a.parked);
-    const busy = agents.filter(a => ['working', 'starting', 'waiting'].includes(a.status)).length;
+    const busy = agents.filter(a => ['working', 'starting', 'waiting', 'stuck'].includes(a.status)).length;
     // Agents finishing or getting their short title change the "continues from" line.
     if (['new', 'hub'].includes(state.current?.kind)) renderDraftButtons();
     updateNextHint();
@@ -824,7 +828,7 @@ function hubInfo(a) {
     finishedAt: a.finishedAt || 0,
     // Busy when this was saved. If the app quits now, the agent continues
     // the next time the app opens (see resumeInterrupted).
-    wasWorking: ['working', 'starting', 'waiting'].includes(a.status),
+    wasWorking: ['working', 'starting', 'waiting', 'stuck'].includes(a.status),
   };
 }
 
@@ -1033,8 +1037,8 @@ function setHeader(title, subtitle, agent) {
   } else {
     pill.classList.add('hidden');
   }
-  $('btn-interrupt').classList.toggle('hidden', !agent || agent.status !== 'working');
-  $('composer-stop').classList.toggle('hidden', !agent || agent.status !== 'working');
+  $('btn-interrupt').classList.toggle('hidden', !agent || !['working', 'stuck'].includes(agent.status));
+  $('composer-stop').classList.toggle('hidden', !agent || !['working', 'stuck'].includes(agent.status));
   $('btn-close').classList.toggle('hidden', !agent || agent.status === 'exited');
 }
 
@@ -1326,7 +1330,7 @@ async function resumeInterrupted() {
 
 // The app is about to quit: save which agents are busy, and keep that list,
 // because stopping the agents would otherwise mark them as finished.
-const BUSY = ['working', 'starting', 'waiting'];
+const BUSY = ['working', 'starting', 'waiting', 'stuck'];
 
 // A card in the app (not a system dialog) that asks before stopping working
 // agents: a title, a sentence, the agents with their state, and two buttons.
@@ -1801,7 +1805,7 @@ $('send').onclick = sendFromComposer;
 // message. From the top bar, the message box, or its tile in the Hub.
 function interruptAgent(id) {
   const a = state.agents.get(id);
-  if (!a || a.status !== 'working') return;
+  if (!a || !['working', 'stuck'].includes(a.status)) return;
   // A task you stop yourself ends without the error sound.
   a.stopping = true;
   window.deck.interrupt(id);
@@ -1916,6 +1920,39 @@ window.addEventListener('focus', catchUp);
 
 // Refresh the "5m ago" labels now and then.
 setInterval(renderSidebar, 60_000);
+
+// ---------- stuck agents ----------
+
+// Every few seconds: a working agent whose task looks stuck (see
+// Transcript.stuckInfo) gets the status "stuck", and back to "working" once
+// it does something else. The limits are in Settings.
+function checkStuck() {
+  const c = state.config;
+  const limits = {
+    longMs: (c.stuckAfterSeconds || 120) * 1000,
+    repeatCount: c.stuckRepeatCount || 4,
+    repeatMs: (c.stuckRepeatSeconds || 90) * 1000,
+  };
+  for (const a of state.agents.values()) {
+    if (!['working', 'stuck'].includes(a.status)) continue;
+    const info = a.transcript.stuckInfo(limits);
+    if (info && a.status === 'working') {
+      a.status = 'stuck';
+      a.stuck = info;
+      window.deck.notify(a.title, `Seems stuck: ${info.name} · ${info.summary}`.slice(0, 180));
+    } else if (info) {
+      a.stuck = info;
+    } else if (a.status === 'stuck') {
+      a.status = 'working';
+      a.stuck = null;
+    } else {
+      continue;
+    }
+    refreshHeaderIfCurrent(a.id);
+    refreshHub();
+  }
+}
+setInterval(checkStuck, 3000);
 
 (async () => {
   state.config = await window.deck.getConfig();

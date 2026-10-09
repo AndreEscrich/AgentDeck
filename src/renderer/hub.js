@@ -14,6 +14,7 @@ const HUB_STATUS_TEXT = {
   starting: 'Starting',
   working: 'Working',
   waiting: 'Needs you',
+  stuck: 'Stuck',
   idle: 'Completed',
   error: 'Error',
   exited: 'Stopped',
@@ -259,6 +260,7 @@ class Hub {
     switch (agent.status) {
       case 'starting': return 22;
       case 'working':
+      case 'stuck':
       case 'waiting': return Math.min(88, 30 + steps * 4);
       case 'idle': return 100;
       case 'error': return 60;
@@ -348,7 +350,7 @@ class Hub {
       if (before !== agent.status) {
         tile.classList.remove(`state-${before}`);
         tile.classList.add(`state-${agent.status}`);
-        if (agent.status === 'idle' && ['working', 'waiting', 'starting'].includes(before)) {
+        if (agent.status === 'idle' && ['working', 'waiting', 'starting', 'stuck'].includes(before)) {
           this.replay(tile, 'celebrate', 1600);
         }
         if (agent.status === 'error' && before) this.replay(tile, 'shake', 700);
@@ -379,6 +381,18 @@ class Hub {
       tile.classList.toggle('needs-question', needs === 'question');
       parts.badge.textContent = needs === 'question' ? '?' : '!';
       if (needs) parts.statusText.textContent = needs === 'question' ? 'Asks you a question' : 'Needs approval';
+      // What a stuck agent keeps doing, and for how long.
+      if (agent.status === 'stuck' && agent.stuck) {
+        const mins = Math.max(1, Math.round((Date.now() - agent.stuck.since) / 60000));
+        // Connector tools are named mcp__<server>__<tool>; show "server · tool".
+        const [prefix, server, ...rest] = agent.stuck.name.split('__');
+        const tool = prefix === 'mcp' && rest.length ? `${server} · ${rest.join('__')}` : agent.stuck.name;
+        parts.statusText.textContent = `Stuck · ${tool}`;
+        parts.statusText.title = `${agent.stuck.count ? `${agent.stuck.count} times in a row: ` : 'Running for '}${agent.stuck.summary} · ${mins} min`;
+        parts.badge.textContent = '⏳';
+      } else {
+        parts.statusText.title = '';
+      }
       this.updateTimer(agent, parts.timer);
     }
 
@@ -629,7 +643,7 @@ class Hub {
 
   updateTimer(agent, node) {
     const started = agent.transcript.turnStartedAt;
-    if (started && (agent.status === 'working' || agent.status === 'waiting' || agent.status === 'starting')) {
+    if (started && ['working', 'waiting', 'starting', 'stuck'].includes(agent.status)) {
       node.textContent = formatDuration(Date.now() - started);
     } else if (agent.status === 'idle' && agent.transcript.lastTurn) {
       node.textContent = formatDuration(agent.transcript.lastTurn.durationMs);

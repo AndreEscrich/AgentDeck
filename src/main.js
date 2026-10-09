@@ -24,6 +24,9 @@ const DEFAULT_CONFIG = {
   defaultModel: 'opus',                 // a value from the model menu; "opus" is always the latest Opus
   defaultEffort: 'medium',              // low | medium | high | xhigh | max; empty means the model's default
   defaultFastMode: false,
+  stuckAfterSeconds: 120,               // one tool call running this long marks the agent as stuck
+  stuckRepeatCount: 4,                  // …or the same tool call this many times in a row
+  stuckRepeatSeconds: 90,               //    over at least this long
   defaultFolder: '',
   extraArgs: [],                        // extra command-line flags for every agent
   env: {},                              // extra environment variables for every agent

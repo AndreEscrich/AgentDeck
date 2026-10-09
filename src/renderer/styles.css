@@ -1084,3 +1084,12 @@ video.chat-media { background: #000; }
 .conn-form label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--text-dim); }
 .conn-form input, .conn-form select { font-size: 12.5px; color: var(--text); }
 .conn-form-buttons { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* Stuck: the same tool call for a long time. A muted purple tank without
+   bubbles, slow waves and an hourglass badge; the Stop button stays. */
+.hub-tile.state-stuck { --c1: #b7a2e8; --c2: #6c56a6; --glow: rgba(150, 120, 220, 0.3); --wave-speed: 10s; }
+.zoom-ghost.state-stuck { --c1: #b7a2e8; --c2: #6c56a6; }
+.hub-tile.state-stuck .tank-badge { transform: scale(1); background: #6c56a6; font-size: 13px; animation: stuck-tip 2.4s ease-in-out infinite; }
+@keyframes stuck-tip { 0%, 40% { transform: rotate(0deg); } 50%, 90% { transform: rotate(180deg); } 100% { transform: rotate(360deg); } }
+.hub-tile.state-stuck .tile-stop { display: flex; }
+.dot.stuck { background: #9b84d8; }
