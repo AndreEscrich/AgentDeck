@@ -865,12 +865,20 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
 .hub-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 
 /* While you were away */
-#hub-view .away-card {
-  position: absolute; top: 12px; right: 16px; z-index: 6; width: min(340px, calc(100% - 32px));
-  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+/* A column of its own, left of the group panels; it stays in view while the
+   groups scroll. On a narrow window it sits above them. */
+.hub.with-away { display: grid; grid-template-columns: 300px minmax(0, 1fr); column-gap: 18px; align-items: start; max-width: 1720px; }
+.hub.with-away > :not(.away-card) { grid-column: 2; }
+.hub.with-away > .away-card { grid-column: 1; grid-row: 1 / span 3; position: sticky; top: 12px; }
+@media (max-width: 1000px) {
+  .hub.with-away { display: block; }
+  .hub.with-away > .away-card { position: static; margin-bottom: 14px; }
+}
+.away-card {
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 14px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); animation: away-in 0.25s ease-out;
 }
-@keyframes away-in { from { opacity: 0; transform: translateY(-8px); } }
+@keyframes away-in { from { opacity: 0; transform: translateX(-10px); } }
 .away-head { display: flex; align-items: baseline; gap: 8px; padding: 10px 12px 6px; }
 .away-title { font-weight: 700; }
 .away-time { color: var(--text-faint); font-size: 12px; }

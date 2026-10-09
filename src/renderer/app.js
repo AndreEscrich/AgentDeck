@@ -1831,21 +1831,27 @@ function formatAway(ms) {
   return `${h} h${mins % 60 ? ` ${mins % 60} min` : ''}`;
 }
 
+// The card stands in a column of its own, left of the group panels.
 let awayCard = null;
-function showAwayCard(ids, ms) {
+function removeAwayCard() {
   awayCard?.remove();
+  awayCard = null;
+  hub.root.classList.remove('with-away');
+}
+function showAwayCard(ids, ms) {
+  removeAwayCard();
   const card = el('div', 'away-card');
   const head = el('div', 'away-head');
   const close = el('button', 'away-close', '×');
   close.title = 'Close';
-  close.onclick = () => { card.remove(); if (awayCard === card) awayCard = null; sfx('close'); };
+  close.onclick = () => { if (awayCard === card) removeAwayCard(); sfx('close'); };
   head.append(el('span', 'away-title', 'While you were away'), el('span', 'away-time', formatAway(ms)), close);
   const list = el('div', 'away-list');
   card.append(head, list);
   const render = () => {
     list.innerHTML = '';
     const agents = ids.map(id => state.agents.get(id)).filter(a => a && !a.removed);
-    if (!agents.length) { card.remove(); return; }
+    if (!agents.length) { if (awayCard === card) removeAwayCard(); return; }
     // What needs you first, then errors, then the finished ones.
     const rank = a => ({ waiting: 0, stuck: 1, error: 2, idle: 3 }[a.status] ?? 4);
     for (const a of agents.sort((x, y) => rank(x) - rank(y))) {
@@ -1861,7 +1867,8 @@ function showAwayCard(ids, ms) {
   card.refresh = render;
   render();
   awayCard = card;
-  $('hub-view').prepend(card);
+  hub.root.prepend(card);
+  hub.root.classList.add('with-away');
   sfx('pick');
 }
 
