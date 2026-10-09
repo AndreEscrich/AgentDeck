@@ -1126,6 +1126,7 @@ video.chat-media { background: #000; }
 .hub-activity { width: min(920px, 100%); margin-top: 18px; display: flex; flex-direction: column; gap: 16px;
   padding: 18px 20px; border-radius: 18px; background: #17130f; border: 1px solid #2c241c; --cell: 13px; }
 .hub-activity:empty { display: none; }
+.hub-activity, .usage-activity { position: relative; }
 .act-head { display: flex; align-items: center; gap: 12px; }
 .act-title { flex: 1; font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
 .act-metrics { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: #221c16; }
@@ -1247,3 +1248,17 @@ details.other-files details.change-file > summary { padding-left: 12px; }
 /* Attached images in your message */
 .msg-images { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .msg-images img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; cursor: zoom-in; border: 1px solid rgba(255, 255, 255, 0.12); }
+
+/* The usage card: your plan's usage on the left, your activity on the right. */
+.hub-usage.usage-card { flex-direction: row; align-items: flex-start; gap: 18px; width: auto; max-width: calc(100vw - 90px); }
+.usage-main { width: 230px; flex: none; display: flex; flex-direction: column; gap: 14px; }
+.usage-activity { flex: 1 1 auto; min-width: 0; width: 640px; display: flex; flex-direction: column; gap: 12px;
+  padding-left: 18px; border-left: 1px solid #3a3024; --cell: 13px; }
+.usage-activity:empty { display: none; }
+.usage-activity .act-title { font-size: 13px; letter-spacing: 0.04em; }
+.usage-activity .act-tiles { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.usage-activity .act-tile { padding: 8px 10px; }
+.usage-activity .act-value { font-size: 17px; }
+.usage-activity .act-months { gap: 3px; }
+.usage-activity .act-table-wrap { max-height: 220px; }
+.usage-activity .act-table th { background: #211b15; }

@@ -786,7 +786,12 @@ hub.onOpenSettings = () => window.deck.openConfig();
 // Your Claude Code activity, shown in the Hub while it has no agents. It is
 // read at startup and again when the empty Hub shows and the numbers are
 // older than 10 minutes.
+// The usage card (the Usage tab on the Hub's left edge) shows the same
+// numbers in a smaller view, also when the Hub has agents.
 const activityPanel = new ActivityPanel(hub.activityBox);
+const usageActivity = new ActivityPanel(hub.usageActivityBox, { compact: true });
+activityPanel.onLoaded = data => usageActivity.show(data);
+hub.onOpenUsage = () => activityPanel.load({ ifOlderThan: 10 * 60 * 1000 });
 setTimeout(() => activityPanel.load(), 1500);
 // The audio engine is set up ahead of the first sound (see sounds.warm).
 setTimeout(() => { if (playSounds()) (window.requestIdleCallback || setTimeout)(() => sounds.warm()); }, 2500);

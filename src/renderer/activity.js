@@ -33,8 +33,10 @@ function modelName(id) {
 }
 
 class ActivityPanel {
-  constructor(box) {
+  // compact: the smaller view in the usage card.
+  constructor(box, { compact = false } = {}) {
     this.box = box;
+    this.compact = compact;
     this.metric = 'tokens';
     this.asTable = false;
     this.data = null;
@@ -46,11 +48,16 @@ class ActivityPanel {
     if (this.loading || (this.data && Date.now() - this.loadedAt < ifOlderThan)) return;
     this.loading = true;
     try {
-      this.data = await window.deck.activity();
-      this.loadedAt = Date.now();
-      this.render();
+      this.show(await window.deck.activity());
+      this.onLoaded?.(this.data);
     } catch { /* keep what is shown */ }
     this.loading = false;
+  }
+
+  show(data) {
+    this.data = data;
+    this.loadedAt = Date.now();
+    this.render();
   }
 
   stats() {
@@ -198,7 +205,7 @@ class ActivityPanel {
           tip.textContent = label;
           tip.classList.remove('hidden');
           const r = cell.getBoundingClientRect();
-          const box = wrap.getBoundingClientRect();
+          const box = this.box.getBoundingClientRect();
           tip.style.left = `${r.left - box.left + r.width / 2}px`;
           tip.style.top = `${r.top - box.top}px`;
         };
@@ -213,7 +220,12 @@ class ActivityPanel {
     for (const c of ACTIVITY_LEVELS) { const sw = el('span', 'act-swatch'); sw.style.background = c; legend.appendChild(sw); }
     legend.appendChild(el('span', null, 'More'));
 
-    wrap.append(months, body, legend, tip);
+    // The tip belongs to the whole view: the calendar scrolls sideways, which
+    // would cut off a tip that sticks out above it.
+    wrap.append(months, body, legend);
+    this.box.appendChild(tip);
+    // When the calendar is wider than its box, start at the newest weeks.
+    requestAnimationFrame(() => { wrap.scrollLeft = wrap.scrollWidth; });
     return wrap;
   }
 

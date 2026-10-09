@@ -80,7 +80,12 @@ class Hub {
     this.usageTab = el('button', 'usage-tab');
     this.usageTab.type = 'button';
     this.usageTab.title = 'Usage';
-    this.usage = el('aside', 'hub-usage');
+    // The card has your plan's usage on the left and your Claude Code
+    // activity (renderer/activity.js fills it) on the right.
+    this.usage = el('aside', 'hub-usage usage-card');
+    this.usageMain = el('div', 'usage-main');
+    this.usageActivityBox = el('div', 'usage-activity');
+    this.usage.append(this.usageMain, this.usageActivityBox);
     // A small settings button above the usage tab opens a short menu in the
     // same place: Connectors (a dialog, see renderer/connectors.js) and the
     // settings file. The app sets onOpenConnectors and onOpenSettings.
@@ -109,6 +114,7 @@ class Hub {
       const same = this.rail.classList.contains('open') && this.rail.dataset.panel === panel;
       this.rail.dataset.panel = panel;
       this.rail.classList.toggle('open', !same);
+      if (!same && panel === 'usage') this.onOpenUsage?.();
     };
     this.rail.dataset.panel = 'usage';
     this.usageTab.onclick = () => showPanel('usage');
@@ -136,7 +142,7 @@ class Hub {
   renderUsage() {
     const u = this.usageData;
     this.renderUsageTab(u?.limits?.unifiedWindows);
-    const box = this.usage;
+    const box = this.usageMain;
     box.textContent = '';
     box.appendChild(el('div', 'usage-title', 'Usage'));
     const windows = u?.limits?.unifiedWindows;
