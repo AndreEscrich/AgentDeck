@@ -244,6 +244,21 @@ function formatTokens(n) {
   return `${(n / 1e6).toFixed(1)}M`;
 }
 
+// Temporary files never count as an agent's work: files in a Temp, tmp or
+// .tmp folder (like Unity's Temp/), names with "tmp" or "temp" as a separate
+// word (tmp_fix.py, board.temp.cs, not Template.cs), backup and editor
+// leftovers (.tmp .temp .bak .orig .rej .swp ~), .DS_Store, and the Unity
+// .meta file of any of these.
+function isTempFile(p) {
+  const parts = String(p).replace(/\\/g, '/').split('/');
+  if (parts.slice(0, -1).some(dir => /^\.?(temp|tmp)$/i.test(dir))) return true;
+  const name = parts.pop().replace(/\.meta$/i, '');
+  if (name === '.DS_Store' || name.endsWith('~')) return true;
+  if (/\.(tmp|temp|bak|orig|rej|swp)$/i.test(name)) return true;
+  const stem = name.replace(/\.[^.]+$/, '');
+  return /(^|[_.\-\s])(tmp|temp)([_.\-\s\d]|$)/i.test(stem);
+}
+
 // Splits the output of `git diff` into one entry per file.
 function parseUnifiedDiff(text) {
   const files = [];
@@ -455,7 +470,8 @@ class Transcript {
 
     this.pinned(() => {
       // The changed files come first, then Claude's message about them.
-      if (turn.changes.size) turn.answer.appendChild(changesCard(this.toolChanges(turn.changes)));
+      const toolFiles = this.toolChanges(turn.changes).filter(f => !isTempFile(f.path));
+      if (toolFiles.length) turn.answer.appendChild(changesCard(toolFiles));
       // Then drop files that no longer exist, unless the snapshot comparison
       // (showGitChanges) has replaced this card in the meantime.
       this.pruneMissing(turn).then(removed => {
@@ -760,11 +776,11 @@ class Transcript {
     turn.gitShown = true;
     // The snapshot also catches changes you (or other agents) made in the same
     // folder while this agent worked. Only files the agent touched stay.
-    const files = parseUnifiedDiff(diffText).filter(f => this.agentTouched(turn, f.path));
+    const files = parseUnifiedDiff(diffText).filter(f => !isTempFile(f.path) && this.agentTouched(turn, f.path));
     if (merge) {
       await this.pruneMissing(turn).catch(() => {});
       const seen = new Set(files.map(f => f.path));
-      for (const f of this.toolChanges(turn.changes)) if (!seen.has(f.path)) files.push(f);
+      for (const f of this.toolChanges(turn.changes)) if (!seen.has(f.path) && !isTempFile(f.path)) files.push(f);
     }
     this.pinned(() => {
       turn.el.querySelector('.changes')?.remove();
@@ -784,7 +800,7 @@ class Transcript {
   showMedia(turn, files) {
     if (!turn || !files?.length) return;
     const shown = new Set([...turn.el.querySelectorAll('.msg-text .chat-media')].map(n => n.dataset.path));
-    files = files.filter(f => !shown.has(f.path));
+    files = files.filter(f => !shown.has(f.path) && !isTempFile(f.path));
     if (!files.length) return;
     const card = el('div', 'media-card');
     const videos = files.filter(f => f.kind === 'video').length;
@@ -1015,6 +1031,7 @@ class Transcript {
 }
 
 window.Transcript = Transcript;
+window.isTempFile = isTempFile;
 window.totalTokens = totalTokens;
 window.formatTokens = formatTokens;
 window.tokenParts = tokenParts;
