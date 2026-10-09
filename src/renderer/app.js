@@ -566,6 +566,7 @@ function show(kind, id) {
     $('input').placeholder = 'Start a new agent… (↩ to start)';
     if (!state.agents.size) activityPanel.load({ ifOlderThan: 10 * 60 * 1000 });
     awayCard?.refresh();
+    placeAwayCard();
     // Back in the Hub (after leaving or closing an agent): ready to type.
     focusInput();
   }
@@ -1831,13 +1832,20 @@ function formatAway(ms) {
   return `${h} h${mins % 60 ? ` ${mins % 60} min` : ''}`;
 }
 
-// The card stands in a column of its own, left of the group panels.
+// The card stands left of the group panels, which stay centred; without
+// room beside them, it goes above them.
 let awayCard = null;
 function removeAwayCard() {
   awayCard?.remove();
   awayCard = null;
-  hub.root.classList.remove('with-away');
 }
+function placeAwayCard() {
+  if (!awayCard) return;
+  awayCard.classList.remove('stacked');
+  // The usage tab takes the window's left edge.
+  if (awayCard.getBoundingClientRect().left < 48) awayCard.classList.add('stacked');
+}
+window.addEventListener('resize', placeAwayCard);
 function showAwayCard(ids, ms) {
   removeAwayCard();
   const card = el('div', 'away-card');
@@ -1868,7 +1876,7 @@ function showAwayCard(ids, ms) {
   render();
   awayCard = card;
   hub.root.prepend(card);
-  hub.root.classList.add('with-away');
+  placeAwayCard();
   sfx('pick');
 }
 
