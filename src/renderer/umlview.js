@@ -16,9 +16,9 @@ const COMPOSER_H = 40;
 const COMPOSER_W = 40;       // the composer's bar down the left of its namespace
 const COMPOSER_MIN_H = 220;
 
-// "⚙ StarterBonusSystemComposer · wires 12 types"
+// "⚙ StarterBonusSystemComposer"
 function composerLabel(b) {
-  return `⚙ ${b.name}  ·  wires ${b.wires ?? 0} type${b.wires === 1 ? '' : 's'}`;
+  return `⚙ ${b.name}`;
 }
 
 function svgEl(tag, attrs = {}, text) {
@@ -374,9 +374,10 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
     // The composer: a bar down the left side, as tall as the namespace's
     // types; its wiring goes out to the right.
     composers.forEach((b, i) => {
-      Object.assign(b, { x: i * (COMPOSER_W + 12), y: 0, w: COMPOSER_W, h: Math.max(COMPOSER_MIN_H, height), lane: `composer|${g.id}`, row: `composer|${g.id}` });
+      // As tall as the namespace, and at least as long as its name.
+      Object.assign(b, { x: i * (COMPOSER_W + 12), y: 0, w: COMPOSER_W, h: Math.max(COMPOSER_MIN_H, height, textWidth(composerLabel(b), UML_FONT) + 40), lane: `composer|${g.id}`, row: `composer|${g.id}` });
     });
-    g.inner = { width: innerWidth, height: Math.max(height, composers.length ? COMPOSER_MIN_H : 0) };
+    g.inner = { width: innerWidth, height: Math.max(height, ...composers.map(b => b.h)) };
     g.w = innerWidth + PAD * 2;
     g.h = g.inner.height + TITLE + PAD;
   }
@@ -489,7 +490,7 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
     g.appendChild(svgEl('rect', { class: 'uml-box', width: b.w, height: b.h, rx: b.composer ? 10 : 8 }));
     g.appendChild(svgEl('rect', { class: 'uml-band', width: 4, height: b.h - 12, x: 6, y: 6, rx: 2 }));
     if (b.composer) {
-      g.appendChild(svgEl('text', { class: 'uml-name', x: b.w / 2 + 3, y: b.h / 2 + 4.5, transform: `rotate(-90 ${b.w / 2 + 3} ${b.h / 2})` }, fitLabel(composerLabel(b), b.h - 24)));
+      g.appendChild(svgEl('text', { class: 'uml-name', x: b.w / 2 + 3, y: b.h / 2 + 4.5, transform: `rotate(-90 ${b.w / 2 + 3} ${b.h / 2})` }, composerLabel(b)));
     } else {
       g.appendChild(svgEl('text', { class: 'uml-name', x: b.w / 2 + 3, y: b.h / 2 + 4.5 }, b.name));
     }
