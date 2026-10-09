@@ -104,13 +104,13 @@ class ActivityPanel {
     for (const [key, m] of Object.entries(ACTIVITY_METRICS)) {
       const b = el('button', key === this.metric ? 'on' : '', m.label);
       b.type = 'button';
-      b.onclick = () => { this.metric = key; this.render(); };
+      b.onclick = () => { window.uiSound?.('select'); this.metric = key; this.render(); };
       seg.appendChild(b);
     }
     const tableBtn = el('button', 'act-table-btn' + (this.asTable ? ' on' : ''), this.asTable ? 'Calendar' : 'Table');
     tableBtn.type = 'button';
     tableBtn.title = this.asTable ? 'Show the calendar' : 'Show the days as a table';
-    tableBtn.onclick = () => { this.asTable = !this.asTable; this.render(); };
+    tableBtn.onclick = () => { window.uiSound?.('select'); this.asTable = !this.asTable; this.render(); };
     head.append(seg, tableBtn);
     box.appendChild(head);
 

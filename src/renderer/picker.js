@@ -66,9 +66,11 @@ class ModelPicker {
     for (const p of pickers) if (p !== this) p.close();
     this.renderMenu();
     this.menu.classList.remove('hidden');
+    window.uiSound?.('tick');
   }
 
   close() {
+    if (!this.menu.classList.contains('hidden')) window.uiSound?.('tickDown');
     this.menu.classList.add('hidden');
   }
 
@@ -79,6 +81,7 @@ class ModelPicker {
     if (!(model.supportedEffortLevels || []).includes(next.effort)) next.effort = '';
     if (!model.supportsFastMode) next.fastMode = false;
     this.setValue(next);
+    window.uiSound?.('select');
     this.onChange?.(this.value);
   }
 
@@ -177,9 +180,11 @@ class ModePicker {
     for (const p of pickers) if (p !== this) p.close();
     this.renderMenu();
     this.menu.classList.remove('hidden');
+    window.uiSound?.('tick');
   }
 
   close() {
+    if (!this.menu.classList.contains('hidden')) window.uiSound?.('tickDown');
     this.menu.classList.add('hidden');
   }
 
@@ -195,6 +200,7 @@ class ModePicker {
       row.onclick = () => {
         this.setValue(m.value);
         this.close();
+        window.uiSound?.('select');
         this.onChange?.(m.value);
       };
       this.menu.appendChild(row);

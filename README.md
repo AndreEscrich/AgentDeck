@@ -136,7 +136,7 @@ Click **Settings** in the Hub (or at the bottom of History) to open `config.json
 - `extraArgs`: extra flags for every agent, for example `["--add-dir", "/some/path"]`.
 - `env`: extra environment variables for every agent.
 - `notifyWhenDone`: show a notification when an agent finishes or needs you.
-- `sounds`: play a sound when you start an agent (and a bubbling one when its message lands in its tile in the Hub), when one asks you a question or needs your approval, when you remove one from the Hub, when one finishes, and a lower one when it stops with an error (not when you stop it). Notifications are silent while this is on. Reopen the app after changing it.
+- `sounds`: sound feedback for everything you do and everything the agents do. Agents: a start sound (and a bubbling one when its message lands in its tile in the Hub), a question or an approval, finishing, an error (not when you stop it), and looking stuck. You: sending a message to an agent, opening an agent or a saved session and going back to the Hub, stopping a task, allowing or denying a tool and answering a question, adding or removing an image or video in the message box, removing an agent or a group, dragging tiles, and small clicks for menus, cards, dialogs and options. Notifications are silent while this is on. Reopen the app after changing it.
 - `hubAfterSend`: open the Hub after you send a message (default `true`).
 - `summarizeTitles`: name new agents with a short summary of your message (default `true`).
 

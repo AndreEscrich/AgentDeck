@@ -111,10 +111,12 @@ class Attachments {
     }
     this.lists.set(key, list);
     this.render();
+    window.uiSound?.(skipped.length && skipped.length === files.length ? 'refuse' : 'attach');
     return skipped;
   }
 
   remove(id) {
+    window.uiSound?.('detach');
     const key = this.key();
     this.lists.set(key, this.current().filter(a => a.id !== id));
     this.render();

@@ -114,18 +114,23 @@ class Hub {
       const same = this.rail.classList.contains('open') && this.rail.dataset.panel === panel;
       this.rail.dataset.panel = panel;
       this.rail.classList.toggle('open', !same);
+      window.uiSound?.(same ? 'tickDown' : 'tick');
       if (!same && panel === 'usage') this.onOpenUsage?.();
     };
     this.rail.dataset.panel = 'usage';
     this.usageTab.onclick = () => showPanel('usage');
     this.settingsBtn.onclick = () => showPanel('settings');
     document.addEventListener('pointerdown', e => {
-      if (this.rail.classList.contains('open') && !this.rail.contains(e.target)) this.rail.classList.remove('open');
+      if (this.rail.classList.contains('open') && !this.rail.contains(e.target)) {
+        this.rail.classList.remove('open');
+        window.uiSound?.('tickDown');
+      }
     }, true);
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && this.rail.classList.contains('open')) {
         e.stopImmediatePropagation();
         this.rail.classList.remove('open');
+        window.uiSound?.('tickDown');
       }
     }, true);
     container.append(this.rail, this.root);

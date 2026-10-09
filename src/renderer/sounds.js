@@ -143,6 +143,23 @@ const sounds = (() => {
     } catch { /* no sound is fine */ }
   }
 
+  // A short airy sweep: up when something opens, down when it closes.
+  function sweep(from, to, volume) {
+    try {
+      const ac = audio();
+      slide(ac, 0, from, to, 0.2, volume);
+      simmer(ac, ac.destination, 0.16, 0.012);
+    } catch { /* no sound is fine */ }
+  }
+
+  // One bubble popping, for small things that land somewhere.
+  function pop(freq, volume) {
+    try {
+      const ac = audio();
+      bubble(ac, ac.destination, 0, freq, volume);
+    } catch { /* no sound is fine */ }
+  }
+
   return {
     // Creating the audio engine takes about 180 ms, once. The app does that
     // while you are idle after it starts, not on the first sound (which is
@@ -177,5 +194,39 @@ const sounds = (() => {
     done: () => play([[523.25, 0, 0.5], [659.25, 0.1, 0.5], [783.99, 0.2, 0.7]]),
     // An agent stopped with an error: two falling notes.
     error: () => play([[440, 0, 0.3], [349.23, 0.14, 0.45]], 0.16),
+
+    // You sent a message to an agent: a bubble pops, then a short bright
+    // note confirms it, while the chat shrinks back into the tile.
+    sent: () => {
+      try {
+        const ac = audio();
+        bubble(ac, ac.destination, 0, 520, 0.16);
+        slide(ac, 0.05, 700, 1180, 0.16, 0.08);
+      } catch { /* no sound is fine */ }
+    },
+    // Opening an agent's chat from its tile, or a saved session: up.
+    open: () => sweep(300, 640, 0.07),
+    // Back to the Hub (the chat shrinks into its tile): down.
+    close: () => sweep(560, 260, 0.06),
+    // You stopped an agent's task: a short low knock.
+    stopped: () => { try { const ac = audio(); slide(ac, 0, 330, 140, 0.18, 0.16); slide(ac, 0.06, 160, 110, 0.12, 0.06); } catch { /* no sound is fine */ } },
+    // An agent looks stuck: two slow, low notes, a little out of tune.
+    stuck: () => play([[311.13, 0, 0.45], [293.66, 0.22, 0.6]], 0.11),
+    // You allowed a tool, or answered a question: two quick rising notes.
+    approve: () => play([[783.99, 0, 0.12], [1046.5, 0.06, 0.22]], 0.11),
+    // You denied a tool, or skipped a question: two quick falling notes.
+    deny: () => play([[392, 0, 0.12], [311.13, 0.07, 0.25]], 0.1),
+    // An image or video lands in the message box; one is taken out.
+    attach: () => pop(620, 0.16),
+    detach: () => { try { slide(audio(), 0, 760, 420, 0.09, 0.06); } catch { /* no sound is fine */ } },
+    // Small clicks: a menu, a card or a dialog opens (tick) or closes
+    // (tickDown), an option or a filter is picked (select).
+    tick: () => play([[1568, 0, 0.05]], 0.04),
+    tickDown: () => play([[1174.66, 0, 0.05]], 0.035),
+    select: () => play([[1318.51, 0, 0.06]], 0.05),
+    // A connector finished signing in: the "done" chord, softer.
+    connected: () => play([[659.25, 0, 0.35], [987.77, 0.09, 0.5]], 0.12),
+    // Something that cannot be done (a file type the box does not take).
+    refuse: () => play([[233.08, 0, 0.12], [233.08, 0.1, 0.16]], 0.08),
   };
 })();

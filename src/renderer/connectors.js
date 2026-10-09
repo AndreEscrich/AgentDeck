@@ -101,6 +101,7 @@ class ConnectorsDialog {
 
   // Shows the last known list right away, then checks again.
   async open() {
+    window.uiSound?.('tick');
     this.overlay.classList.remove('hidden');
     this.search.value = '';
     setTimeout(() => this.search.focus());
@@ -110,6 +111,7 @@ class ConnectorsDialog {
   }
 
   close() {
+    if (this.isOpen()) window.uiSound?.('tickDown');
     this.overlay.classList.add('hidden');
     this.hideAddForm();
   }
@@ -160,7 +162,10 @@ class ConnectorsDialog {
       }
       await this.refresh();
       if (this.signingIn.has(c.id)) setTimeout(poll, 15000);
-      else this.say(`${c.name} is connected. Agents you start from now on can use it.`);
+      else {
+        window.uiSound?.('connected');
+        this.say(`${c.name} is connected. Agents you start from now on can use it.`);
+      }
     };
     poll();
   }
@@ -168,6 +173,7 @@ class ConnectorsDialog {
   async remove(c) {
     if (!confirm(`Remove the connector "${c.name}"? Agents started afterwards no longer get it.`)) return;
     const result = await window.deck.connectors.remove({ id: c.id, source: c.source, cwd: this.folder() });
+    window.uiSound?.(result.ok ? 'removed' : 'refuse');
     this.say(result.ok ? `Removed ${c.name}.` : result.message || 'Removing failed.', !result.ok);
     await this.refresh();
   }
@@ -232,6 +238,7 @@ class ConnectorsDialog {
   }
 
   showAddForm() {
+    window.uiSound?.('tick');
     this.hideAddForm();
     const form = document.createElement('form');
     form.className = 'conn-form';
@@ -249,9 +256,11 @@ class ConnectorsDialog {
       const spec = { name: form.name.value.trim(), url: form.url.value.trim(), transport: form.transport.value, header: form.header.value.trim() || undefined };
       const result = await window.deck.connectors.add(spec);
       if (!result.ok) {
+        window.uiSound?.('refuse');
         this.say(result.message || 'Adding failed.', true);
         return;
       }
+      window.uiSound?.('approve');
       this.say(`Added ${spec.name}. If it needs a sign-in, click Connect.`);
       this.hideAddForm();
       await this.refresh();

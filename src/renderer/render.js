@@ -39,11 +39,12 @@ function openImageOverlay(src) {
   const img = document.createElement('img');
   img.src = src;
   box.appendChild(img);
-  const close = () => { box.remove(); document.removeEventListener('keydown', onKey, true); };
+  const close = () => { window.uiSound?.('tickDown'); box.remove(); document.removeEventListener('keydown', onKey, true); };
   const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
   box.onclick = close;
   document.addEventListener('keydown', onKey, true);
   document.body.appendChild(box);
+  window.uiSound?.('tick');
 }
 
 // Full size on click; Esc or another click closes it.
@@ -52,11 +53,12 @@ function openLightbox(file) {
   const img = document.createElement('img');
   img.src = mediaUrl(file);
   box.append(img, el('div', 'lightbox-path', file));
-  const close = () => { box.remove(); document.removeEventListener('keydown', onKey, true); };
+  const close = () => { window.uiSound?.('tickDown'); box.remove(); document.removeEventListener('keydown', onKey, true); };
   const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
   box.onclick = close;
   document.addEventListener('keydown', onKey, true);
   document.body.appendChild(box);
+  window.uiSound?.('tick');
 }
 
 function mediaElement(file, caption) {
@@ -909,6 +911,7 @@ class Transcript {
 
     const buttons = el('div', 'perm-buttons');
     const finish = (decision, label) => {
+      window.uiSound?.(decision.behavior === 'allow' ? 'approve' : 'deny');
       decide(decision);
       buttons.replaceWith(el('div', 'perm-result ' + (decision.behavior === 'allow' ? 'ok' : 'err'), label));
       card.classList.add('answered');
@@ -975,6 +978,7 @@ class Transcript {
     const finish = (decision, label) => {
       if (done) return;
       done = true;
+      window.uiSound?.(decision.behavior === 'allow' ? 'approve' : 'deny');
       decide(decision);
       card.classList.add('answered');
       for (const b of card.querySelectorAll('button, input')) b.disabled = true;
@@ -1021,7 +1025,9 @@ class Transcript {
           }
           for (const [k, btn] of buttons.entries()) btn.classList.toggle('selected', chosen[i].has(q.options[k].label));
           refresh();
-          if (instant) send();
+          // The last missing answer sends them all (with its own sound).
+          if (instant && complete()) send();
+          else window.uiSound?.('select');
         };
         buttons.push(b);
         list.appendChild(b);
@@ -1081,6 +1087,8 @@ class Transcript {
         if (field) field.value = text;
       }
       refresh();
+      // More questions still open: a small click for this answer.
+      if (!complete()) window.uiSound?.('select');
       send();
     };
     // Enter in an empty message box sends answers that are complete (after

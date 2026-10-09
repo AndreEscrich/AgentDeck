@@ -174,6 +174,7 @@ function chooseFolder() {
   const d = ensureDraft();
   const open = document.querySelector('.folder-panel');
   document.querySelector('.group-panel')?.remove();
+  sfx(open ? 'tickDown' : 'tick');
   if (open) return; // a second click on the button closes it
   const panel = el('div', 'group-panel folder-panel');
   const list = el('div', 'group-panel-list');
@@ -204,12 +205,13 @@ function chooseFolder() {
       remove.title = 'Remove from this list (the folder itself stays)';
       remove.onclick = e => {
         e.stopPropagation();
+        sfx('detach');
         setFolderHidden(f, true);
         try { if (localStorage.getItem('lastFolder') === f) localStorage.removeItem('lastFolder'); } catch { /* not important */ }
         render();
       };
       row.append(el('span', 'folder-name', homePath(f)), remove);
-      row.onclick = () => pick(f);
+      row.onclick = () => { sfx('select'); pick(f); };
       list.appendChild(row);
     }
     if (!list.children.length) list.appendChild(el('div', 'group-panel-sep', 'No recent folders'));
@@ -232,6 +234,7 @@ function chooseFolder() {
 function chooseGroup() {
   const d = ensureDraft();
   document.querySelector('.group-panel')?.remove();
+  sfx('tick');
   const panel = el('div', 'group-panel');
   const input = document.createElement('input');
   input.placeholder = 'Type a new category, or search…';
@@ -279,7 +282,7 @@ function chooseGroup() {
       const n = inUse.get(g.id) || 0;
       const row = el('div', 'group-panel-item' + (g.id === d.groupId ? ' selected' : ''));
       row.append(el('span', null, '# ' + g.name), el('span', 'group-panel-count', n ? `${n} agent${n === 1 ? '' : 's'}` : ''));
-      row.onclick = () => pick(g.id);
+      row.onclick = () => { sfx('select'); pick(g.id); };
       list.appendChild(row);
     }
   }
@@ -582,6 +585,7 @@ function show(kind, id) {
 // Hub simply opens.
 function backToHub() {
   const cur = state.current;
+  if (cur?.kind === 'agent' || cur?.kind === 'history') sfx('close');
   continueReview(cur, leaveToHub());
 }
 
@@ -657,6 +661,7 @@ async function checkNext() {
   const from = viewOf(cur);
   if (cur?.kind === 'hub' || !from) {
     if (cur?.kind !== 'hub') show('hub');
+    state.quietOpen = true;
     hub.open(next.id);
     return;
   }
@@ -730,6 +735,7 @@ const hub = new Hub($('hub-view'), {
   // Clicking a Group panel: the next agent goes into that Group (its folder
   // and Category), so it continues from the Group's latest agent.
   onPickGroup: (categoryId, folder) => {
+    sfx('select');
     const d = ensureDraft();
     d.folder = folder;
     d.groupId = categoryId;
@@ -738,6 +744,9 @@ const hub = new Hub($('hub-view'), {
     $('input').focus();
   },
   onOpen: async id => {
+    // Tab plays its own sound for the agent it opens.
+    if (state.quietOpen) state.quietOpen = false;
+    else sfx('open');
     if (id.startsWith('p:')) return openParked(id.slice(2));
     show('agent', id);
     return state.agents.get(id)?.view;
@@ -768,7 +777,7 @@ const connectorsDialog = new ConnectorsDialog({
   folder: () => ensureDraft().folder || state.config.home,
 });
 hub.onOpenConnectors = () => connectorsDialog.open();
-hub.onOpenSettings = () => window.deck.openConfig();
+hub.onOpenSettings = () => { sfx('tick'); window.deck.openConfig(); };
 
 // Your Claude Code activity, shown in the Hub while it has no agents. It is
 // read at startup and again when the empty Hub shows and the numbers are
@@ -1313,7 +1322,7 @@ function historyItem(s) {
   if (state.current?.kind === 'history' && state.current.id === s.id) item.classList.add('active');
   item.title = `${s.title}\n${s.cwd || ''}`;
   item.append(el('span', 'label', s.title), el('span', 'meta', timeAgo(s.updatedAt)));
-  item.onclick = () => openHistory(s);
+  item.onclick = () => { sfx('open'); openHistory(s); };
   item.oncontextmenu = e => { e.preventDefault(); sessionMenu(s.id); };
   item.draggable = true;
   item.ondragstart = e => {
@@ -1787,7 +1796,10 @@ window.deck.onMode((id, mode) => {
 
 // Clicking a notification opens the agent it is about.
 window.deck.onNotificationOpen(id => {
-  if (state.agents.has(id)) show('agent', id);
+  if (state.agents.has(id)) {
+    sfx('open');
+    show('agent', id);
+  }
 });
 
 window.deck.onPermissionCancel((id, requestId) => {
@@ -1874,6 +1886,7 @@ async function sendFromComposer() {
     await startAgent({ cwd: d.folder, prompt: text, permissionMode: d.mode, choice: d.choice, groupId: d.groupId, fromRect, forkFrom, images });
   } else if (state.current.kind === 'agent') {
     const a = state.agents.get(state.current.id);
+    sfx('sent');
     a.transcript.add({ type: 'user', message: { role: 'user', content: userContent(text, images) } });
     notePrompt(a, text);
     afterSend(a, true);
@@ -1894,6 +1907,13 @@ async function sendFromComposer() {
 function playSounds() {
   return state.config?.sounds !== false;
 }
+
+// Plays one of the sounds in sounds.js, unless sounds are off in the
+// settings. The other renderer files call it as window.uiSound.
+function sfx(name) {
+  if (playSounds()) sounds[name]?.();
+}
+window.uiSound = sfx;
 
 function autosize() {
   const input = $('input');
@@ -1932,6 +1952,7 @@ function interruptAgent(id) {
   if (!a || !['working', 'stuck'].includes(a.status)) return;
   // A task you stop yourself ends without the error sound.
   a.stopping = true;
+  sfx('stopped');
   window.deck.interrupt(id);
 }
 $('btn-interrupt').onclick = () => { if (state.current?.kind === 'agent') interruptAgent(state.current.id); };
@@ -2062,6 +2083,7 @@ function checkStuck() {
     const info = a.transcript.stuckInfo(limits);
     if (info && a.status === 'working') {
       a.status = 'stuck';
+      sfx('stuck');
       a.stuck = info;
       window.deck.notify(a.title, `Seems stuck: ${info.name} · ${info.summary}`.slice(0, 180));
     } else if (info) {
