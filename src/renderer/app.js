@@ -1120,7 +1120,7 @@ function rememberAgents(entries) {
 }
 
 // From History: a session goes (back) on the Hub as a completed tile.
-function bringBackToHub(session) {
+function bringBackToHub(session, { quiet = false } = {}) {
   const e = state.agentList.get(session.id) || {};
   state.parked.set(session.id, parkedFromList({
     ...e,
@@ -1131,10 +1131,22 @@ function bringBackToHub(session) {
     finishedAt: e.finishedAt || session.updatedAt || Date.now(),
     unread: false,
   }));
+  if (quiet) return;
   saveHub();
   refreshHub();
   renderHistory();
   toast(`"${e.title || session.title}" is back on the Hub`);
+}
+
+// From History: every agent of a category that is not on the Hub goes back there.
+function bringGroupToHub(group) {
+  const sessions = state.sessions.filter(s => groupOf(s.id) === group.id && !isOnHub(s.id));
+  if (!sessions.length) return toast(`Every agent of ${group.name} is on the Hub`);
+  for (const s of sessions) bringBackToHub(s, { quiet: true });
+  saveHub();
+  refreshHub();
+  renderHistory();
+  toast(`${sessions.length} ${sessions.length === 1 ? 'agent' : 'agents'} of ${group.name} back on the Hub`);
 }
 
 function isOnHub(sessionId) {
@@ -1553,6 +1565,7 @@ async function groupMenu(group) {
   const i = state.groups.groups.indexOf(group);
   const picked = await window.deck.popupMenu([
     { id: 'notes', label: 'Shared notes…' },
+    { id: 'hub', label: 'Put all its agents on the Hub' },
     { id: 'rename', label: 'Rename' },
     { id: 'up', label: 'Move up', enabled: i > 0 },
     { id: 'down', label: 'Move down', enabled: i < state.groups.groups.length - 1 },
@@ -1560,6 +1573,7 @@ async function groupMenu(group) {
     { id: 'delete', label: 'Delete category (its sessions become uncategorized)' },
   ]);
   if (picked === 'notes') openNotesEditor(group);
+  if (picked === 'hub') bringGroupToHub(group);
   if (picked === 'rename') { state.renamingGroup = group.id; renderSidebar(); }
   if (picked === 'up') moveGroup(group.id, -1);
   if (picked === 'down') moveGroup(group.id, 1);
@@ -1611,6 +1625,13 @@ function groupHeader(group, count, collapsed) {
     renderSidebar();
   };
   if (group) {
+    // The category's agents that are not on the Hub go back there.
+    if (state.sessions.some(s => groupOf(s.id) === group.id && !isOnHub(s.id))) {
+      const all = el('button', 'group-to-hub', 'All to Hub');
+      all.title = `Put every agent of ${group.name} on the Hub`;
+      all.onclick = e => { e.stopPropagation(); bringGroupToHub(group); };
+      head.appendChild(all);
+    }
     head.oncontextmenu = e => { e.preventDefault(); groupMenu(group); };
     head.ondblclick = () => { state.renamingGroup = group.id; renderSidebar(); };
   }
