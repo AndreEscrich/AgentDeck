@@ -1808,7 +1808,7 @@ details.other-files details.change-file > summary { padding-left: 12px; }
 .hub-health.hit .health-track { animation: hp-hit 0.35s ease-out; }
 @keyframes hp-hit { 25% { transform: translateX(-3px); } 50% { transform: translateX(2px); } 75% { transform: translateX(-1px); } }
 .health-ticks { position: absolute; inset: 0; display: flex; pointer-events: none; }
-.health-ticks span { flex: 1; border-right: 2px solid rgba(0, 0, 0, 0.55); }
+.health-ticks span { flex: 1; border-right: 1px solid rgba(0, 0, 0, 0.45); }
 .health-ticks span:last-child { border-right: none; }
 .health-floats { position: absolute; inset: 0; pointer-events: none; }
 .health-float { position: absolute; top: -4px; transform: translateX(-50%); font-size: 11px; font-weight: 700; color: #ef9f9f; white-space: nowrap;

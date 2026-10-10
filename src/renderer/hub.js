@@ -86,7 +86,7 @@ class Hub {
     this.healthGhost = el('div', 'health-ghost');
     this.healthFill = el('div', 'health-fill');
     const ticks = el('div', 'health-ticks');
-    for (let i = 0; i < 10; i++) ticks.appendChild(el('span'));   // ten divisions, 10% each
+    for (let i = 0; i < 9; i++) ticks.appendChild(el('span'));
     this.healthFloat = el('div', 'health-floats');
     track.append(this.healthGhost, this.healthFill, ticks, this.healthFloat);
     this.healthLabel = el('span', 'health-label', 'Tokens');
