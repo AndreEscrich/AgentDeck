@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld('deck', {
   fileVersions: (cwd, file) => ipcRenderer.invoke('files:versions', cwd, file),
   restoreFile: (cwd, p, previous) => ipcRenderer.invoke('files:restore', cwd, p, previous),
   activity: () => ipcRenderer.invoke('activity:get'),
+  // A diff the agent or you asked for (see branchdiff.js).
+  runDiff: (cwd, command) => ipcRenderer.invoke('diff:run', cwd, command),
   // Every agent you have had (see agentlist.js).
   rememberAgents: entries => ipcRenderer.invoke('agents:remember', entries),
   listAgents: () => ipcRenderer.invoke('agents:list'),

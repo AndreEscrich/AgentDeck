@@ -165,7 +165,8 @@ function fileSummary(f) {
 
 // The card under the answer. Every file starts collapsed: click one to see
 // its diff. Click a line in a diff to comment on it (see lineComments).
-function changesCard(files, cwd) {
+// title: the card's heading instead of "Changed N files" (a diff you asked for).
+function changesCard(files, cwd, { title = null } = {}) {
   files = sortFiles(files);
   const code = files.filter(f => isCodeFile(f.path));
   const other = files.filter(f => !isCodeFile(f.path));
@@ -182,7 +183,7 @@ function changesCard(files, cwd) {
   const comments = lineComments(files, cwd);
   const send = comments.sendButton();
   head.append(
-    el('span', 'changes-title', `Changed ${files.length} file${files.length === 1 ? '' : 's'}`),
+    el('span', 'changes-title', title ? `${title} · ${files.length} file${files.length === 1 ? '' : 's'}` : `Changed ${files.length} file${files.length === 1 ? '' : 's'}`),
     el('span', 'plus', ` +${totalAdd}`),
     el('span', 'minus', ` −${totalDel}`),
     send,

@@ -2551,7 +2551,7 @@ async function undoLastPrompt(agent) {
     done.push(f.path);
   }
   button.disabled = false;
-  turn?.el.querySelector('.changes')?.syncUndone?.();
+  turn?.answer.querySelector(':scope > .changes')?.syncUndone?.();
   if (done.length) {
     const list = done.length <= 4 ? done.map(p => p.split(SEP).pop()).join(', ') : `${done.length} files`;
     agent.transcript.note(redo ? `Put the changes of your last message back (${list}).` : `Undid the changes of your last message (${list}). The agent hears about it with your next message.`);
@@ -2916,6 +2916,16 @@ async function sendFromComposer() {
     return;
   }
   if ((!typed && !hasFiles) || !state.current) return;
+  // /diff [what]: the diff of this branch (or of what you name), drawn by
+  // Agent Hub without asking the agent (see diffBlock in render.js).
+  const diffCommand = /^\/diff(?:\s+([\s\S]*))?$/.exec(typed);
+  if (diffCommand && ['agent', 'history'].includes(state.current.kind)) {
+    const target = state.current.kind === 'agent' ? state.agents.get(state.current.id) : state.history.get(state.current.id);
+    input.value = '';
+    autosize();
+    target?.transcript.showDiff((diffCommand[1] || '').trim());
+    return;
+  }
   // While Claude waits for an answer to its question, what you type is the
   // answer; dropped files stay for your next message.
   const waitingAgent = state.current.kind === 'agent' ? state.agents.get(state.current.id) : null;

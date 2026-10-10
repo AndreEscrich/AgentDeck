@@ -184,12 +184,42 @@ function markdown(text, cwd) {
       slot.replaceWith(el('pre', null, lines.join('\n')));
     }
   }
+  // ```agenthub-diff blocks: Agent Hub runs the command and shows the diff.
+  for (const code of div.querySelectorAll('pre > code.language-agenthub-diff')) {
+    code.parentElement.replaceWith(diffBlock(code.textContent.trim(), cwd));
+  }
   decorateLinks(div);
   for (const img of div.querySelectorAll('img')) {
     const file = resolveMediaPath(img.getAttribute('src'), cwd);
     if (file) img.replaceWith(mediaElement(file, img.getAttribute('alt')));
   }
   return div;
+}
+
+// A diff that the agent (an agenthub-diff block) or you (/diff in the
+// message box) asked for: Agent Hub runs the read-only command in the folder
+// (see branchdiff.js) and draws it like a task's Changes card.
+const DIFF_FILE_LIMIT = 200;
+function diffBlock(command, cwd) {
+  const box = el('div', 'diff-block');
+  box.appendChild(el('div', 'note', `Loading ${command || 'the diff of this branch'}…`));
+  window.deck.runDiff(cwd, command).then(r => {
+    box.replaceChildren();
+    if (!r?.ok) {
+      box.appendChild(el('div', 'note err', `${command || '/diff'}: ${r?.error || 'it did not run'}`));
+      return;
+    }
+    const files = parseUnifiedDiff(r.diff || '');
+    if (!files.length) {
+      box.appendChild(el('div', 'note', `${r.title}: no differences`));
+      return;
+    }
+    box.appendChild(changesCard(files.slice(0, DIFF_FILE_LIMIT), cwd, { title: r.title }));
+    if (files.length > DIFF_FILE_LIMIT) box.appendChild(el('div', 'note', `and ${files.length - DIFF_FILE_LIMIT} more files, not shown`));
+  }).catch(err => {
+    box.replaceChildren(el('div', 'note err', `${command}: ${err?.message || err}`));
+  });
+  return box;
 }
 
 // The one argument worth showing next to a tool name in the collapsed card.
@@ -433,6 +463,14 @@ class Transcript {
     this.pinned(() => this.root.appendChild(node));
   }
 
+  // /diff in the message box: the diff, without asking the agent.
+  showDiff(command) {
+    this.finishTurn();
+    const box = el('div', 'diff-request');
+    box.append(el('div', 'msg-user diff-command', `/diff${command ? ' ' + command : ''}`), diffBlock(command, this.cwd));
+    this.append(box);
+  }
+
   // Notes go into the current turn, under its steps, so they stay visible.
   note(text, isError) {
     const node = el('div', isError ? 'note err' : 'note');
@@ -541,7 +579,7 @@ class Transcript {
       if (result) this.pruneMissing(turn).then(removed => {
         if (!removed || turn.gitShown) return;
         this.pinned(() => {
-          turn.el.querySelector('.changes')?.remove();
+          turn.answer.querySelector(':scope > .changes')?.remove();
           if (!turn.changes.size) return;
           turn.files = this.toolChanges(turn.changes);
           turn.answer.prepend(changesCard(this.withEarlier(turn, turn.files), this.cwd));
@@ -978,7 +1016,7 @@ class Transcript {
     turn.files = files.filter(f => !gone.has(f.path));
     for (const p of [...turn.changes.keys()]) if (gone.has(this.relativePath(p))) turn.changes.delete(p);
     this.pinned(() => {
-      turn.el.querySelector('.changes')?.remove();
+      turn.answer.querySelector(':scope > .changes')?.remove();
       if (turn.files.length) turn.answer.prepend(changesCard(this.withEarlier(turn, turn.files), this.cwd));
     });
   }
@@ -1043,7 +1081,7 @@ class Transcript {
     }
     turn.files = files;
     this.pinned(() => {
-      turn.el.querySelector('.changes')?.remove();
+      turn.answer.querySelector(':scope > .changes')?.remove();
       if (files.length) turn.answer.prepend(changesCard(this.withEarlier(turn, files), this.cwd));
     });
     if (files.length) this.hideGoneTemp(turn).catch(() => {});
@@ -1081,7 +1119,7 @@ class Transcript {
     card.appendChild(grid);
     this.pinned(() => {
       turn.el.querySelector('.media-card')?.remove();
-      const changes = turn.answer.querySelector('.changes');
+      const changes = turn.answer.querySelector(':scope > .changes');
       if (changes) changes.after(card);
       else turn.answer.prepend(card);
     });

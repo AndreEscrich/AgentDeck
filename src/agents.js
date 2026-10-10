@@ -40,7 +40,17 @@ const CHANGES_PROMPT = [
 // encoding, which reviewers then see as every line changed.
 const EDIT_PROMPT = 'To change an existing file, edit the lines that change (the Edit tool) instead of writing the whole file again, so its line endings and encoding stay as they are.';
 
-const SYSTEM_PROMPT = `${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}`;
+// Diffs the user asks for (a branch, a commit) are drawn by Agent Hub from
+// a command, so the agent does not write them out (see branchdiff.js).
+const DIFF_PROMPT = [
+  'When the user wants to see a diff (a branch, a commit, uncommitted changes), do not paste it and do not summarize it file by file.',
+  'Write a code block with the language agenthub-diff that holds one git diff, git show or svn diff command, for example',
+  '```agenthub-diff\ngit diff main...HEAD\n```',
+  'Agent Hub runs that command in your folder and shows the result as a diff viewer with a class diagram.',
+  'Find the right refs first (the current branch, the branch it split off from) when the user does not name them. Add a short summary of what the changes are about.',
+].join(' ');
+
+const SYSTEM_PROMPT = `${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}`;
 
 // 'auto', or the size in tokens when it is between 100k and 1M (false otherwise).
 function compactTokens(value) {
