@@ -53,6 +53,9 @@ class Hub {
     this.onContext = onContext;
     this.sections = new Map();       // group id ('' for no group) + repository -> { el, name, repo, count, grid }
     this.tiles = new Map();          // agent id -> { el, parts, status }
+    // Tiles you Ctrl+clicked: your next message in the Hub goes to each of
+    // them (see broadcast in app.js).
+    this.selected = new Set();
     this.arrivals = new Map();       // agent id -> where its message box was, for the morph animation
 
     this.root = el('div', 'hub');
@@ -237,7 +240,11 @@ class Hub {
     tile.style.setProperty('--wave-delay', `-${(Math.random() * 30).toFixed(2)}s`);
     tile.addEventListener('animationend', e => { if (e.animationName === 'spawn') tile.classList.remove('spawn'); });
     // A click opens the agent, unless it was the end of dragging the tile.
-    tile.onclick = () => { if (!this.justDragged) this.open(agent.id); };
+    tile.onclick = e => {
+      if (this.justDragged) return;
+      if (e.ctrlKey || e.metaKey) { this.toggleSelected(agent.id); return; }
+      this.open(agent.id);
+    };
     tile.addEventListener('pointerdown', e => this.press(e, agent.id));
     tile.oncontextmenu = e => { e.preventDefault(); this.onContext?.(agent.id); };
     const remove = el('button', 'tile-remove', '×');
@@ -315,8 +322,27 @@ class Hub {
 
   // groups: [{ id, name }] in display order. Each agent has a groupId (or
   // null) and a repo name; there is one panel per group and repository.
+  // Selects or unselects a tile (on: true/false, or the other way round).
+  toggleSelected(id, on = !this.selected.has(id), notify = true) {
+    if (on) this.selected.add(id);
+    else this.selected.delete(id);
+    this.tiles.get(id)?.el.classList.toggle('selected', on);
+    if (notify) this.onSelect?.([...this.selected]);
+  }
+
+  clearSelection() {
+    for (const id of this.selected) this.tiles.get(id)?.el.classList.remove('selected');
+    this.selected.clear();
+    this.onSelect?.([]);
+  }
+
   update(agents, currentId, groups = []) {
     this.latest = [agents, currentId, groups];
+    // Tiles that are gone leave the selection.
+    const ids = new Set(agents.map(a => a.id));
+    const before = this.selected.size;
+    for (const id of [...this.selected]) if (!ids.has(id)) this.selected.delete(id);
+    if (this.selected.size !== before) this.onSelect?.([...this.selected]);
     // While the app is minimized (or replaying), the tiles keep the
     // state you last saw; thaw() catches them up.
     if (this.frozen || this.replaying || this.drag) return;
@@ -531,6 +557,14 @@ class Hub {
       head.addEventListener('pointerdown', e => this.pressGroup(e, sec));
       elSec.addEventListener('click', e => {
         if (this.justDragged || e.target.closest('.hub-tile, button')) return;
+        // Ctrl+click on a panel selects all its agents (or none, when all were).
+        if (e.ctrlKey || e.metaKey) {
+          const ids = [...this.tiles].filter(([, t]) => t.el.parentNode === grid && !t.removing).map(([id]) => id);
+          const all = ids.every(id => this.selected.has(id));
+          for (const id of ids) this.toggleSelected(id, !all, false);
+          this.onSelect?.([...this.selected]);
+          return;
+        }
         if (sec.cwd) this.onPickGroup?.(sec.groupKey || null, sec.cwd);
       });
       remove.onclick = e => {
