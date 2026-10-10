@@ -38,6 +38,16 @@ const CHANGES_PROMPT = [
 
 const SYSTEM_PROMPT = `${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}`;
 
+// 'auto', or the size in tokens when it is between 100k and 1M (false otherwise).
+function compactTokens(value) {
+  if (value === 'auto') return 'auto';
+  const m = /^(\d+(?:\.\d+)?)([km]?)$/.exec(value);
+  if (!m) return false;
+  let n = Number(m[1]) * (m[2] === 'm' ? 1e6 : m[2] === 'k' ? 1e3 : 1);
+  if (!m[2] && n < 1000) n *= 1000;   // "200" is shorthand for 200k
+  return n >= 100000 && n <= 1000000 ? n : false;
+}
+
 class AgentManager {
   constructor({ send, getConfig }) {
     this.send = send;          // send(channel, ...args) to the window
@@ -66,6 +76,10 @@ class AgentManager {
     if (model && model !== 'default') args.push('--model', model);
     if (effort) args.push('--effort', effort);
     if (fastMode) args.push('--settings', JSON.stringify({ fastMode: true }));
+    // Compact the conversation at this size (see autoCompact in main.js). A
+    // value the CLI would refuse is left out, so the agent still starts.
+    const compact = String(config.autoCompact || '').trim().toLowerCase();
+    if (compactTokens(compact) !== false) args.push('--autocompact', compact);
     if (resumeId) args.push('--resume', resumeId);
     // A fork starts a new session that begins with a copy of resumeId's conversation.
     if (resumeId && forkSession) args.push('--fork-session');

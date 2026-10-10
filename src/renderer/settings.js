@@ -74,6 +74,7 @@ function openSettings(config, { onSaved } = {}) {
   const model = settingsSelect(sharedModels.map(m => [m.value, shortName(m)]), config.defaultModel || 'default');
   const effort = settingsSelect(EFFORT_OPTIONS, config.defaultEffort || '');
   const fast = settingsInput('checkbox', config.defaultFastMode);
+  const compact = settingsSelect([['150k', '150k tokens'], ['200k', '200k tokens'], ['300k', '300k tokens'], ['500k', '500k tokens'], ['auto', 'When Claude Code decides']], config.autoCompact || '200k');
 
   // The app
   const hubAfterSend = settingsInput('checkbox', config.hubAfterSend !== false);
@@ -100,7 +101,8 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('Permissions', null, mode),
       settingsField('Model', null, model),
       settingsField('Effort', null, effort),
-      settingsField('Fast mode', 'Faster answers from the same model', fast)),
+      settingsField('Fast mode', 'Faster answers from the same model', fast),
+      settingsField('Compact the conversation at', 'Every step re-reads the whole conversation, so long tasks get expensive. Smaller: less usage, but the agent remembers fewer details from early in the task', compact)),
     section('The app',
       settingsField('Show the Hub after sending', 'Off: stay in the chat after you send a message', hubAfterSend),
       settingsField('Short titles', 'Name new agents with a summary of your message, written by Haiku', titles),
@@ -158,6 +160,7 @@ function openSettings(config, { onSaved } = {}) {
       defaultModel: model.value,
       defaultEffort: effort.value,
       defaultFastMode: fast.checked,
+      autoCompact: compact.value,
       hubAfterSend: hubAfterSend.checked,
       summarizeTitles: titles.checked,
       notifyWhenDone: notify.checked,

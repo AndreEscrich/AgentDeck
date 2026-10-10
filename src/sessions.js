@@ -32,7 +32,7 @@ function parseLines(text) {
 // Returns the plain text of a user message, or null when the message is not
 // something the person typed (tool results, slash-command output, meta lines).
 function userText(entry) {
-  if (entry.type !== 'user' || entry.isMeta || entry.isSidechain) return null;
+  if (entry.type !== 'user' || entry.isMeta || entry.isSidechain || entry.isCompactSummary) return null;
   const content = entry.message?.content;
   let text = null;
   if (typeof content === 'string') text = content;
@@ -121,7 +121,10 @@ function loadTranscript(file) {
     if (e.type === 'assistant' && e.message) {
       // uuid and session: where going back to your next message continues from.
       messages.push({ type: 'assistant', message: e.message, uuid: e.uuid, session_id: e.sessionId });
-    } else if (e.type === 'user' && e.message && !e.isMeta) {
+    } else if (e.type === 'system' && e.subtype === 'compact_boundary') {
+      // Claude Code summarized the conversation up to here (see autoCompact).
+      messages.push({ type: 'system', subtype: 'compact_boundary', compact_metadata: { trigger: e.compactMetadata?.trigger, pre_tokens: e.compactMetadata?.preTokens } });
+    } else if (e.type === 'user' && e.message && !e.isMeta && !e.isCompactSummary) {
       const content = e.message.content;
       const hasToolResult = Array.isArray(content) && content.some(c => c.type === 'tool_result');
       if (hasToolResult || userText(e)) messages.push({ type: 'user', message: e.message, tool_use_result: e.toolUseResult });

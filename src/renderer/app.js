@@ -1308,6 +1308,17 @@ function notesBlock(agent) {
     + `${notes}\n</group-notes>\n\n`;
 }
 
+// A compacted conversation may have lost the notes in its summary: they go
+// to the agent again, right away when it is in the middle of a task (Claude
+// reads them at its next step), or else with your next message.
+function afterCompact(agent) {
+  agent.notesSeen = 'compacted';
+  rememberNotesSeen(agent);
+  if (!['working', 'starting', 'waiting', 'stuck'].includes(agent.status)) return;
+  const block = notesBlock(agent);
+  if (block) window.deck.sendMessage(agent.id, block.trim(), []).catch(() => {});
+}
+
 // After a task: Haiku merges what the agent learned into its group's notes.
 // Merges for one group run one after the other, each on the newest notes.
 const notesMerges = new Map();   // group id -> promise of the last merge
@@ -2591,6 +2602,7 @@ window.deck.onEvent((id, msg) => {
   if (!a) return;
   a.transcript.add(msg);
   if (isAuthFailure(msg)) noteAuthProblem();
+  if (msg.type === 'system' && msg.subtype === 'compact_boundary') afterCompact(a);
   if (msg.type === 'assistant') noteClashes(a, msg.message);
   if (msg.type === 'result') clearClashes(a);
   // New textures and videos from this task (see showMedia). Your home folder

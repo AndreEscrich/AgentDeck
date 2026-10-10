@@ -29,6 +29,10 @@ const DEFAULT_CONFIG = {
   defaultModel: 'opus',                 // a value from the model menu; "opus" is always the latest Opus
   defaultEffort: 'medium',              // low | medium | high | xhigh | max; empty means the model's default
   defaultFastMode: false,
+  // When an agent's conversation reaches this size, Claude Code summarizes it
+  // (compacts), so long tasks stop re-reading everything with every step.
+  // 100k to 1m, or 'auto' for Claude Code's own choice.
+  autoCompact: '200k',
   stuckAfterSeconds: 30,                // waiting this long for Unity to be ready marks the agent as stuck
   defaultFolder: '',
   extraArgs: [],                        // extra command-line flags for every agent

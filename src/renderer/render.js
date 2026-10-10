@@ -596,6 +596,10 @@ class Transcript {
             if (this.turn && this.prompts.length) this.addSlashSkill(this.turn, this.prompts[this.prompts.length - 1].text);
           }
           this.addStep(el('div', 'note', `Session ready · ${msg.model} · ${msg.permissionMode} · Claude Code ${msg.claude_code_version || ''}`));
+        } else if (msg.subtype === 'compact_boundary') {
+          // Claude Code summarized the conversation so far (autoCompact in Settings).
+          const before = msg.compact_metadata?.pre_tokens;
+          this.note(`Conversation compacted${before ? ` at ${Math.round(before / 1000)}k tokens` : ''}: the agent now has a summary of the earlier part, so it may have lost details from it.`);
         } else if (msg.subtype === 'api_retry' && msg.attempt === 1) {
           this.note(`API error (${msg.error}), retrying…`, true);
         }
@@ -613,6 +617,9 @@ class Transcript {
     // the agent with a <task-notification> "message" so it can carry on. That
     // is not yours; it starts a new turn with a line about what finished.
     const first = typeof content === 'string' ? content : content?.find?.(b => b.type === 'text')?.text || '';
+    // The summary Claude Code writes when it compacts the conversation is
+    // for the agent (the chat shows a note at the compact_boundary instead).
+    if (/^This session is being continued from a previous conversation/.test(first)) return;
     if (/^\s*<task-notification>/.test(first)) {
       this.finishTurn();
       const summary = /<summary>([\s\S]*?)<\/summary>/.exec(first)?.[1]?.trim();
