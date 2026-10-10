@@ -76,7 +76,26 @@ class Hub {
     this.activityBox = el('div', 'hub-activity');
     this.empty.appendChild(this.activityBox);
 
-    this.root.append(this.grid, this.empty);
+    // Your session's usage as a health bar across the top of the Hub (see
+    // renderHealth): what is left of the 5-hour limit, losing chunks as your
+    // agents use tokens. Clicking it opens the usage card.
+    this.health = el('button', 'hub-health');
+    this.health.type = 'button';
+    this.health.title = 'Usage: click for details';
+    const track = el('div', 'health-track');
+    this.healthGhost = el('div', 'health-ghost');
+    this.healthFill = el('div', 'health-fill');
+    const ticks = el('div', 'health-ticks');
+    for (let i = 0; i < 9; i++) ticks.appendChild(el('span'));
+    this.healthFloat = el('div', 'health-floats');
+    track.append(this.healthGhost, this.healthFill, ticks, this.healthFloat);
+    this.healthLabel = el('span', 'health-label', 'Session');
+    this.healthText = el('span', 'health-text', '');
+    this.healthWeek = el('span', 'health-week');
+    this.health.append(this.healthLabel, track, this.healthText, this.healthWeek);
+    this.health.onclick = () => this.showPanel?.('usage');
+
+    this.root.append(this.health, this.grid, this.empty);
 
     // Your plan's usage (see setUsage): a small tab pinned to the left edge
     // of the Hub. Clicking it opens the usage card beside it; clicking
@@ -115,7 +134,7 @@ class Hub {
     nav.append(this.settingsBtn, this.usageTab);
     this.rail.append(nav, this.usage, this.settingsMenu);
     // A button opens its card, or closes it when it is already open.
-    const showPanel = panel => {
+    const showPanel = this.showPanel = panel => {
       const same = this.rail.classList.contains('open') && this.rail.dataset.panel === panel;
       this.rail.dataset.panel = panel;
       this.rail.classList.toggle('open', !same);
@@ -158,6 +177,7 @@ class Hub {
   renderUsage() {
     const u = this.usageData;
     this.renderUsageTab(u?.limits?.unifiedWindows);
+    this.renderHealth();
     const box = this.usageMain;
     box.textContent = '';
     box.appendChild(el('div', 'usage-title', 'Usage'));
@@ -209,21 +229,65 @@ class Hub {
     }
     const session = windows?.five_hour ? `${Math.round((windows.five_hour.utilization || 0) * 100)}%` : '–';
     tab.append(bars, el('span', 'usage-tab-pct', session), el('span', 'usage-tab-label', 'Usage'));
-    // Limit reached: how long until it resets, next to the tab.
-    const l = this.usageData?.limits;
-    const resets = l?.status === 'rejected' ? l.resetsAt || l.unifiedWindows?.[l.rateLimitType]?.resetsAt : null;
     this.limitTimer?.remove();
     this.limitTimer = null;
-    if (resets && resets * 1000 > Date.now()) {
-      const ms = resets * 1000 - Date.now();
-      const h = Math.floor(ms / 3600000);
-      const m = Math.ceil((ms % 3600000) / 60000);
-      const timer = el('div', 'usage-limit-timer');
-      timer.append(el('span', 'usage-limit-label', 'Limit'), el('span', 'usage-limit-time', h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`));
-      timer.title = `Your usage limit is reached. It resets ${Hub.resetText(resets)}; waiting agents continue then.`;
-      this.limitTimer = timer;
-      tab.after(timer);
+  }
+
+  // The health bar: what is left of the session's limit. When it drops, a
+  // lighter "ghost" stays at the old level for a moment and then catches up,
+  // like a game's health bar taking damage.
+  renderHealth() {
+    const l = this.usageData?.limits;
+    const w = l?.unifiedWindows;
+    const used = w?.five_hour ? Math.max(0, Math.min(100, (w.five_hour.utilization || 0) * 100)) : null;
+    const resets = l?.status === 'rejected' ? l.resetsAt || w?.[l.rateLimitType]?.resetsAt : w?.five_hour?.resetsAt;
+    const limited = l?.status === 'rejected' && resets && resets * 1000 > Date.now();
+    const left = limited ? 0 : used == null ? null : 100 - used;
+    this.health.classList.toggle('unknown', left == null);
+    this.health.classList.toggle('limited', !!limited);
+    this.health.classList.remove('low', 'mid', 'high');
+    if (left != null) this.health.classList.add(left <= 10 ? 'low' : left <= 30 ? 'mid' : 'high');
+    const pct = left ?? 0;
+    const before = this.healthLeft;
+    this.healthLeft = pct;
+    this.healthFill.style.width = `${pct}%`;
+    if (before == null || pct >= before) {
+      // Going up (a reset) or the first value: the ghost follows at once.
+      this.healthGhost.style.transitionDelay = '0s';
+      this.healthGhost.style.width = `${pct}%`;
+    } else {
+      // Damage: the bar flashes, the ghost lingers, then drains to the new level.
+      this.health.classList.remove('hit');
+      void this.health.offsetWidth;
+      this.health.classList.add('hit');
+      this.healthGhost.style.transitionDelay = '0.6s';
+      this.healthGhost.style.width = `${pct}%`;
     }
+    this.healthText.textContent = limited
+      ? `Limit reached · resets ${Hub.resetText(resets)}, then waiting agents continue`
+      : left == null ? 'Usage shows after an agent\'s first reply'
+      : `${Math.round(left)}% left${resets ? ` · resets ${Hub.resetText(resets)}` : ''}`;
+    const week = w?.seven_day ? Math.round((w.seven_day.utilization || 0) * 100) : null;
+    this.healthWeek.textContent = week == null ? '' : `Week ${week}%`;
+  }
+
+  // Tokens an agent just used: a number that floats off the bar's end.
+  tokenTick(tokens) {
+    if (!tokens || !this.healthFloat.isConnected) return;
+    this.pendingTokens = (this.pendingTokens || 0) + tokens;
+    if (this.tokenTimer) return;
+    this.tokenTimer = setTimeout(() => {
+      const n = this.pendingTokens;
+      this.pendingTokens = 0;
+      this.tokenTimer = null;
+      const f = el('span', 'health-float', `−${formatTokens(n)}`);
+      f.style.left = `${Math.max(4, Math.min(92, this.healthLeft ?? 50))}%`;
+      this.healthFloat.appendChild(f);
+      this.healthFill.classList.remove('pulse');
+      void this.healthFill.offsetWidth;
+      this.healthFill.classList.add('pulse');
+      setTimeout(() => f.remove(), 1400);
+    }, 350);
   }
 
   // "in 2h 05m", "Fri 18:00" for later than a day.

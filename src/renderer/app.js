@@ -3149,8 +3149,16 @@ async function checkLimitReset() {
 }
 setInterval(checkLimitReset, 15 * 1000);
 
+// Tokens of each API answer, once per answer: they float off the health bar.
+const tickedAnswers = new Set();
+
 window.deck.onEvent((id, msg) => {
   noteUsage(msg);
+  if (msg.type === 'assistant' && msg.message?.usage && msg.message.id && !tickedAnswers.has(msg.message.id)) {
+    tickedAnswers.add(msg.message.id);
+    if (tickedAnswers.size > 5000) tickedAnswers.clear();
+    hub.tokenTick(totalTokens(msg.message.usage));
+  }
   const a = state.agents.get(id);
   if (!a) return;
   a.transcript.add(msg);
