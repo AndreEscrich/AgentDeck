@@ -1820,6 +1820,9 @@ details.other-files details.change-file > summary { padding-left: 12px; }
 .hub-health.unknown .health-track { opacity: 0.4; }
 
 /* The usage card hangs centred under the health bar and drops down from it, without a bounce */
+/* Taller than the window has room for: it scrolls inside (the Hub's top bar
+   and the bar itself are above it). */
+.usage-rail .hub-usage.usage-card { max-height: calc(100vh - 130px); overflow-y: auto; overscroll-behavior: contain; }
 .usage-rail .hub-usage.usage-card { top: 58px; left: 50%; transform: translateX(-50%) translateY(-10px); transform-origin: 50% 0;
   transition: opacity 0.18s, transform 0.2s cubic-bezier(.2,.8,.3,1); }
 .usage-rail.open[data-panel="usage"] .hub-usage.usage-card { transform: translateX(-50%); }
