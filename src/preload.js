@@ -74,6 +74,7 @@ contextBridge.exposeInMainWorld('deck', {
   contextUsage: id => ipcRenderer.invoke('agent:context', id),
   summarizeTitle: text => ipcRenderer.invoke('agent:title', text),
   mergeNotes: input => ipcRenderer.invoke('notes:merge', input),
+  followUps: input => ipcRenderer.invoke('agent:followups', input),
   notify: (id, title, body) => ipcRenderer.invoke('notify', id, title, body),
   onEvent: fn => on('agent:event', fn),
   onStatus: fn => on('agent:status', fn),

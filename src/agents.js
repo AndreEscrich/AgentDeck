@@ -383,6 +383,48 @@ function summarizeTitle(config, text) {
   });
 }
 
+// The messages you are most likely to send next, after an agent finished a
+// task: up to three short ones, written as you would write them. Resolves
+// with an array (empty when it failed). See loadFollowUps in app.js.
+function suggestFollowUps(config, { task = '', answer = '', notes = '' }) {
+  return new Promise(resolve => {
+    const proc = spawnClaude(config.claudePath,
+      ['-p', '--model', 'haiku', '--output-format', 'json', '--strict-mcp-config', '--tools', '', '--no-session-persistence'],
+      { cwd: os.tmpdir(), env: childEnv(config.env), stdio: ['pipe', 'pipe', 'ignore'] });
+    helperProcesses.add(proc);
+    let out = '';
+    const timer = setTimeout(() => { killTree(proc); }, 45000);
+    proc.stdout.on('data', d => { out += d; });
+    proc.on('error', () => resolve([]));
+    proc.on('close', () => {
+      clearTimeout(timer);
+      helperProcesses.delete(proc);
+      try {
+        const result = JSON.parse(out);
+        if (result.is_error || typeof result.result !== 'string') return resolve([]);
+        const lines = result.result.split('\n')
+          .map(l => l.trim().replace(/^(\d+[.)]|[-*•])\s*/, '').replace(/^["'`]+|["'`]+$/g, '').trim())
+          .filter(l => l && l.length <= 120 && !/^(here|suggest|follow)/i.test(l));
+        resolve([...new Set(lines)].slice(0, 3));
+      } catch {
+        resolve([]);
+      }
+    });
+    proc.stdin.end([
+      'A user works with an AI coding agent. The agent just finished the task below. Write the 3 messages the user is most likely to send next,',
+      'as the user would type them: short (at most 10 words), direct, in the same language and tone as the user\'s message.',
+      'Prefer the obvious next steps: the same change for the next item, fixing what the agent says is left or risky, checking or testing it, committing.',
+      'Do not repeat the task. Do not invent features the conversation does not point to.',
+      'Reply with only the 3 messages, one per line, no numbering, no quotes.',
+      '',
+      `<user_message>\n${task.slice(0, 3000)}\n</user_message>`,
+      '',
+      `<agent_final_message>\n${answer.slice(0, 6000)}\n</agent_final_message>`,
+      ...(notes ? ['', `<project_notes>\n${notes.slice(0, 2000)}\n</project_notes>`] : []),
+    ].join('\n'));
+  });
+}
+
 // A group's shared notes, after one of its agents finished a task: Haiku
 // adds what the agent learned that will help the other agents later, and
 // keeps the notes short. Resolves with the new notes, '' when they did not
@@ -472,4 +514,4 @@ function fetchUsage(config) {
   });
 }
 
-module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, mergeNotes, fetchUsage };
+module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, mergeNotes, suggestFollowUps, fetchUsage };

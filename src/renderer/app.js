@@ -545,7 +545,8 @@ function show(kind, id) {
     setHeader(headerTitle(a), a.cwd, a);
     composerPicker.setValue(a.choice || defaultChoice());
     composerModePicker.setValue(a.mode || defaultMode());
-    $('input').placeholder = 'Message the agent… (↩ to send, ⇧↩ for a new line)';
+    $('input').placeholder = DEFAULT_PLACEHOLDER;
+    renderFollowUps();
     $('input').focus();
   } else if (kind === 'history') {
     const h = state.history.get(id);
@@ -783,6 +784,7 @@ const connectorsDialog = new ConnectorsDialog({
 hub.onOpenConnectors = () => connectorsDialog.open();
 hub.onOpenSettings = () => showSettings();
 hub.onOpenNotes = groupId => openNotesEditor(findGroup(groupId));
+hub.onFollowUp = (id, text) => sendFollowUp(state.agents.get(id), text);
 
 // Your Claude Code activity, shown in the Hub while it has no agents. It is
 // read at startup and again when the empty Hub shows and the numbers are
@@ -1248,6 +1250,7 @@ function headerTitle(a) {
 function setHeader(title, subtitle, agent) {
   $('view-title').textContent = title;
   $('view-title').title = agent && agent.title !== title ? `Task: ${agent.title}` : '';
+  renderFollowUps();
   $('view-subtitle').textContent = subtitle || '';
   const pill = $('view-status');
   if (agent) {
@@ -2240,6 +2243,7 @@ function userContent(text, images = []) {
 }
 
 async function sendToAgent(agent, text, images = []) {
+  clearFollowUps(agent);
   // After "Undo last prompt", the agent learns that its files are back as
   // they were before its last task (the chat shows your message as you wrote it).
   if (agent.undoNote) {
@@ -2759,6 +2763,7 @@ window.deck.onEvent((id, msg) => {
       .catch(() => {});
   }
   if (msg.type === 'result' && !msg.is_error) learnFrom(a, a.transcript.lastFinished, msg.result);
+  if (msg.type === 'result' && !msg.is_error && a.status === 'idle') loadFollowUps(a, a.transcript.lastFinished, msg.result);
   if (msg.type === 'result' && !msg.is_error && a.ticket) addTicketPost(a, a.transcript.lastFinished, msg.result);
   if (msg.type === 'result' && !msg.is_error) {
     // Used to find the most recently finished agent of a Group.
@@ -2792,6 +2797,7 @@ window.deck.onStatus((id, status) => {
   const a = state.agents.get(id);
   if (!a) return;
   a.status = status;
+  if (status !== 'idle') clearFollowUps(a);
   if (status !== 'waiting') a.attention = null;
   // Used by the review queue: the agent that has waited longest goes first.
   if (status === 'waiting') a.waitingSince = a.waitingSince || Date.now();
@@ -3022,6 +3028,110 @@ $('input').addEventListener('keydown', e => {
   }
 });
 $('send').onclick = sendFromComposer;
+
+// ---------- suggested follow-ups ----------
+
+// After a task, Haiku suggests the messages you will likely send next
+// (suggestFollowUps in agents.js). In the agent's chat they show as chips
+// above the message box, and the first one as the box's grey placeholder:
+// → (in the empty box) or a click puts one in the box, Alt+1–3 sends one
+// right away. In the Hub, the first one shows on the agent's tile when you
+// point at it; a click sends it. They go away with your next message.
+const DEFAULT_PLACEHOLDER = 'Message the agent… (↩ to send, ⇧↩ for a new line)';
+
+function loadFollowUps(agent, turn, answer) {
+  agent.followUps = null;
+  if (state.config.suggestFollowUps === false || !answer?.trim()) return;
+  const task = agent.transcript.prompts.filter(p => p.turn === turn).pop()?.text
+    || agent.transcript.prompts[agent.transcript.prompts.length - 1]?.text || '';
+  const group = findGroup(agent.groupId);
+  const notes = sharesNotes(group) ? group?.notes?.text || '' : '';
+  agent.followUpsFor = turn;
+  window.deck.followUps({ task, answer, notes }).then(list => {
+    // Only while the agent still waits for you after that same task.
+    if (agent.followUpsFor !== turn || agent.status !== 'idle' || !list?.length) return;
+    agent.followUps = list;
+    renderFollowUps();
+    refreshHub();
+  }).catch(() => {});
+}
+
+function clearFollowUps(agent) {
+  if (!agent) return;
+  agent.followUpsFor = null;
+  if (!agent.followUps) return;
+  agent.followUps = null;
+  renderFollowUps();
+  refreshHub();
+}
+
+function currentFollowUps() {
+  const a = state.current?.kind === 'agent' ? state.agents.get(state.current.id) : null;
+  return a?.status === 'idle' && !a.pendingQuestion && a.followUps?.length ? a.followUps : null;
+}
+
+function renderFollowUps() {
+  const input = $('input');
+  let box = document.getElementById('followups');
+  if (!box) {
+    box = el('div', 'followups hidden');
+    box.id = 'followups';
+    input.before(box);
+  }
+  const list = currentFollowUps();
+  const show = !!list && !input.value.trim();
+  box.classList.toggle('hidden', !show);
+  if (state.current?.kind === 'agent') input.placeholder = show ? `${list[0]}   (→ to use)` : DEFAULT_PLACEHOLDER;
+  if (!show) return;
+  box.replaceChildren();
+  list.forEach((text, i) => {
+    const chip = el('button', 'followup');
+    chip.type = 'button';
+    chip.title = `Click: put it in the box · Alt+${i + 1}: send it now`;
+    chip.append(el('kbd', null, `Alt+${i + 1}`), el('span', null, text));
+    chip.onclick = () => fillFollowUp(text);
+    box.appendChild(chip);
+  });
+}
+
+function fillFollowUp(text) {
+  const input = $('input');
+  input.value = text;
+  autosize();
+  input.focus();
+  input.setSelectionRange(text.length, text.length);
+  renderFollowUps();
+}
+
+// Sends a suggestion to an agent that is not on screen (from its Hub tile).
+async function sendFollowUp(agent, text) {
+  if (!agent || agent.status !== 'idle') return;
+  sfx('sent');
+  agent.transcript.add({ type: 'user', message: { role: 'user', content: text } });
+  notePrompt(agent, text);
+  afterSend(agent, true);
+  await sendToAgent(agent, text);
+}
+
+$('input').addEventListener('input', renderFollowUps);
+$('input').addEventListener('keydown', e => {
+  // → in the empty box takes the first suggestion.
+  if (e.key === 'ArrowRight' && !$('input').value && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+    const list = currentFollowUps();
+    if (list) { e.preventDefault(); fillFollowUp(list[0]); }
+  }
+});
+// Alt+1–3 sends that suggestion right away (Ctrl+1–9 switch agents).
+document.addEventListener('keydown', e => {
+  if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !/^Digit[1-9]$/.test(e.code)) return;
+  const list = currentFollowUps();
+  const text = list?.[Number(e.code.slice(5)) - 1];
+  if (!text) return;
+  e.preventDefault();
+  $('input').value = text;
+  sendFromComposer();
+});
+
 
 
 // Stops an agent's current task; the agent stays, ready for your next

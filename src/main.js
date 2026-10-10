@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Notification, Menu, protocol
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
-const { AgentManager, fetchModels, summarizeTitle, mergeNotes, fetchUsage } = require('./agents');
+const { AgentManager, fetchModels, summarizeTitle, mergeNotes, suggestFollowUps, fetchUsage } = require('./agents');
 const { listSessions, loadTranscript, PROJECTS_DIR } = require('./sessions');
 const git = require('./git');
 const { repoOf } = require('./repos');
@@ -42,6 +42,7 @@ const DEFAULT_CONFIG = {
   sounds: true,                         // a sound when you start an agent and when one finishes
   hubAfterSend: true,                   // show the Hub after you send a message
   summarizeTitles: true,                // title new agents with a short summary of your message
+  suggestFollowUps: true,               // after a task, suggest the messages you will likely send next
 };
 
 let win;
@@ -312,6 +313,7 @@ app.whenReady().then(() => {
     attention = count;
   });
   ipcMain.handle('agent:context', (_e, id) => agents.contextUsage(id));
+  ipcMain.handle('agent:followups', (_e, input) => (getConfig().suggestFollowUps ? suggestFollowUps(getConfig(), input || {}) : []));
   ipcMain.handle('notes:merge', (_e, input) => mergeNotes(getConfig(), input || {}));
   ipcMain.handle('agent:title', (_e, text) => (getConfig().summarizeTitles ? summarizeTitle(getConfig(), text) : null));
   // Clicking a notification opens its agent. The app keeps each notification
