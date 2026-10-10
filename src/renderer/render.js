@@ -714,7 +714,7 @@ class Transcript {
       // The changed files come first, then Claude's message about them.
       const toolFiles = this.toolChanges(turn.changes).filter(f => !isTempFile(f.path));
       turn.files = toolFiles;
-      if (toolFiles.length) turn.answer.appendChild(changesCard(this.withEarlier(turn, toolFiles), this.cwd));
+      if (toolFiles.length) turn.answer.appendChild(changesCard(this.withEarlier(turn, toolFiles), this.cwd, { animate: !!result }));
       if (toolFiles.length) this.hideGoneTemp(turn).catch(() => {});
       // Then drop files that no longer exist, unless the snapshot comparison
       // (showGitChanges) has replaced this card in the meantime. Only for a
@@ -1230,7 +1230,7 @@ class Transcript {
     turn.files = files;
     this.pinned(() => {
       turn.answer.querySelector(':scope > .changes')?.remove();
-      if (files.length) turn.answer.prepend(changesCard(this.withEarlier(turn, files), this.cwd));
+      if (files.length) turn.answer.prepend(changesCard(this.withEarlier(turn, files), this.cwd, { animate: true }));
     });
     if (files.length) this.hideGoneTemp(turn).catch(() => {});
     if (this.lastFinished === turn && this.lastTurn) {

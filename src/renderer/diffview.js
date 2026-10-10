@@ -165,6 +165,18 @@ function setReviewed(f, on) {
   try { localStorage.setItem('reviewedFiles', JSON.stringify([...set].slice(-5000))); } catch { /* not important */ }
 }
 
+// A count that rolls up from zero to its value.
+function rollUp(node, to, prefix) {
+  if (!node || !to) return;
+  const start = performance.now();
+  const step = now => {
+    const q = Math.min(1, (now - start) / 700);
+    node.textContent = prefix + Math.round(to * (1 - Math.pow(1 - q, 3)));
+    if (q < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
 function fileSummary(f) {
   const { add, del } = fileStats(f);
   const counts = el('span', 'change-counts');
@@ -187,7 +199,9 @@ function fileSummary(f) {
 // The card under the answer. Every file starts collapsed: click one to see
 // its diff. Click a line in a diff to comment on it (see lineComments).
 // title: the card's heading instead of "Changed N files" (a diff you asked for).
-function changesCard(files, cwd, { title = null } = {}) {
+// animate: a task that just finished, so its files deal in one by one and
+// the line counts roll up.
+function changesCard(files, cwd, { title = null, animate = false } = {}) {
   files = sortFiles(files);
   const code = files.filter(f => isCodeFile(f.path));
   const other = files.filter(f => !isCodeFile(f.path));
@@ -227,6 +241,8 @@ function changesCard(files, cwd, { title = null } = {}) {
     row.appendChild(summary);
     const tick = el('button', 'review-tick');
     tick.type = 'button';
+    tick.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 8.5 L7 11 L12 5"/></svg>';
+    if (animate) row.style.setProperty('--i', String(rows.size - 1));
     tick.onclick = e => {
       e.preventDefault();
       e.stopPropagation();
@@ -284,11 +300,24 @@ function changesCard(files, cwd, { title = null } = {}) {
     progress.textContent = n ? `${n} of ${rows.size} reviewed` : '';
     progress.classList.toggle('done', all);
     actions.classList.toggle('hidden', !all);
-    if (all && wasAll === false) window.dispatchEvent(new CustomEvent('changes-reviewed', { detail: { card } }));
+    if (all && wasAll === false) {
+      window.dispatchEvent(new CustomEvent('changes-reviewed', { detail: { card } }));
+      // A stamp lands on the card, and Commit glows once.
+      const stamp = el('div', 'review-stamp', 'Reviewed');
+      head.appendChild(stamp);
+      setTimeout(() => stamp.classList.add('fade'), 1400);
+      setTimeout(() => stamp.remove(), 2000);
+      actions.querySelector('.review-commit')?.classList.add('glow');
+    }
     wasAll = all;
   };
   card.syncReview = syncReview;
   syncReview();
+  if (animate) {
+    card.classList.add('deal');
+    rollUp(head.querySelector('.plus'), totalAdd, ' +');
+    rollUp(head.querySelector('.minus'), totalDel, ' −');
+  }
   loadNamespaces(files, cwd, () => {
     for (const [f, summary] of titles) {
       const { front, name } = titleParts(f);

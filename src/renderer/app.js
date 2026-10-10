@@ -916,6 +916,39 @@ document.addEventListener('keydown', e => {
   }
 }, true);
 
+// ---------- feel ----------
+
+// Buttons squish a little while pressed and spring back, a touch past their
+// size, when you let go.
+document.addEventListener('pointerdown', e => {
+  const b = e.target.closest?.('button');
+  if (!b || b.disabled || e.button !== 0) return;
+  const press = b.animate([{ scale: 1 }, { scale: 0.93 }], { duration: 80, fill: 'forwards', easing: 'ease-out' });
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    press.cancel();
+    b.animate([{ scale: 0.93 }, { scale: 1.05, offset: 0.55 }, { scale: 1 }], { duration: 300, easing: 'cubic-bezier(.3,1.5,.5,1)' });
+  };
+  b.addEventListener('pointerup', release, { once: true });
+  b.addEventListener('pointerleave', release, { once: true });
+}, true);
+
+// Cards (Settings, notes, the palette, questions) grow out of the point you
+// clicked, and shrink back into it when they close.
+let lastPointer = { x: 0, y: 0, at: 0 };
+document.addEventListener('pointerdown', e => { lastPointer = { x: e.clientX, y: e.clientY, at: Date.now() }; }, true);
+new MutationObserver(records => {
+  for (const r of records) for (const node of r.addedNodes) {
+    if (!(node instanceof HTMLElement) || !node.matches('.quit-modal, .settings-modal')) continue;
+    const card = node.firstElementChild;
+    if (!card || Date.now() - lastPointer.at > 1500) continue;
+    card.style.transformOrigin = `${lastPointer.x - card.offsetLeft}px ${lastPointer.y - card.offsetTop}px`;
+    node.classList.add('from-click');
+  }
+}).observe(document.body, { childList: true });
+
 // ---------- reviewing a task's changes ----------
 
 // The agent (or saved session) a Changes card belongs to.
@@ -1021,8 +1054,33 @@ async function sendToHubItem(id, text, images = []) {
   return true;
 }
 
+// Glowing dots arc from the message box into each tile, which bubbles as
+// they land.
+function flyToTiles(ids) {
+  const box = document.querySelector('.composer-box')?.getBoundingClientRect();
+  if (!box) return;
+  ids.forEach((id, i) => {
+    const tile = hub.tiles.get(id)?.el;
+    if (!tile) return;
+    const to = tile.getBoundingClientRect();
+    const sx = box.left + box.width / 2, sy = box.top + 10;
+    const ex = to.left + to.width / 2, ey = to.top + to.height * 0.35;
+    const dot = el('div', 'fly-dot');
+    document.body.appendChild(dot);
+    dot.animate([
+      { transform: `translate(${sx}px, ${sy}px) scale(0.6)` },
+      { transform: `translate(${(sx + ex) / 2}px, ${Math.min(sy, ey) - 80}px) scale(1.25)`, offset: 0.5 },
+      { transform: `translate(${ex}px, ${ey}px) scale(0.4)`, opacity: 0.5 },
+    ], { duration: 560, delay: i * 80, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'backwards' }).onfinish = () => {
+      dot.remove();
+      hub.replay(tile, 'landed', 600);
+    };
+  });
+}
+
 async function broadcast(text, images) {
   const ids = [...hub.selected];
+  flyToTiles(ids);
   hub.clearSelection();
   sfx('sent');
   let sent = 0;
@@ -3346,6 +3404,7 @@ async function sendFromComposer() {
     }
     sfx('sent');
     a.transcript.add({ type: 'user', message: { role: 'user', content: userContent(text, images) } });
+    [...a.view.querySelectorAll('.msg-user')].pop()?.classList.add('just-sent');
     notePrompt(a, text);
     afterSend(a, true);
     await sendToAgent(a, text, images);

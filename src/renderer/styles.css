@@ -1726,3 +1726,78 @@ details.other-files details.change-file > summary { padding-left: 12px; }
 .hub-tile.limited { --c1: #c9a35a; --c2: #8a6a30; --glow: rgba(200, 160, 80, 0.2); --wave-speed: 14s; }
 .hub-tile.limited .tank-icon { transform: scale(1); font-size: clamp(14px, 16cqw, 34px); }
 .hub-tile.limited .hub-status { color: #d8b46a; }
+
+/* ---------- tile motion ---------- */
+/* The state colours are real colour properties, so a tile's liquid flows
+   from one colour into the next instead of switching. */
+@property --c1 { syntax: '<color>'; inherits: true; initial-value: #6b708c; }
+@property --c2 { syntax: '<color>'; inherits: true; initial-value: #4a4e66; }
+.hub-tile { transition: border-color 0.3s, box-shadow 0.4s, transform 0.18s ease-out, --c1 0.9s ease, --c2 0.9s ease; }
+/* Leaning toward the pointer (--rx, --ry from hub.js), the liquid tilting with it */
+.hub-tile:hover:not(.dragging) { transform: perspective(700px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateY(-2px); }
+.hub-tile .liquid { transform: skewY(var(--lean, 0deg)); transition: height 1.2s cubic-bezier(.3,1.3,.5,1), transform 0.3s ease-out; }
+/* Finished: the tank sloshes up and the check pops in */
+.hub-tile.finish { animation: pop 0.6s cubic-bezier(.3,1.6,.5,1); }
+.hub-tile.finish .liquid { animation: finish-slosh 0.9s ease-in-out; }
+.hub-tile.finish .tank-icon { animation: check-pop 0.55s 0.4s cubic-bezier(.3,1.8,.5,1) both; }
+@keyframes finish-slosh { 20% { transform: skewY(6deg); } 50% { transform: skewY(-4deg); } 75% { transform: skewY(2deg); } 100% { transform: none; } }
+@keyframes check-pop { 0% { transform: scale(0) rotate(-20deg); } 100% { transform: scale(1); } }
+/* Any other change of state: a small wobble */
+.hub-tile.wob { animation: tile-wob 0.5s cubic-bezier(.3,1.6,.5,1); }
+@keyframes tile-wob { 30% { rotate: -2.5deg; scale: 1.035; } 65% { rotate: 1.5deg; } 100% { rotate: 0deg; scale: 1; } }
+/* Thinking: slow bubbles that collect at the surface */
+.hub-tile.thinking .bubbles span { animation-name: bubble-think; animation-duration: calc(var(--bd, 2.6s) * 2.2); animation-timing-function: ease-out; }
+@keyframes bubble-think {
+  0% { transform: translate(0, 0); opacity: 0; }
+  20% { opacity: 0.9; }
+  75% { transform: translate(3px, -48px); opacity: 0.9; }
+  100% { transform: translate(2px, -54px) scale(1.35); opacity: 0; }
+}
+
+/* The Usage tab: the session as a small tank of liquid, the week as a bar */
+.usage-tab-tank { position: relative; width: 16px; height: 100%; border-radius: 5px; background: #100d0a; overflow: hidden; border: 1px solid #3a3027; box-sizing: border-box;
+  --c1: #74d39d; --c2: #2f8f5a; }
+.usage-tab-tank.mid { --c1: #f2c060; --c2: #c98a1c; }
+.usage-tab-tank.high { --c1: #ef7f7f; --c2: #b33a3a; }
+.usage-tab-liquid { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(var(--c1), var(--c2));
+  transition: height 1s cubic-bezier(.3,1.3,.5,1), --c1 0.9s, --c2 0.9s; }
+.usage-tab-liquid::before { content: ""; position: absolute; left: -60%; width: 220%; height: 6px; top: -3px; border-radius: 45%; background: #100d0a;
+  animation: tab-wave 3.5s linear infinite; }
+@keyframes tab-wave { to { transform: rotate(360deg); } }
+.usage-tab-tank.slosh .usage-tab-liquid { animation: finish-slosh 0.8s ease-in-out; }
+/* The limit's hourglass: drains until the reset, then a green "Ready" pulse */
+.usage-limit-glass { position: relative; width: 12px; height: 26px; margin: 3px 0; border-radius: 4px; background: #100d0a; overflow: hidden; border: 1px solid rgba(224, 90, 90, 0.5); }
+.usage-limit-sand { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(#ef7f7f, #b33a3a); transition: height 1s linear; }
+.usage-limit-timer.ready { border-color: var(--ok); background: rgba(76, 175, 122, 0.14); animation: limit-ready 1s ease-out 3; }
+.usage-limit-timer.ready .usage-limit-label { color: var(--ok); }
+@keyframes limit-ready { 0% { box-shadow: 0 0 0 0 rgba(76, 175, 122, 0.7); } 100% { box-shadow: 0 0 0 12px rgba(76, 175, 122, 0); } }
+
+/* ---------- arrivals, rewards and feel ---------- */
+/* A message flying from the message box to a selected agent */
+.fly-dot { position: fixed; left: -5px; top: -5px; z-index: 200; width: 10px; height: 10px; border-radius: 50%; pointer-events: none;
+  background: var(--accent); box-shadow: 0 0 12px var(--accent), 0 0 4px #fff; }
+/* Your message pops into the chat */
+.msg-user.just-sent { animation: sent-pop 0.4s cubic-bezier(.3,1.6,.5,1); transform-origin: 100% 100%; }
+@keyframes sent-pop { 0% { transform: scale(0.85) translateY(8px); opacity: 0.4; } 100% { transform: none; opacity: 1; } }
+/* A finished task's files deal in one by one */
+.changes.deal details.change-file { animation: deal-in 0.42s cubic-bezier(.3,1.35,.5,1) both; animation-delay: calc(var(--i, 0) * 70ms + 120ms); }
+@keyframes deal-in { from { opacity: 0; transform: translateX(-18px); } to { opacity: 1; transform: none; } }
+/* Review ticks draw their check; the last one stamps the card */
+.review-tick { position: relative; }
+.review-tick svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.review-tick path { fill: none; stroke: #10140f; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 14; stroke-dashoffset: 14; }
+.change-file.reviewed .review-tick path { stroke-dashoffset: 0; transition: stroke-dashoffset 0.28s 0.05s ease-out; }
+.change-file.reviewed .review-tick::after { content: none; }
+.changes-head { position: relative; }
+.review-stamp { position: absolute; right: 40%; top: -4px; z-index: 5; padding: 2px 12px; border: 3px solid var(--ok); border-radius: 6px; color: var(--ok);
+  font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; font-size: 14px; pointer-events: none; background: rgba(20, 26, 20, 0.6);
+  animation: stamp-in 0.45s cubic-bezier(.2,1.6,.4,1) both; transition: opacity 0.5s; }
+.review-stamp.fade { opacity: 0; }
+@keyframes stamp-in { 0% { opacity: 0; transform: rotate(-10deg) scale(2.4); } 60% { opacity: 1; transform: rotate(-10deg) scale(0.92); } 100% { opacity: 1; transform: rotate(-10deg) scale(1); } }
+.review-commit.glow { animation: commit-glow 1.2s ease-out 2; }
+@keyframes commit-glow { 0% { box-shadow: 0 0 0 0 rgba(76, 175, 122, 0.75); } 100% { box-shadow: 0 0 0 12px rgba(76, 175, 122, 0); } }
+/* Cards grow out of the point you clicked (transform-origin set in app.js) */
+.from-click > :first-child { transition: transform 0.32s cubic-bezier(.3,1.2,.4,1), opacity 0.22s !important; }
+.from-click:not(.show) > :first-child { transform: scale(0.12) !important; opacity: 0; }
+/* History slides in with a little spring */
+#sidebar.history-drawer { transition: transform 0.32s cubic-bezier(.3,1.15,.4,1); }
