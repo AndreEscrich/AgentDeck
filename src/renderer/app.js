@@ -19,6 +19,7 @@ const STATUS_TEXT = {
   idle: 'Waiting for you',
   waiting: 'Needs approval',
   stuck: 'Stuck',
+  background: 'Running in the background',
   error: 'Error',
   exited: 'Stopped',
 };
@@ -842,7 +843,7 @@ function refreshHub() {
     hub.update(items, state.current?.kind === 'agent' ? state.current.id : null, state.groups.groups);
     saveHub();
     const agents = items.filter(a => !a.parked);
-    const busy = agents.filter(a => ['working', 'starting', 'waiting', 'stuck'].includes(a.status)).length;
+    const busy = agents.filter(a => BUSY.includes(a.status)).length;
     // Agents finishing or getting their short title change the "continues from" line.
     if (['new', 'hub'].includes(state.current?.kind)) renderDraftButtons();
     updateNextHint();
@@ -1770,7 +1771,7 @@ function showLoginCard() {
 
 // The app is about to quit: save which agents are busy, and keep that list,
 // because stopping the agents would otherwise mark them as finished.
-const BUSY = ['working', 'starting', 'waiting', 'stuck'];
+const BUSY = ['working', 'starting', 'waiting', 'stuck', 'background'];
 
 // A card in the app (not a system dialog) that asks before stopping working
 // agents: a title, a sentence, the agents with their state, and two buttons.
@@ -2084,7 +2085,7 @@ function afterSend(agent, wake) {
   // would be in the middle of the animation below. The tile changes look and
   // place then, so the chat would shrink into a picture of the old tile and
   // jump at the end. The tile shows "working" right away instead.
-  if (wake && agent.status === 'idle') agent.status = 'working';
+  if (wake && ['idle', 'background'].includes(agent.status)) agent.status = 'working';
   show('hub');
   if (fromChat && agent.view) {
     // The tile of a continued session is new: draw it now, not in the next frame.
@@ -2154,6 +2155,7 @@ function awayState(a) {
   if (a.status === 'idle') return ['idle', a.unread ? 'Finished' : 'Finished · opened'];
   if (a.status === 'error') return ['error', 'Stopped with an error'];
   if (a.status === 'stuck') return ['stuck', 'Looks stuck'];
+  if (a.status === 'background') return ['background', 'Running in the background'];
   if (BUSY.includes(a.status)) return ['working', 'Working again'];
   return ['exited', STATUS_TEXT[a.status] || a.status];
 }
@@ -2553,7 +2555,7 @@ async function sendQueued(agent, index = 0) {
   // The queue stays under the newest message.
   if (agent.queueBox) agent.view.appendChild(agent.queueBox);
   notePrompt(agent, item.text);
-  if (agent.status === 'idle') agent.status = 'working';
+  if (['idle', 'background'].includes(agent.status)) agent.status = 'working';
   hub.wake(agent.id);
   await sendToAgent(agent, item.text, item.images);
 }
@@ -2631,7 +2633,9 @@ window.deck.onEvent((id, msg) => {
     a.finishedAt = Date.now();
     saveHub();
   }
-  if (msg.type === 'result') {
+  // A turn that leaves background jobs running is not the end of the task
+  // (status "background"): the notification and sound come when it is.
+  if (msg.type === 'result' && a.status !== 'background') {
     window.deck.notify(a.id, a.title, msg.is_error ? 'Stopped with an error' : 'Finished and waiting for you');
     if (playSounds()) {
       if (!msg.is_error) sounds.done();
@@ -2690,6 +2694,14 @@ window.deck.onPermission((id, req) => {
   }
   if (playSounds()) sounds.attention();
   refreshHeaderIfCurrent(id);
+  refreshHub();
+});
+
+// What the agent still runs in the background (descriptions), for its tile.
+window.deck.onBackground((id, tasks) => {
+  const a = state.agents.get(id);
+  if (!a) return;
+  a.backgroundTasks = tasks;
   refreshHub();
 });
 

@@ -15,6 +15,7 @@ const HUB_STATUS_TEXT = {
   working: 'Working',
   waiting: 'Needs you',
   stuck: 'Stuck',
+  background: 'Running in the background',
   idle: 'Completed',
   error: 'Error',
   exited: 'Stopped',
@@ -296,6 +297,7 @@ class Hub {
       case 'starting': return 22;
       case 'working':
       case 'stuck':
+      case 'background':
       case 'waiting': return Math.min(88, 30 + steps * 4);
       case 'idle': return 100;
       case 'error': return 60;
@@ -385,7 +387,7 @@ class Hub {
       if (before !== agent.status) {
         tile.classList.remove(`state-${before}`);
         tile.classList.add(`state-${agent.status}`);
-        if (agent.status === 'idle' && ['working', 'waiting', 'starting', 'stuck'].includes(before)) {
+        if (agent.status === 'idle' && ['working', 'waiting', 'starting', 'stuck', 'background'].includes(before)) {
           this.replay(tile, 'celebrate', 1600);
         }
         if (agent.status === 'error' && before) this.replay(tile, 'shake', 700);
@@ -426,7 +428,8 @@ class Hub {
         parts.statusText.title = `${agent.stuck.count ? `${agent.stuck.count} times in a row: ` : 'Running for '}${agent.stuck.summary} · ${mins} min`;
         parts.badge.textContent = '⏳';
       } else {
-        parts.statusText.title = '';
+        // Which background jobs a "background" agent waits for.
+        parts.statusText.title = agent.status === 'background' && agent.backgroundTasks?.length ? `Waiting for: ${agent.backgroundTasks.join(', ')}` : '';
       }
       this.updateTimer(agent, parts.timer);
       const clashes = agent.clashes ? [...agent.clashes.values()] : [];

@@ -163,7 +163,20 @@ class AgentManager {
     }
     // Late pieces of a message must not hide an open question or approval.
     if ((msg.type === 'assistant' || msg.type === 'stream_event') && !agent.pending.size) this.setStatus(agent, 'working');
-    if (msg.type === 'result') this.setStatus(agent, msg.is_error ? 'error' : 'idle');
+    // Commands the agent runs in the background (a render, a recording) can
+    // outlast its turn: it ends its answer and carries on when they finish
+    // (Claude Code wakes it up). Until then it is "background", not done.
+    if (msg.type === 'system' && msg.subtype === 'background_tasks_changed') {
+      agent.background = Array.isArray(msg.tasks) ? msg.tasks : [];
+      this.send('agent:background', agent.id, agent.background.map(t => t.description || t.task_type || 'A background task'));
+      clearTimeout(agent.backgroundTimer);
+      // The jobs are done: the agent normally starts working again at once.
+      // If it does not, it is done.
+      if (!agent.background.length && agent.status === 'background') {
+        agent.backgroundTimer = setTimeout(() => { if (agent.status === 'background') this.setStatus(agent, 'idle'); }, 8000);
+      }
+    }
+    if (msg.type === 'result') this.setStatus(agent, msg.is_error ? 'error' : agent.background?.length ? 'background' : 'idle');
     this.send('agent:event', agent.id, msg);
   }
 

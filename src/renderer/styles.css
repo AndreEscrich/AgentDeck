@@ -1426,6 +1426,13 @@ video.chat-media { background: #000; }
 /* Stuck: the same tool call for a long time. A muted purple tank without
    bubbles, slow waves and an hourglass badge; the Stop button stays. */
 .hub-tile.state-stuck { --c1: #b7a2e8; --c2: #6c56a6; --glow: rgba(150, 120, 220, 0.3); --wave-speed: 10s; }
+/* The turn is over but a background job (a render, a recording) still runs:
+   the agent carries on when it ends. Calm teal, slow bubbles. */
+.hub-tile.state-background { --c1: #72c6c4; --c2: #2f8a8a; --glow: rgba(90, 190, 190, 0.25); --wave-speed: 8s; }
+.hub-tile.state-background .bubbles { opacity: 0.7; }
+.hub-tile.state-background .bubbles span { animation-duration: 4.5s; }
+.dot.background { background: #72c6c4; }
+.zoom-ghost.state-background { --c1: #72c6c4; --c2: #2f8a8a; }
 .zoom-ghost.state-stuck { --c1: #b7a2e8; --c2: #6c56a6; }
 .hub-tile.state-stuck .tank-badge { transform: scale(1); background: #6c56a6; font-size: 13px; animation: stuck-tip 2.4s ease-in-out infinite; }
 @keyframes stuck-tip { 0%, 40% { transform: rotate(0deg); } 50%, 90% { transform: rotate(180deg); } 100% { transform: rotate(360deg); } }

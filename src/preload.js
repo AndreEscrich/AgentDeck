@@ -79,6 +79,7 @@ contextBridge.exposeInMainWorld('deck', {
   onPermission: fn => on('agent:permission', fn),
   onPermissionCancel: fn => on('agent:permissionCancel', fn),
   onMode: fn => on('agent:mode', fn),
+  onBackground: fn => on('agent:background', fn),
   onExit: fn => on('agent:exit', fn),
   onSessionsChanged: fn => on('sessions:changed', fn),
   onQuitting: fn => on('app:quitting', fn),
