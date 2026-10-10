@@ -542,7 +542,7 @@ function show(kind, id) {
     if (a.unread && a.status === 'idle') revealLatest(a.view, a.transcript);
     else scrollToBottom(a.view);
     a.unread = false;
-    setHeader(a.title, a.cwd, a);
+    setHeader(headerTitle(a), a.cwd, a);
     composerPicker.setValue(a.choice || defaultChoice());
     composerModePicker.setValue(a.mode || defaultMode());
     $('input').placeholder = 'Message the agent… (↩ to send, ⇧↩ for a new line)';
@@ -551,7 +551,8 @@ function show(kind, id) {
     const h = state.history.get(id);
     h.view.classList.remove('hidden');
     scrollToBottom(h.view);
-    setHeader(h.session.title, h.cwd || h.session.cwd, null);
+    const listed = state.parked.get(id) || state.agentList.get(id);
+    setHeader(listed?.latestTitle || h.session.title, h.cwd || h.session.cwd, null);
     composerPicker.setValue(h.choice || defaultChoice());
     composerModePicker.setValue(h.mode || defaultMode());
     $('input').placeholder = 'Send a message to continue this session…';
@@ -1238,8 +1239,15 @@ async function removeGroupFromHub(ids) {
   saveHub();
 }
 
+// The top bar names an agent the way its Hub tile does: the summary of your
+// latest message, with the task (its first message) in the tooltip.
+function headerTitle(a) {
+  return a.latestTitle || a.title;
+}
+
 function setHeader(title, subtitle, agent) {
   $('view-title').textContent = title;
+  $('view-title').title = agent && agent.title !== title ? `Task: ${agent.title}` : '';
   $('view-subtitle').textContent = subtitle || '';
   const pill = $('view-status');
   if (agent) {
@@ -1259,7 +1267,7 @@ function setHeader(title, subtitle, agent) {
 function refreshHeaderIfCurrent(agentId) {
   if (state.current?.kind === 'agent' && state.current.id === agentId) {
     const a = state.agents.get(agentId);
-    setHeader(a.title, a.cwd, a);
+    setHeader(headerTitle(a), a.cwd, a);
   }
 }
 
@@ -2183,11 +2191,13 @@ function notePrompt(agent, text) {
   agent.latestTitle = text.split('\n')[0].slice(0, 80);
   refreshHub();
   saveHub();
+  refreshHeaderIfCurrent(agent.id);
   window.deck.summarizeTitle(text).then(title => {
     if (!title || agent.latestPrompt !== text) return;
     agent.latestTitle = title;
     refreshHub();
     saveHub();
+    refreshHeaderIfCurrent(agent.id);
   }).catch(() => {});
 }
 
