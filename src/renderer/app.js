@@ -780,6 +780,7 @@ const connectorsDialog = new ConnectorsDialog({
 });
 hub.onOpenConnectors = () => connectorsDialog.open();
 hub.onOpenSettings = () => showSettings();
+hub.onOpenNotes = groupId => openNotesEditor(findGroup(groupId));
 
 // Your Claude Code activity, shown in the Hub while it has no agents. It is
 // read at startup and again when the empty Hub shows and the numbers are
@@ -1246,6 +1247,184 @@ function moveGroup(groupId, delta) {
   renderSidebar();
 }
 
+// ---------- shared notes of a group ----------
+
+// Every agent in a category reads the category's notes, and after each task
+// Haiku adds what the agent learned to them (mergeNotes in agents.js). The
+// notes live with the groups: group.notes = { text, rev, history }, where
+// history keeps the last changes ({ rev, prev, text, by, at }) for undo.
+// group.shareLearnings === false turns both off for the category.
+const NOTES_HISTORY = 30;
+
+function findGroup(groupId) {
+  return groupId ? state.groups.groups.find(g => g.id === groupId) || null : null;
+}
+
+function sharesNotes(group) {
+  return !!group && group.shareLearnings !== false;
+}
+
+// Changes the notes and keeps the change for undo. Returns the change.
+function setGroupNotes(group, text, by) {
+  const prev = group.notes?.text || '';
+  text = text.trim();
+  if (text === prev.trim()) return null;
+  const rev = (group.notes?.rev || 0) + 1;
+  const change = { rev, prev, text, by, at: Date.now() };
+  group.notes = { text, rev, history: [...(group.notes?.history || []), change].slice(-NOTES_HISTORY) };
+  saveGroups();
+  refreshHub();
+  return change;
+}
+
+// Which version of its group's notes each session has read, by session id,
+// so a resumed session gets them again only when they changed.
+function seenNotes() {
+  try { return JSON.parse(localStorage.getItem('groupNotesSeen') || '{}'); } catch { return {}; }
+}
+
+function rememberNotesSeen(agent) {
+  if (!agent.sessionId || !agent.notesSeen) return;
+  const seen = seenNotes();
+  seen[agent.sessionId] = agent.notesSeen;
+  try { localStorage.setItem('groupNotesSeen', JSON.stringify(seen)); } catch { /* not important */ }
+}
+
+// The notes in front of a message to the agent, when it has not read this
+// version yet ('' otherwise). The chat leaves them out of your message
+// (stripGroupNotes in render.js).
+function notesBlock(agent) {
+  const group = findGroup(agent.groupId);
+  const notes = group?.notes?.text?.trim();
+  if (!sharesNotes(group) || !notes) return '';
+  const stamp = `${group.id}:${group.notes.rev}`;
+  const seen = agent.notesSeen || (agent.sessionId ? seenNotes()[agent.sessionId] : null);
+  if (seen === stamp) return '';
+  const updated = !!seen && seen.startsWith(group.id + ':');
+  agent.notesSeen = stamp;
+  rememberNotesSeen(agent);
+  return `<group-notes category="${group.name.replace(/"/g, '\'')}">\n`
+    + `${updated ? 'The shared notes of your category changed since you last read them. They now are:' : 'Shared notes of your category, collected from the other agents\' tasks and edited by the user. Use them as hints and check them when they matter.'}\n`
+    + `${notes}\n</group-notes>\n\n`;
+}
+
+// After a task: Haiku merges what the agent learned into its group's notes.
+// Merges for one group run one after the other, each on the newest notes.
+const notesMerges = new Map();   // group id -> promise of the last merge
+
+function learnFrom(agent, turn, answer) {
+  const group = findGroup(agent.groupId);
+  if (!sharesNotes(group) || !turn || !answer?.trim()) return;
+  const task = agent.transcript.prompts.filter(p => p.turn === turn || p.turn?.el === turn.el).pop()?.text
+    || agent.transcript.prompts[agent.transcript.prompts.length - 1]?.text || '';
+  const files = (turn.files || []).map(f => f.path);
+  // What the agent said along the way (what failed, what it tried instead),
+  // the newest part when it is long, then its final message.
+  const said = (turn.texts || []).filter(t => t.trim() !== answer.trim()).join('\n\n').slice(-8000);
+  const messages = said ? `${said}\n\n--- final message ---\n${answer}` : answer;
+  const run = async () => {
+    const before = group.notes?.text || '';
+    const merged = await window.deck.mergeNotes({ notes: before, category: group.name, task, answer: messages, files }).catch(() => null);
+    if (!merged || !findGroup(group.id)) return;
+    const change = setGroupNotes(group, merged, agent.title);
+    if (change) showNotesChange(agent, turn, group, change);
+  };
+  const next = (notesMerges.get(group.id) || Promise.resolve()).then(run, run);
+  notesMerges.set(group.id, next);
+}
+
+// The lines one version of the notes has and the other has not.
+function notesDiff(before, after) {
+  const a = before.split('\n').filter(l => l.trim());
+  const b = after.split('\n').filter(l => l.trim());
+  return { added: b.filter(l => !a.includes(l)), removed: a.filter(l => !b.includes(l)) };
+}
+
+// "Category notes updated" under the agent's answer: what changed, Undo, and
+// a way to see or edit all the notes.
+function showNotesChange(agent, turn, group, change) {
+  if (!turn?.answer) return;
+  const { added, removed } = notesDiff(change.prev, change.text);
+  const box = el('details', 'notes-change');
+  const summary = el('summary');
+  summary.append(el('span', 'notes-change-title', `${group.name} notes updated`),
+    el('span', 'notes-change-count', [added.length && `+${added.length}`, removed.length && `−${removed.length}`].filter(Boolean).join(' ')));
+  const list = el('div', 'notes-change-lines');
+  for (const l of removed) list.appendChild(el('div', 'del', l));
+  for (const l of added) list.appendChild(el('div', 'add', l));
+  const actions = el('div', 'notes-change-actions');
+  const edit = el('button', null, 'See all notes');
+  edit.onclick = () => openNotesEditor(group);
+  const undo = el('button', null, 'Undo');
+  undo.onclick = () => {
+    undoNotesChange(group, change);
+    box.classList.add('undone');
+    summary.querySelector('.notes-change-title').textContent = `${group.name} notes: change undone`;
+    undo.remove();
+  };
+  actions.append(edit, undo);
+  box.append(summary, list, actions);
+  agent.transcript.pinned(() => turn.answer.appendChild(box));
+}
+
+// Undo one change: the notes as they were, when nothing changed them since;
+// otherwise its lines are taken out again and the lines it removed come back.
+function undoNotesChange(group, change) {
+  const now = group.notes?.text || '';
+  if (group.notes?.rev === change.rev) return setGroupNotes(group, change.prev, 'Undo');
+  const { added, removed } = notesDiff(change.prev, change.text);
+  const lines = now.split('\n').filter(l => l.trim() && !added.includes(l));
+  for (const l of removed) if (!lines.includes(l)) lines.push(l);
+  return setGroupNotes(group, lines.join('\n'), 'Undo');
+}
+
+// A card to read and edit a category's notes, and to turn sharing off.
+function openNotesEditor(group) {
+  if (!group || document.querySelector('.quit-modal')) return;
+  const overlay = el('div', 'quit-modal notes-modal');
+  const card = el('div', 'quit-card notes-card');
+  const text = el('p', 'quit-text', 'Every agent in this category reads these notes. After each task, what the agent learned is added to them. One note per line.');
+  const area = el('textarea', 'notes-text');
+  area.value = group.notes?.text || '';
+  area.placeholder = '- The Unity bridge listens on port 7891';
+  area.spellcheck = false;
+  const last = group.notes?.history?.[group.notes.history.length - 1];
+  const meta = el('div', 'notes-meta', last ? `Last change: ${last.by || 'you'}, ${new Date(last.at).toLocaleString()}` : 'No notes yet.');
+  const share = el('label', 'notes-share');
+  const box = el('input');
+  box.type = 'checkbox';
+  box.checked = sharesNotes(group);
+  share.append(box, el('span', null, 'Share notes and add learnings after each task'));
+  const buttons = el('div', 'quit-buttons');
+  const cancel = el('button', 'quit-stay', 'Cancel');
+  const save = el('button', 'quit-go', 'Save');
+  buttons.append(cancel, save);
+  card.append(el('div', 'quit-title', `${group.name} · shared notes`), text, area, meta, share, buttons);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('show'));
+  area.focus();
+  const close = () => {
+    document.removeEventListener('keydown', onKey, true);
+    overlay.classList.remove('show');
+    setTimeout(() => overlay.remove(), 200);
+  };
+  const onKey = e => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); }
+    if (e.key === 'Enter' && isMod(e)) { e.preventDefault(); e.stopImmediatePropagation(); save.click(); }
+  };
+  document.addEventListener('keydown', onKey, true);
+  cancel.onclick = close;
+  overlay.onclick = e => { if (e.target === overlay) close(); };
+  save.onclick = () => {
+    if (box.checked) delete group.shareLearnings;
+    else group.shareLearnings = false;
+    if (!setGroupNotes(group, area.value, 'you')) saveGroups();
+    refreshHub();
+    close();
+  };
+}
+
 // The menu shown when you right-click a session in History or Running.
 async function sessionMenu(sessionId) {
   if (!sessionId) return;
@@ -1271,12 +1450,14 @@ async function sessionMenu(sessionId) {
 async function groupMenu(group) {
   const i = state.groups.groups.indexOf(group);
   const picked = await window.deck.popupMenu([
+    { id: 'notes', label: 'Shared notes…' },
     { id: 'rename', label: 'Rename' },
     { id: 'up', label: 'Move up', enabled: i > 0 },
     { id: 'down', label: 'Move down', enabled: i < state.groups.groups.length - 1 },
     { type: 'separator' },
     { id: 'delete', label: 'Delete category (its sessions become uncategorized)' },
   ]);
+  if (picked === 'notes') openNotesEditor(group);
   if (picked === 'rename') { state.renamingGroup = group.id; renderSidebar(); }
   if (picked === 'up') moveGroup(group.id, -1);
   if (picked === 'down') moveGroup(group.id, 1);
@@ -1921,6 +2102,8 @@ async function sendToAgent(agent, text, images = []) {
     text = `(Before this message I undid every file change of your previous task, so these files are back the way they were before it: ${agent.undoNote.join(', ')}.)\n\n${text}`;
     agent.undoNote = null;
   }
+  // The group's shared notes, when the agent has not read this version yet.
+  text = notesBlock(agent) + text;
   // Images and videos changed after this moment count as the task's media.
   // A second of slack covers clocks that round file times.
   if (!agent.mediaSince) agent.mediaSince = Date.now() - 1000;
@@ -2429,6 +2612,7 @@ window.deck.onEvent((id, msg) => {
       .then(() => refreshHeaderIfCurrent(a.id))
       .catch(() => {});
   }
+  if (msg.type === 'result' && !msg.is_error) learnFrom(a, a.transcript.lastFinished, msg.result);
   if (msg.type === 'result' && !msg.is_error && a.ticket) addTicketPost(a, a.transcript.lastFinished, msg.result);
   if (msg.type === 'result' && !msg.is_error) {
     // Used to find the most recently finished agent of a Group.
@@ -2521,6 +2705,7 @@ window.deck.onSession((id, sessionId) => {
   if (!a) return;
   a.sessionId = sessionId;
   rememberTitle(a);
+  rememberNotesSeen(a);
   // The CLI reports the session id once the session exists. That is when we
   // can save the group, and it also covers a resume that got a new id.
   if (a.groupId && groupOf(sessionId) !== a.groupId) assignGroup(sessionId, a.groupId);

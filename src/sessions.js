@@ -40,6 +40,8 @@ function userText(entry) {
     const parts = content.filter(c => c.type === 'text').map(c => c.text);
     if (parts.length) text = parts.join('\n');
   }
+  // The group's shared notes that Agent Hub sends along are not your words.
+  if (text) text = text.replace(/^\s*<group-notes\b[^>]*>[\s\S]*?<\/group-notes>\s*/, '');
   if (!text) return null;
   if (/^\s*<(command-|local-command|system-reminder)/.test(text)) return null;
   return text;

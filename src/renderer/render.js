@@ -33,6 +33,13 @@ function resolveMediaPath(src, cwd) {
   return cwd.replace(/[\\/]$/, '') + '/' + p.replace(/^\.\//, '');
 }
 
+// The shared notes of an agent's group go to the agent in front of your
+// message, between <group-notes> tags (see notesBlock in app.js). The chat
+// shows your message without them.
+function stripGroupNotes(text) {
+  return String(text).replace(/^\s*<group-notes\b[^>]*>[\s\S]*?<\/group-notes>\s*/, '');
+}
+
 // An attached image at full size; Esc or a click closes it.
 function openImageOverlay(src) {
   const box = el('div', 'lightbox');
@@ -618,9 +625,12 @@ class Transcript {
       const dir = text.match(/^Base directory for this skill: (.+)/)?.[1];
       if (dir) this.addSkill(this.turn, dir.trim().split(/[\\/]/).pop());
     }
-    const texts = synthetic ? []
+    // The group's shared notes that went along with your message are not
+    // part of what you wrote (see notesBlock in app.js).
+    const texts = (synthetic ? []
       : typeof content === 'string' ? [content]
-      : content.filter(b => b.type === 'text').map(b => b.text);
+      : content.filter(b => b.type === 'text').map(b => b.text))
+      .map(stripGroupNotes).filter(t => t.trim());
     if (texts.length) {
       // Your message starts a new turn.
       this.finishTurn();
@@ -763,6 +773,9 @@ class Transcript {
         this.clearDraft();
         const node = markdown(block.text, this.cwd);
         turn.pendingText.push(node);
+        // Everything the agent said during the task (for the group's notes:
+        // what failed and what worked is often said along the way).
+        (turn.texts ||= []).push(block.text);
         this.addStep(node, block.text.split('\n')[0].slice(0, 120));
       } else if (block.type === 'thinking' && block.thinking) {
         const d = el('details', 'thinking');

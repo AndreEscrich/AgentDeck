@@ -356,6 +356,60 @@ function summarizeTitle(config, text) {
   });
 }
 
+// A group's shared notes, after one of its agents finished a task: Haiku
+// adds what the agent learned that will help the other agents later, and
+// keeps the notes short. Resolves with the new notes, '' when they did not
+// change, or null when it failed. See learnFrom in app.js.
+const NOTES_LIMIT = 40;
+function mergeNotes(config, { notes = '', category = '', task = '', answer = '', files = [] }) {
+  return new Promise(resolve => {
+    const proc = spawnClaude(config.claudePath,
+      ['-p', '--model', 'haiku', '--output-format', 'json', '--strict-mcp-config', '--tools', '', '--no-session-persistence'],
+      { cwd: os.tmpdir(), env: childEnv(config.env), stdio: ['pipe', 'pipe', 'ignore'] });
+    helperProcesses.add(proc);
+    let out = '';
+    const timer = setTimeout(() => { killTree(proc); }, 90000);
+    proc.stdout.on('data', d => { out += d; });
+    proc.on('error', () => resolve(null));
+    proc.on('close', () => {
+      clearTimeout(timer);
+      helperProcesses.delete(proc);
+      try {
+        const result = JSON.parse(out);
+        if (result.is_error || typeof result.result !== 'string') return resolve(null);
+        const text = result.result.trim();
+        if (/^NO_CHANGE\b/.test(text)) return resolve('');
+        const lines = text.split('\n').map(l => l.trim()).filter(l => /^[-*] \S/.test(l)).map(l => '- ' + l.slice(2).trim());
+        resolve(lines.length ? lines.slice(0, NOTES_LIMIT).join('\n') : '');
+      } catch {
+        resolve(null);
+      }
+    });
+    proc.stdin.end([
+      `You keep the shared notes of a group of AI coding agents${category ? ` (the category "${category}")` : ''} that work on the same project.`,
+      'Every agent in the group reads these notes before it works. One agent just finished a task; its messages during the task are below. Update the notes with what it learned that will help the other agents on later tasks.',
+      '',
+      'Keep only lasting, reusable knowledge: how the project, its tools and its environment work (commands, ports, paths, conventions, pitfalls, what failed and what worked instead) and the user\'s preferences.',
+      'Leave out the task\'s own progress, results and file lists, guesses, and anything that is only true for this one task.',
+      '',
+      'Rules:',
+      `- At most ${NOTES_LIMIT} lines, each a "- " bullet with one short sentence.`,
+      '- When something new contradicts a note, replace that note.',
+      '- Merge duplicates. Keep the wording of notes you do not change.',
+      '- If the agent learned nothing worth keeping, reply with exactly: NO_CHANGE',
+      '- Otherwise reply with only the complete updated notes: no heading, no other text.',
+      '',
+      `<notes>\n${notes.trim() || '(none yet)'}\n</notes>`,
+      '',
+      `<task>\n${task.slice(0, 3000)}\n</task>`,
+      '',
+      `<agent_messages>\n${answer.slice(-14000)}\n</agent_messages>`,
+      '',
+      `Files it changed: ${files.slice(0, 40).join(', ') || 'none'}`,
+    ].join('\n'));
+  });
+}
+
 // Your plan's usage limits, without an agent: Claude Code reports them (a
 // "rate_limit_event") with every reply, so this sends Haiku a one-word
 // message, not saved as a session, and keeps only that report. It costs a
@@ -391,4 +445,4 @@ function fetchUsage(config) {
   });
 }
 
-module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, fetchUsage };
+module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, mergeNotes, fetchUsage };

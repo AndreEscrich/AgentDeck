@@ -459,7 +459,13 @@ class Hub {
       const n = counts.get(sec.key) || 0;
       sec.el.classList.toggle('hidden', !n);
       sec.count.textContent = String(n);
-      sec.name.textContent = sec.groupKey ? groups.find(g => g.id === sec.groupKey)?.name || 'Category' : 'No category';
+      const group = sec.groupKey ? groups.find(g => g.id === sec.groupKey) : null;
+      sec.name.textContent = sec.groupKey ? group?.name || 'Category' : 'No category';
+      // Shared notes: only for a category; the number of notes when it has some.
+      const noteCount = group?.shareLearnings === false ? 0 : (group?.notes?.text || '').split('\n').filter(l => l.trim()).length;
+      sec.notes.classList.toggle('hidden', !group);
+      sec.notes.classList.toggle('has-notes', noteCount > 0);
+      sec.notes.textContent = group?.shareLearnings === false ? 'Notes off' : noteCount ? `Notes · ${noteCount}` : 'Notes';
       sec.repoEl.textContent = sec.repo;
       sec.el.style.order = String(i);
     });
@@ -478,13 +484,16 @@ class Hub {
       const name = el('span', 'hub-section-name');
       const repoEl = el('span', 'hub-section-repo');
       const count = el('span', 'hub-section-count');
+      const notes = el('button', 'section-notes', 'Notes');
+      notes.title = 'The notes every agent in this category reads and adds to';
+      notes.onclick = e => { e.stopPropagation(); this.onOpenNotes?.(sec.groupKey); };
       const remove = el('button', 'section-remove', '× Remove group');
       remove.title = 'Remove this group and all its agents from the Hub';
-      head.append(name, repoEl, count, remove);
+      head.append(name, repoEl, count, notes, remove);
       const grid = el('div', 'hub-grid');
       elSec.append(head, grid);
       this.grid.appendChild(elSec);
-      sec = { key, groupKey, repo, el: elSec, name, repoEl, count, grid, cwd: null };
+      sec = { key, groupKey, repo, el: elSec, name, repoEl, count, notes, grid, cwd: null };
       elSec.classList.toggle('selected', key === this.selectedKey);
       elSec.title = 'Click to start the next agent in this group';
       // The title row is the handle for dragging the whole panel.
