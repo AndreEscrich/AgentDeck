@@ -1444,6 +1444,138 @@ async function resumeInterrupted() {
   saveHub();
 }
 
+// ---------- signing Claude Code in again ----------
+
+// Claude Code's saved login expired (or was rejected): every agent fails
+// until you sign in again. A card offers that right away when the window has
+// the focus, or as soon as you come back to it. It runs `claude auth login`
+// (see auth.js): the sign-in page opens in your browser, and the card closes
+// itself when you are signed in.
+const AUTH_FAILURE = /OAuth (session|token)[^.\n]*expired|Failed to authenticate|authentication_error|Invalid API key|Please run \/login|Not logged in/i;
+const authProblem = { pending: false };
+
+function isAuthFailure(msg) {
+  if (msg?.type === 'result' && msg.is_error) return msg.api_error_status === 401 || AUTH_FAILURE.test(msg.result || '');
+  if (msg?.type === 'assistant') return msg.error === 'authentication_failed';
+  return false;
+}
+
+function noteAuthProblem() {
+  authProblem.pending = true;
+  if (document.hasFocus()) showLoginCard();
+}
+
+window.addEventListener('focus', () => { if (authProblem.pending) showLoginCard(); });
+
+function showLoginCard() {
+  if (document.querySelector('.login-modal') || document.querySelector('.quit-modal')) return;
+  authProblem.pending = false;
+  const overlay = el('div', 'quit-modal login-modal');
+  const card = el('div', 'quit-card');
+  const title = el('div', 'quit-title');
+  const text = el('p', 'quit-text');
+  const extra = el('div', 'login-extra');
+  const buttons = el('div', 'quit-buttons');
+  card.append(title, text, extra, buttons);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('show'));
+
+  let stopOutput = null;
+  let signingIn = false;
+  const close = () => {
+    stopOutput?.();
+    if (signingIn) window.deck.auth.cancel();
+    document.removeEventListener('keydown', onKey, true);
+    overlay.classList.remove('show');
+    setTimeout(() => overlay.remove(), 200);
+  };
+  const onKey = e => {
+    if (e.target.closest?.('.login-code')) return;
+    if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); }
+    if (e.key === 'Enter') { e.preventDefault(); e.stopImmediatePropagation(); buttons.querySelector('.quit-go')?.click(); }
+  };
+  document.addEventListener('keydown', onKey, true);
+
+  const setButtons = (...list) => {
+    buttons.replaceChildren();
+    for (const [label, onClick, primary] of list) {
+      const b = el('button', primary ? 'quit-go' : 'quit-stay', label);
+      b.onclick = onClick;
+      buttons.appendChild(b);
+    }
+    buttons.querySelector('.quit-go')?.focus();
+  };
+
+  const intro = () => {
+    title.textContent = 'Sign in to Claude again';
+    text.textContent = 'Claude Code\'s login has expired, so your agents can\'t reach Claude. Sign in to keep them working.';
+    extra.replaceChildren();
+    setButtons(['Later', close], ['Sign in', signIn, true]);
+  };
+
+  const signIn = async () => {
+    signingIn = true;
+    title.textContent = 'Signing in…';
+    text.textContent = 'Finish signing in on the page that opened in your browser. This card closes by itself when you are done.';
+    extra.replaceChildren();
+    setButtons(['Cancel', close]);
+    // The command prints the sign-in link, and asks for a code when the
+    // browser can't hand it back by itself.
+    let output = '';
+    let linkShown = false, codeShown = false;
+    stopOutput?.();
+    stopOutput = window.deck.auth.onOutput(chunk => {
+      output += chunk;
+      const url = /https:\/\/\S+/.exec(output)?.[0];
+      if (url && !linkShown) {
+        linkShown = true;
+        const link = el('a', 'login-link', 'Open the sign-in page again');
+        link.href = '#';
+        link.onclick = e => { e.preventDefault(); window.open(url); };
+        extra.appendChild(link);
+      }
+      if (/paste|code/i.test(output) && !codeShown) {
+        codeShown = true;
+        const row = el('div', 'login-code-row');
+        const input = el('input', 'login-code');
+        input.placeholder = 'Or paste the code from the page here';
+        const submit = el('button', null, 'Submit');
+        const send = () => {
+          if (!input.value.trim()) return;
+          window.deck.auth.input(input.value);
+          input.value = '';
+          submit.disabled = true;
+        };
+        submit.onclick = send;
+        input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); send(); } });
+        row.append(input, submit);
+        extra.appendChild(row);
+      }
+    });
+    const result = await window.deck.auth.login().catch(err => ({ ok: false, message: err.message }));
+    if (!signingIn) return;   // cancelled
+    signingIn = false;
+    stopOutput?.();
+    stopOutput = null;
+    const status = result.ok ? await window.deck.auth.status().catch(() => null) : null;
+    if (result.ok && status?.loggedIn !== false) {
+      title.textContent = 'Signed in';
+      text.textContent = `${status?.email ? `Signed in as ${status.email}. ` : ''}Send your message again to continue where the agent stopped.`;
+      extra.replaceChildren();
+      setButtons(['Done', close, true]);
+      sounds.done?.();
+    } else {
+      title.textContent = 'Sign-in didn\'t finish';
+      text.textContent = result.message || 'Claude Code could not sign in.';
+      extra.replaceChildren();
+      setButtons(['Later', close], ['Try again', signIn, true]);
+    }
+  };
+
+  intro();
+}
+
 // The app is about to quit: save which agents are busy, and keep that list,
 // because stopping the agents would otherwise mark them as finished.
 const BUSY = ['working', 'starting', 'waiting', 'stuck'];
@@ -2275,6 +2407,7 @@ window.deck.onEvent((id, msg) => {
   const a = state.agents.get(id);
   if (!a) return;
   a.transcript.add(msg);
+  if (isAuthFailure(msg)) noteAuthProblem();
   if (msg.type === 'assistant') noteClashes(a, msg.message);
   if (msg.type === 'result') clearClashes(a);
   // New textures and videos from this task (see showMedia). Your home folder
@@ -2411,6 +2544,7 @@ window.deck.onExit((id, { code, stderr }) => {
   const a = state.agents.get(id);
   if (!a || state.quitting) return;
   clearClashes(a);
+  if (code !== 0 && AUTH_FAILURE.test(stderr)) noteAuthProblem();
   if (code !== 0 && stderr.trim()) a.transcript.note(stderr.trim().split('\n').slice(-12).join('\n'), true);
   a.transcript.note(`Agent process ended (exit code ${code}).`);
   a.status = 'exited';

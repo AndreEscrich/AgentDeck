@@ -34,6 +34,14 @@ contextBridge.exposeInMainWorld('deck', {
   fileVersions: (cwd, file) => ipcRenderer.invoke('files:versions', cwd, file),
   restoreFile: (cwd, p, previous) => ipcRenderer.invoke('files:restore', cwd, p, previous),
   activity: () => ipcRenderer.invoke('activity:get'),
+  // Signing Claude Code in again (see auth.js).
+  auth: {
+    login: () => ipcRenderer.invoke('auth:login'),
+    input: text => ipcRenderer.invoke('auth:input', text),
+    cancel: () => ipcRenderer.invoke('auth:cancel'),
+    status: () => ipcRenderer.invoke('auth:status'),
+    onOutput: fn => on('auth:output', fn),
+  },
   connectors: {
     list: cwd => ipcRenderer.invoke('connectors:list', cwd),
     cached: () => ipcRenderer.invoke('connectors:cached'),

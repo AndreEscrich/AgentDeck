@@ -556,7 +556,7 @@ class Transcript {
 
     if (result?.is_error) {
       if (result.api_error_status === 401) {
-        this.noteIn(turn, 'Claude Code\'s saved login was rejected. Run `claude auth login` in a terminal, then start the agent again.', true);
+        this.noteIn(turn, 'Claude Code\'s saved login was rejected. Sign in again on the card Agent Hub shows, then send your message again.', true);
       }
       // The CLI often sends the error both as assistant text and as the result.
       const shown = turn.pendingText.some(n => n.textContent.trim() === (result.result || '').trim());

@@ -1275,6 +1275,13 @@ video.chat-media { background: #000; }
 .quit-go { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .quit-go:hover { filter: brightness(1.1); }
 .quit-buttons button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+/* Signing Claude Code in again: the link and the code box under the text */
+.login-extra { display: flex; flex-direction: column; gap: 10px; margin: -4px 0 16px; }
+.login-extra:empty { display: none; }
+.login-link { font-size: 13px; color: var(--accent); }
+.login-code-row { display: flex; gap: 8px; }
+.login-code { flex: 1; min-width: 0; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: rgba(0, 0, 0, 0.25); color: var(--text); font: inherit; font-size: 13px; }
+.login-code-row button { padding: 7px 14px; border-radius: 8px; font-size: 13px; }
 
 /* A short message at the bottom of the window (for example: nothing to check) */
 .toast { position: fixed; left: 50%; bottom: 120px; z-index: 50; transform: translate(-50%, 10px); max-width: min(520px, calc(100% - 32px));
