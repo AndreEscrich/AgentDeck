@@ -283,6 +283,15 @@ function isTempFile(p) {
   return /(^|[_.\-\s])(tmp|temp)([_.\-\s\d]|$)/i.test(stem);
 }
 
+// A name that may be a temporary helper, with "Temp" as part of a word:
+// TempClick, TempAtlasProbe/, AtlasTemp, ClaudeTemp (not Template, Attempt,
+// Temperature). Real code can be named like this too, so such a file is only
+// left out once it is gone (see hideGoneTemp).
+function maybeTempFile(p) {
+  const words = String(p).replace(/\\/g, '/').split('/').map(n => n.replace(/\.meta$/i, '').replace(/\.[^.]+$/, ''));
+  return words.some(n => /(^|[_.\-\s])(Temp|Tmp|TEMP|TMP)[A-Z]/.test(n) || /[a-z](Temp|Tmp)$/.test(n) || /claude[_\-]?temp/i.test(n));
+}
+
 // How long a tool call says it will wait on purpose, in ms: the sleeps in a
 // command (sleep 60), and inputs that name a duration (duration, seconds,
 // waitSeconds, recordSeconds, delayMs …). Keys ending in "ms" are
@@ -523,6 +532,7 @@ class Transcript {
       const toolFiles = this.toolChanges(turn.changes).filter(f => !isTempFile(f.path));
       turn.files = toolFiles;
       if (toolFiles.length) turn.answer.appendChild(changesCard(this.withEarlier(turn, toolFiles), this.cwd));
+      if (toolFiles.length) this.hideGoneTemp(turn).catch(() => {});
       // Then drop files that no longer exist, unless the snapshot comparison
       // (showGitChanges) has replaced this card in the meantime. Only for a
       // task that just ended (it has a result): in a saved session, a file
@@ -955,6 +965,24 @@ class Transcript {
     return removed;
   }
 
+  // Helpers with a temporary-looking name (maybeTempFile) that the agent
+  // made and that are gone now leave the turn's Changes card.
+  async hideGoneTemp(turn) {
+    const files = turn.files || [];
+    const candidates = files.filter(f => f.status !== 'del' && maybeTempFile(f.path));
+    if (!candidates.length || !window.deck?.existingFiles) return;
+    const abs = candidates.map(f => resolveMediaPath(f.path, this.cwd) || f.path);
+    const existing = new Set(await window.deck.existingFiles(abs).catch(() => abs));
+    const gone = new Set(candidates.filter((f, i) => !existing.has(abs[i])).map(f => f.path));
+    if (!gone.size) return;
+    turn.files = files.filter(f => !gone.has(f.path));
+    for (const p of [...turn.changes.keys()]) if (gone.has(this.relativePath(p))) turn.changes.delete(p);
+    this.pinned(() => {
+      turn.el.querySelector('.changes')?.remove();
+      if (turn.files.length) turn.answer.prepend(changesCard(this.withEarlier(turn, turn.files), this.cwd));
+    });
+  }
+
   // The changes of the same files in the tasks before this one, oldest first
   // (f.earlier: [{ status, lines }]), so a file's version from this task can
   // be rebuilt from the session's history after the files were reverted (see
@@ -1018,6 +1046,7 @@ class Transcript {
       turn.el.querySelector('.changes')?.remove();
       if (files.length) turn.answer.prepend(changesCard(this.withEarlier(turn, files), this.cwd));
     });
+    if (files.length) this.hideGoneTemp(turn).catch(() => {});
     if (this.lastFinished === turn && this.lastTurn) {
       this.lastTurn.changedFiles = files.length;
       this.onUpdate?.();
