@@ -1709,3 +1709,17 @@ details.other-files details.change-file > summary { padding-left: 12px; }
 .palette-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 13.5px; }
 .palette-hint { flex: 1 1 auto; min-width: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-faint); }
 .palette-empty { padding: 14px; font-size: 13px; color: var(--text-faint); }
+
+/* An image before and after a task: drag the line (or the slider) */
+.before-after { display: flex; flex-direction: column; gap: 6px; }
+.ba-stage { position: relative; cursor: ew-resize; user-select: none; touch-action: none; border-radius: 8px; overflow: hidden;
+  background: repeating-conic-gradient(#2a231c 0 25%, #221c16 0 50%) 0 0 / 16px 16px; }
+.ba-stage img { display: block; width: 100%; height: auto; pointer-events: none; }
+.ba-stage .ba-after { position: absolute; inset: 0; height: 100%; object-fit: contain; }
+.ba-stage .ba-before { object-fit: contain; }
+.ba-line { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--accent); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4); pointer-events: none; }
+.ba-label { position: absolute; top: 6px; padding: 1px 7px; border-radius: 99px; font-size: 11px; background: rgba(0, 0, 0, 0.6); color: #efe6dc; pointer-events: none; }
+.ba-label-before { left: 6px; }
+.ba-label-after { right: 6px; }
+.ba-slider { width: 100%; accent-color: var(--accent); }
+.media-item.compare { grid-column: span 2; }

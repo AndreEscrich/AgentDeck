@@ -19,6 +19,48 @@ function mediaUrl(file) {
   return 'media://file/?path=' + encodeURIComponent(file);
 }
 
+// An image before and after a change: the new one on top, cut at a line you
+// drag (or move with the slider) to see the old one under it.
+function beforeAfter(beforeFile, afterFile) {
+  const box = el('div', 'before-after');
+  const stage = el('div', 'ba-stage');
+  const before = document.createElement('img');
+  before.src = mediaUrl(beforeFile);
+  before.className = 'ba-before';
+  const after = document.createElement('img');
+  after.src = mediaUrl(afterFile) + '&t=' + Date.now();
+  after.className = 'ba-after';
+  const line = el('div', 'ba-line');
+  stage.append(before, after, line, el('span', 'ba-label ba-label-before', 'Before'), el('span', 'ba-label ba-label-after', 'After'));
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.min = '0';
+  slider.max = '100';
+  slider.value = '50';
+  slider.className = 'ba-slider';
+  slider.setAttribute('aria-label', 'Before and after');
+  const set = v => {
+    after.style.clipPath = `inset(0 0 0 ${v}%)`;
+    line.style.left = `${v}%`;
+  };
+  slider.oninput = () => set(slider.value);
+  // Dragging on the picture moves the line too.
+  stage.addEventListener('pointerdown', e => {
+    const move = ev => {
+      const r = stage.getBoundingClientRect();
+      slider.value = String(Math.round(Math.min(100, Math.max(0, ((ev.clientX - r.left) / r.width) * 100))));
+      set(slider.value);
+    };
+    move(e);
+    stage.setPointerCapture(e.pointerId);
+    stage.onpointermove = move;
+    stage.onpointerup = () => { stage.onpointermove = null; };
+  });
+  set(50);
+  box.append(stage, slider);
+  return box;
+}
+
 // A file path from Markdown: absolute, file://, or relative to the agent's folder.
 function resolveMediaPath(src, cwd) {
   if (!src || /^(https?:|data:|media:|blob:)/i.test(src)) return null;
@@ -1202,7 +1244,7 @@ class Transcript {
   // Images and videos that appeared or changed in the agent's folder during
   // the task, in a card next to the code changes. Files the agent already
   // showed in its message are left out.
-  showMedia(turn, files) {
+  showMedia(turn, files, snap = null) {
     if (!turn || !files?.length) return;
     const shown = new Set([...turn.el.querySelectorAll('.msg-text .chat-media')].map(n => n.dataset.path));
     // The search finds every new file in the folder, also those other agents
@@ -1219,8 +1261,19 @@ class Transcript {
     const grid = el('div', 'media-grid');
     for (const f of files) {
       const item = el('figure', 'media-item');
-      item.append(mediaElement(f.path), el('figcaption', null, this.relativePath(f.path)));
+      const media = mediaElement(f.path);
+      item.append(media, el('figcaption', null, this.relativePath(f.path)));
       grid.appendChild(item);
+      // A changed image: before and after, with a slider between them.
+      if (f.kind === 'image' && window.deck?.mediaBefore) {
+        window.deck.mediaBefore(this.cwd, f.path, snap).then(before => {
+          if (!before) return;
+          this.pinned(() => {
+            media.replaceWith(beforeAfter(before, f.path));
+            item.classList.add('compare');
+          });
+        }).catch(() => {});
+      }
     }
     card.appendChild(grid);
     this.pinned(() => {

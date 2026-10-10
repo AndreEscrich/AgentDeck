@@ -206,6 +206,7 @@ function registerForNotifications() {
 app.whenReady().then(() => {
   media.registerProtocol(protocol, net, path.join(app.getPath('userData'), 'media-previews'));
   ipcMain.handle('media:recent', (_e, cwd, sinceMs) => media.recentMedia(cwd, sinceMs));
+  ipcMain.handle('media:before', (_e, cwd, file, snap) => media.mediaBefore(cwd, file, snap, path.join(app.getPath('userData'), 'media-before')).catch(() => null));
   ipcMain.handle('jira:issue', (_e, key) => jira.issue(key));
   ipcMain.handle('jira:details', (_e, key) => jira.details(key));
   ipcMain.handle('jira:comment', (_e, key, body) => jira.comment(key, body));

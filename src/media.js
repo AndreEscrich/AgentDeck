@@ -115,4 +115,35 @@ async function recentMedia(cwd, sinceMs, { maxFiles = 40, limitMs = 4000 } = {})
   return found.sort((a, b) => a.mtimeMs - b.mtimeMs);
 }
 
-module.exports = { registerProtocol, recentMedia, kindOf };
+// An image as it was before a task, for the before/after view: from the
+// task's git snapshot (snap.base, see git.js), or else the last committed
+// version in SVN. Written to cacheDir; resolves with its path, or null when
+// there is no earlier version (a new file) or it is the same as now.
+function run(cmd, args, cwd) {
+  return new Promise(resolve => {
+    execFile(cmd, args, { cwd, encoding: 'buffer', maxBuffer: 200 * 1024 * 1024, timeout: 30000, windowsHide: true },
+      (err, stdout) => resolve(err ? null : stdout));
+  });
+}
+
+async function mediaBefore(cwd, file, snap, cacheDir) {
+  if (kindOf(file) !== 'image' || !path.isAbsolute(file)) return null;
+  let before = null;
+  if (snap?.kind === 'git' && snap.base) {
+    const rel = path.relative(cwd, file).replace(/\\/g, '/');
+    before = await run('git', ['show', `${snap.base}:./${rel}`], cwd);
+  }
+  if (!before) before = await run('svn', ['cat', file], cwd);
+  if (!before || !before.length) return null;
+  try {
+    const now = fs.readFileSync(file);
+    if (now.equals(before)) return null;
+  } catch { /* gone: the old one is still worth showing */ }
+  const key = crypto.createHash('sha1').update(before).digest('hex').slice(0, 20);
+  const out = path.join(cacheDir, `before-${key}.${extensionOf(file)}`);
+  fs.mkdirSync(cacheDir, { recursive: true });
+  if (!fs.existsSync(out)) fs.writeFileSync(out, before);
+  return out;
+}
+
+module.exports = { registerProtocol, recentMedia, kindOf, mediaBefore };

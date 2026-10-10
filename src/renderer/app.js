@@ -3085,7 +3085,9 @@ window.deck.onEvent((id, msg) => {
     const turn = a.transcript.lastFinished;
     a.mediaSince = null;
     if (a.cwd && a.cwd !== state.config.home) {
-      window.deck.recentMedia(a.cwd, since).then(files => a.transcript.showMedia(turn, files)).catch(() => {});
+      // The task's snapshot gives each changed image's version from before it.
+      const snap = a.snapshot;
+      window.deck.recentMedia(a.cwd, since).then(files => a.transcript.showMedia(turn, files, snap)).catch(() => {});
     }
   }
   if (msg.type === 'result' && a.snapshot) {
