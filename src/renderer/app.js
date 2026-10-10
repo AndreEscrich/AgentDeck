@@ -922,7 +922,7 @@ document.addEventListener('keydown', e => {
 // size, when you let go.
 document.addEventListener('pointerdown', e => {
   const b = e.target.closest?.('button');
-  if (!b || b.disabled || e.button !== 0) return;
+  if (!b || b.disabled || e.button !== 0 || b.classList.contains('hub-health')) return;
   const press = b.animate([{ scale: 1 }, { scale: 0.93 }], { duration: 80, fill: 'forwards', easing: 'ease-out' });
   let released = false;
   const release = () => {

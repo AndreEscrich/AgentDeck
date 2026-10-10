@@ -89,7 +89,7 @@ class Hub {
     for (let i = 0; i < 9; i++) ticks.appendChild(el('span'));
     this.healthFloat = el('div', 'health-floats');
     track.append(this.healthGhost, this.healthFill, ticks, this.healthFloat);
-    this.healthLabel = el('span', 'health-label', 'Session');
+    this.healthLabel = el('span', 'health-label', 'Tokens');
     this.healthText = el('span', 'health-text', '');
     this.healthWeek = el('span', 'health-week');
     this.health.append(this.healthLabel, track, this.healthText, this.healthWeek);
