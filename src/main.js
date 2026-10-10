@@ -40,6 +40,7 @@ const DEFAULT_CONFIG = {
   env: {},                              // extra environment variables for every agent
   notifyWhenDone: true,
   sounds: true,                         // a sound when you start an agent and when one finishes
+  soundTheme: 'jrpg',                   // jrpg (retro game menu blips and jingles) | classic (soft bells)
   hubAfterSend: true,                   // show the Hub after you send a message
   summarizeTitles: true,                // title new agents with a short summary of your message
   suggestFollowUps: true,               // after a task, suggest the messages you will likely send next

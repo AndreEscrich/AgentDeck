@@ -82,6 +82,9 @@ function openSettings(config, { onSaved } = {}) {
   const followUps = settingsInput('checkbox', config.suggestFollowUps !== false);
   const notify = settingsInput('checkbox', config.notifyWhenDone !== false);
   const sounds = settingsInput('checkbox', config.sounds !== false);
+  const soundTheme = settingsSelect([['jrpg', 'Game menu'], ['classic', 'Classic bells']], config.soundTheme || 'jrpg');
+  // Hear a style when you pick it.
+  soundTheme.onchange = () => (soundTheme.value === 'classic' ? classicSounds : jrpgSounds).done();
 
   // Stuck agents
   const stuckAfter = settingsInput('number', config.stuckAfterSeconds, { min: 5, step: 5 });
@@ -109,7 +112,8 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('Short titles', 'Name new agents with a summary of your message, written by Haiku', titles),
       settingsField('Suggest follow-ups', 'After a task, the messages you will likely send next, written by Haiku. → or a click puts one in the box, Alt+1–3 sends it', followUps),
       settingsField('Notifications', 'When an agent finishes or needs you while the app is in the background', notify),
-      settingsField('Sounds', 'For everything you and the agents do', sounds)),
+      settingsField('Sounds', 'For everything you and the agents do', sounds),
+      settingsField('Sound style', 'Game menu: retro blips and jingles. Classic: soft bells', soundTheme)),
     section('Stuck agents',
       settingsField('Waiting for Unity for', 'Seconds. An agent only counts as stuck while it waits for Unity to be ready', stuckAfter)),
     section('Claude Code',
@@ -168,6 +172,7 @@ function openSettings(config, { onSaved } = {}) {
       suggestFollowUps: followUps.checked,
       notifyWhenDone: notify.checked,
       sounds: sounds.checked,
+      soundTheme: soundTheme.value,
       stuckAfterSeconds: number(stuckAfter, 30),
       claudePath: claudePath.value.trim(),
       extraArgs: extraArgs.value.split('\n').map(l => l.trim()).filter(Boolean),
