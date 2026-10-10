@@ -602,6 +602,16 @@ class Transcript {
   // you: it stays out of the chat and does not start a new turn.
   addUser(message, toolUseResult, synthetic) {
     const content = message.content;
+    // A background command the agent started has finished: Claude Code wakes
+    // the agent with a <task-notification> "message" so it can carry on. That
+    // is not yours; it starts a new turn with a line about what finished.
+    const first = typeof content === 'string' ? content : content?.find?.(b => b.type === 'text')?.text || '';
+    if (/^\s*<task-notification>/.test(first)) {
+      this.finishTurn();
+      const summary = /<summary>([\s\S]*?)<\/summary>/.exec(first)?.[1]?.trim();
+      this.noteIn(this.startTurn(), summary || 'A background task finished.');
+      return;
+    }
     // A skill you start with /name arrives only as its instructions.
     if (synthetic && this.turn) {
       const text = typeof content === 'string' ? content : content.find(b => b.type === 'text')?.text || '';
