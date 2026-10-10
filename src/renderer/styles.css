@@ -548,6 +548,18 @@ details.change-file > summary:hover { background: var(--bg-hover); }
 .sbs-cell.empty { background: repeating-linear-gradient(135deg, transparent 0 6px, rgba(255, 255, 255, 0.025) 6px 12px); }
 
 .changes-head { display: flex; align-items: center; gap: 4px; }
+/* Reviewing: a tick per file, the count, and the actions once all are ticked */
+.review-tick { flex-shrink: 0; width: 18px; height: 18px; margin-left: 8px; padding: 0; border-radius: 50%; border: 1.5px solid var(--text-faint);
+  background: transparent; opacity: 0.55; transition: opacity 0.15s, background 0.15s, border-color 0.15s; }
+details.change-file > summary:hover .review-tick { opacity: 1; }
+.change-file.reviewed .review-tick { opacity: 1; border-color: var(--ok); background: var(--ok); }
+.change-file.reviewed .review-tick::after { content: "✓"; display: block; color: #10140f; font-size: 11px; font-weight: 800; line-height: 15px; }
+.change-file.reviewed > summary .change-path, .change-file.reviewed > summary .change-counts { opacity: 0.55; }
+.review-progress { margin-left: 10px; font-size: 12px; font-weight: 500; color: var(--text-dim); }
+.review-progress.done { color: var(--ok); }
+.review-actions { display: inline-flex; gap: 6px; margin-left: 10px; }
+.review-actions button { padding: 2px 10px; border-radius: 99px; font-size: 12px; font-weight: 500; }
+.review-commit { background: var(--ok); border-color: var(--ok); color: #10140f; }
 .changes-title { margin-right: 4px; }
 /* Class diagram of the C# changes (umlview.js) */
 /* Diagram | Files in the card's title */
@@ -1681,3 +1693,19 @@ details.other-files details.change-file > summary { padding-left: 12px; }
 /* Keeps the space in "Client.QuestPass - " before the name (a flex item
    drops trailing spaces otherwise). */
 .change-folder { white-space: pre; }
+
+/* Command palette (Ctrl+K) */
+.palette-modal { align-items: flex-start; padding-top: 12vh; }
+.palette { width: min(640px, calc(100% - 32px)); border-radius: 14px; overflow: hidden; background: #221b15; border: 1px solid #3d3329;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6); transform: translateY(-6px); transition: transform 0.15s; }
+.palette-modal.show .palette { transform: none; }
+.palette-input { width: 100%; box-sizing: border-box; padding: 14px 16px; font: inherit; font-size: 15px; color: var(--text);
+  background: transparent; border: none; border-bottom: 1px solid #3d3329; outline: none; }
+.palette-list { max-height: min(60vh, 520px); overflow: auto; padding: 6px; }
+.palette-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; cursor: pointer; min-width: 0; }
+.palette-row.on { background: rgba(224, 168, 58, 0.12); }
+.palette-icon { width: 18px; flex-shrink: 0; text-align: center; color: var(--text-faint); }
+.palette-row.on .palette-icon { color: var(--accent); }
+.palette-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 13.5px; }
+.palette-hint { flex: 1 1 auto; min-width: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-faint); }
+.palette-empty { padding: 14px; font-size: 13px; color: var(--text-faint); }

@@ -788,6 +788,172 @@ hub.onOpenNotes = groupId => openNotesEditor(findGroup(groupId));
 hub.onFollowUp = (id, text) => sendFollowUp(state.agents.get(id), text);
 hub.onSelect = () => renderBroadcast();
 
+// ---------- command palette (Ctrl+K) ----------
+
+// One box to get anywhere: your agents (on the Hub or not), saved sessions,
+// a new agent in a category, a category's notes, /diff, Settings and Your
+// activity. Type to filter (letters in order, like "s34" for "Set34 first
+// spawner"), ↑ ↓ to move, Enter to go, Esc to close.
+function paletteItems() {
+  const items = [];
+  const cur = state.current?.kind === 'agent' ? state.agents.get(state.current.id)
+    : state.current?.kind === 'history' ? state.history.get(state.current.id) : null;
+  if (cur) {
+    items.push({ icon: '±', label: 'Diff of this branch', hint: '/diff', run: () => { $('input').value = '/diff'; sendFromComposer(); } });
+  }
+  const seen = new Set();
+  for (const item of hubItems()) {
+    const group = findGroup(item.groupId);
+    if (item.sessionId) seen.add(item.sessionId);
+    items.push({
+      icon: item.parked ? '○' : '●',
+      boost: 40,   // agents on the Hub come before saved sessions
+      label: item.latestTitle || item.title,
+      hint: [group?.name, item.repo, HUB_STATUS_TEXT[item.status] || item.status].filter(Boolean).join(' · '),
+      run: () => hub.onOpen(item.id),
+    });
+  }
+  for (const g of state.groups.groups) {
+    items.push({ icon: '+', label: `New agent in ${g.name}`, hint: 'Category', run: () => {
+      show('hub');
+      const d = ensureDraft();
+      d.groupId = g.id;
+      const last = hubItems().filter(i => i.groupId === g.id).sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0))[0];
+      if (last?.cwd) { d.folder = last.cwd; setFolderHidden(last.cwd, false); }
+      renderDraftButtons();
+      $('input').focus();
+    } });
+    items.push({ icon: '✎', label: `${g.name} · shared notes`, hint: 'Category', run: () => openNotesEditor(g) });
+  }
+  items.push({ icon: '⚙', label: 'Settings', hint: '', run: () => showSettings() });
+  items.push({ icon: '▤', label: 'Your activity', hint: 'Tokens, charts', run: () => { show('hub'); hub.usageTab.click(); } });
+  items.push({ icon: '⌂', label: 'Hub', hint: '', run: () => show('hub') });
+  for (const s of state.sessions.slice(0, 300)) {
+    if (seen.has(s.id)) continue;
+    const group = findGroup(groupOf(s.id));
+    items.push({ icon: '↺', label: s.title, hint: [group?.name, shortPath(s.cwd || ''), timeAgo(s.updatedAt)].filter(Boolean).join(' · '), run: () => openHistory(s) });
+  }
+  return items;
+}
+
+// Letters of the query in order; a match at the start of a word scores more.
+function paletteScore(query, text) {
+  if (!query) return 1;
+  const q = query.toLowerCase();
+  const t = text.toLowerCase();
+  const at = t.indexOf(q);
+  if (at >= 0) return 100 - at + (at === 0 || /[\s\-_./]/.test(t[at - 1]) ? 50 : 0);
+  let score = 0;
+  let i = 0;
+  for (let j = 0; j < t.length && i < q.length; j++) {
+    if (t[j] === q[i]) { score += j === 0 || /[\s\-_./]/.test(t[j - 1]) ? 5 : 1; i++; }
+  }
+  return i === q.length ? score : 0;
+}
+
+function openPalette() {
+  if (document.querySelector('.palette-modal')) return;
+  const all = paletteItems();
+  const overlay = el('div', 'quit-modal palette-modal');
+  const card = el('div', 'palette');
+  const input = el('input', 'palette-input');
+  input.placeholder = 'Go to an agent, a session, a category… (↑ ↓, Enter)';
+  input.spellcheck = false;
+  const list = el('div', 'palette-list');
+  card.append(input, list);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('show'));
+  input.focus();
+  sfx('tick');
+  let shown = [];
+  let at = 0;
+  const draw = () => {
+    const q = input.value.trim();
+    shown = all.map(it => { const s = paletteScore(q, `${it.label} ${it.hint}`); return { it, s: s > 0 ? s + (it.boost || 0) : 0 }; }).filter(x => x.s > 0)
+      .sort((a, b) => b.s - a.s).slice(0, 40).map(x => x.it);
+    at = Math.min(at, Math.max(0, shown.length - 1));
+    list.replaceChildren();
+    shown.forEach((it, i) => {
+      const row = el('div', 'palette-row' + (i === at ? ' on' : ''));
+      row.append(el('span', 'palette-icon', it.icon), el('span', 'palette-label', it.label), el('span', 'palette-hint', it.hint));
+      row.onmouseenter = () => { at = i; for (const [k, r] of [...list.children].entries()) r.classList.toggle('on', k === at); };
+      row.onclick = () => go(it);
+      list.appendChild(row);
+    });
+    if (!shown.length) list.appendChild(el('div', 'palette-empty', 'Nothing matches'));
+    list.children[at]?.scrollIntoView({ block: 'nearest' });
+  };
+  const close = () => {
+    document.removeEventListener('keydown', onKey, true);
+    overlay.classList.remove('show');
+    setTimeout(() => overlay.remove(), 150);
+  };
+  const go = it => { close(); setHistoryOpen(false); it.run(); };
+  const onKey = e => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      at = (at + (e.key === 'ArrowDown' ? 1 : -1) + shown.length) % Math.max(1, shown.length);
+      draw();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (shown[at]) go(shown[at]);
+    } else if (e.key === 'Tab') { e.preventDefault(); e.stopImmediatePropagation(); }
+  };
+  document.addEventListener('keydown', onKey, true);
+  input.addEventListener('input', () => { at = 0; draw(); });
+  overlay.onclick = e => { if (e.target === overlay) close(); };
+  draw();
+}
+
+document.addEventListener('keydown', e => {
+  if (isMod(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    openPalette();
+  }
+}, true);
+
+// ---------- reviewing a task's changes ----------
+
+// The agent (or saved session) a Changes card belongs to.
+function ownerOfCard(card) {
+  for (const a of state.agents.values()) if (a.view?.contains(card)) return { kind: 'agent', id: a.id, agent: a };
+  for (const [id, h] of state.history) if (h.view?.contains(card)) return { kind: 'history', id };
+  return null;
+}
+
+// Commit or Ask for changes, once every file of a card is ticked as reviewed.
+window.reviewAction = async (action, card, files) => {
+  const owner = ownerOfCard(card);
+  if (!owner) return;
+  if (action === 'changes') {
+    $('input').value = 'Please change this: ';
+    autosize();
+    $('input').focus();
+    return;
+  }
+  const list = files.map(f => f.path).join(', ');
+  const text = `I reviewed the changes of your last task (${list}). Commit them, with a short message that says what changed and why. Commit only these files.`;
+  sfx('sent');
+  if (owner.kind === 'agent') await sendToHubItem(owner.id, text);
+  else await sendToHubItem('p:' + owner.id, text);
+  refreshHub();
+};
+
+// A task whose changes you reviewed completely counts as seen: Tab skips it.
+window.addEventListener('changes-reviewed', e => {
+  const owner = ownerOfCard(e.detail.card);
+  if (owner?.agent) owner.agent.unread = false;
+  if (owner?.kind === 'history' && state.parked.get(owner.id)) state.parked.get(owner.id).unread = false;
+  toast('All files reviewed: Commit or Ask for changes');
+  refreshHub();
+  updateAttention();
+});
+
 // ---------- one message to several agents ----------
 
 const HUB_PLACEHOLDER = 'Start a new agent… (↩ to start)';

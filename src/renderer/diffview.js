@@ -145,6 +145,26 @@ function loadNamespaces(files, cwd, done) {
     .finally(done);
 }
 
+// ---------- reviewed files ----------
+
+// Files you ticked as reviewed, by path and content of their change, so the
+// same change stays reviewed after a restart and a new change of the file
+// does not. Kept in this computer's local storage.
+function reviewKey(f) {
+  let h = 0;
+  for (const [, text] of f.lines || []) for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
+  return `${String(f.path).replace(/\\/g, '/')}|${f.lines?.length || 0}|${h}`;
+}
+function reviewedSet() {
+  try { return new Set(JSON.parse(localStorage.getItem('reviewedFiles') || '[]')); } catch { return new Set(); }
+}
+function setReviewed(f, on) {
+  const set = reviewedSet();
+  if (on) set.add(reviewKey(f));
+  else set.delete(reviewKey(f));
+  try { localStorage.setItem('reviewedFiles', JSON.stringify([...set].slice(-5000))); } catch { /* not important */ }
+}
+
 function fileSummary(f) {
   const { add, del } = fileStats(f);
   const counts = el('span', 'change-counts');
@@ -205,6 +225,16 @@ function changesCard(files, cwd, { title = null } = {}) {
     rows.set(f, row);
     if (f.undone) row.classList.add('undone');
     row.appendChild(summary);
+    const tick = el('button', 'review-tick');
+    tick.type = 'button';
+    tick.onclick = e => {
+      e.preventDefault();
+      e.stopPropagation();
+      setReviewed(f, !row.classList.contains('reviewed'));
+      syncReview();
+      if (row.classList.contains('reviewed')) row.open = false;
+    };
+    summary.appendChild(tick);
     // Drawing happens when the file is first opened, so big changes stay fast.
     const draw = () => {
       if (!row.querySelector('.file-views')) row.appendChild(fileViews(f, cwd, () => comments.diff(f)));
@@ -223,6 +253,42 @@ function changesCard(files, cwd, { title = null } = {}) {
     if (!code.length) group.open = true;
     card.appendChild(group);
   }
+  // Reviewing: a tick per file, "N of M reviewed", and when all are ticked,
+  // Commit or Ask for changes (handled by window.reviewAction in app.js).
+  const progress = el('span', 'review-progress');
+  const actions = el('span', 'review-actions hidden');
+  if (!title) {
+    const commit = el('button', 'review-commit', 'Commit');
+    commit.type = 'button';
+    commit.title = 'Ask the agent to commit these changes, with a message that says what changed';
+    commit.onclick = () => window.reviewAction?.('commit', card, files);
+    const ask = el('button', null, 'Ask for changes');
+    ask.type = 'button';
+    ask.title = 'Send your line comments, or write what to change';
+    ask.onclick = () => (comments.count() ? comments.send() : window.reviewAction?.('changes', card, files));
+    actions.append(ask, commit);
+  }
+  head.insertBefore(progress, send);
+  head.insertBefore(actions, send);
+  let wasAll = null;
+  const syncReview = () => {
+    const set = reviewedSet();
+    let n = 0;
+    for (const [f, row] of rows) {
+      const on = set.has(reviewKey(f));
+      row.classList.toggle('reviewed', on);
+      row.querySelector('.review-tick').title = on ? 'Reviewed (click to undo)' : 'Mark as reviewed';
+      if (on) n++;
+    }
+    const all = n === rows.size && n > 0;
+    progress.textContent = n ? `${n} of ${rows.size} reviewed` : '';
+    progress.classList.toggle('done', all);
+    actions.classList.toggle('hidden', !all);
+    if (all && wasAll === false) window.dispatchEvent(new CustomEvent('changes-reviewed', { detail: { card } }));
+    wasAll = all;
+  };
+  card.syncReview = syncReview;
+  syncReview();
   loadNamespaces(files, cwd, () => {
     for (const [f, summary] of titles) {
       const { front, name } = titleParts(f);
