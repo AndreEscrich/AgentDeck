@@ -662,6 +662,7 @@ function openDetail(panel, api, model, node, line, { files, comments }) {
 
   let current = node;
   let unwatch = null;
+  let resizer = null;
   const fill = (n, at) => {
     current = n;
     head.innerHTML = '';
@@ -708,6 +709,15 @@ function openDetail(panel, api, model, node, line, { files, comments }) {
     const views = fileViews(file, comments?.cwd, () => (comments ? comments.diff(file, { maxLines: 20000 }) : renderDiff(file, { maxLines: 20000 })));
     const diff = views;
     body.appendChild(diff);
+    // The full file and side by side load after this, and switching views
+    // changes the height: the box follows, up to the window's height.
+    resizer?.disconnect();
+    resizer = new ResizeObserver(() => {
+      if (activeDetail?.box !== box || box.classList.contains('closing')) return;
+      const r = target();
+      if (Math.abs(r.height - box.offsetHeight) > 2) place(r);
+    });
+    resizer.observe(diff);
     // To the change: the diff line nearest to it, marked for a moment.
     requestAnimationFrame(() => {
       const no = row => Number(row.dataset.newLine ?? row.dataset.oldLine);
@@ -756,6 +766,7 @@ function openDetail(panel, api, model, node, line, { files, comments }) {
     if (activeDetail?.box !== box) return;
     activeDetail = null;
     unwatch?.();
+    resizer?.disconnect();
     window.removeEventListener('resize', onResize);
     if (instant) { box.remove(); backdrop.remove(); return; }
     window.uiSound?.('close');
