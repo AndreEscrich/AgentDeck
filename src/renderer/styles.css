@@ -1736,6 +1736,9 @@ details.other-files details.change-file > summary { padding-left: 12px; }
 /* Leaning toward the pointer (--rx, --ry from hub.js), the liquid tilting with it */
 .hub-tile:hover:not(.dragging) { transform: perspective(700px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateY(-2px); }
 .hub-tile .liquid { transform: skewY(var(--lean, 0deg)); transition: height 1.2s cubic-bezier(.3,1.3,.5,1), transform 0.3s ease-out; }
+/* Liquid under the liquid: when it tilts (leaning, sloshing), its lifted
+   bottom corner shows more liquid instead of the dark tank behind it. */
+.hub-tile .liquid { box-shadow: 0 24px 0 0 var(--c2); }
 /* Finished: the tank sloshes up and the check pops in */
 .hub-tile.finish { animation: pop 0.6s cubic-bezier(.3,1.6,.5,1); }
 .hub-tile.finish .liquid { animation: finish-slosh 0.9s ease-in-out; }
@@ -1754,23 +1757,6 @@ details.other-files details.change-file > summary { padding-left: 12px; }
   100% { transform: translate(2px, -54px) scale(1.35); opacity: 0; }
 }
 
-/* The Usage tab: the session as a small tank of liquid, the week as a bar */
-.usage-tab-tank { position: relative; width: 16px; height: 100%; border-radius: 5px; background: #100d0a; overflow: hidden; border: 1px solid #3a3027; box-sizing: border-box;
-  --c1: #74d39d; --c2: #2f8f5a; }
-.usage-tab-tank.mid { --c1: #f2c060; --c2: #c98a1c; }
-.usage-tab-tank.high { --c1: #ef7f7f; --c2: #b33a3a; }
-.usage-tab-liquid { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(var(--c1), var(--c2));
-  transition: height 1s cubic-bezier(.3,1.3,.5,1), --c1 0.9s, --c2 0.9s; }
-.usage-tab-liquid::before { content: ""; position: absolute; left: -60%; width: 220%; height: 6px; top: -3px; border-radius: 45%; background: #100d0a;
-  animation: tab-wave 3.5s linear infinite; }
-@keyframes tab-wave { to { transform: rotate(360deg); } }
-.usage-tab-tank.slosh .usage-tab-liquid { animation: finish-slosh 0.8s ease-in-out; }
-/* The limit's hourglass: drains until the reset, then a green "Ready" pulse */
-.usage-limit-glass { position: relative; width: 12px; height: 26px; margin: 3px 0; border-radius: 4px; background: #100d0a; overflow: hidden; border: 1px solid rgba(224, 90, 90, 0.5); }
-.usage-limit-sand { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(#ef7f7f, #b33a3a); transition: height 1s linear; }
-.usage-limit-timer.ready { border-color: var(--ok); background: rgba(76, 175, 122, 0.14); animation: limit-ready 1s ease-out 3; }
-.usage-limit-timer.ready .usage-limit-label { color: var(--ok); }
-@keyframes limit-ready { 0% { box-shadow: 0 0 0 0 rgba(76, 175, 122, 0.7); } 100% { box-shadow: 0 0 0 12px rgba(76, 175, 122, 0); } }
 
 /* ---------- arrivals, rewards and feel ---------- */
 /* A message flying from the message box to a selected agent */

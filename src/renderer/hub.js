@@ -193,78 +193,36 @@ class Hub {
     box.appendChild(since);
   }
 
-  // The tab: the current session as a small tank of the same liquid as the
-  // agents' tiles (it rises and sloshes as you use it, and drains when the
-  // limit resets), the week as a thin bar next to it, and the session's
-  // percentage under them. The parts are made once, so the liquid can move.
+  // The tab shows the session and the week as two small upright meters,
+  // with the session's percentage under them.
   renderUsageTab(windows) {
     const tab = this.usageTab;
-    if (!this.tabParts) {
-      tab.textContent = '';
-      const bars = el('div', 'usage-tab-bars');
-      const tank = el('span', 'usage-tab-tank');
-      const liquid = el('span', 'usage-tab-liquid');
-      tank.appendChild(liquid);
-      const week = el('span', 'usage-tab-bar');
-      const weekFill = el('span');
-      week.appendChild(weekFill);
-      bars.append(tank, week);
-      const pct = el('span', 'usage-tab-pct');
-      tab.append(bars, pct, el('span', 'usage-tab-label', 'Usage'));
-      this.tabParts = { tank, liquid, week, weekFill, pct, last: null };
+    tab.textContent = '';
+    const bars = el('div', 'usage-tab-bars');
+    for (const key of ['five_hour', 'seven_day']) {
+      const pct = windows?.[key] ? Math.max(0, Math.min(100, Math.round((windows[key].utilization || 0) * 100))) : 0;
+      const bar = el('span', `usage-tab-bar ${pct >= 90 ? 'high' : pct >= 70 ? 'mid' : 'low'}`);
+      const fill = el('span');
+      fill.style.height = `${pct}%`;
+      bar.appendChild(fill);
+      bars.appendChild(bar);
     }
-    const p = this.tabParts;
-    const level = v => (v >= 90 ? 'high' : v >= 70 ? 'mid' : 'low');
-    const session = windows?.five_hour ? Math.max(0, Math.min(100, Math.round((windows.five_hour.utilization || 0) * 100))) : null;
-    const weekPct = windows?.seven_day ? Math.max(0, Math.min(100, Math.round((windows.seven_day.utilization || 0) * 100))) : 0;
-    p.tank.className = `usage-tab-tank ${level(session || 0)}`;
-    p.liquid.style.height = `${session || 0}%`;
-    p.week.className = `usage-tab-bar ${level(weekPct)}`;
-    p.weekFill.style.height = `${weekPct}%`;
-    p.pct.textContent = session == null ? '–' : `${session}%`;
-    if (session != null && p.last != null && session !== p.last) {
-      p.tank.classList.remove('slosh');
-      void p.tank.offsetWidth;
-      p.tank.classList.add('slosh');
-    }
-    if (session != null) p.last = session;
-
-    // Limit reached: an hourglass next to the tab that drains until the
-    // reset, then turns green for a moment ("Ready").
+    const session = windows?.five_hour ? `${Math.round((windows.five_hour.utilization || 0) * 100)}%` : '–';
+    tab.append(bars, el('span', 'usage-tab-pct', session), el('span', 'usage-tab-label', 'Usage'));
+    // Limit reached: how long until it resets, next to the tab.
     const l = this.usageData?.limits;
     const resets = l?.status === 'rejected' ? l.resetsAt || l.unifiedWindows?.[l.rateLimitType]?.resetsAt : null;
-    const limited = !!resets && resets * 1000 > Date.now();
-    if (limited) {
+    this.limitTimer?.remove();
+    this.limitTimer = null;
+    if (resets && resets * 1000 > Date.now()) {
       const ms = resets * 1000 - Date.now();
       const h = Math.floor(ms / 3600000);
       const m = Math.ceil((ms % 3600000) / 60000);
-      const span = (l.rateLimitType === 'seven_day' ? 7 * 24 : 5) * 3600000;
-      if (!this.limitTimer || this.limitTimer.classList.contains('ready')) {
-        this.limitTimer?.remove();
-        const timer = el('div', 'usage-limit-timer');
-        const glass = el('span', 'usage-limit-glass');
-        glass.appendChild(el('span', 'usage-limit-sand'));
-        timer.append(el('span', 'usage-limit-label', 'Limit'), glass, el('span', 'usage-limit-time'));
-        this.limitTimer = timer;
-        tab.after(timer);
-      }
-      this.limitTimer.querySelector('.usage-limit-sand').style.height = `${Math.max(2, Math.min(100, (ms / span) * 100))}%`;
-      this.limitTimer.querySelector('.usage-limit-time').textContent = h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`;
-      this.limitTimer.title = `Your usage limit is reached. It resets ${Hub.resetText(resets)}; waiting agents continue then.`;
-      this.wasLimited = true;
-    } else if (this.wasLimited) {
-      // Just reset: a green pulse for a few seconds, and the session tank drains.
-      this.wasLimited = false;
-      const timer = this.limitTimer || el('div', 'usage-limit-timer');
-      timer.className = 'usage-limit-timer ready';
-      timer.replaceChildren(el('span', 'usage-limit-label', 'Ready'), el('span', 'usage-limit-time', '✓'));
-      timer.title = 'Your usage limit has reset';
-      if (!timer.parentNode) tab.after(timer);
+      const timer = el('div', 'usage-limit-timer');
+      timer.append(el('span', 'usage-limit-label', 'Limit'), el('span', 'usage-limit-time', h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`));
+      timer.title = `Your usage limit is reached. It resets ${Hub.resetText(resets)}; waiting agents continue then.`;
       this.limitTimer = timer;
-      setTimeout(() => { if (this.limitTimer === timer && !this.wasLimited) { timer.remove(); this.limitTimer = null; } }, 6000);
-    } else if (this.limitTimer && !this.limitTimer.classList.contains('ready')) {
-      this.limitTimer.remove();
-      this.limitTimer = null;
+      tab.after(timer);
     }
   }
 
@@ -488,9 +446,8 @@ class Hub {
       if (before !== agent.status) {
         tile.classList.remove(`state-${before}`);
         tile.classList.add(`state-${agent.status}`);
-        // Finished: the tank sloshes up to the brim and the check pops in (the
-        // sparkles come when you open the result, see open()). Other changes
-        // give the tile a small wobble.
+        // Finished: the tank sloshes up to the brim and the check pops in.
+        // Other changes give the tile a small wobble.
         if (agent.status === 'idle' && ['working', 'waiting', 'starting', 'stuck', 'background'].includes(before)) {
           this.replay(tile, 'finish', 1300);
         } else if (agent.status === 'error' && before) this.replay(tile, 'shake', 700);
@@ -1149,11 +1106,6 @@ class Hub {
       return;
     }
     this.opening = true;
-    // A finished result you have not seen yet: sparkles first.
-    if (entry.el.classList.contains('state-idle') && entry.el.classList.contains('unread')) {
-      this.replay(entry.el, 'celebrate', 1600);
-      await new Promise(r => setTimeout(r, 380));
-    }
     const from = entry.el.getBoundingClientRect();
     const to = area.getBoundingClientRect();
     const copy = this.tileCopy(entry, from);
