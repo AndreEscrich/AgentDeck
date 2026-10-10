@@ -888,6 +888,8 @@ class Transcript {
   agentTouched(turn, rel) {
     const abs = this.cwd ? `${this.cwd.replace(/[\\/]$/, '')}/${rel}` : rel;
     if (turn.touched?.has(abs) || turn.touched?.has(rel)) return true;
+    // The tools report paths with the system's separator (\ on Windows).
+    if ([...(turn.touched || [])].some(p => this.relativePath(p).replace(/\\/g, '/').toLowerCase() === rel.toLowerCase())) return true;
     const name = rel.split('/').pop();
     return (turn.evidence || []).some(text => text.includes(rel) || text.includes(name));
   }
@@ -903,7 +905,7 @@ class Transcript {
 
   isInside(p) {
     if (!this.cwd) return true;
-    return p === this.cwd || p.startsWith(this.cwd + '/') || p.startsWith(this.cwd + '\\');
+    return p === this.cwd || this.relativePath(p) !== p;
   }
 
   // Leaves out files the agent created and deleted again during the task:
@@ -941,8 +943,10 @@ class Transcript {
   }
 
   relativePath(p) {
-    if (this.cwd && (p.startsWith(this.cwd + '/') || p.startsWith(this.cwd + '\\'))) return p.slice(this.cwd.length + 1);
-    return p;
+    if (!this.cwd) return p;
+    // Either separator and any case: Windows paths come as C:\Repos or c:/Repos.
+    const root = this.cwd.replace(/[\\/]$/, '').replace(/\\/g, '/').toLowerCase();
+    return p.replace(/\\/g, '/').toLowerCase().startsWith(root + '/') ? p.slice(root.length + 1) : p;
   }
 
   // Turns the Edit/Write reports into the same shape as a parsed git diff:
@@ -973,8 +977,11 @@ class Transcript {
     const files = parseUnifiedDiff(diffText).filter(f => !isTempFile(f.path) && this.agentTouched(turn, f.path));
     if (merge) {
       await this.pruneMissing(turn).catch(() => {});
-      const seen = new Set(files.map(f => f.path));
-      for (const f of this.toolChanges(turn.changes)) if (!seen.has(f.path) && !isTempFile(f.path)) files.push(f);
+      // The snapshot's paths use /, the Edit/Write reports the system's own
+      // separator (\ on Windows), and the case of a drive letter may differ.
+      const key = p => p.replace(/\\/g, '/').toLowerCase();
+      const seen = new Set(files.map(f => key(f.path)));
+      for (const f of this.toolChanges(turn.changes)) if (!seen.has(key(f.path)) && !isTempFile(f.path)) files.push(f);
     }
     turn.files = files;
     this.pinned(() => {
