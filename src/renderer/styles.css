@@ -1818,3 +1818,6 @@ details.other-files details.change-file > summary { padding-left: 12px; }
 .hub-health.limited .health-text { color: #ef9f9f; font-weight: 600; }
 .health-week { flex-shrink: 0; font-size: 11px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
 .hub-health.unknown .health-track { opacity: 0.4; }
+
+/* Opened from the health bar: the usage card hangs under the bar */
+.usage-rail.from-health .hub-usage:not(.hub-settings-menu) { top: 58px; left: 64px; }

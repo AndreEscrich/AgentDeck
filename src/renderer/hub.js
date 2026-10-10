@@ -93,7 +93,30 @@ class Hub {
     this.healthText = el('span', 'health-text', '');
     this.healthWeek = el('span', 'health-week');
     this.health.append(this.healthLabel, track, this.healthText, this.healthWeek);
-    this.health.onclick = () => this.showPanel?.('usage');
+    this.health.onclick = () => { clearTimeout(this.hoverOpen); this.rail.classList.remove('from-health'); this.showPanel?.('usage'); };
+    // Pointing at the bar for half a second opens the usage card under it; it
+    // closes again when the pointer leaves both the bar and the card.
+    const openFromHover = () => {
+      if (this.rail.classList.contains('open')) return;
+      this.rail.classList.add('from-health');
+      this.showPanel?.('usage');
+      this.openedByHover = true;
+    };
+    const closeSoon = () => {
+      clearTimeout(this.hoverOpen);
+      if (!this.openedByHover) return;
+      clearTimeout(this.hoverClose);
+      this.hoverClose = setTimeout(() => {
+        if (this.health.matches(':hover') || this.usage.matches(':hover')) return;
+        this.openedByHover = false;
+        if (this.rail.classList.contains('open') && this.rail.dataset.panel === 'usage') {
+          this.rail.classList.remove('open');
+          window.uiSound?.('tickDown');
+        }
+      }, 300);
+    };
+    this.health.addEventListener('pointerenter', () => { clearTimeout(this.hoverClose); this.hoverOpen = setTimeout(openFromHover, 500); });
+    this.health.addEventListener('pointerleave', closeSoon);
 
     this.root.append(this.health, this.grid, this.empty);
 
@@ -110,6 +133,8 @@ class Hub {
     this.usageMain = el('div', 'usage-main');
     this.usageActivityBox = el('div', 'usage-activity');
     this.usage.append(this.usageMain, this.usageActivityBox);
+    this.usage.addEventListener('pointerenter', () => clearTimeout(this.hoverClose));
+    this.usage.addEventListener('pointerleave', () => this.health.dispatchEvent(new Event('pointerleave')));
     // A small settings button above the usage tab opens a short menu in the
     // same place: Connectors (a dialog, see renderer/connectors.js) and the
     // settings file. The app sets onOpenConnectors and onOpenSettings.
@@ -143,7 +168,7 @@ class Hub {
     };
     this.rail.dataset.panel = 'usage';
     this.usageTab.onclick = () => showPanel('usage');
-    this.settingsBtn.onclick = () => showPanel('settings');
+    this.settingsBtn.onclick = () => { this.rail.classList.remove('from-health'); showPanel('settings'); };
     document.addEventListener('pointerdown', e => {
       if (this.rail.classList.contains('open') && !this.rail.contains(e.target)) {
         this.rail.classList.remove('open');
