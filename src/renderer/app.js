@@ -1057,6 +1057,85 @@ function repoName(cwd) {
   return repoNames.get(cwd);
 }
 
+// ---------- the list of every agent you have had ----------
+
+// agents.json in the main process (see agentlist.js), by session id: the
+// title, folder, category and whether the agent is on the Hub. The Hub (in
+// local storage) and the categories (groups.json) rebuild from it when
+// they lost something, and History uses it to bring agents back.
+state.agentList = new Map();
+let agentListReady = false;
+let hubSynced = new Set();   // sessions the list has as on the Hub
+let agentListTimer = null;
+
+async function loadAgentList() {
+  const list = await window.deck.listAgents().catch(() => []);
+  state.agentList = new Map(list.map(e => [e.sessionId, e]));
+  let groupsChanged = false;
+  for (const e of list) {
+    // A category that is gone from groups.json without being deleted here
+    // (another copy of the app saved over it) comes back.
+    if (e.groupId && e.groupName && !findGroup(e.groupId)) {
+      state.groups.groups.push({ id: e.groupId, name: e.groupName, collapsed: false });
+      groupsChanged = true;
+    }
+    if (e.groupId && findGroup(e.groupId) && !state.groups.assignments[e.sessionId]) {
+      state.groups.assignments[e.sessionId] = e.groupId;
+      groupsChanged = true;
+    }
+    if (e.inHub && !state.parked.has(e.sessionId)) state.parked.set(e.sessionId, parkedFromList(e));
+  }
+  hubSynced = new Set(list.filter(e => e.inHub).map(e => e.sessionId));
+  agentListReady = true;
+  if (groupsChanged) saveGroups();
+}
+
+function parkedFromList(e) {
+  const { inHub, updatedAt, groupName, ...p } = e;
+  return { ...p, wasWorking: false };
+}
+
+// After each change of the Hub: the agents on it, with what the list keeps,
+// and the ones that left it.
+function syncAgentList(list) {
+  if (!agentListReady) return;
+  clearTimeout(agentListTimer);
+  agentListTimer = setTimeout(() => {
+    const on = new Set(list.map(p => p.sessionId));
+    const entries = list.map(p => ({ ...p, inHub: true, groupName: findGroup(p.groupId)?.name || null, lastActiveAt: Math.max(p.finishedAt || 0, state.agentList.get(p.sessionId)?.lastActiveAt || 0) || Date.now() }));
+    for (const sid of hubSynced) if (!on.has(sid)) entries.push({ sessionId: sid, inHub: false });
+    hubSynced = on;
+    rememberAgents(entries);
+  }, 400);
+}
+
+function rememberAgents(entries) {
+  for (const e of entries) state.agentList.set(e.sessionId, { ...(state.agentList.get(e.sessionId) || {}), ...e });
+  window.deck.rememberAgents(entries).catch(() => {});
+}
+
+// From History: a session goes (back) on the Hub as a completed tile.
+function bringBackToHub(session) {
+  const e = state.agentList.get(session.id) || {};
+  state.parked.set(session.id, parkedFromList({
+    ...e,
+    sessionId: session.id,
+    title: e.title || session.title,
+    cwd: e.cwd || session.cwd,
+    groupId: groupOf(session.id) || e.groupId || null,
+    finishedAt: e.finishedAt || session.updatedAt || Date.now(),
+    unread: false,
+  }));
+  saveHub();
+  refreshHub();
+  renderHistory();
+  toast(`"${e.title || session.title}" is back on the Hub`);
+}
+
+function isOnHub(sessionId) {
+  return state.parked.has(sessionId) || [...state.agents.values()].some(a => a.sessionId === sessionId && !a.removed);
+}
+
 // Saved in the window's local storage, which survives restarts. Running
 // agents are saved too, so after a restart they come back as completed tiles.
 function saveHub() {
@@ -1065,6 +1144,7 @@ function saveHub() {
   const live = new Set(list.map(p => p.sessionId));
   for (const p of state.parked.values()) if (!live.has(p.sessionId)) list.push(p);
   try { localStorage.setItem('hubAgents', JSON.stringify(list)); } catch { /* not important */ }
+  syncAgentList(list);
 }
 
 function loadHub() {
@@ -1207,6 +1287,7 @@ function assignGroup(sessionId, groupId) {
   if (groupId) state.groups.assignments[sessionId] = groupId;
   else delete state.groups.assignments[sessionId];
   saveGroups();
+  rememberAgents([{ sessionId, groupId: groupId || null, groupName: findGroup(groupId)?.name || null }]);
   renderSidebar();
 }
 
@@ -1230,9 +1311,13 @@ function createGroup() {
 
 function deleteGroup(groupId) {
   state.groups.groups = state.groups.groups.filter(g => g.id !== groupId);
+  const left = [];
   for (const [sid, gid] of Object.entries(state.groups.assignments)) {
-    if (gid === groupId) delete state.groups.assignments[sid];
+    if (gid === groupId) { delete state.groups.assignments[sid]; left.push(sid); }
   }
+  // The list forgets the category too, so it does not bring it back.
+  const listed = [...state.agentList.values()].filter(e => e.groupId === groupId).map(e => e.sessionId);
+  rememberAgents([...new Set([...left, ...listed])].map(sessionId => ({ sessionId, groupId: null, groupName: null })));
   if (state.groups.lastGroupId === groupId) delete state.groups.lastGroupId;
   saveGroups();
   renderSidebar();
@@ -1533,6 +1618,13 @@ function historyItem(s) {
   if (state.current?.kind === 'history' && state.current.id === s.id) item.classList.add('active');
   item.title = `${s.title}\n${s.cwd || ''}`;
   item.append(el('span', 'label', s.title), el('span', 'meta', timeAgo(s.updatedAt)));
+  // Not on the Hub (any more): one click puts it back there.
+  if (!isOnHub(s.id)) {
+    const back = el('button', 'item-to-hub', 'Back to Hub');
+    back.title = 'Show this agent on the Hub again';
+    back.onclick = e => { e.stopPropagation(); bringBackToHub(s); };
+    item.appendChild(back);
+  }
   item.onclick = () => { sfx('open'); openHistory(s); };
   item.oncontextmenu = e => { e.preventDefault(); sessionMenu(s.id); };
   item.draggable = true;
@@ -1588,7 +1680,11 @@ function renderHistory() {
 async function loadSessions() {
   state.sessions = await window.deck.listSessions();
   const titles = savedTitles();
-  for (const s of state.sessions) if (titles[s.id]) s.title = titles[s.id];
+  for (const s of state.sessions) {
+    const listed = state.agentList.get(s.id);
+    if (titles[s.id]) s.title = titles[s.id];
+    else if (listed?.title) s.title = listed.title;
+  }
   renderSidebar();
 }
 
@@ -3073,6 +3169,7 @@ setInterval(checkStuck, 3000);
   try { setSettingsOpen(localStorage.getItem('composerSettingsOpen') === '1'); } catch { setSettingsOpen(false); }
   state.groups = { groups: [], assignments: {}, ...(await window.deck.getGroups()) };
   loadHub();
+  await loadAgentList();
   if (!IS_MAC) {
     for (const node of document.querySelectorAll('[title], [placeholder]')) {
       for (const attr of ['title', 'placeholder']) {

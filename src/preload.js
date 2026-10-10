@@ -34,6 +34,9 @@ contextBridge.exposeInMainWorld('deck', {
   fileVersions: (cwd, file) => ipcRenderer.invoke('files:versions', cwd, file),
   restoreFile: (cwd, p, previous) => ipcRenderer.invoke('files:restore', cwd, p, previous),
   activity: () => ipcRenderer.invoke('activity:get'),
+  // Every agent you have had (see agentlist.js).
+  rememberAgents: entries => ipcRenderer.invoke('agents:remember', entries),
+  listAgents: () => ipcRenderer.invoke('agents:list'),
   // Signing Claude Code in again (see auth.js).
   auth: {
     login: () => ipcRenderer.invoke('auth:login'),

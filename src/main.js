@@ -10,6 +10,7 @@ const media = require('./media');
 const jira = require('./jira');
 const connectors = require('./connectors');
 const auth = require('./auth');
+const agentList = require('./agentlist');
 const { activity } = require('./activity');
 const updates = require('./updates');
 const undo = require('./undo');
@@ -207,6 +208,8 @@ app.whenReady().then(() => {
   ipcMain.handle('jira:details', (_e, key) => jira.details(key));
   ipcMain.handle('jira:comment', (_e, key, body) => jira.comment(key, body));
   ipcMain.handle('activity:get', () => activity(path.join(app.getPath('userData'), 'activity-cache.json')));
+  ipcMain.handle('agents:remember', (_e, entries) => agentList.remember(entries));
+  ipcMain.handle('agents:list', () => agentList.list());
   ipcMain.handle('auth:login', () => auth.login(getConfig(), send));
   ipcMain.handle('auth:input', (_e, text) => auth.input(text));
   ipcMain.handle('auth:cancel', () => auth.cancel());
@@ -221,6 +224,7 @@ app.whenReady().then(() => {
   if (app.dock) app.dock.setIcon(path.join(__dirname, '..', 'build', 'icon.png'));
   configPath = path.join(app.getPath('userData'), 'config.json');
   groupsPath = path.join(app.getPath('userData'), 'groups.json');
+  agentList.init(app.getPath('userData'));
   if (!fs.existsSync(configPath)) fs.writeFileSync(configPath, JSON.stringify(DEFAULT_CONFIG, null, 2));
 
   ipcMain.handle('config:get', () => ({ ...getConfig(), home: require('os').homedir() }));
