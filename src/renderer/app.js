@@ -788,6 +788,11 @@ hub.onOpenNotes = groupId => openNotesEditor(findGroup(groupId));
 // older than 10 minutes.
 // The usage card (the Usage tab on the Hub's left edge) shows the same
 // numbers in a smaller view, also when the Hub has agents.
+// The charts group tokens by the category of each session.
+ActivityPanel.categoryOf = id => {
+  const g = findGroup(groupOf(id) || state.agentList.get(id)?.groupId);
+  return g ? { key: g.id, name: g.name } : null;
+};
 const activityPanel = new ActivityPanel(hub.activityBox);
 const usageActivity = new ActivityPanel(hub.usageActivityBox, { compact: true });
 activityPanel.onLoaded = data => usageActivity.show(data);

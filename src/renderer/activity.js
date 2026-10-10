@@ -8,6 +8,13 @@
 // weakest step at 2.1:1 against the card. Days without use are a neutral grey.
 const ACTIVITY_LEVELS = ['#2a241e', '#624619', '#8f651d', '#bd8522', '#f0b142'];
 
+// Categories in the charts, in this fixed order (the dark steps of the
+// default categorical palette, checked with the dataviz validator against the
+// panel: CVD separation, lightness band, 3:1 contrast). More than five fold
+// into "Other", a neutral grey.
+const CATEGORY_COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181'];
+const OTHER_COLOR = '#6f6a62';
+
 const ACTIVITY_METRICS = {
   tokens: { label: 'Tokens', unit: 'tokens' },
   prompts: { label: 'Messages', unit: 'messages' },
@@ -39,6 +46,7 @@ class ActivityPanel {
     this.compact = compact;
     this.metric = 'tokens';
     this.asTable = false;
+    this.range = 30;   // days in the charts
     this.data = null;
     this.loadedAt = 0;
   }
@@ -130,6 +138,7 @@ class ActivityPanel {
     box.appendChild(tiles);
 
     box.appendChild(this.asTable ? this.table() : this.calendar());
+    if (this.data.sessions) box.appendChild(this.charts());
 
     const notes = el('div', 'act-notes');
     if (s.busiest) {
@@ -139,8 +148,178 @@ class ActivityPanel {
     if (s.peakHour >= 0 && (this.data.hours || [])[s.peakHour] > 0) {
       notes.appendChild(el('span', null, `Most messages between ${String(s.peakHour).padStart(2, '0')}:00 and ${String((s.peakHour + 1) % 24).padStart(2, '0')}:00`));
     }
-    notes.appendChild(el('span', 'act-source', 'From Claude Code sessions on this Mac'));
+    notes.appendChild(el('span', 'act-source', 'From Claude Code sessions on this computer'));
     box.appendChild(notes);
+  }
+
+  // ---------- tokens over time and by category ----------
+
+  // Which category a session belongs to: { key, name } from the app (see
+  // ActivityPanel.categoryOf in app.js), or one of the two kinds without one.
+  categoryFor(id, s) {
+    return ActivityPanel.categoryOf?.(id, s)
+      || (s.fromHub ? { key: 'none', name: 'No category' } : { key: 'outside', name: 'Outside Agent Hub' });
+  }
+
+  // Colors follow the category, not its place in the chosen range: the five
+  // categories with the most tokens overall keep their color, the rest are
+  // "Other" (grey).
+  categoryColors() {
+    const totals = new Map();
+    for (const [id, s] of Object.entries(this.data.sessions || {})) {
+      const c = this.categoryFor(id, s);
+      totals.set(c.key, (totals.get(c.key) || 0) + s.tokens);
+    }
+    const ranked = [...totals].sort((a, b) => b[1] - a[1]).map(([k]) => k);
+    return new Map(ranked.slice(0, CATEGORY_COLORS.length).map((k, i) => [k, CATEGORY_COLORS[i]]));
+  }
+
+  charts() {
+    const wrap = el('div', 'act-charts');
+    const head = el('div', 'act-head');
+    head.appendChild(el('div', 'act-title', 'Where the tokens go'));
+    const seg = el('div', 'act-metrics');
+    for (const n of [7, 30, 90]) {
+      const b = el('button', n === this.range ? 'on' : '', `${n} days`);
+      b.type = 'button';
+      b.onclick = () => { window.uiSound?.('select'); this.range = n; this.render(); };
+      seg.appendChild(b);
+    }
+    head.appendChild(seg);
+    wrap.appendChild(head);
+
+    // The days of the range, oldest first.
+    const dates = [];
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    for (let i = this.range - 1; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      dates.push(dayKey(d));
+    }
+    const inRange = new Set(dates);
+    const colors = this.categoryColors();
+    const series = key => (colors.has(key) ? key : 'other');
+    const names = new Map([['other', 'Other']]);
+    const perDay = new Map(dates.map(d => [d, new Map()]));
+    const cats = new Map();   // category key -> { name, tokens, prompts, sessions }
+    for (const [id, s] of Object.entries(this.data.sessions || {})) {
+      const c = this.categoryFor(id, s);
+      names.set(c.key, c.name);
+      let tokens = 0, prompts = 0;
+      for (const [date, t] of Object.entries(s.days || {})) {
+        if (!inRange.has(date)) continue;
+        tokens += t;
+        const day = perDay.get(date);
+        day.set(series(c.key), (day.get(series(c.key)) || 0) + t);
+      }
+      for (const [date, n] of Object.entries(s.promptDays || {})) if (inRange.has(date)) prompts += n;
+      if (!tokens && !prompts) continue;
+      const cat = cats.get(c.key) || { key: c.key, name: c.name, tokens: 0, prompts: 0, sessions: 0 };
+      cat.tokens += tokens;
+      cat.prompts += prompts;
+      cat.sessions++;
+      cats.set(c.key, cat);
+    }
+    if (!cats.size) {
+      wrap.appendChild(el('div', 'act-empty', 'No tokens used in this time.'));
+      return wrap;
+    }
+    const color = key => colors.get(key) || OTHER_COLOR;
+    // Stack order: the colored categories in their color order, Other last (on top).
+    const order = [...colors.keys(), 'other'].filter(k => dates.some(d => perDay.get(d).get(k)));
+
+    // Legend: every series in the chart, named (identity is never color alone).
+    const legend = el('div', 'act-chart-legend');
+    for (const k of order) {
+      const item = el('span', 'act-legend-item');
+      const sw = el('span', 'act-swatch');
+      sw.style.background = color(k);
+      item.append(sw, el('span', null, names.get(k)));
+      legend.appendChild(item);
+    }
+
+    // 1. Tokens per day, stacked by category.
+    const chart = el('div', 'act-chart');
+    chart.appendChild(el('div', 'act-chart-title', 'Tokens per day'));
+    chart.appendChild(legend);
+    const max = Math.max(1, ...dates.map(d => [...perDay.get(d).values()].reduce((a, b) => a + b, 0)));
+    const plot = el('div', 'act-plot');
+    // Three recessive gridlines with their values.
+    for (const f of [1, 0.5]) {
+      const line = el('div', 'act-gridline');
+      line.style.bottom = `${f * 100}%`;
+      line.appendChild(el('span', null, shortNumber(max * f)));
+      plot.appendChild(line);
+    }
+    const cols = el('div', 'act-cols');
+    const tip = el('div', 'act-tip hidden');
+    dates.forEach((date, i) => {
+      const day = perDay.get(date);
+      const total = [...day.values()].reduce((a, b) => a + b, 0);
+      const col = el('div', 'act-col');
+      for (const k of order) {
+        const v = day.get(k);
+        if (!v) continue;
+        const segm = el('span');
+        segm.style.height = `${(v / max) * 100}%`;
+        segm.style.background = color(k);
+        col.appendChild(segm);
+      }
+      const label = new Date(date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+      col.setAttribute('aria-label', `${label}: ${shortNumber(total)} tokens`);
+      col.onmouseenter = () => {
+        tip.textContent = `${label} · ${shortNumber(total)} tokens`
+          + order.filter(k => day.get(k)).reverse().map(k => `\n${names.get(k)}: ${shortNumber(day.get(k))}`).join('');
+        tip.classList.remove('hidden');
+        const r = col.getBoundingClientRect();
+        const b = this.box.getBoundingClientRect();
+        tip.style.left = `${r.left - b.left + r.width / 2}px`;
+        tip.style.top = `${r.top - b.top + r.height - (total / max) * r.height}px`;
+      };
+      col.onmouseleave = () => tip.classList.add('hidden');
+      cols.appendChild(col);
+    });
+    plot.appendChild(cols);
+    chart.appendChild(plot);
+    // A few dates under the bars: the first, the last and some between.
+    const xs = el('div', 'act-xlabels');
+    const every = Math.ceil(dates.length / 6);
+    dates.forEach((date, i) => {
+      const show = i === dates.length - 1 || (i % every === 0 && dates.length - 1 - i >= every / 2);
+      xs.appendChild(el('span', null, show ? new Date(date + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : ''));
+    });
+    chart.appendChild(xs);
+    wrap.appendChild(chart);
+    this.box.appendChild(tip);
+
+    // 2. Tokens by category, and per message you sent: what kind of work costs most.
+    const byCat = el('div', 'act-chart');
+    byCat.appendChild(el('div', 'act-chart-title', 'By category'));
+    const rows = [...cats.values()].sort((a, b) => b.tokens - a.tokens);
+    const top = Math.max(1, rows[0].tokens);
+    const list = el('div', 'act-cat-list');
+    for (const c of rows.slice(0, 8)) {
+      const row = el('div', 'act-cat-row');
+      const sw = el('span', 'act-swatch');
+      sw.style.background = color(c.key);
+      const name = el('span', 'act-cat-name', c.name);
+      const bar = el('div', 'act-cat-bar');
+      const fill = el('span');
+      fill.style.width = `${Math.max(0.5, (c.tokens / top) * 100)}%`;
+      fill.style.background = color(c.key);
+      bar.appendChild(fill);
+      const per = c.prompts ? `${shortNumber(c.tokens / c.prompts)} per message` : 'no messages';
+      const value = el('span', 'act-cat-value', shortNumber(c.tokens));
+      const sub = el('span', 'act-cat-sub', `${c.prompts} ${c.prompts === 1 ? 'message' : 'messages'} · ${per}`);
+      row.title = `${c.name}: ${c.tokens.toLocaleString()} tokens in ${c.sessions} ${c.sessions === 1 ? 'session' : 'sessions'}, ${c.prompts} messages you sent`;
+      row.append(sw, name, bar, value, sub);
+      list.appendChild(row);
+    }
+    if (rows.length > 8) list.appendChild(el('div', 'act-cat-more', `and ${rows.length - 8} more`));
+    byCat.appendChild(list);
+    wrap.appendChild(byCat);
+    return wrap;
   }
 
   // Levels 1-4 by quartile of the days with any value, so one huge day does
