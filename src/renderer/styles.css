@@ -1723,3 +1723,13 @@ details.other-files details.change-file > summary { padding-left: 12px; }
 .ba-label-after { right: 6px; }
 .ba-slider { width: 100%; accent-color: var(--accent); }
 .media-item.compare { grid-column: span 2; }
+
+/* The usage limit is reached: a countdown next to the Usage tab, and the
+   tiles of agents that wait for it */
+.usage-limit-timer { display: flex; flex-direction: column; align-items: center; gap: 1px; margin-top: 6px; padding: 5px 4px; width: 40px; box-sizing: border-box;
+  border-radius: 10px; border: 1px solid var(--err); background: rgba(224, 90, 90, 0.12); }
+.usage-limit-label { font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--err); }
+.usage-limit-time { font-size: 11px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; text-align: center; }
+.hub-tile.limited { --c1: #c9a35a; --c2: #8a6a30; --glow: rgba(200, 160, 80, 0.2); --wave-speed: 14s; }
+.hub-tile.limited .tank-icon { transform: scale(1); font-size: clamp(14px, 16cqw, 34px); }
+.hub-tile.limited .hub-status { color: #d8b46a; }

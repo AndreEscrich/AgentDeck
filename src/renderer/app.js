@@ -1199,6 +1199,7 @@ function parkedItem(p) {
   return {
     id: 'p:' + p.sessionId,
     parked: true,
+    limited: limitOf(p),
     status: 'idle',
     title: p.title,
     latestPrompt: p.latestPrompt,
@@ -2495,6 +2496,12 @@ function userContent(text, images = []) {
 
 async function sendToAgent(agent, text, images = []) {
   clearFollowUps(agent);
+  if (agent.limited || (agent.sessionId && limitWaits()[agent.sessionId])) {
+    agent.limited = null;
+    const waits = limitWaits();
+    delete waits[agent.sessionId];
+    saveLimitWaits(waits);
+  }
   // After "Undo last prompt", the agent learns that its files are back as
   // they were before its last task (the chat shows your message as you wrote it).
   if (agent.undoNote) {
@@ -2985,6 +2992,106 @@ function noteUsage(msg) {
   hub.setUsage({ ...usage });
 }
 
+// ---------- the usage limit ----------
+
+// When your plan's limit is reached, agents stop with "You've hit your
+// session limit · resets 10:20pm" (HTTP 429). Each such agent waits (its
+// tile says when it continues), and when the limit resets Agent Hub fetches
+// the new usage, refreshes the Hub and tells the waiting agents to carry on.
+// The waits are kept in local storage, so they survive a restart.
+const LIMIT_HIT = /hit your (session |weekly |opus |usage )?limit|usage limit (reached|was hit|hit)|rate_limit/i;
+const LIMIT_CONTINUE = 'Your usage limit has reset. Continue where you left off.';
+
+function isLimitHit(msg) {
+  return msg?.type === 'result' && msg.is_error && (msg.api_error_status === 429 || LIMIT_HIT.test(msg.result || ''));
+}
+
+// When the limit you hit resets, in ms: from the last report of your
+// limits, or else from the agent's message ("resets 10:20pm").
+function limitResetAt(text) {
+  const l = usage.limits;
+  const secs = l && l.status === 'rejected' ? l.resetsAt || l.unifiedWindows?.[l.rateLimitType]?.resetsAt : null;
+  if (secs && secs * 1000 > Date.now()) return secs * 1000;
+  const m = /resets (?:at )?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i.exec(text || '');
+  if (m) {
+    let h = Number(m[1]);
+    if (m[3]) h = (h % 12) + (/pm/i.test(m[3]) ? 12 : 0);
+    const d = new Date();
+    d.setHours(h, Number(m[2] || 0), 0, 0);
+    if (d.getTime() < Date.now()) d.setDate(d.getDate() + 1);
+    return d.getTime();
+  }
+  return Date.now() + 15 * 60 * 1000;
+}
+
+function limitWaits() {
+  try { return JSON.parse(localStorage.getItem('limitWaits') || '{}'); } catch { return {}; }
+}
+function saveLimitWaits(waits) {
+  try { localStorage.setItem('limitWaits', JSON.stringify(waits)); } catch { /* not important */ }
+}
+
+// An agent stopped at the limit: it waits for the reset.
+function noteLimitHit(a, msg) {
+  const at = limitResetAt(msg.result);
+  a.limited = { resetAt: at };
+  if (a.sessionId) saveLimitWaits({ ...limitWaits(), [a.sessionId]: at });
+  a.transcript.note(`Usage limit reached. This agent continues by itself when it resets, at ${new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
+  refreshHub();
+}
+
+// The tile of an agent that waits for the reset (live or not running).
+function limitOf(item) {
+  if (item.limited) return item.limited;
+  const at = item.sessionId ? limitWaits()[item.sessionId] : null;
+  return at ? { resetAt: at } : null;
+}
+
+// Every 15 s: once a reset time has passed, fetch the new usage (which
+// refreshes the Hub); when the limit is not reached any more, the waiting
+// agents continue. While it still is, they wait for its new reset time.
+let continuing = false;
+async function checkLimitReset() {
+  const waits = limitWaits();
+  const live = [...state.agents.values()].filter(a => a.limited);
+  const due = Math.min(
+    ...live.map(a => a.limited.resetAt),
+    ...Object.values(waits),
+    usage.limits?.status === 'rejected' && usage.limits.resetsAt ? usage.limits.resetsAt * 1000 : Infinity,
+  );
+  if (continuing || !Number.isFinite(due) || Date.now() < due + 20 * 1000) return;
+  continuing = true;
+  try {
+    await refreshUsage();
+    if (usage.limits?.status === 'rejected' && usage.limits.resetsAt * 1000 > Date.now()) {
+      // Not reset yet (the limit moved): wait for the new time.
+      const at = usage.limits.resetsAt * 1000;
+      for (const a of live) a.limited.resetAt = at;
+      for (const sid of Object.keys(waits)) waits[sid] = at;
+      saveLimitWaits(waits);
+      refreshHub();
+      return;
+    }
+    const sessions = new Set(Object.keys(waits));
+    for (const a of live) {
+      a.limited = null;
+      if (a.sessionId) sessions.delete(a.sessionId);
+      await sendToHubItem(a.id, LIMIT_CONTINUE).catch(() => {});
+    }
+    for (const sid of sessions) {
+      const runningAgent = [...state.agents.values()].find(x => x.sessionId === sid);
+      if (runningAgent) await sendToHubItem(runningAgent.id, LIMIT_CONTINUE).catch(() => {});
+      else if (state.parked.has(sid)) await sendToHubItem('p:' + sid, LIMIT_CONTINUE).catch(() => {});
+    }
+    saveLimitWaits({});
+    if (live.length || sessions.size) toast(`Usage limit reset: ${live.length + sessions.size} agent${live.length + sessions.size === 1 ? '' : 's'} continue`);
+    refreshHub();
+  } finally {
+    continuing = false;
+  }
+}
+setInterval(checkLimitReset, 15 * 1000);
+
 window.deck.onEvent((id, msg) => {
   noteUsage(msg);
   const a = state.agents.get(id);
@@ -3025,11 +3132,13 @@ window.deck.onEvent((id, msg) => {
   }
   // A turn that leaves background jobs running is not the end of the task
   // (status "background"): the notification and sound come when it is.
+  const limitHit = isLimitHit(msg);
+  if (limitHit) noteLimitHit(a, msg);
   if (msg.type === 'result' && a.status !== 'background') {
-    window.deck.notify(a.id, a.title, msg.is_error ? 'Stopped with an error' : 'Finished and waiting for you');
+    window.deck.notify(a.id, a.title, limitHit ? `Usage limit reached: continues at ${new Date(a.limited.resetAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : msg.is_error ? 'Stopped with an error' : 'Finished and waiting for you');
     if (playSounds()) {
       if (!msg.is_error) sounds.done();
-      else if (!a.stopping) sounds.error();
+      else if (!a.stopping && !limitHit) sounds.error();
     }
     // The next queued message goes out now, unless you stopped the task.
     if (a.queue?.length) {

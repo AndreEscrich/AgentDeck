@@ -150,6 +150,9 @@ class Hub {
   setUsage(usage) {
     this.usageData = usage;
     this.renderUsage();
+    // While the limit is reached, the countdown and the tiles' "continues in" tick.
+    clearInterval(this.limitTick);
+    if (usage?.limits?.status === 'rejected') this.limitTick = setInterval(() => { this.renderUsage(); if (this.latest) this.update(...this.latest); }, 30 * 1000);
   }
 
   renderUsage() {
@@ -176,7 +179,7 @@ class Hub {
         meter.append(top, bar, el('div', 'usage-note', `${note} · resets ${Hub.resetText(w.resetsAt)}`));
         box.appendChild(meter);
       }
-      if (u.limits.status && u.limits.status !== 'allowed') box.appendChild(el('div', 'usage-warn', 'Limit reached: agents wait until it resets'));
+      if (u.limits.status === 'rejected') box.appendChild(el('div', 'usage-warn', `Limit reached: it resets ${Hub.resetText(u.limits.resetsAt)}, and waiting agents continue then`));
       const age = Date.now() - (u.at || 0);
       if (age > 10 * 60 * 1000) box.appendChild(el('div', 'usage-note', `as of ${Hub.ago(age)} ago`));
     } else {
@@ -206,6 +209,21 @@ class Hub {
     }
     const session = windows?.five_hour ? `${Math.round((windows.five_hour.utilization || 0) * 100)}%` : '–';
     tab.append(bars, el('span', 'usage-tab-pct', session), el('span', 'usage-tab-label', 'Usage'));
+    // Limit reached: how long until it resets, next to the tab.
+    const l = this.usageData?.limits;
+    const resets = l?.status === 'rejected' ? l.resetsAt || l.unifiedWindows?.[l.rateLimitType]?.resetsAt : null;
+    this.limitTimer?.remove();
+    this.limitTimer = null;
+    if (resets && resets * 1000 > Date.now()) {
+      const ms = resets * 1000 - Date.now();
+      const h = Math.floor(ms / 3600000);
+      const m = Math.ceil((ms % 3600000) / 60000);
+      const timer = el('div', 'usage-limit-timer');
+      timer.append(el('span', 'usage-limit-label', 'Limit'), el('span', 'usage-limit-time', h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`));
+      timer.title = `Your usage limit is reached. It resets ${Hub.resetText(resets)}; waiting agents continue then.`;
+      this.limitTimer = timer;
+      tab.after(timer);
+    }
   }
 
   // "in 2h 05m", "Fri 18:00" for later than a day.
@@ -216,7 +234,7 @@ class Hub {
     if (ms < 24 * 3600 * 1000) {
       const h = Math.floor(ms / 3600000);
       const m = Math.floor((ms % 3600000) / 60000);
-      return h ? `in ${h}h ${String(m).padStart(2, '0')}m` : `in ${m}m`;
+      return h ? `in ${h}h ${String(m).padStart(2, '0')}m` : m ? `in ${m}m` : 'in under a minute';
     }
     return new Date(seconds * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
   }
@@ -439,11 +457,15 @@ class Hub {
       }
       entry.level = this.levelFor(agent);
       parts.liquid.style.height = `${entry.level}%`;
-      parts.icon.textContent = { idle: '✓', error: '✕' }[agent.status] || '';
+      // Waiting for the usage limit to reset (limitOf in app.js): a clock, and when it continues.
+      const limited = agent.limited || null;
+      tile.classList.toggle('limited', !!limited);
+      parts.icon.textContent = limited ? '⏳' : { idle: '✓', error: '✕' }[agent.status] || '';
       // After a follow-up message, the tile shows that message (summarized).
       parts.title.textContent = agent.latestTitle || agent.title;
       const busy = ['working', 'starting', 'stuck', 'waiting'].includes(agent.status);
-      const stepText = agent.status === 'background' && agent.backgroundTasks?.length
+      const stepText = limited ? 'Waiting for the usage limit to reset'
+        : agent.status === 'background' && agent.backgroundTasks?.length
         ? `Waiting for: ${agent.backgroundTasks.join(', ')}`
         : busy ? agent.transcript.liveStep : null;
       parts.step.classList.toggle('hidden', !stepText);
@@ -458,7 +480,7 @@ class Hub {
         ? `${agent.latestPrompt}\n\nTask: ${agent.title}\n${agent.cwd}`
         : `${agent.title}\n${agent.cwd}`;
       parts.statusDot.className = `dot ${agent.status}`;
-      parts.statusText.textContent = HUB_STATUS_TEXT[agent.status] || agent.status;
+      parts.statusText.textContent = limited ? `Usage limit · continues ${Hub.resetText(limited.resetAt / 1000)}` : HUB_STATUS_TEXT[agent.status] || agent.status;
       // What a waiting agent needs from you: an answer or an approval.
       const needs = agent.status === 'waiting' ? agent.attention || 'approval' : null;
       tile.classList.toggle('needs-question', needs === 'question');
@@ -953,6 +975,8 @@ class Hub {
   }
 
   updateTimer(agent, node) {
+    // A tile waiting for the usage limit says when it continues instead.
+    if (agent.limited) { node.textContent = ''; return; }
     const started = agent.transcript.turnStartedAt;
     if (started && ['working', 'waiting', 'starting', 'stuck'].includes(agent.status)) {
       node.textContent = formatDuration(Date.now() - started);
