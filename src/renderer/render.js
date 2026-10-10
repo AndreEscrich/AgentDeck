@@ -286,6 +286,44 @@ function parsePastedDiff(text) {
   return files.filter(f => f.path && f.lines.some(([k]) => k === 'add' || k === 'del'));
 }
 
+// What an agent is doing, in plain words, for its Hub tile: "Editing
+// SpawnerRig.cs", "Waiting for Unity", or the description it gave a command.
+function stepPhrase(name, input = {}) {
+  const base = p => String(p || '').split(/[\\/]/).pop();
+  const words = s => s.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+  switch (name) {
+    case 'Bash':
+    case 'PowerShell': {
+      if (input.description) return input.description;
+      const cmd = String(input.command || '').trim().split('\n')[0];
+      return cmd ? `Running ${cmd.slice(0, 60)}` : 'Running a command';
+    }
+    case 'Edit':
+    case 'MultiEdit': return `Editing ${base(input.file_path)}`;
+    case 'Write': return `Writing ${base(input.file_path)}`;
+    case 'NotebookEdit': return `Editing ${base(input.notebook_path)}`;
+    case 'Read': return `Reading ${base(input.file_path)}`;
+    case 'Grep': return `Searching for "${String(input.pattern || '').slice(0, 40)}"`;
+    case 'Glob': return `Looking for ${input.pattern || 'files'}`;
+    case 'WebFetch': return 'Reading a web page';
+    case 'WebSearch': return `Searching the web for "${String(input.query || '').slice(0, 40)}"`;
+    case 'Task':
+    case 'Agent': return input.description ? `Helper: ${input.description}` : 'Running a helper agent';
+    case 'TodoWrite': return 'Updating its plan';
+    case 'Skill': return `Using the ${input.skill || ''} skill`.replace('  ', ' ');
+    case 'AskUserQuestion': return 'Asking you a question';
+    case 'ToolSearch': return 'Loading tools';
+  }
+  // Connector tools: mcp__unity__unity_wait_for_ready -> "Unity: wait for ready".
+  const [prefix, server, ...rest] = String(name).split('__');
+  if (prefix === 'mcp' && rest.length) {
+    const tool = words(rest.join(' ')).replace(new RegExp('^' + server + ' '), '');
+    if (/wait.*ready/.test(tool)) return `Waiting for ${server[0].toUpperCase()}${server.slice(1)}`;
+    return `${server[0].toUpperCase()}${server.slice(1)}: ${tool}`;
+  }
+  return words(String(name));
+}
+
 // The one argument worth showing next to a tool name in the collapsed card.
 function toolSummary(name, input = {}) {
   const pick = input.command || input.file_path || input.notebook_path || input.pattern
@@ -548,6 +586,7 @@ class Transcript {
 
   startTurn() {
     this.activity = 'Starting…';
+    this.liveStep = null;
     const turn = {
       startedAt: Date.now(),
       el: el('div', 'turn'),
@@ -896,10 +935,12 @@ class Transcript {
         // what failed and what worked is often said along the way).
         (turn.texts ||= []).push(block.text);
         this.addStep(node, block.text.split('\n')[0].slice(0, 120));
+        this.liveStep = block.text.split('\n').find(l => l.trim())?.replace(/[*_`#>]/g, '').trim().slice(0, 140) || this.liveStep;
       } else if (block.type === 'thinking' && block.thinking) {
         const d = el('details', 'thinking');
         d.append(el('summary', null, 'Thinking'), el('pre', null, block.thinking));
         this.addStep(d, 'Thinking…');
+        this.liveStep = 'Thinking…';
       } else if (block.type === 'tool_use') {
         if (block.name === 'Skill') this.addSkill(turn, block.input?.skill);
         this.noteEvidence(turn, block);
@@ -909,6 +950,7 @@ class Transcript {
         turn.pendingText = [];
         turn.stepCount++;
         this.addStep(this.toolCard(block), `${block.name} · ${toolSummary(block.name, block.input)}`);
+        this.liveStep = stepPhrase(block.name, block.input);
       }
     }
   }

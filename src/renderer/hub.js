@@ -274,6 +274,8 @@ class Hub {
     // Under the tank: the task title, then its status and time.
     const info = el('div', 'hub-info');
     const title = el('div', 'hub-title');
+    // What the agent is doing right now, in plain words (stepPhrase in render.js).
+    const step = el('div', 'hub-step hidden');
     const statusRow = el('div', 'hub-status');
     const statusDot = el('span', 'dot');
     const statusText = el('span');
@@ -287,10 +289,10 @@ class Hub {
     followUp.type = 'button';
     followUp.onclick = e => { e.stopPropagation(); if (followUp.dataset.text) this.onFollowUp?.(agent.id, followUp.dataset.text); };
     followUp.addEventListener('pointerdown', e => e.stopPropagation());
-    info.append(title, statusRow, clash);
+    info.append(title, step, statusRow, clash);
 
     tile.append(remove, stop, tank, followUp, info);
-    const entry = { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, badge, title, statusDot, statusText, timer, clash, followUp } };
+    const entry = { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, badge, title, step, statusDot, statusText, timer, clash, followUp } };
     this.tiles.set(agent.id, entry);
     return entry;
   }
@@ -414,6 +416,18 @@ class Hub {
       parts.icon.textContent = { idle: '✓', error: '✕' }[agent.status] || '';
       // After a follow-up message, the tile shows that message (summarized).
       parts.title.textContent = agent.latestTitle || agent.title;
+      const busy = ['working', 'starting', 'stuck', 'waiting'].includes(agent.status);
+      const stepText = agent.status === 'background' && agent.backgroundTasks?.length
+        ? `Waiting for: ${agent.backgroundTasks.join(', ')}`
+        : busy ? agent.transcript.liveStep : null;
+      parts.step.classList.toggle('hidden', !stepText);
+      if (stepText && parts.step.textContent !== stepText) {
+        parts.step.textContent = stepText;
+        parts.step.title = stepText;
+        parts.step.classList.remove('changed');
+        void parts.step.offsetWidth;
+        parts.step.classList.add('changed');
+      }
       parts.title.title = agent.latestPrompt
         ? `${agent.latestPrompt}\n\nTask: ${agent.title}\n${agent.cwd}`
         : `${agent.title}\n${agent.cwd}`;
