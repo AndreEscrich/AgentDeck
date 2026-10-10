@@ -308,16 +308,10 @@ class Hub {
     statusRow.append(statusDot, statusText, timer);
     // Another working agent changes the same file (see noteClashes in app.js).
     const clash = el('div', 'hub-clash hidden');
-    // The follow-up you will likely send next: on the tank when you point at
-    // the tile; a click sends it (see sendFollowUp in app.js).
-    const followUp = el('button', 'hub-followup hidden');
-    followUp.type = 'button';
-    followUp.onclick = e => { e.stopPropagation(); if (followUp.dataset.text) this.onFollowUp?.(agent.id, followUp.dataset.text); };
-    followUp.addEventListener('pointerdown', e => e.stopPropagation());
     info.append(title, step, statusRow, clash);
 
-    tile.append(remove, stop, tank, followUp, info);
-    const entry = { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, badge, title, step, statusDot, statusText, timer, clash, followUp } };
+    tile.append(remove, stop, tank, info);
+    const entry = { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, badge, title, step, statusDot, statusText, timer, clash } };
     this.tiles.set(agent.id, entry);
     return entry;
   }
@@ -498,13 +492,6 @@ class Hub {
       } else {
         // Which background jobs a "background" agent waits for.
         parts.statusText.title = agent.status === 'background' && agent.backgroundTasks?.length ? `Waiting for: ${agent.backgroundTasks.join(', ')}` : '';
-      }
-      const next = agent.status === 'idle' && agent.followUps?.[0];
-      parts.followUp.classList.toggle('hidden', !next);
-      if (next && parts.followUp.dataset.text !== next) {
-        parts.followUp.dataset.text = next;
-        parts.followUp.textContent = `→ ${next}`;
-        parts.followUp.title = `Send to the agent: ${next}`;
       }
       this.updateTimer(agent, parts.timer);
       const clashes = agent.clashes ? [...agent.clashes.values()] : [];

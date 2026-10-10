@@ -785,7 +785,6 @@ const connectorsDialog = new ConnectorsDialog({
 hub.onOpenConnectors = () => connectorsDialog.open();
 hub.onOpenSettings = () => showSettings();
 hub.onOpenNotes = groupId => openNotesEditor(findGroup(groupId));
-hub.onFollowUp = (id, text) => sendFollowUp(state.agents.get(id), text);
 hub.onSelect = () => renderBroadcast();
 
 // ---------- command palette (Ctrl+K) ----------
@@ -3409,8 +3408,7 @@ $('send').onclick = sendFromComposer;
 // (suggestFollowUps in agents.js). In the agent's chat they show as chips
 // above the message box, and the first one as the box's grey placeholder:
 // → (in the empty box) or a click puts one in the box, Alt+1–3 sends one
-// right away. In the Hub, the first one shows on the agent's tile when you
-// point at it; a click sends it. They go away with your next message.
+// right away. They go away with your next message.
 const DEFAULT_PLACEHOLDER = 'Message the agent… (↩ to send, ⇧↩ for a new line)';
 
 function loadFollowUps(agent, turn, answer) {
@@ -3475,16 +3473,6 @@ function fillFollowUp(text) {
   input.focus();
   input.setSelectionRange(text.length, text.length);
   renderFollowUps();
-}
-
-// Sends a suggestion to an agent that is not on screen (from its Hub tile).
-async function sendFollowUp(agent, text) {
-  if (!agent || agent.status !== 'idle') return;
-  sfx('sent');
-  agent.transcript.add({ type: 'user', message: { role: 'user', content: text } });
-  notePrompt(agent, text);
-  afterSend(agent, true);
-  await sendToAgent(agent, text);
 }
 
 $('input').addEventListener('input', renderFollowUps);

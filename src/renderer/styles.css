@@ -146,13 +146,6 @@ body.history-open #drawer-backdrop { opacity: 1; pointer-events: auto; }
 .followup span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .followup kbd { font: 10.5px var(--mono); padding: 1px 5px; border-radius: 99px; background: rgba(0, 0, 0, 0.3); color: var(--text-faint); }
 .followup:hover { color: var(--text); border-color: var(--accent); }
-/* On a Hub tile: the next follow-up over the bottom of the tank, when you point at the tile */
-.hub-followup { position: absolute; left: 16px; right: 16px; z-index: 3; top: calc(10px + (100cqw - 20px) * 0.75 - 34px);
-  padding: 4px 9px; border-radius: 8px; font-size: clamp(10.5px, 5cqw, 12px); text-align: left;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid rgba(255, 236, 210, 0.18);
-  background: rgba(20, 16, 12, 0.85); color: var(--text); opacity: 0; transform: translateY(4px); transition: opacity 0.15s, transform 0.15s; }
-.hub-tile:hover .hub-followup { opacity: 1; transform: none; }
-.hub-followup:hover { border-color: var(--accent); }
 /* History: put a category's agents back on the Hub (shows on hover) */
 .group-to-hub { display: none; margin-left: auto; padding: 1px 8px; border-radius: 99px; font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: 0;
   border: 1px solid var(--border); background: transparent; color: var(--text-dim); }
