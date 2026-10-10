@@ -1815,16 +1815,9 @@ async function sessionMenu(sessionId) {
       ],
     },
     { id: 'remove', label: 'Remove from category', enabled: !!current },
-    { type: 'separator' },
-    { id: 'repeat', label: 'Repeat for…' },
   ];
   const picked = await window.deck.popupMenu(items);
   if (!picked) return;
-  if (picked === 'repeat') {
-    const live = [...state.agents.values()].find(a => a.sessionId === sessionId);
-    openRepeat(repeatSource(live ? live.id : 'p:' + sessionId));
-    return;
-  }
   if (picked === 'remove') assignGroup(sessionId, null);
   else if (picked === 'new') assignGroup(sessionId, createGroup().id);
   else assignGroup(sessionId, picked.slice(2));
@@ -2778,84 +2771,7 @@ function lastTaskFiles(agent) {
   return (agent?.transcript?.lastFinished?.files || []).filter(f => f.status !== 'bin');
 }
 
-// ---------- repeat a task for other items ----------
-
-// "Repeat for…": one new agent per item you list (Set38, Set39…), each a
-// continuation of this agent, so it knows how the task was done, and each
-// gets "Now do the same for <item>." It goes into the same category.
-function renderRepeatButton(agent) {
-  const can = state.current?.kind === 'agent' && agent && agent.sessionId && !BUSY.includes(agent.status) && agent.transcript.lastFinished;
-  $('composer-repeat').classList.toggle('hidden', !can);
-}
-
-function repeatSource(id) {
-  if (!id) return null;
-  if (id.startsWith('p:')) {
-    const p = state.parked.get(id.slice(2));
-    return p ? { sessionId: p.sessionId, title: p.latestTitle || p.title, cwd: p.cwd, groupId: groupOf(p.sessionId) || p.groupId || null, choice: p.choice, mode: p.mode } : null;
-  }
-  const a = state.agents.get(id);
-  return a?.sessionId ? { sessionId: a.sessionId, title: a.latestTitle || a.title, cwd: a.cwd, groupId: a.groupId || groupOf(a.sessionId), choice: a.choice, mode: a.mode } : null;
-}
-
-function openRepeat(source) {
-  if (!source || document.querySelector('.quit-modal')) return;
-  const overlay = el('div', 'quit-modal');
-  const card = el('div', 'quit-card');
-  const area = el('textarea', 'notes-text repeat-items');
-  area.placeholder = 'Set38\nSet39\nSet40';
-  area.rows = 5;
-  const hint = el('div', 'notes-meta', 'One item per line (or separated by commas). Each new agent continues from this one and gets: "Now do the same for <item>."');
-  const buttons = el('div', 'quit-buttons');
-  const cancel = el('button', 'quit-stay', 'Cancel');
-  const start = el('button', 'quit-go', 'Start');
-  buttons.append(cancel, start);
-  card.append(el('div', 'quit-title', 'Repeat for…'), el('p', 'quit-text', `Do what "${source.title}" did, for other items.`), area, hint, buttons);
-  overlay.appendChild(card);
-  document.body.appendChild(overlay);
-  requestAnimationFrame(() => overlay.classList.add('show'));
-  area.focus();
-  const close = () => {
-    document.removeEventListener('keydown', onKey, true);
-    overlay.classList.remove('show');
-    setTimeout(() => overlay.remove(), 200);
-  };
-  const items = () => [...new Set(area.value.split(/[\n,]/).map(s => s.trim()).filter(Boolean))].slice(0, 12);
-  const refresh = () => { const n = items().length; start.textContent = n ? `Start ${n} agent${n === 1 ? '' : 's'}` : 'Start'; };
-  area.addEventListener('input', refresh);
-  const onKey = e => {
-    if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); }
-    if (e.key === 'Enter' && isMod(e)) { e.preventDefault(); e.stopImmediatePropagation(); start.click(); }
-  };
-  document.addEventListener('keydown', onKey, true);
-  cancel.onclick = close;
-  overlay.onclick = e => { if (e.target === overlay) close(); };
-  start.onclick = async () => {
-    const list = items();
-    if (!list.length) { area.focus(); return; }
-    close();
-    if (playSounds()) sounds.created();
-    for (const item of list) {
-      await startAgent({
-        cwd: source.cwd,
-        prompt: `Now do the same for ${item}.`,
-        permissionMode: source.mode,
-        choice: source.choice,
-        groupId: source.groupId,
-        forkFrom: { sessionId: source.sessionId, title: source.title },
-      });
-    }
-    show('hub');
-    toast(`Started ${list.length} agent${list.length === 1 ? '' : 's'}: ${list.join(', ')}`);
-  };
-}
-
-$('composer-repeat').onclick = () => {
-  if (state.current?.kind === 'agent') openRepeat(repeatSource(state.current.id));
-};
-
 function renderUndoButton(agent) {
-  renderRepeatButton(agent);
   const button = $('composer-undo');
   const files = agent && !BUSY.includes(agent.status) ? lastTaskFiles(agent) : [];
   button.classList.toggle('hidden', !files.length || state.current?.kind !== 'agent');
