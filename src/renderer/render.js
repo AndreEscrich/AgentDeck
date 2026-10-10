@@ -188,6 +188,11 @@ function markdown(text, cwd) {
   for (const code of div.querySelectorAll('pre > code.language-agenthub-diff')) {
     code.parentElement.replaceWith(diffBlock(code.textContent.trim(), cwd));
   }
+  // A diff the agent pasted (```diff) is drawn the same way, when it reads as one.
+  for (const code of div.querySelectorAll('pre > code.language-diff, pre > code.language-patch')) {
+    const files = parsePastedDiff(code.textContent);
+    if (files.length) code.parentElement.replaceWith(changesCard(files, cwd, { title: 'Diff in the answer' }));
+  }
   decorateLinks(div);
   for (const img of div.querySelectorAll('img')) {
     const file = resolveMediaPath(img.getAttribute('src'), cwd);
@@ -202,8 +207,17 @@ function markdown(text, cwd) {
 const DIFF_FILE_LIMIT = 200;
 function diffBlock(command, cwd) {
   const box = el('div', 'diff-block');
-  box.appendChild(el('div', 'note', `Loading ${command || 'the diff of this branch'}…`));
-  window.deck.runDiff(cwd, command).then(r => {
+  box.appendChild(el('div', 'note', `Loading ${command.split('\n')[0] || 'the diff of this branch'}…`));
+  // Several commands (one per line) show as one diff.
+  const commands = command.split('\n').map(c => c.trim()).filter(c => c && !c.startsWith('#'));
+  const run = commands.length > 1
+    ? Promise.all(commands.map(c => window.deck.runDiff(cwd, c))).then(results => {
+      const failed = results.find(r => !r?.ok);
+      if (failed) return failed;
+      return { ok: true, diff: results.map(r => r.diff).join('\n'), title: `${commands[0]} and ${commands.length - 1} more` };
+    })
+    : window.deck.runDiff(cwd, commands[0] || '');
+  run.then(r => {
     box.replaceChildren();
     if (!r?.ok) {
       box.appendChild(el('div', 'note err', `${command || '/diff'}: ${r?.error || 'it did not run'}`));
@@ -220,6 +234,56 @@ function diffBlock(command, cwd) {
     box.replaceChildren(el('div', 'note err', `${command}: ${err?.message || err}`));
   });
   return box;
+}
+
+// A diff written into an answer: git's format, svn's (Index: lines), or an
+// excerpt with "--- path" headers, @@ lines or "..." between the parts.
+// Excerpts without @@ numbers are marked, so no line numbers are made up.
+function parsePastedDiff(text) {
+  if (/^diff --git /m.test(text)) return parseUnifiedDiff(text);
+  const files = [];
+  let file = null;
+  const lines = String(text).replace(/\r/g, '').split('\n');
+  const start = path => {
+    file = { path: path.trim(), status: 'mod', lines: [], excerpt: true };
+    files.push(file);
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const index = /^Index: (.+)$/.exec(line);
+    if (index) { start(index[1]); continue; }
+    if (/^=+$/.test(line)) continue;
+    const minus = /^--- (?:a\/)?(\S[^\t]*?)(\t.*)?$/.exec(line);
+    const next = lines[i + 1] || '';
+    if (minus && (next.startsWith('+++ ') || next.startsWith('@@') || /[\/.]\w+$/.test(minus[1]))) {
+      if (!file || file.lines.length || file.path !== minus[1]) start(minus[1] === '/dev/null' ? '' : minus[1]);
+      if (minus[1] === '/dev/null') file.status = 'new';
+      continue;
+    }
+    const plus = /^\+\+\+ (?:b\/)?(\S[^\t]*?)(\t.*)?$/.exec(line);
+    // "+++ path" without a "---" line before it: a new file's excerpt.
+    if (plus && !/^--- /.test(lines[i - 1] || '') && /[\\/.]\w+$/.test(plus[1])) {
+      start(plus[1]);
+      file.status = 'new';
+      continue;
+    }
+    if (!file) continue;
+    if (plus) {
+      if (plus[1] === '/dev/null') file.status = 'del';
+      else file.path = plus[1];
+      continue;
+    }
+    if (line.startsWith('@@')) {
+      file.lines.push(['hunk', line]);
+      if (/^@@ -\d+/.test(line)) file.excerpt = false;
+    } else if (/^\s*(\.\.\.|…)\s*$/.test(line)) file.lines.push(['hunk', '⋯']);
+    else if (line.startsWith('+')) file.lines.push(['add', line]);
+    else if (line.startsWith('-')) file.lines.push(['del', line]);
+    else if (line.startsWith(' ') || line === '') file.lines.push(['ctx', ' ' + line.slice(1)]);
+  }
+  // Trailing blank lines are not part of the diff.
+  for (const f of files) while (f.lines.length && f.lines[f.lines.length - 1][0] === 'ctx' && !f.lines[f.lines.length - 1][1].trim()) f.lines.pop();
+  return files.filter(f => f.path && f.lines.some(([k]) => k === 'add' || k === 'del'));
 }
 
 // The one argument worth showing next to a tool name in the collapsed card.

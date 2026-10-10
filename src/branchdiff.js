@@ -30,20 +30,40 @@ function run(cmd, args, cwd) {
 }
 
 // svn diff, in the shape of git's: "Index: path" starts a file.
-function svnToGit(text) {
+// prefix: the folder (inside the working copy) that the paths are relative
+// to, when the diff was of a URL.
+function svnToGit(text, prefix = '') {
+  const p = prefix ? prefix.replace(/\/$/, '') + '/' : '';
   const out = [];
   for (const line of text.split(/\r?\n/)) {
     const index = /^Index: (.+)$/.exec(line);
-    if (index) { out.push(`diff --git a/${index[1]} b/${index[1]}`); continue; }
+    if (index) { out.push(`diff --git a/${p}${index[1]} b/${p}${index[1]}`); continue; }
     if (/^=+$/.test(line)) continue;
     if (/^--- .*\t\((nonexistent|revision 0)\)$/.test(line)) { out.push('new file mode 100644'); continue; }
     const plus = /^\+\+\+ (.+?)\t\(.*\)$/.exec(line);
-    if (plus) { out.push(`+++ b/${plus[1]}`); continue; }
+    if (plus) { out.push(`+++ b/${p}${plus[1]}`); continue; }
     const minus = /^--- (.+?)\t\(.*\)$/.exec(line);
-    if (minus) { out.push(`--- a/${minus[1]}`); continue; }
+    if (minus) { out.push(`--- a/${p}${minus[1]}`); continue; }
     out.push(line);
   }
   return out.join('\n');
+}
+
+// A diff of a URL (^/project/branches/name/Unity/Assets/Code) names its files
+// from that URL. Where that is in your working copy: the URL's path after
+// the working copy's own (same branch), or after the branch part (another
+// branch, or trunk, with the same layout).
+async function svnPrefix(cwd, args) {
+  const url = args.find(a => /^(\^\/|[a-z+]+:\/\/)/i.test(a));
+  if (!url) return '';
+  const info = await run('svn', ['info', '--show-item', 'relative-url'], cwd);
+  const mine = info.ok ? info.out.trim().replace(/\/$/, '') : '';
+  const target = url.replace(/^[a-z+]+:\/\/[^/]+/i, '').replace(/\/$/, '');
+  if (mine && target.startsWith(mine + '/')) return target.slice(mine.length + 1);
+  const branchless = u => u.replace(/^\^?\/?/, '').replace(/^(.*?\/)?(trunk|branches\/[^/]+|tags\/[^/]+)\//, '');
+  const rel = branchless(target);
+  const base = branchless(mine + '/');
+  return base && rel.startsWith(base) ? rel.slice(base.length).replace(/^\//, '') : '';
 }
 
 // The branch this one split off from: origin's default branch, or a local
@@ -86,7 +106,7 @@ async function runDiff(cwd, command) {
   const title = w.join(' ');
   if (tool === 'svn') {
     const r = await run('svn', ['diff', ...rest], cwd);
-    return r.ok ? { ok: true, diff: svnToGit(r.out), title } : r;
+    return r.ok ? { ok: true, diff: svnToGit(r.out, await svnPrefix(cwd, rest)), title } : r;
   }
   const args = ['-c', 'core.quotepath=false', sub, '--no-color', '--no-ext-diff', '--no-textconv',
     ...(sub === 'show' ? ['--format='] : ['--ignore-cr-at-eol']), ...rest];

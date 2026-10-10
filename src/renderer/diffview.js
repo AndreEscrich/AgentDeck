@@ -79,8 +79,9 @@ function renderDiff(file, { maxLines = 3000, onLine = null } = {}) {
     // For jumping to a line from the class diagram.
     if (kind !== 'del') row.dataset.newLine = String(newNo);
     else row.dataset.oldLine = String(oldNo);
-    const oldCell = el('span', 'ln', kind === 'add' ? '' : String(oldNo));
-    const newCell = el('span', 'ln', kind === 'del' ? '' : String(newNo));
+    // A diff pasted as an excerpt (file.excerpt) has no real line numbers.
+    const oldCell = el('span', 'ln', kind === 'add' || file.excerpt ? '' : String(oldNo));
+    const newCell = el('span', 'ln', kind === 'del' || file.excerpt ? '' : String(newNo));
     if (kind !== 'add') oldNo++;
     if (kind !== 'del') newNo++;
     const body = text.slice(1);
