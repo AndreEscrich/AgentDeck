@@ -36,7 +36,11 @@ const CHANGES_PROMPT = [
   'for example the steps a player goes through now, or what happens when an event fires, before and after.',
 ].join(' ');
 
-const SYSTEM_PROMPT = `${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}`;
+// A whole file written again (Write) can change its line endings or
+// encoding, which reviewers then see as every line changed.
+const EDIT_PROMPT = 'To change an existing file, edit the lines that change (the Edit tool) instead of writing the whole file again, so its line endings and encoding stay as they are.';
+
+const SYSTEM_PROMPT = `${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}`;
 
 // 'auto', or the size in tokens when it is between 100k and 1M (false otherwise).
 function compactTokens(value) {
