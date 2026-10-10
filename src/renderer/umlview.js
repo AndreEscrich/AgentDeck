@@ -837,8 +837,8 @@ function openUmlFull(model, { title, ...options }) {
   umlFullEl.focus();
 }
 
-// Esc closes a type's diff first, then the full-window diagram; a review on
-// top of them closes by itself first. ← → step through the types' diffs.
+// Esc (or Alt+←) closes a type's diff first, then the full-window diagram; a
+// review on top of them closes by itself first. ← → step through the types' diffs.
 document.addEventListener('keydown', e => {
   // Keys in a comment box stay there (Esc cancels the comment).
   const typing = e.target.closest?.('input, textarea, [contenteditable="true"]');
@@ -846,6 +846,12 @@ document.addEventListener('keydown', e => {
   const stop = () => { e.preventDefault(); e.stopImmediatePropagation(); };
   if (e.key === 'Escape' && activeDetail) { stop(); activeDetail.close(); return; }
   if (e.key === 'Escape' && umlFullEl) { stop(); closeUmlFull(); return; }
+  // Alt+← ("back") does the same, before it leaves the agent (see app.js).
+  // (On macOS, Option+← in a comment box moves the cursor a word instead.)
+  const back = e.key === 'ArrowLeft' && e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey
+    && !(typing && /Mac/.test(navigator.platform));
+  if (back && activeDetail) { stop(); activeDetail.close(); return; }
+  if (back && umlFullEl) { stop(); closeUmlFull(); return; }
   if (activeDetail && !typing && !e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
     stop();
     activeDetail.step(e.key === 'ArrowRight' ? 1 : -1);
