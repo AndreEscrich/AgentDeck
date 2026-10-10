@@ -94,7 +94,7 @@ class Hub {
     this.healthWeek = el('span', 'health-week');
     this.health.append(this.healthLabel, track, this.healthText, this.healthWeek);
     this.health.onclick = () => { clearTimeout(this.hoverOpen); this.rail.classList.remove('from-health'); this.showPanel?.('usage'); };
-    // Pointing at the bar for half a second opens the usage card under it; it
+    // Pointing at the bar for a quarter of a second opens the usage card under it; it
     // closes again when the pointer leaves both the bar and the card.
     const openFromHover = () => {
       if (this.rail.classList.contains('open')) return;
@@ -115,7 +115,7 @@ class Hub {
         }
       }, 300);
     };
-    this.health.addEventListener('pointerenter', () => { clearTimeout(this.hoverClose); this.hoverOpen = setTimeout(openFromHover, 500); });
+    this.health.addEventListener('pointerenter', () => { clearTimeout(this.hoverClose); this.hoverOpen = setTimeout(openFromHover, 250); });
     this.health.addEventListener('pointerleave', closeSoon);
 
     this.root.append(this.health, this.grid, this.empty);

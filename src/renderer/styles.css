@@ -1819,5 +1819,6 @@ details.other-files details.change-file > summary { padding-left: 12px; }
 .health-week { flex-shrink: 0; font-size: 11px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
 .hub-health.unknown .health-track { opacity: 0.4; }
 
-/* Opened from the health bar: the usage card hangs under the bar */
-.usage-rail.from-health .hub-usage:not(.hub-settings-menu) { top: 58px; left: 64px; }
+/* The usage card hangs under the health bar and drops down from it */
+.usage-rail .hub-usage.usage-card { top: 58px; left: 64px; transform: translateY(-12px) scale(0.98); transform-origin: 50% 0; }
+.usage-rail.open[data-panel="usage"] .hub-usage.usage-card { transform: none; }
