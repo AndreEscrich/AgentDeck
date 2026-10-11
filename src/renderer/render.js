@@ -79,7 +79,8 @@ function resolveMediaPath(src, cwd) {
 // message, between <group-notes> tags (see notesBlock in app.js). The chat
 // shows your message without them.
 function stripGroupNotes(text) {
-  return String(text).replace(/^\s*<group-notes\b[^>]*>[\s\S]*?<\/group-notes>\s*/, '');
+  // The notes and a handoff (see startFrom in app.js) can both be there.
+  return String(text).replace(/^(\s*<(group-notes|handoff)\b[^>]*>[\s\S]*?<\/\2>)+\s*/, '');
 }
 
 // An attached image at full size; Esc or a click closes it.

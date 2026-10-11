@@ -165,7 +165,7 @@ function renderDraftButtons() {
   const source = forkSourceFor(d.folder, d.groupId);
   const fork = $('composer-fork');
   fork.textContent = source ? `↳ continues from "${source.title}"` : '';
-  fork.title = source ? 'A new agent in this Group starts as a copy of this agent\'s conversation.' : '';
+  fork.title = source ? 'A new agent here continues from this agent: a copy of its conversation when that is short, or a handoff summary of it when it is long.' : '';
 }
 
 // The folder menu: recent folders, each with ✕ to remove it from the list,
@@ -2454,7 +2454,34 @@ window.deck.onQuitting(() => {
 
 // rewindAt (going back to one of your messages in a saved session): the
 // answer to continue after ({ uuid, session }), or null to start over.
-async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId, fromRect, forkFrom, images = [], ticket = null, rewindAt }) {
+// ---------- fork or handoff ----------
+
+// A new agent in a category continues from the category's latest agent
+// (forkSourceFor). Forking copies that agent's whole conversation, and every
+// step of the new agent reads it again, so a long one (above HANDOFF_ABOVE
+// tokens) is not forked: the new agent starts fresh with a handoff Haiku
+// writes from it (src/handoff.js), plus the category's shared notes. If the
+// handoff cannot be written, it forks as before.
+const HANDOFF_ABOVE = 60000;
+async function startFrom(forkFrom) {
+  if (!forkFrom) return { forkFrom: null };
+  let session = state.sessions.find(s => s.id === forkFrom.sessionId);
+  if (!session) { await loadSessions(); session = state.sessions.find(s => s.id === forkFrom.sessionId); }
+  if (!session?.file) return { forkFrom };
+  const size = await window.deck.sessionContextSize(session.file).catch(() => 0);
+  if (size <= HANDOFF_ABOVE) return { forkFrom };
+  flashComposerNote(`Writing a handoff from "${forkFrom.title}"…`);
+  const text = await window.deck.sessionHandoff(session.file, forkFrom.title).catch(() => null);
+  if (!text) return { forkFrom };
+  const safe = forkFrom.title.replace(/"/g, "'");
+  return {
+    forkFrom: null,
+    preamble: `<handoff from="${safe}">\nYou continue the work of an earlier agent in this project. Its conversation is not copied; this is its handoff:\n\n${text}\n</handoff>\n\n`,
+    handoffFrom: { title: forkFrom.title, tokens: size },
+  };
+}
+
+async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId, fromRect, forkFrom, preamble = '', handoffFrom = null, images = [], ticket = null, rewindAt }) {
   const title = resume ? resume.session.title : prompt.split('\n')[0].slice(0, 80);
   choice = choice || defaultChoice();
   permissionMode = permissionMode || defaultMode();
@@ -2481,6 +2508,9 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
   if (forkFrom) {
     agent.forkedFrom = forkFrom;
     transcript.note(`Continues from "${forkFrom.title}", so it knows what that agent did.`);
+  }
+  if (handoffFrom) {
+    transcript.note(`Starts fresh with a handoff from "${handoffFrom.title}": its conversation was ${formatTokens(handoffFrom.tokens)} tokens, too long to copy.`);
   }
   transcript.add({ type: 'user', message: { role: 'user', content: userContent(prompt, images) } });
   if (!resume) summarizeTitle(agent, prompt);
@@ -2511,7 +2541,7 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     refreshHub();
     return;
   }
-  await sendToAgent(agent, prompt, images);
+  await sendToAgent(agent, preamble + prompt, images);
 }
 
 // ---------- titles ----------
@@ -3450,8 +3480,10 @@ async function sendFromComposer() {
       if (details.error) flashComposerNote(`Could not read ${ticket} (${details.error}). The agent gets your message as it is.`);
       else prompt = ticketPrompt(details, text);
     }
+    // A long parent is not copied: a handoff summary instead (see startFrom).
+    const from = await startFrom(forkFrom);
     if (playSounds()) sounds.created();
-    await startAgent({ cwd: d.folder, prompt, permissionMode: d.mode, choice: d.choice, groupId: d.groupId, fromRect, forkFrom, images, ticket });
+    await startAgent({ cwd: d.folder, prompt, permissionMode: d.mode, choice: d.choice, groupId: d.groupId, fromRect, forkFrom: from.forkFrom, preamble: from.preamble, handoffFrom: from.handoffFrom, images, ticket });
   } else if (state.current.kind === 'agent') {
     const a = state.agents.get(state.current.id);
     if (QUEUE_WHILE.includes(a.status)) {

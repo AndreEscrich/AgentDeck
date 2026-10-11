@@ -41,7 +41,7 @@ function userText(entry) {
     if (parts.length) text = parts.join('\n');
   }
   // The group's shared notes that Agent Hub sends along are not your words.
-  if (text) text = text.replace(/^\s*<group-notes\b[^>]*>[\s\S]*?<\/group-notes>\s*/, '');
+  if (text) text = text.replace(/^(\s*<(group-notes|handoff)\b[^>]*>[\s\S]*?<\/\2>)+\s*/, '');
   if (!text) return null;
   if (/^\s*<(command-|local-command|system-reminder)/.test(text)) return null;
   return text;

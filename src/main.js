@@ -12,6 +12,7 @@ const connectors = require('./connectors');
 const auth = require('./auth');
 const agentList = require('./agentlist');
 const { runDiff } = require('./branchdiff');
+const handoff = require('./handoff');
 const { activity } = require('./activity');
 const updates = require('./updates');
 const undo = require('./undo');
@@ -211,6 +212,8 @@ app.whenReady().then(() => {
   ipcMain.handle('jira:details', (_e, key) => jira.details(key));
   ipcMain.handle('jira:comment', (_e, key, body) => jira.comment(key, body));
   ipcMain.handle('activity:get', () => activity(path.join(app.getPath('userData'), 'activity-cache.json')));
+  ipcMain.handle('session:contextSize', (_e, file) => (typeof file === 'string' ? handoff.contextSize(file) : 0));
+  ipcMain.handle('session:handoff', (_e, file, title) => (typeof file === 'string' ? handoff.handoff(getConfig(), file, String(title || '')) : null));
   ipcMain.handle('diff:run', (_e, cwd, command) => runDiff(cwd, command));
   ipcMain.handle('agents:remember', (_e, entries) => agentList.remember(entries));
   ipcMain.handle('agents:list', () => agentList.list());
