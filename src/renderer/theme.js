@@ -84,9 +84,15 @@ function stopTube() {
 // and its corners pulled in, behind a bezel; the scanlines bow with the
 // glass, and so do the lines of the grid behind everything. The app itself
 // stays flat and as fast as without the theme.
-const BOW = 0.018;   // how far the corners are pulled in, as a share of the screen's size
+const BOW = 0.014;   // how far the corners are pulled in, as a share of the screen's size
 function drawGlass() {
   const main = document.getElementById('main');
+  // The content keeps clear of the corners the glass pulls in: as far in as
+  // they go, plus a little. Set before measuring, so the outline is drawn
+  // around the screen, not around the padded content.
+  const pad = Math.ceil(BOW * Math.min(innerWidth, innerHeight)) + 6;
+  main.style.padding = `${pad}px ${pad + 2}px`;
+  main.style.boxSizing = 'border-box';
   const box = main.getBoundingClientRect();
   if (!box.width || !box.height) return;
   const dpr = window.devicePixelRatio || 1;
@@ -205,6 +211,8 @@ function drawGlass() {
 
 function clearGlass() {
   document.getElementById('mu-glass')?.remove();
+  const main = document.getElementById('main');
+  if (main) { main.style.padding = ''; main.style.boxSizing = ''; }
   const views = document.getElementById('views');
   if (views) { views.style.backgroundImage = ''; views.style.backgroundSize = ''; }
 }

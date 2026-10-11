@@ -416,5 +416,16 @@ body::before { animation: mu-crt-flicker 8s ease-in-out infinite; }
 /* The blinks are slower and do not go fully dark. */
 @keyframes mu-blink { 50% { opacity: 0.35; } }
 #mu-streak { opacity: 0.5; animation-duration: 14s; }
-/* The glass pulls the corners in: the content keeps clear of them. */
-html.mu-curved #main { padding: 10px 12px; box-sizing: border-box; }
+
+/* ---------- Fast chat ----------
+   The chat shows its content at once. The printing of the newest answer
+   started again every time the chat came on screen (each time you opened
+   the agent, and when the turn ended), so answers seemed to load slowly;
+   your sent message no longer types out either. The glow on the chat's
+   text is one light layer: two blurred layers on every letter made long
+   chats slow to scroll. Titles keep the strong glow. */
+.turn:last-child .turn-answer > .msg-text, .msg-user.just-sent { animation: none !important; }
+.hub-step.changed { animation-duration: 0.2s !important; }
+#views > .view:not(.hidden), .tile-lid { animation-duration: 0.2s; }
+.chat, .chat * { text-shadow: 0 0 3px rgba(100, 240, 255, 0.28); }
+.chat h1, .chat h2, .chat h3 { text-shadow: var(--glow-strong); }
