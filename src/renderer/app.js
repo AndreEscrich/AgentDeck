@@ -3682,6 +3682,7 @@ function showSettings() {
   openSettings(state.config, {
     onSaved: config => {
       state.config = config;
+      applyTheme(config.theme);
       if (state.current?.kind === 'hub' && state.draft) {
         state.draft.choice = defaultChoice();
         state.draft.mode = defaultMode();
@@ -3824,6 +3825,7 @@ setInterval(checkStuck, 3000);
 
 (async () => {
   state.config = await window.deck.getConfig();
+  applyTheme(state.config.theme);
   // The version next to the title; the dev copy says "dev" after it.
   window.deck.appVersion().then(({ version, dev }) => {
     $('app-version').textContent = `v${version}${dev ? ' dev' : ''}`;

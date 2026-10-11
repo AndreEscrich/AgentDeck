@@ -45,6 +45,7 @@ const DEFAULT_CONFIG = {
   hubAfterSend: true,                   // show the Hub after you send a message
   summarizeTitles: true,                // title new agents with a short summary of your message
   suggestFollowUps: true,               // after a task, suggest the messages you will likely send next
+  theme: 'default',                     // default | mother (the retro terminal of Alien)
 };
 
 let win;

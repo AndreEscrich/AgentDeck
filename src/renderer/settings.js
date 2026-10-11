@@ -82,6 +82,7 @@ function openSettings(config, { onSaved } = {}) {
   const followUps = settingsInput('checkbox', config.suggestFollowUps !== false);
   const notify = settingsInput('checkbox', config.notifyWhenDone !== false);
   const sounds = settingsInput('checkbox', config.sounds !== false);
+  const theme = settingsSelect(THEMES, config.theme || 'default');
 
   // Stuck agents
   const stuckAfter = settingsInput('number', config.stuckAfterSeconds, { min: 5, step: 5 });
@@ -105,6 +106,7 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('Fast mode', 'Faster answers from the same model', fast),
       settingsField('Compact the conversation at', 'Every step re-reads the whole conversation, so long tasks get expensive. Smaller: less usage, but the agent remembers fewer details from early in the task', compact)),
     section('The app',
+      settingsField('Theme', 'MU-TH-UR: the green screens of the computers in Alien, on an old tube', theme),
       settingsField('Show the Hub after sending', 'Off: stay in the chat after you send a message', hubAfterSend),
       settingsField('Short titles', 'Name new agents with a summary of your message, written by Haiku', titles),
       settingsField('Suggest follow-ups', 'After a task, the messages you will likely send next, written by Haiku. → or a click puts one in the box, Alt+1–3 sends it', followUps),
@@ -168,6 +170,7 @@ function openSettings(config, { onSaved } = {}) {
       suggestFollowUps: followUps.checked,
       notifyWhenDone: notify.checked,
       sounds: sounds.checked,
+      theme: theme.value,
       stuckAfterSeconds: number(stuckAfter, 30),
       claudePath: claudePath.value.trim(),
       extraArgs: extraArgs.value.split('\n').map(l => l.trim()).filter(Boolean),
