@@ -1,6 +1,5 @@
 // Where your tokens go: one chart of the tokens your Claude Code sessions
-// used per day, by category, drawn four ways (stacked bars, lines, stacked
-// area, or each category's share of the day), with a legend that is also the
+// used per day, stacked by category, with a legend that is also the
 // breakdown (tokens, share, messages, tokens per message; click a row to hide
 // or show that category). Shown in the usage card, and in the Hub when no
 // agents are there. The data comes from Claude Code's session files
@@ -12,13 +11,10 @@
 // into "Other", a neutral grey.
 const CATEGORY_COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181'];
 const OTHER_COLOR = '#6f6a62';
-
-const CHART_MODES = [
-  ['bars', 'Bars', 'Tokens per day, stacked by category'],
-  ['lines', 'Lines', 'One line per category'],
-  ['area', 'Area', 'Tokens over time, stacked by category'],
-  ['share', 'Share', 'Each category\'s share of the day'],
-];
+// Agents without a category: always a neutral light brown, at the bottom of
+// each bar (next to blue there, its neighbours stay easy to tell apart; the
+// dataviz validator passes it there except for its deliberately low colour).
+const NONE_COLOR = '#a68a64';
 
 function shortNumber(n) {
   if (n >= 1e9) return `${(n / 1e9).toFixed(n >= 1e10 ? 0 : 1)}B`;
@@ -44,14 +40,12 @@ class ActivityPanel {
     this.box = box;
     this.compact = compact;
     this.range = 30;          // days in the chart
-    this.mode = 'bars';       // see CHART_MODES
     this.hidden = new Set();  // categories you hid by clicking their row
     this.data = null;
     this.loadedAt = 0;
     try {
       const saved = JSON.parse(localStorage.getItem('activityView') || '{}');
       if ([7, 30, 90].includes(saved.range)) this.range = saved.range;
-      if (CHART_MODES.some(([m]) => m === saved.mode)) this.mode = saved.mode;
     } catch { /* defaults */ }
   }
 
@@ -73,7 +67,7 @@ class ActivityPanel {
   }
 
   remember() {
-    try { localStorage.setItem('activityView', JSON.stringify({ range: this.range, mode: this.mode })); } catch { /* not important */ }
+    try { localStorage.setItem('activityView', JSON.stringify({ range: this.range })); } catch { /* not important */ }
   }
 
   // Which category a session belongs to: { key, name } from the app (see
@@ -90,6 +84,7 @@ class ActivityPanel {
     const totals = new Map();
     for (const [id, s] of Object.entries(this.data.sessions || {})) {
       const c = this.categoryFor(id, s);
+      if (c.key === 'none') continue;
       totals.set(c.key, (totals.get(c.key) || 0) + s.tokens);
     }
     const ranked = [...totals].sort((a, b) => b[1] - a[1]).map(([k]) => k);
@@ -109,7 +104,7 @@ class ActivityPanel {
     }
     const inRange = new Set(dates);
     const colors = this.categoryColors();
-    const seriesOf = key => (colors.has(key) ? key : 'other');
+    const seriesOf = key => (key === 'none' || colors.has(key) ? key : 'other');
     const names = new Map([['other', 'Other']]);
     const perDay = new Map(dates.map(d => [d, new Map()]));
     const cats = new Map();
@@ -132,8 +127,8 @@ class ActivityPanel {
       cat.sessions++;
       cats.set(c.key, cat);
     }
-    const series = [...colors.keys(), 'other'].filter(k => dates.some(d => perDay.get(d).get(k)));
-    const color = k => colors.get(k) || OTHER_COLOR;
+    const series = ['none', ...colors.keys(), 'other'].filter(k => dates.some(d => perDay.get(d).get(k)));
+    const color = k => (k === 'none' ? NONE_COLOR : colors.get(k) || OTHER_COLOR);
     return { dates, perDay, series, names, color, cats: [...cats.values()].sort((a, b) => b.tokens - a.tokens) };
   }
 
@@ -157,10 +152,7 @@ class ActivityPanel {
       }
       return s;
     };
-    head.append(
-      seg(CHART_MODES, this.mode, v => { this.mode = v; }),
-      seg([[7, '7 days'], [30, '30 days'], [90, '90 days']], this.range, v => { this.range = v; }),
-    );
+    head.appendChild(seg([[7, '7 days'], [30, '30 days'], [90, '90 days']], this.range, v => { this.range = v; }));
     box.appendChild(head);
 
     if (!m.cats.length) {
@@ -207,8 +199,8 @@ class ActivityPanel {
     return n;
   }
 
-  // The main chart, drawn the chosen way. A tooltip per day lists every
-  // category's tokens, in all four modes.
+  // The chart: tokens per day, stacked by category. A tooltip per day lists
+  // every category's tokens.
   chart(m) {
     const wrap = el('div', 'act-chart');
     const shown = m.series.filter(k => !this.hidden.has(k));
@@ -221,17 +213,16 @@ class ActivityPanel {
     const plotW = W - padL - 6;
     const plotH = H - padB - 8;
     const n = m.dates.length;
-    const share = this.mode === 'share';
-    const max = share ? 1 : Math.max(1, ...(this.mode === 'lines' ? m.dates.flatMap(d => shown.map(k => value(d, k))) : m.dates.map(dayTotal)));
+    const max = Math.max(1, ...m.dates.map(dayTotal));
     const y = v => 8 + plotH - (v / max) * plotH;
-    const svg = actSvg('svg', { viewBox: `0 0 ${W} ${H}`, class: 'act-svg', role: 'img', 'aria-label': `Tokens per day, ${CHART_MODES.find(c => c[0] === this.mode)[2].toLowerCase()}` });
+    const svg = actSvg('svg', { viewBox: `0 0 ${W} ${H}`, class: 'act-svg', role: 'img', 'aria-label': 'Tokens per day, stacked by category' });
 
     // Three recessive gridlines with their values.
     for (const f of [0, 0.5, 1]) {
       const yy = y(max * f);
       svg.appendChild(actSvg('line', { x1: padL, x2: W - 6, y1: yy, y2: yy, class: f ? 'act-grid' : 'act-axis' }));
       const label = actSvg('text', { x: padL - 6, y: yy + 3.5, class: 'act-ylabel', 'text-anchor': 'end' });
-      label.textContent = share ? `${Math.round(f * 100)}%` : shortNumber(max * f);
+      label.textContent = shortNumber(max * f);
       svg.appendChild(label);
     }
     // Dates under the plot: the first, the last and a few between.
@@ -245,39 +236,20 @@ class ActivityPanel {
 
     const slot = plotW / n;
     const cx = i => padL + (i + 0.5) * slot;
-    if (this.mode === 'bars' || share) {
-      // Stacked columns (share: each day scaled to 100%), 2px apart.
-      const bw = Math.max(2, slot - 2);
-      m.dates.forEach((date, i) => {
-        const tot = dayTotal(date);
-        let base = 0;
-        shown.forEach((k, si) => {
-          const v = value(date, k);
-          if (!v) return;
-          const part = share ? v / tot : v;
-          const top = y(base + part);
-          const h = Math.max(0.5, y(base) - top - (si ? 1 : 0));
-          const last = !shown.slice(si + 1).some(k2 => value(date, k2));
-          svg.appendChild(actSvg('rect', { x: padL + i * slot + 1, y: top, width: bw, height: h, rx: last ? 2.5 : 0, fill: m.color(k) }));
-          base += part;
-        });
+    // Stacked columns, 2px apart, the top one rounded.
+    const bw = Math.max(2, slot - 2);
+    m.dates.forEach((date, i) => {
+      let base = 0;
+      shown.forEach((k, si) => {
+        const v = value(date, k);
+        if (!v) return;
+        const top = y(base + v);
+        const h = Math.max(0.5, y(base) - top - (si ? 1 : 0));
+        const last = !shown.slice(si + 1).some(k2 => value(date, k2));
+        svg.appendChild(actSvg('rect', { x: padL + i * slot + 1, y: top, width: bw, height: h, rx: last ? 2.5 : 0, fill: m.color(k) }));
+        base += v;
       });
-    } else if (this.mode === 'lines') {
-      for (const k of shown) {
-        const pts = m.dates.map((d, i) => `${cx(i)},${y(value(d, k))}`).join(' ');
-        svg.appendChild(actSvg('polyline', { points: pts, fill: 'none', stroke: m.color(k), 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
-      }
-    } else {
-      // Stacked area: each band between the categories below it and itself.
-      const below = m.dates.map(() => 0);
-      for (const k of shown) {
-        const top = m.dates.map((d, i) => below[i] + value(d, k));
-        const upper = top.map((v, i) => `${cx(i)},${y(v)}`);
-        const lower = below.map((v, i) => `${cx(i)},${y(v)}`).reverse();
-        svg.appendChild(actSvg('polygon', { points: [...upper, ...lower].join(' '), fill: m.color(k), 'fill-opacity': 0.85, stroke: '#1e1913', 'stroke-width': 1 }));
-        top.forEach((v, i) => { below[i] = v; });
-      }
-    }
+    });
 
     // Hover: a guide line and a tooltip with the day's numbers.
     const guide = actSvg('line', { y1: 8, y2: 8 + plotH, class: 'act-guide' });
