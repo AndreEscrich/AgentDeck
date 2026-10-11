@@ -773,7 +773,7 @@ const hub = new Hub($('hub-view'), {
     else if (agent.status === 'waiting') sounds.attention();
     else if (agent.status === 'error') sounds.error();
   },
-  onContext: id => sessionMenu(id.startsWith('p:') ? id.slice(2) : state.agents.get(id)?.sessionId),
+  onContext: id => sessionMenu(id.startsWith('p:') ? id.slice(2) : state.agents.get(id)?.sessionId, id),
 });
 
 // The Connectors dialog, opened from the Hub's settings button. It lists the
@@ -1236,6 +1236,8 @@ function hubInfo(a) {
     latestPrompt: a.latestPrompt || null,
     latestTitle: a.latestTitle || null,
     cwd: a.cwd,
+    // Moved to cwd, but its session is still in the old folder (moveToFolder).
+    moved: !!a.moved,
     groupId: a.groupId || groupOf(a.sessionId) || null,
     choice: a.choice,
     mode: a.mode,
@@ -1503,6 +1505,10 @@ async function openParked(sessionId) {
   await openHistory(session);
   const h = state.history.get(sessionId);
   if (firstLook && h) revealLatest(h.view, h.transcript);
+  if (h && p?.moved && p.moveNote && !h.moveNoted) {
+    h.moveNoted = true;
+    h.transcript.note(p.moveNote);
+  }
   if (h && p) {
     h.choice = h.choice || p.choice;
     h.mode = h.mode || p.mode;
@@ -1864,10 +1870,13 @@ function openNotesEditor(group) {
 }
 
 // The menu shown when you right-click a session in History or Running.
-async function sessionMenu(sessionId) {
+// hubId: the Hub tile the menu is for (its agent can move to another folder).
+async function sessionMenu(sessionId, hubId = null) {
   if (!sessionId) return;
   const current = groupOf(sessionId);
+  const moving = hubId ? folderMenu(hubId) : null;
   const items = [
+    ...(moving ? [moving, { type: 'separator' }] : []),
     {
       label: 'Move to category',
       submenu: [
@@ -1880,9 +1889,95 @@ async function sessionMenu(sessionId) {
   ];
   const picked = await window.deck.popupMenu(items);
   if (!picked) return;
+  if (picked.startsWith('folder:') || picked === 'folder-pick') {
+    const folder = picked === 'folder-pick' ? await window.deck.pickFolder() : picked.slice(7);
+    if (folder) moveToFolder(hubId, folder);
+    return;
+  }
   if (picked === 'remove') assignGroup(sessionId, null);
   else if (picked === 'new') assignGroup(sessionId, createGroup().id);
   else assignGroup(sessionId, picked.slice(2));
+}
+
+// ---------- moving an agent to another folder ----------
+
+// An agent works in the folder it was started in, and the Changes card only
+// looks there. "Move to folder" (the tile's menu) moves it: with your next
+// message it starts again in the new folder, continuing a copy of its
+// conversation (Claude Code resumes it there with --fork-session). Until
+// then it is marked as moving (agent.moved / a parked agent's moved), so the
+// move also holds when the app restarts in between.
+function hubAgentFor(hubId) {
+  return hubId.startsWith('p:') ? state.parked.get(hubId.slice(2)) : state.agents.get(hubId);
+}
+
+function folderMenu(hubId) {
+  const a = hubAgentFor(hubId);
+  if (!a) return null;
+  const live = !hubId.startsWith('p:');
+  const busy = live && BUSY.includes(a.status) && a.status !== 'background';
+  const here = (a.cwd || '').replace(/[\\/]+$/, '').toLowerCase();
+  const others = recentFolders().filter(f => f.replace(/[\\/]+$/, '').toLowerCase() !== here).slice(0, 8);
+  return {
+    label: busy ? 'Move to folder (when it is not working)' : 'Move to folder',
+    enabled: !busy,
+    submenu: [
+      ...others.map(f => ({ id: 'folder:' + f, label: homePath(f) })),
+      ...(others.length ? [{ type: 'separator' }] : []),
+      { id: 'folder-pick', label: 'Choose folder…' },
+    ],
+  };
+}
+
+function moveToFolder(hubId, folder) {
+  const a = hubAgentFor(hubId);
+  if (!a || !folder) return;
+  if (!hubId.startsWith('p:') && BUSY.includes(a.status) && a.status !== 'background') return;
+  const from = a.cwd;
+  if ((from || '').toLowerCase() === folder.toLowerCase()) return;
+  a.cwd = folder;
+  a.moved = true;
+  sfx('select');
+  const note = `Moves to ${homePath(folder)} with your next message, continuing this conversation there. It worked in ${homePath(from || '?')} until now.`;
+  if (a.transcript) {
+    a.transcript.note(note);
+    refreshHeaderIfCurrent(a.id);
+  } else {
+    // A parked agent: the note shows when you open it (see openParked).
+    a.moveNote = note;
+  }
+  refreshHub();
+  saveHub();
+}
+
+// Before a moved agent's next message: stop it, and start it again in its
+// new folder, continuing a copy of its conversation. Same id, so its tile
+// stays where it is.
+async function restartInNewFolder(agent) {
+  const ended = new Promise(resolve => exitWaiters.set(agent.id, resolve));
+  window.deck.closeAgent(agent.id);
+  await Promise.race([ended, new Promise(r => setTimeout(r, 8000))]);
+  exitWaiters.delete(agent.id);
+  const from = agent.sessionId;
+  const place = tileOrder.indexOf(orderKey(agent));
+  if (place >= 0) tileOrder[place] = agent.id;
+  agent.sessionId = null;
+  agent.status = 'starting';
+  agent.snapshot = null;
+  agent.mediaSince = null;
+  clearClashes(agent);
+  refreshHub();
+  await window.deck.startAgent({
+    id: agent.id,
+    cwd: agent.cwd,
+    permissionMode: agent.mode,
+    model: agent.choice?.model,
+    effort: agent.choice?.effort,
+    fastMode: agent.choice?.fastMode,
+    resumeId: from,
+    forkSession: true,
+  });
+  agent.moved = false;
 }
 
 async function groupMenu(group) {
@@ -2532,7 +2627,7 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
       effort: choice.effort,
       fastMode: choice.fastMode,
       ...(rewindAt === undefined
-        ? { resumeId: resume?.session.id || forkFrom?.sessionId, forkSession: !resume && !!forkFrom }
+        ? { resumeId: resume?.session.id || forkFrom?.sessionId, forkSession: resume ? !!resume.moved : !!forkFrom }
         : { resumeId: rewindAt?.session || undefined, forkSession: !!rewindAt, resumeSessionAt: rewindAt?.uuid }),
     });
   } catch (err) {
@@ -2634,6 +2729,16 @@ function userContent(text, images = []) {
 
 async function sendToAgent(agent, text, images = []) {
   clearFollowUps(agent);
+  if (agent.moved) {
+    try {
+      await restartInNewFolder(agent);
+    } catch (err) {
+      agent.status = 'error';
+      agent.transcript.note(`Could not start the agent in ${homePath(agent.cwd)}: ${err?.message || err}`, true);
+      refreshHub();
+      return;
+    }
+  }
   if (agent.authWait || (agent.sessionId && authWaits().includes(agent.sessionId))) {
     agent.authWait = false;
     saveAuthWaits(authWaits().filter(s => s !== agent.sessionId));
@@ -3508,7 +3613,9 @@ async function sendFromComposer() {
     await sendToAgent(a, text, images);
   } else if (state.current.kind === 'history') {
     const h = state.history.get(state.current.id);
-    const cwd = h.cwd || h.session.cwd;
+    const parked = state.parked.get(h.session.id);
+    if (parked?.moved) h.moved = true;
+    const cwd = parked?.moved ? parked.cwd : h.cwd || h.session.cwd;
     if (!cwd) {
       h.transcript.note('This session has no saved folder, so it cannot be resumed.', true);
       return;
