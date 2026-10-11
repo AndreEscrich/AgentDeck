@@ -231,152 +231,175 @@ const sounds = (() => {
   };
 
   // ---------- MU-TH-UR (the retro theme) ----------
-  // The same events, in the voice of the ship's computer in Alien: short
-  // square-wave chirps, fast chatter of data, alert beeps and a low hum.
-  // Square waves are harsh, so each goes through a low-pass filter.
+  // The same events, in the voice of the ship's computer in Alien: cold and
+  // uneasy rather than cheerful. Low tones, intervals that do not resolve
+  // (tritones, minor seconds), pairs of oscillators a little out of tune so
+  // they beat slowly, low drones and breaths of noise, all sounding in a
+  // long metal corridor (a reverb made of decaying noise).
 
-  function chirp(ac, at, freq, length, volume, type = 'square') {
-    const t = ac.currentTime + at;
-    const osc = ac.createOscillator();
-    const filter = ac.createBiquadFilter();
-    const gain = ac.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, t);
-    filter.type = 'lowpass';
-    filter.frequency.value = 4200;
-    gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(volume, t + 0.003);
-    gain.gain.setValueAtTime(volume, t + length * 0.6);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + length);
-    osc.connect(filter).connect(gain).connect(ac.destination);
-    osc.start(t);
-    osc.stop(t + length + 0.02);
+  // Everything goes through one bus: dry, plus the corridor's echo.
+  let bus = null;
+  function out(ac) {
+    if (bus) return bus;
+    bus = ac.createGain();
+    bus.gain.value = 1;
+    bus.connect(ac.destination);
+    const length = Math.ceil(ac.sampleRate * 2.8);
+    const impulse = ac.createBuffer(2, length, ac.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = impulse.getChannelData(ch);
+      for (let i = 0; i < length; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 3.2);
+    }
+    const verb = ac.createConvolver();
+    verb.buffer = impulse;
+    // The echo is dark: the highs die first in a steel hull.
+    const tone = ac.createBiquadFilter();
+    tone.type = 'lowpass';
+    tone.frequency.value = 2200;
+    const wet = ac.createGain();
+    wet.gain.value = 0.45;
+    bus.connect(verb).connect(tone).connect(wet).connect(ac.destination);
+    return bus;
   }
 
-  // Data chatter: count chirps in a row at random pitches from the
-  // computer's few tones. direction 1 rises, -1 falls, 0 wanders.
-  const DATA_TONES = [988, 1175, 1319, 1568, 1760, 2093, 2349, 2637];
-  function chatter(ac, at, count, { step = 0.034, volume = 0.045, direction = 0 } = {}) {
+  // One tone: two oscillators a few cents apart, so it wavers.
+  function tone(ac, at, freq, length, volume, { type = 'triangle', detune = 7, attack = 0.004, cutoff = 2400, slideTo = null } = {}) {
+    const t = ac.currentTime + at;
+    const filter = ac.createBiquadFilter();
+    const gain = ac.createGain();
+    filter.type = 'lowpass';
+    filter.frequency.value = cutoff;
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(volume, t + attack);
+    gain.gain.setValueAtTime(volume, t + Math.max(attack, length * 0.45));
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + length);
+    filter.connect(gain).connect(out(ac));
+    for (const cents of [-detune, detune]) {
+      const osc = ac.createOscillator();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t);
+      if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t + length);
+      osc.detune.value = cents;
+      osc.connect(filter);
+      osc.start(t);
+      osc.stop(t + length + 0.05);
+    }
+  }
+
+  // Data: a run of short low blips from a cluster of tones that clash.
+  const DATA_TONES = [311, 330, 466, 494, 622, 659, 932];
+  function data(ac, at, count, { step = 0.06, volume = 0.05, direction = 0 } = {}) {
     for (let i = 0; i < count; i++) {
       let k = Math.floor(Math.random() * DATA_TONES.length);
       if (direction) {
         const pos = direction > 0 ? i / count : 1 - i / count;
         k = Math.min(DATA_TONES.length - 1, Math.max(0, Math.round(pos * (DATA_TONES.length - 1) + (Math.random() * 2 - 1))));
       }
-      chirp(ac, at + i * step, DATA_TONES[k], step * 0.8, volume);
+      tone(ac, at + i * step, DATA_TONES[k], step * 0.9, volume, { type: 'square', detune: 4, cutoff: 1500 });
     }
     return at + count * step;
   }
 
-  // A short burst of filtered noise: a key or a relay clicking.
-  function click(ac, at, freq, length, volume) {
+  // A breath of filtered noise: air in the vents, a relay, a key.
+  function breath(ac, at, freq, length, volume, { q = 1.2, swell = false } = {}) {
     const t = ac.currentTime + at;
     const buffer = ac.createBuffer(1, Math.ceil(ac.sampleRate * length), ac.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    const d = buffer.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     const src = ac.createBufferSource();
     src.buffer = buffer;
     const filter = ac.createBiquadFilter();
     filter.type = 'bandpass';
     filter.frequency.value = freq;
-    filter.Q.value = 1.2;
+    filter.Q.value = q;
     const gain = ac.createGain();
-    gain.gain.value = volume;
-    src.connect(filter).connect(gain).connect(ac.destination);
+    gain.gain.setValueAtTime(swell ? 0 : volume, t);
+    if (swell) gain.gain.linearRampToValueAtTime(volume, t + length * 0.5);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + length);
+    src.connect(filter).connect(gain).connect(out(ac));
     src.start(t);
   }
 
-  // A low electrical hum or buzz that fades: the tube warming, a fault.
-  function hum(ac, at, freq, length, volume, type = 'sawtooth') {
-    const t = ac.currentTime + at;
-    const osc = ac.createOscillator();
-    const filter = ac.createBiquadFilter();
-    const gain = ac.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, t);
-    filter.type = 'lowpass';
-    filter.frequency.value = 900;
-    gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(volume, t + 0.02);
-    gain.gain.setValueAtTime(volume, t + length * 0.7);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + length);
-    osc.connect(filter).connect(gain).connect(ac.destination);
-    osc.start(t);
-    osc.stop(t + length + 0.02);
-  }
-
-  // A thin rising whine: a tube's high voltage coming up.
-  function whine(ac, at, from, to, length, volume) {
-    const t = ac.currentTime + at;
-    const osc = ac.createOscillator();
-    const gain = ac.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(from, t);
-    osc.frequency.exponentialRampToValueAtTime(to, t + length);
-    gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(volume, t + length * 0.3);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + length);
-    osc.connect(gain).connect(ac.destination);
-    osc.start(t);
-    osc.stop(t + length + 0.02);
+  // A low drone that swells and fades: the ship's engines, a warning.
+  function drone(ac, at, freq, length, volume, type = 'sawtooth') {
+    tone(ac, at, freq, length, volume, { type, detune: 12, attack: length * 0.3, cutoff: 500 });
   }
 
   const safely = fn => (...args) => { try { fn(audio(), ...args); } catch { /* no sound is fine */ } };
 
   const mother = {
-    // A new agent lands in its tile: the computer boots it, a run of data.
-    brew: safely(ac => { const end = chatter(ac, 0, 14, { step: 0.03 }); chirp(ac, end + 0.02, 1568, 0.12, 0.05); }),
-    // An agent needs you: the alert, three quick beeps twice.
-    attention: safely(ac => { for (const at of [0, 0.42]) for (let i = 0; i < 3; i++) chirp(ac, at + i * 0.09, 1397, 0.06, 0.06); }),
-    removed: safely(ac => { const end = chatter(ac, 0, 8, { direction: -1 }); hum(ac, end, 70, 0.22, 0.12, 'square'); }),
-    pick: safely(ac => chirp(ac, 0, 880, 0.05, 0.05)),
-    shift: safely(ac => chirp(ac, 0, 2637, 0.02, 0.025)),
-    drop: safely(ac => { chirp(ac, 0, 330, 0.06, 0.06); click(ac, 0, 900, 0.05, 0.25); }),
-    tab: safely(ac => { chirp(ac, 0, 1175, 0.04, 0.045); chirp(ac, 0.05, 1760, 0.06, 0.045); }),
-    nothing: safely(ac => { hum(ac, 0, 98, 0.1, 0.08, 'square'); hum(ac, 0.14, 98, 0.14, 0.08, 'square'); }),
-    groupRemoved: safely((ac, count) => {
-      const end = chatter(ac, 0, Math.min(6 + count * 3, 30), { direction: -1, step: 0.028 });
-      hum(ac, end, 60, 0.35, 0.14, 'square');
+    // A new agent lands in its tile: the computer wakes, a slow run of data
+    // over a low drone.
+    brew: safely(ac => { drone(ac, 0, 55, 1.4, 0.07); data(ac, 0.1, 9, { step: 0.07 }); }),
+    // An agent needs you: two slow low pulses a tritone apart, like a
+    // warning on the bridge.
+    attention: safely(ac => {
+      for (const at of [0, 0.55]) {
+        tone(ac, at, 311, 0.4, 0.06, { type: 'square', cutoff: 1100 });
+        tone(ac, at, 440, 0.4, 0.045, { type: 'square', cutoff: 1100 });
+      }
     }),
-    created: safely(ac => chatter(ac, 0, 7, { direction: 1, step: 0.04, volume: 0.05 })),
-    // Finished: a printout of data, then the computer's two-tone "ready".
-    done: safely(ac => { const end = chatter(ac, 0, 10); chirp(ac, end + 0.05, 1568, 0.14, 0.055); chirp(ac, end + 0.2, 2093, 0.24, 0.055); }),
-    // A fault: a low buzz under two falling beeps.
-    error: safely(ac => { hum(ac, 0, 82, 0.45, 0.12); chirp(ac, 0.02, 784, 0.12, 0.05); chirp(ac, 0.17, 523, 0.22, 0.05); }),
-    // Your message goes out: a fast transmission burst.
-    sent: safely(ac => { const end = chatter(ac, 0, 12, { step: 0.022, volume: 0.04 }); chirp(ac, end, 2349, 0.08, 0.045); }),
-    // A screen comes up: a relay click and the tube's whine; going back, the reverse.
-    open: safely(ac => { click(ac, 0, 1400, 0.03, 0.3); whine(ac, 0, 2400, 5200, 0.22, 0.012); chirp(ac, 0.04, 1760, 0.05, 0.035); }),
-    close: safely(ac => { chirp(ac, 0, 1760, 0.04, 0.035); chirp(ac, 0.05, 1175, 0.06, 0.035); click(ac, 0.08, 900, 0.03, 0.25); }),
-    stopped: safely(ac => { chirp(ac, 0, 440, 0.07, 0.06); chirp(ac, 0.08, 294, 0.12, 0.06); click(ac, 0, 700, 0.04, 0.3); }),
-    stuck: safely(ac => { for (let i = 0; i < 3; i++) chirp(ac, i * 0.28, 220, 0.16, 0.05); }),
-    approve: safely(ac => { chirp(ac, 0, 1175, 0.05, 0.05); chirp(ac, 0.06, 1568, 0.1, 0.05); }),
-    deny: safely(ac => { chirp(ac, 0, 784, 0.05, 0.05); chirp(ac, 0.07, 523, 0.12, 0.05); }),
-    attach: safely(ac => chirp(ac, 0, 1760, 0.05, 0.045)),
-    detach: safely(ac => chirp(ac, 0, 1046, 0.05, 0.04)),
-    tick: safely(ac => chirp(ac, 0, 2349, 0.025, 0.03)),
-    tickDown: safely(ac => chirp(ac, 0, 1760, 0.025, 0.028)),
-    select: safely(ac => chirp(ac, 0, 2093, 0.03, 0.035)),
-    connected: safely(ac => { const end = chatter(ac, 0, 6); chirp(ac, end + 0.04, 2093, 0.18, 0.05); }),
-    refuse: safely(ac => { hum(ac, 0, 110, 0.08, 0.08, 'square'); hum(ac, 0.11, 110, 0.12, 0.08, 'square'); }),
-    // Typing: like the letters coming up on MOTHER's screen, each key gives
-    // a chirp, a little different every time, over the click of the key.
+    removed: safely(ac => { const end = data(ac, 0, 6, { direction: -1, step: 0.05 }); drone(ac, end - 0.1, 41, 0.6, 0.12, 'square'); }),
+    pick: safely(ac => tone(ac, 0, 233, 0.12, 0.06)),
+    shift: safely(ac => tone(ac, 0, 622, 0.04, 0.02)),
+    drop: safely(ac => { tone(ac, 0, 98, 0.25, 0.1, { slideTo: 73 }); breath(ac, 0, 500, 0.08, 0.2); }),
+    tab: safely(ac => { tone(ac, 0, 330, 0.09, 0.05); tone(ac, 0.09, 311, 0.14, 0.05); }),
+    nothing: safely(ac => tone(ac, 0, 82, 0.35, 0.09, { type: 'square', cutoff: 600 })),
+    groupRemoved: safely((ac, count) => {
+      const end = data(ac, 0, Math.min(4 + count * 2, 18), { direction: -1, step: 0.05 });
+      drone(ac, end - 0.1, 36, 1.0, 0.14, 'square');
+    }),
+    created: safely(ac => { data(ac, 0, 5, { direction: 1, step: 0.07 }); breath(ac, 0, 700, 0.6, 0.05, { swell: true }); }),
+    // Finished: the computer prints its answer, then a falling minor second,
+    // as if it knows more than it says.
+    done: safely(ac => {
+      const end = data(ac, 0, 7, { step: 0.06 });
+      tone(ac, end + 0.08, 494, 0.5, 0.06);
+      tone(ac, end + 0.4, 466, 0.9, 0.06);
+    }),
+    // A fault: a low growl with a falling tritone in it.
+    error: safely(ac => {
+      drone(ac, 0, 49, 1.0, 0.13);
+      tone(ac, 0.05, 370, 0.35, 0.06, { type: 'square', cutoff: 1000 });
+      tone(ac, 0.35, 262, 0.7, 0.06, { type: 'square', cutoff: 900 });
+    }),
+    // Your message goes out: a short burst of data and a hiss, like a
+    // transmission into the dark.
+    sent: safely(ac => { data(ac, 0, 8, { step: 0.035, volume: 0.04 }); breath(ac, 0.05, 1800, 0.45, 0.06, { q: 0.7 }); }),
+    // A screen comes up: a relay, a low hum and the tube's thin whine.
+    open: safely(ac => { breath(ac, 0, 900, 0.05, 0.25); drone(ac, 0, 60, 0.5, 0.06, 'sine'); tone(ac, 0.02, 1400, 0.4, 0.008, { type: 'sine', slideTo: 3200 }); }),
+    close: safely(ac => { tone(ac, 0, 330, 0.2, 0.04, { slideTo: 196 }); breath(ac, 0.12, 500, 0.06, 0.2); }),
+    stopped: safely(ac => { tone(ac, 0, 147, 0.3, 0.09, { type: 'square', cutoff: 700, slideTo: 104 }); breath(ac, 0, 400, 0.06, 0.3); }),
+    // Stuck: a slow pulse that does not change, like a heartbeat monitor.
+    stuck: safely(ac => { for (let i = 0; i < 3; i++) tone(ac, i * 0.5, 104, 0.3, 0.07, { type: 'sine', cutoff: 600 }); }),
+    approve: safely(ac => { tone(ac, 0, 330, 0.12, 0.05); tone(ac, 0.09, 494, 0.25, 0.05); }),
+    deny: safely(ac => { tone(ac, 0, 330, 0.12, 0.05); tone(ac, 0.1, 233, 0.35, 0.05); }),
+    attach: safely(ac => tone(ac, 0, 466, 0.15, 0.045)),
+    detach: safely(ac => tone(ac, 0, 311, 0.15, 0.04)),
+    tick: safely(ac => tone(ac, 0, 659, 0.05, 0.025, { type: 'square', cutoff: 1400 })),
+    tickDown: safely(ac => tone(ac, 0, 622, 0.05, 0.022, { type: 'square', cutoff: 1400 })),
+    select: safely(ac => tone(ac, 0, 494, 0.06, 0.03, { type: 'square', cutoff: 1400 })),
+    connected: safely(ac => { const end = data(ac, 0, 5); tone(ac, end + 0.05, 494, 0.6, 0.05); }),
+    refuse: safely(ac => tone(ac, 0, 69, 0.4, 0.1, { type: 'square', cutoff: 500 })),
+    // Typing: each letter that comes up on MOTHER's screen has its blip,
+    // here low and muted, over the dull click of the key.
     // kind: 'char', 'space', 'back' or 'enter'.
     key: safely((ac, kind = 'char') => {
-      if (kind === 'back') { chirp(ac, 0, 700, 0.03, 0.03); click(ac, 0, 1800, 0.012, 0.12); return; }
-      if (kind === 'enter') { chirp(ac, 0, 1568, 0.04, 0.035); chirp(ac, 0.045, 1175, 0.05, 0.035); click(ac, 0, 1500, 0.02, 0.18); return; }
-      const tones = kind === 'space' ? [1319] : [1760, 1976, 2093, 2349, 2637];
-      chirp(ac, 0, tones[Math.floor(Math.random() * tones.length)], 0.028, 0.032);
-      click(ac, 0, 2600, 0.012, 0.1);
+      if (kind === 'back') { tone(ac, 0, 233, 0.06, 0.03, { type: 'square', cutoff: 900, detune: 3 }); breath(ac, 0, 1200, 0.015, 0.1); return; }
+      if (kind === 'enter') { tone(ac, 0, 330, 0.08, 0.035, { type: 'square', cutoff: 1100 }); tone(ac, 0.08, 311, 0.14, 0.035, { type: 'square', cutoff: 1100 }); breath(ac, 0, 900, 0.03, 0.15); return; }
+      const tones = kind === 'space' ? [392] : [622, 659, 698, 740];
+      tone(ac, 0, tones[Math.floor(Math.random() * tones.length)], 0.045, 0.028, { type: 'square', cutoff: 1300, detune: 3 });
+      breath(ac, 0, 1800, 0.012, 0.09);
     }),
-    // The theme switches on: the tube's thunk, its hum and whine, then the
-    // computer says it is ready.
+    // The theme switches on: the tube's thunk, the ship's hum swelling, the
+    // high voltage whining up, then the computer stirs.
     powerOn: safely(ac => {
-      click(ac, 0, 300, 0.08, 0.5);
-      hum(ac, 0.02, 55, 0.8, 0.1, 'sine');
-      whine(ac, 0.05, 3000, 7000, 0.7, 0.01);
-      const end = chatter(ac, 0.5, 9, { step: 0.03 });
-      chirp(ac, end + 0.05, 2093, 0.2, 0.05);
+      breath(ac, 0, 200, 0.12, 0.5);
+      drone(ac, 0.02, 41, 2.2, 0.12);
+      drone(ac, 0.3, 61.7, 1.9, 0.05);
+      tone(ac, 0.1, 2000, 1.6, 0.007, { type: 'sine', slideTo: 7500, attack: 0.8 });
+      const end = data(ac, 0.9, 6, { step: 0.08 });
+      tone(ac, end + 0.1, 466, 1.0, 0.05);
     }),
   };
 
