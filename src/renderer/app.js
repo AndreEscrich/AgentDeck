@@ -1278,10 +1278,13 @@ function parkedItem(p) {
 // skipped, because their saved conversation ends in the middle of a task.
 // The fork must be in the same folder, because Claude Code keeps sessions per
 // folder. Returns { sessionId, title } or null for the first agent of a Group.
+// Agents without a category are separate tasks: they still share a panel per
+// repository on the Hub, but a new one starts fresh, not as a fork.
 function forkSourceFor(cwd, categoryId) {
   if (!cwd) return null;
   const known = id => state.groups.groups.some(g => g.id === id);
   const category = known(categoryId) ? categoryId : null;
+  if (!category) return null;
   let best = null;
   for (const item of hubItems()) {
     const itemCategory = known(item.groupId) ? item.groupId : null;
