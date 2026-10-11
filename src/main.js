@@ -46,6 +46,7 @@ const DEFAULT_CONFIG = {
   summarizeTitles: true,                // title new agents with a short summary of your message
   suggestFollowUps: true,               // after a task, suggest the messages you will likely send next
   theme: 'default',                     // default | mother (the retro terminal of Alien)
+  curvedScreen: true,                   // the retro theme bends the picture like a tube's glass
 };
 
 let win;

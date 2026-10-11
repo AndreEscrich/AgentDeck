@@ -3701,7 +3701,7 @@ function showSettings() {
   openSettings(state.config, {
     onSaved: config => {
       state.config = config;
-      applyTheme(config.theme);
+      applyTheme(config.theme, { curved: config.curvedScreen !== false });
       if (state.current?.kind === 'hub' && state.draft) {
         state.draft.choice = defaultChoice();
         state.draft.mode = defaultMode();
@@ -3844,7 +3844,7 @@ setInterval(checkStuck, 3000);
 
 (async () => {
   state.config = await window.deck.getConfig();
-  applyTheme(state.config.theme);
+  applyTheme(state.config.theme, { curved: state.config.curvedScreen !== false });
   // The version next to the title; the dev copy says "dev" after it.
   window.deck.appVersion().then(({ version, dev }) => {
     $('app-version').textContent = `v${version}${dev ? ' dev' : ''}`;

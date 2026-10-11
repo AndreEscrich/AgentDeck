@@ -280,3 +280,101 @@ body::before, body::after, #mu-roll, #mu-noise { border-radius: 34px / 30px !imp
   background: linear-gradient(var(--accent), var(--accent)) center / 1px 100% no-repeat, linear-gradient(var(--accent), var(--accent)) center / 100% 1px no-repeat; }
 .hub-section::before { left: -7px; bottom: -7px; }
 .hub-section::after { right: -7px; bottom: -7px; }
+
+/* ---------- Motion ----------
+   No bounces, springs, floats or wobbles: a machine does not play. Things
+   appear the way a tube draws them (a scanline from the top, a flicker),
+   text prints out, and what goes away collapses like a tube switching off.
+   Most of it moves in steps, not smoothly. */
+
+/* Tiles: no leaning, floating or popping. */
+.hub-tile:hover:not(.dragging) { transform: none; }
+.hub-tile .liquid { transition: height 1.2s steps(8); }
+.hub-tile.finish, .hub-tile.wob, .hub-tile.wake, .hub-tile.landed { animation: mu-interference 0.45s steps(1) !important; }
+.hub-tile.finish .liquid, .hub-tile.finish .tank-icon, .hub-tile.wake .tank { animation: none !important; }
+.hub-tile.shake { animation: mu-fault 0.7s steps(1) !important; }
+.hub-tile.spawn { animation: mu-draw 0.6s steps(10) both !important; }
+.hub-tile.removing { animation: mu-switch-off 0.55s ease-in forwards !important; }
+.hub-tile-slot { animation: none !important; }
+@keyframes mu-interference {
+  0% { transform: translateX(-3px); filter: brightness(2.2); }
+  20% { transform: translateX(2px); filter: brightness(0.5); }
+  40% { transform: translateX(0); filter: brightness(1.6); }
+  60% { filter: brightness(0.8); }
+  100% { transform: none; filter: none; }
+}
+@keyframes mu-fault {
+  0%, 30%, 60% { filter: brightness(2) hue-rotate(-170deg) saturate(3); transform: translateX(-4px); }
+  15%, 45%, 75% { filter: brightness(0.4); transform: translateX(3px); }
+  100% { filter: none; transform: none; }
+}
+/* Drawn by the beam, top to bottom. */
+@keyframes mu-draw {
+  from { clip-path: inset(0 0 100% 0); filter: brightness(2.5); }
+  to { clip-path: inset(0 0 0 0); filter: none; }
+}
+/* A tube switching off: the picture squeezes to a bright line, then a dot. */
+@keyframes mu-switch-off {
+  0% { transform: none; filter: none; }
+  45% { transform: scale(1, 0.02); filter: brightness(4); }
+  80% { transform: scale(0.05, 0.02); filter: brightness(5); opacity: 1; }
+  100% { transform: scale(0, 0); opacity: 0; }
+}
+
+/* Every screen you switch to (the Hub, an agent) comes up with a flicker,
+   as the tube redraws. The zoom from the tile stays; this rides on it. */
+#views > .view:not(.hidden) { animation: mu-redraw 0.4s steps(1); }
+@keyframes mu-redraw {
+  0% { filter: brightness(2.4) contrast(1.4); }
+  25% { filter: brightness(0.35); }
+  50% { filter: brightness(1.5); }
+  75% { filter: brightness(0.85); }
+  100% { filter: none; }
+}
+.tile-lid { animation: mu-redraw 0.42s steps(1); }
+
+/* Text prints out. The newest answer comes down line by line, your message
+   types out left to right, and a tile's live step types out too. */
+.turn:last-child .turn-answer > .msg-text { animation: mu-print 0.9s steps(16); }
+@keyframes mu-print { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
+.msg-user.just-sent { animation: mu-type 0.45s steps(24) !important; transform: none !important; }
+.hub-step.changed { animation: mu-type 0.5s steps(20) !important; }
+@keyframes mu-type { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+.changes.deal details.change-file { animation: mu-draw 0.35s steps(6) both !important; animation-delay: calc(var(--i, 0) * 90ms) !important; }
+.review-stamp { animation: mu-interference 0.45s steps(1) both !important; }
+
+/* Cards and dialogs open like a tube: a bright line that opens up. */
+.settings-card, .palette-modal, .conn-dialog, .quit-card, .changelog-card, .away-card, .notes-card {
+  animation: mu-open 0.32s cubic-bezier(.2, .8, .2, 1) both !important; }
+@keyframes mu-open {
+  0% { transform: scale(1, 0.01); filter: brightness(4); }
+  55% { transform: scale(1, 1); filter: brightness(1.8); }
+  70% { filter: brightness(0.7); }
+  100% { transform: none; filter: none; }
+}
+.from-click > :first-child { transition: opacity 0.15s !important; }
+.from-click:not(.show) > :first-child { transform: none !important; }
+
+/* Buttons do not squash: a press lights them up. */
+button:active { transform: none !important; filter: brightness(1.7); }
+
+/* The live dots blink like lamps instead of breathing. */
+.dot.working, .dot.starting, .dot.waiting { animation: mu-blink 0.9s steps(1) infinite; }
+.steps-spinner { animation: mu-blink 0.6s steps(1) infinite !important; border-radius: 0 !important; }
+
+/* ---------- Curved glass ----------
+   theme.js bends the picture with an SVG filter on #main (mu-curve). A
+   filter is drawn again whenever anything under it changes, so everything
+   that moves every frame steps instead, and the scan streak runs outside
+   it, on top. */
+#main.mu-curve { filter: url(#mu-barrel); }
+/* Large moving layers over the bent picture make it bend again every
+   frame (a third of the frame rate), so on curved glass the static holds
+   still and the rolling band is left out. */
+html.mu-curved #mu-noise { animation: none; }
+html.mu-curved #mu-roll { display: none; }
+#main::after { display: none; }
+#mu-streak { position: fixed; left: 14px; right: 14px; top: -10%; height: 3px; pointer-events: none; z-index: 9998;
+  background: linear-gradient(90deg, transparent, rgba(140, 240, 255, 0.5) 15%, rgba(200, 250, 255, 0.85) 50%, rgba(140, 240, 255, 0.5) 85%, transparent);
+  box-shadow: 0 0 18px 4px rgba(90, 230, 255, 0.3); animation: mu-scan-streak 9s linear infinite; }
+.hub-tile.state-working .tank::before { animation-timing-function: steps(10) !important; }
