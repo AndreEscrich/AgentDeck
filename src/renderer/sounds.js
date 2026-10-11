@@ -262,9 +262,14 @@ const sounds = (() => {
     return bus;
   }
 
-  // One tone: two oscillators a few cents apart, so it wavers.
+  // One tone: two oscillators a few cents apart, so it wavers. Every pitch
+  // below sounds PITCH times lower: an octave down, so nothing chirps.
+  const PITCH = 0.5;
   function tone(ac, at, freq, length, volume, { type = 'triangle', detune = 7, attack = 0.004, cutoff = 2400, slideTo = null } = {}) {
     const t = ac.currentTime + at;
+    freq *= PITCH;
+    if (slideTo) slideTo *= PITCH;
+    cutoff *= 0.6;
     const filter = ac.createBiquadFilter();
     const gain = ac.createGain();
     filter.type = 'lowpass';
@@ -286,8 +291,9 @@ const sounds = (() => {
     }
   }
 
-  // Data: a run of short low blips from a cluster of tones that clash.
-  const DATA_TONES = [311, 330, 466, 494, 622, 659, 932];
+  // Data: a run of dull pulses, nearly all on one note, now and then a half
+  // step up. Random melodies sound playful; this sounds like a machine.
+  const DATA_TONES = [311, 311, 311, 330];
   function data(ac, at, count, { step = 0.06, volume = 0.05, direction = 0 } = {}) {
     for (let i = 0; i < count; i++) {
       let k = Math.floor(Math.random() * DATA_TONES.length);
@@ -295,7 +301,7 @@ const sounds = (() => {
         const pos = direction > 0 ? i / count : 1 - i / count;
         k = Math.min(DATA_TONES.length - 1, Math.max(0, Math.round(pos * (DATA_TONES.length - 1) + (Math.random() * 2 - 1))));
       }
-      tone(ac, at + i * step, DATA_TONES[k], step * 0.9, volume, { type: 'square', detune: 4, cutoff: 1500 });
+      tone(ac, at + i * step, DATA_TONES[k], step * 0.9, volume * 1.3, { type: 'triangle', detune: 4, cutoff: 1200 });
     }
     return at + count * step;
   }
@@ -322,7 +328,9 @@ const sounds = (() => {
 
   // A low drone that swells and fades: the ship's engines, a warning.
   function drone(ac, at, freq, length, volume, type = 'sawtooth') {
-    tone(ac, at, freq, length, volume, { type, detune: 12, attack: length * 0.3, cutoff: 500 });
+    // Drones are low already: they keep their pitch (PITCH would make them
+    // too low to hear). The cutoff makes up for tone()'s darkening too.
+    tone(ac, at, freq / PITCH, length, volume, { type, detune: 12, attack: length * 0.3, cutoff: 500 / 0.6 });
   }
 
   const safely = fn => (...args) => { try { fn(audio(), ...args); } catch { /* no sound is fine */ } };
@@ -376,9 +384,9 @@ const sounds = (() => {
     deny: safely(ac => { tone(ac, 0, 330, 0.12, 0.05); tone(ac, 0.1, 233, 0.35, 0.05); }),
     attach: safely(ac => tone(ac, 0, 466, 0.15, 0.045)),
     detach: safely(ac => tone(ac, 0, 311, 0.15, 0.04)),
-    tick: safely(ac => tone(ac, 0, 659, 0.05, 0.025, { type: 'square', cutoff: 1400 })),
-    tickDown: safely(ac => tone(ac, 0, 622, 0.05, 0.022, { type: 'square', cutoff: 1400 })),
-    select: safely(ac => tone(ac, 0, 494, 0.06, 0.03, { type: 'square', cutoff: 1400 })),
+    tick: safely(ac => tone(ac, 0, 330, 0.06, 0.035, { cutoff: 1400 })),
+    tickDown: safely(ac => tone(ac, 0, 311, 0.06, 0.032, { cutoff: 1400 })),
+    select: safely(ac => tone(ac, 0, 311, 0.07, 0.04, { cutoff: 1400 })),
     connected: safely(ac => { const end = data(ac, 0, 5); tone(ac, end + 0.05, 494, 0.6, 0.05); }),
     refuse: safely(ac => tone(ac, 0, 69, 0.4, 0.1, { type: 'square', cutoff: 500 })),
     // Typing: each letter that comes up on MOTHER's screen has its blip,
@@ -387,8 +395,8 @@ const sounds = (() => {
     key: safely((ac, kind = 'char') => {
       if (kind === 'back') { tone(ac, 0, 233, 0.06, 0.03, { type: 'square', cutoff: 900, detune: 3 }); breath(ac, 0, 1200, 0.015, 0.1); return; }
       if (kind === 'enter') { tone(ac, 0, 330, 0.08, 0.035, { type: 'square', cutoff: 1100 }); tone(ac, 0.08, 311, 0.14, 0.035, { type: 'square', cutoff: 1100 }); breath(ac, 0, 900, 0.03, 0.15); return; }
-      const tones = kind === 'space' ? [392] : [622, 659, 698, 740];
-      tone(ac, 0, tones[Math.floor(Math.random() * tones.length)], 0.045, 0.028, { type: 'square', cutoff: 1300, detune: 3 });
+      const tones = kind === 'space' ? [262] : [311, 311, 330];
+      tone(ac, 0, tones[Math.floor(Math.random() * tones.length)], 0.05, 0.04, { type: 'triangle', cutoff: 1300, detune: 3 });
       breath(ac, 0, 1800, 0.012, 0.09);
     }),
     // The theme switches on: the tube's thunk, the ship's hum swelling, the
