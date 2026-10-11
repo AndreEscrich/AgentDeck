@@ -789,7 +789,9 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 /* The category's shared notes: shows when you point at the panel, or always once it has notes. */
 .section-notes { margin-left: auto; align-self: center; padding: 2px 10px; border-radius: 99px; font-size: 12px;
   border: 1px solid var(--border); background: transparent; color: var(--text-faint); opacity: 0; transition: opacity 0.15s, color 0.15s; }
-.section-notes + .section-remove { margin-left: 0; }
+/* Remove sits at the top right: right after Notes when that shows, or
+   pushed there itself when Notes is hidden (a panel without a category). */
+.section-notes:not(.hidden) + .section-remove { margin-left: 0; }
 .section-notes.has-notes { opacity: 0.8; }
 .hub-section:hover .section-notes { opacity: 1; }
 .section-notes:hover { color: var(--text); border-color: var(--text-faint); }
