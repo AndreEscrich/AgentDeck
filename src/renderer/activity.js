@@ -11,9 +11,9 @@
 // into "Other", a neutral grey.
 const CATEGORY_COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181'];
 const OTHER_COLOR = '#6f6a62';
-// Agents without a category: always a neutral light brown, at the bottom of
-// each bar (next to blue there, its neighbours stay easy to tell apart; the
-// dataviz validator passes it there except for its deliberately low colour).
+// Agents without a category: always a neutral light brown (deliberately low
+// in colour, like "Other"; the 2px gaps and the legend keep it apart from
+// the yellow when they sit next to each other).
 const NONE_COLOR = '#a68a64';
 
 function shortNumber(n) {
@@ -127,7 +127,10 @@ class ActivityPanel {
       cat.sessions++;
       cats.set(c.key, cat);
     }
-    const series = ['none', ...colors.keys(), 'other'].filter(k => dates.some(d => perDay.get(d).get(k)));
+    // Stacked from the most tokens in the range (at the bottom) to the least,
+    // in the same order in every bar.
+    const rangeTotal = k => dates.reduce((n, d) => n + (perDay.get(d).get(k) || 0), 0);
+    const series = ['none', ...colors.keys(), 'other'].filter(k => rangeTotal(k) > 0).sort((a, b) => rangeTotal(b) - rangeTotal(a));
     const color = k => (k === 'none' ? NONE_COLOR : colors.get(k) || OTHER_COLOR);
     return { dates, perDay, series, names, color, cats: [...cats.values()].sort((a, b) => b.tokens - a.tokens) };
   }
