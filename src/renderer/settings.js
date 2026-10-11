@@ -108,7 +108,7 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('Compact the conversation at', 'Every step re-reads the whole conversation, so long tasks get expensive. Smaller: less usage, but the agent remembers fewer details from early in the task', compact)),
     section('The app',
       settingsField('Theme', 'MU-TH-UR: the screens of the computers in Alien, on an old tube', theme),
-      settingsField('Curved screen', 'MU-TH-UR only: the picture bends like the glass of a tube. Off if scrolling feels slow', curved),
+      settingsField('Curved screen', 'MU-TH-UR only: the screen has the bulging shape of a tube’s glass, with scanlines that bow with it', curved),
       settingsField('Show the Hub after sending', 'Off: stay in the chat after you send a message', hubAfterSend),
       settingsField('Short titles', 'Name new agents with a summary of your message, written by Haiku', titles),
       settingsField('Suggest follow-ups', 'After a task, the messages you will likely send next, written by Haiku. → or a click puts one in the box, Alt+1–3 sends it', followUps),

@@ -47,14 +47,14 @@ function startTube({ powerOn }) {
     noise.style.backgroundImage = `url(${c.toDataURL()})`;
   }
   const main = document.getElementById('main');
+  document.documentElement.classList.toggle('mu-curved', crt.curved);
   if (crt.curved) {
-    bendGlass();
+    drawGlass();
     window.addEventListener('resize', onResize);
   } else {
-    main.classList.remove('mu-curve');
+    clearGlass();
     window.removeEventListener('resize', onResize);
   }
-  document.documentElement.classList.toggle('mu-curved', crt.curved);
   clearInterval(crt.glitch);
   // Now and then (about every half minute) the picture slips a hair sideways.
   crt.glitch = setInterval(() => {
@@ -69,99 +69,150 @@ function startTube({ powerOn }) {
 
 function stopTube() {
   clearInterval(crt.glitch);
-  for (const id of ['mu-roll', 'mu-noise', 'mu-streak', 'mu-glass']) document.getElementById(id)?.remove();
-  document.getElementById('main')?.classList.remove('mu-glitch', 'mu-on', 'mu-curve');
+  for (const id of ['mu-roll', 'mu-noise', 'mu-streak']) document.getElementById(id)?.remove();
+  document.getElementById('main')?.classList.remove('mu-glitch', 'mu-on');
+  document.documentElement.classList.remove('mu-curved');
+  clearGlass();
   window.removeEventListener('resize', onResize);
-  crt.mapSize = null;
 }
 
-// Curved glass: an SVG filter moves each pixel of the window outwards, more
-// towards the corners, as a bulging tube shows its picture. The map that
-// says how far is drawn for the window's size, again when that changes.
-const BEND = 0.022;   // how far the corners move, as a share of the window
-function bendGlass() {
+// Curved glass. Bending the app's own picture (an SVG filter) had to be
+// drawn again for every change under it: typing lagged and anything that
+// moved dropped to a third of the frame rate on a large window. Instead,
+// still pictures drawn once (again when the window's size changes) give the
+// curve: the screen has a tube's bulging shape, with its sides bowing out
+// and its corners pulled in, behind a bezel; the scanlines bow with the
+// glass, and so do the lines of the grid behind everything. The app itself
+// stays flat and as fast as without the theme.
+const BOW = 0.018;   // how far the corners are pulled in, as a share of the screen's size
+function drawGlass() {
   const main = document.getElementById('main');
   const box = main.getBoundingClientRect();
-  const w = Math.round(box.width), h = Math.round(box.height);
-  if (!w || !h) return;
-  if (crt.mapSize !== `${w}x${h}`) {
-    crt.mapSize = `${w}x${h}`;
-    const c = document.createElement('canvas');
-    c.width = w;
-    c.height = h;
-    const g = c.getContext('2d');
-    const img = g.createImageData(w, h);
-    for (let y = 0; y < h; y++) {
-      const v = (y / (h - 1)) * 2 - 1;
-      for (let x = 0; x < w; x++) {
-        const u = (x / (w - 1)) * 2 - 1;
-        const r2 = u * u + v * v;
-        const i = (y * w + x) * 4;
-        // Red: sideways, green: up and down; 128 is "stay".
-        img.data[i] = Math.round(127.5 + 127.5 * u * r2 / 2);
-        img.data[i + 1] = Math.round(127.5 + 127.5 * v * r2 / 2);
-        img.data[i + 2] = 128;
-        img.data[i + 3] = 255;
-      }
-    }
-    g.putImageData(img, 0, 0);
-    document.getElementById('mu-glass')?.remove();
-    const holder = document.createElement('div');
-    holder.innerHTML = `<svg id="mu-glass" width="0" height="0" style="position:absolute" aria-hidden="true">
-      <filter id="mu-barrel" x="0" y="0" width="1" height="1" primitiveUnits="objectBoundingBox" color-interpolation-filters="sRGB">
-        <feImage href="${c.toDataURL()}" preserveAspectRatio="none" x="0" y="0" width="1" height="1" result="map"/>
-        <feDisplacementMap in="SourceGraphic" in2="map" scale="${BEND}" xChannelSelector="R" yChannelSelector="G"/>
-      </filter></svg>`;
-    document.body.appendChild(holder.firstElementChild);
+  if (!box.width || !box.height) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = innerWidth, H = innerHeight;
+  const key = `${W}x${H}@${dpr}`;
+  let glass = document.getElementById('mu-glass');
+  if (glass && glass.dataset.key === key) return;
+  if (!glass) {
+    glass = document.createElement('canvas');
+    glass.id = 'mu-glass';
+    document.body.appendChild(glass);
   }
-  if (!motion.count) main.classList.add('mu-curve');
+  glass.dataset.key = key;
+  glass.width = Math.round(W * dpr);
+  glass.height = Math.round(H * dpr);
+  const g = glass.getContext('2d');
+  g.scale(dpr, dpr);
+
+  const x0 = box.left, y0 = box.top, x1 = box.right, y1 = box.bottom;
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, hw = (x1 - x0) / 2, hh = (y1 - y0) / 2;
+  const bow = BOW * Math.min(hw, hh) * 2;
+  // A point of the picture as the curved glass shows it: lines bow outwards,
+  // most in the middle of the screen. u, v from -1 to 1.
+  const at = (u, v) => [cx + u * (hw - bow * (v * v)), cy + v * (hh - bow * (u * u))];
+
+  // The screen's outline: the four bowed sides, with round corners.
+  const N = 48, R = 26;
+  const side = [];
+  for (let i = 0; i <= N; i++) side.push(at(-1 + (2 * i) / N, -1));       // top, left to right
+  const right = [], bottom = [], left = [];
+  for (let i = 0; i <= N; i++) right.push(at(1, -1 + (2 * i) / N));
+  for (let i = 0; i <= N; i++) bottom.push(at(1 - (2 * i) / N, 1));
+  for (let i = 0; i <= N; i++) left.push(at(-1, 1 - (2 * i) / N));
+  const outline = new Path2D();
+  const edges = [side, right, bottom, left];
+  outline.moveTo(...side[N >> 1]);
+  for (let e = 0; e < 4; e++) {
+    const pts = edges[e], next = edges[(e + 1) % 4];
+    for (let i = (e === 0 ? (N >> 1) + 1 : 1); i < N; i++) outline.lineTo(...pts[i]);
+    outline.arcTo(...pts[N], ...next[1], R);
+  }
+  for (let i = 1; i <= (N >> 1); i++) outline.lineTo(...side[i]);
+  outline.closePath();
+
+  // The scanlines, bowing with the glass, inside the screen.
+  g.save();
+  g.clip(outline);
+  g.strokeStyle = 'rgba(0, 0, 0, 0.16)';
+  g.lineWidth = 1;
+  const rows = Math.ceil((y1 - y0) / 3);
+  g.beginPath();
+  for (let r = 0; r <= rows; r++) {
+    const v = -1 + (2 * r) / rows;
+    for (let i = 0; i <= 24; i++) {
+      const [x, y] = at(-1 + i / 12, v);
+      if (i) g.lineTo(x, y); else g.moveTo(x, y);
+    }
+  }
+  g.stroke();
+  // The glass darkens where it turns away from you, along its curve.
+  const shade = g.createRadialGradient(cx, cy, Math.min(hw, hh) * 0.75, cx, cy, Math.hypot(hw, hh));
+  shade.addColorStop(0, 'rgba(0, 0, 0, 0)');
+  shade.addColorStop(0.6, 'rgba(0, 0, 0, 0.28)');
+  shade.addColorStop(1, 'rgba(0, 0, 0, 0.8)');
+  g.fillStyle = shade;
+  g.fillRect(x0, y0, x1 - x0, y1 - y0);
+  g.restore();
+
+  // The bezel: everything outside the screen, dark plastic.
+  g.save();
+  const frame = new Path2D();
+  frame.rect(0, 0, W, H);
+  frame.addPath(outline);
+  const plastic = g.createLinearGradient(0, 0, 0, H);
+  plastic.addColorStop(0, '#151816');
+  plastic.addColorStop(1, '#090a09');
+  g.fillStyle = plastic;
+  g.fill(frame, 'evenodd');
+  // Its inner lip catches a little light at the top, and throws shadow in.
+  g.clip(outline);
+  g.shadowColor = 'rgba(0, 0, 0, 0.95)';
+  g.shadowBlur = 22;
+  g.lineWidth = 10;
+  g.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+  g.stroke(outline);
+  g.restore();
+  g.lineWidth = 1.2;
+  g.strokeStyle = 'rgba(160, 230, 240, 0.10)';
+  g.stroke(outline);
+
+  // The grid behind everything, bowing the same way.
+  const views = document.getElementById('views');
+  const vb = views.getBoundingClientRect();
+  const grid = document.createElement('canvas');
+  grid.width = Math.round(vb.width * dpr);
+  grid.height = Math.round(vb.height * dpr);
+  const gg = grid.getContext('2d');
+  gg.scale(dpr, dpr);
+  gg.translate(-vb.left, -vb.top);
+  gg.strokeStyle = 'rgba(70, 220, 240, 0.05)';
+  gg.lineWidth = 1;
+  gg.beginPath();
+  const step = 56;
+  for (let x = x0; x <= x1; x += step) {
+    const u = (x - cx) / hw;
+    for (let i = 0; i <= 24; i++) { const [px, py] = at(u, -1 + i / 12); if (i) gg.lineTo(px, py); else gg.moveTo(px, py); }
+  }
+  for (let y = y0; y <= y1; y += step) {
+    const v = (y - cy) / hh;
+    for (let i = 0; i <= 24; i++) { const [px, py] = at(-1 + i / 12, v); if (i) gg.lineTo(px, py); else gg.moveTo(px, py); }
+  }
+  gg.stroke();
+  views.style.backgroundImage = `url(${grid.toDataURL()})`;
+  views.style.backgroundSize = '100% 100%';
 }
-// Motion on curved glass: bending the picture again for every frame of a
-// moving tile or of an agent opening drops it to a third of the frame rate,
-// which is hard on the eyes. While something moves, the glass is flat; the
-// curve comes back once it stops. "Moves": an animation started from code
-// (Element.animate: opening, closing, tiles making room or landing), or a
-// tile or group held down for dragging.
-const motion = { count: 0, timer: 0 };
-function holdFlat(done) {
-  if (!crt.curved || document.documentElement.dataset.theme !== 'mother') return;
-  motion.count++;
-  clearTimeout(motion.timer);
-  document.getElementById('main')?.classList.remove('mu-curve');
-  Promise.resolve(done).catch(() => {}).then(() => {
-    motion.count = Math.max(0, motion.count - 1);
-    if (motion.count) return;
-    // A moment later: the next movement often follows right away.
-    motion.timer = setTimeout(() => {
-      if (!motion.count && crt.curved && document.documentElement.dataset.theme === 'mother') bendGlass();
-    }, 150);
-  });
+
+function clearGlass() {
+  document.getElementById('mu-glass')?.remove();
+  const views = document.getElementById('views');
+  if (views) { views.style.backgroundImage = ''; views.style.backgroundSize = ''; }
 }
-const animateElement = Element.prototype.animate;
-Element.prototype.animate = function (...args) {
-  const anim = animateElement.apply(this, args);
-  const main = document.getElementById('main');
-  if (main && (main.contains(this) || this.classList?.contains('tile-lid'))) holdFlat(anim.finished);
-  return anim;
-};
-document.addEventListener('pointerdown', e => {
-  if (e.button !== 0 || !e.target.closest?.('.hub-tile, .hub-section-head')) return;
-  holdFlat(new Promise(resolve => {
-    const up = () => {
-      window.removeEventListener('pointerup', up, true);
-      window.removeEventListener('pointercancel', up, true);
-      // The drop's own animations start after this; give them a frame to.
-      requestAnimationFrame(() => requestAnimationFrame(resolve));
-    };
-    window.addEventListener('pointerup', up, true);
-    window.addEventListener('pointercancel', up, true);
-  }));
-}, true);
 
 let resizeTimer = 0;
 function onResize() {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(bendGlass, 200);
+  resizeTimer = setTimeout(drawGlass, 150);
 }
 
 // The theme shows everything in capitals (text-transform), and a copy would

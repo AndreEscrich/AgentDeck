@@ -363,16 +363,17 @@ button:active { transform: none !important; filter: brightness(1.7); }
 .steps-spinner { animation: mu-blink 0.6s steps(1) infinite !important; border-radius: 0 !important; }
 
 /* ---------- Curved glass ----------
-   theme.js bends the picture with an SVG filter on #main (mu-curve). A
-   filter is drawn again whenever anything under it changes, so everything
-   that moves every frame steps instead, and the scan streak runs outside
-   it, on top. */
-#main.mu-curve { filter: url(#mu-barrel); }
-/* Large moving layers over the bent picture make it bend again every
-   frame (a third of the frame rate), so on curved glass the static holds
-   still and the rolling band is left out. */
-html.mu-curved #mu-noise { animation: none; }
-html.mu-curved #mu-roll { display: none; }
+   theme.js draws the glass once as a picture on top (#mu-glass): the
+   tube's bulging outline in its bezel, scanlines that bow with it, and its
+   shading; and the grid behind everything, bowing too. The app under it
+   stays flat, so nothing costs more while you type or things move. With
+   the glass on, it takes over the straight scanlines and the rounded rim. */
+#mu-glass { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 9999; }
+html.mu-curved body::before {
+  background: repeating-linear-gradient(90deg, rgba(255, 0, 0, 0.025) 0 1px, rgba(0, 255, 255, 0.015) 1px 2px, rgba(0, 0, 255, 0.025) 2px 3px) !important; }
+html.mu-curved body::after { box-shadow: none !important;
+  background: radial-gradient(ellipse 85% 18% at 50% 3%, rgba(210, 250, 255, 0.05), transparent 70%),
+    radial-gradient(ellipse 70% 45% at 28% 20%, rgba(255, 255, 255, 0.03), transparent 70%) !important; }
 #main::after { display: none; }
 #mu-streak { position: fixed; left: 14px; right: 14px; top: -10%; height: 3px; pointer-events: none; z-index: 9998;
   background: linear-gradient(90deg, transparent, rgba(140, 240, 255, 0.5) 15%, rgba(200, 250, 255, 0.85) 50%, rgba(140, 240, 255, 0.5) 85%, transparent);
@@ -415,3 +416,5 @@ body::before { animation: mu-crt-flicker 8s ease-in-out infinite; }
 /* The blinks are slower and do not go fully dark. */
 @keyframes mu-blink { 50% { opacity: 0.35; } }
 #mu-streak { opacity: 0.5; animation-duration: 14s; }
+/* The glass pulls the corners in: the content keeps clear of them. */
+html.mu-curved #main { padding: 10px 12px; box-sizing: border-box; }

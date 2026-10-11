@@ -345,7 +345,8 @@ class Hub {
     tile.style.setProperty('--phase', `-${(Math.random() * 9).toFixed(2)}s`);
     tile.style.setProperty('--tempo', (0.85 + Math.random() * 0.35).toFixed(3));
     tile.style.setProperty('--wave-delay', `-${(Math.random() * 30).toFixed(2)}s`);
-    tile.addEventListener('animationend', e => { if (e.animationName === 'spawn') tile.classList.remove('spawn'); });
+    // The retro theme draws new tiles with its own animation (mu-draw).
+    tile.addEventListener('animationend', e => { if (e.target === tile && ['spawn', 'mu-draw'].includes(e.animationName)) tile.classList.remove('spawn'); });
     // A click opens the agent, unless it was the end of dragging the tile.
     tile.onclick = e => {
       if (this.justDragged) return;
