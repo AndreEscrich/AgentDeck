@@ -113,8 +113,50 @@ function bendGlass() {
       </filter></svg>`;
     document.body.appendChild(holder.firstElementChild);
   }
-  main.classList.add('mu-curve');
+  if (!motion.count) main.classList.add('mu-curve');
 }
+// Motion on curved glass: bending the picture again for every frame of a
+// moving tile or of an agent opening drops it to a third of the frame rate,
+// which is hard on the eyes. While something moves, the glass is flat; the
+// curve comes back once it stops. "Moves": an animation started from code
+// (Element.animate: opening, closing, tiles making room or landing), or a
+// tile or group held down for dragging.
+const motion = { count: 0, timer: 0 };
+function holdFlat(done) {
+  if (!crt.curved || document.documentElement.dataset.theme !== 'mother') return;
+  motion.count++;
+  clearTimeout(motion.timer);
+  document.getElementById('main')?.classList.remove('mu-curve');
+  Promise.resolve(done).catch(() => {}).then(() => {
+    motion.count = Math.max(0, motion.count - 1);
+    if (motion.count) return;
+    // A moment later: the next movement often follows right away.
+    motion.timer = setTimeout(() => {
+      if (!motion.count && crt.curved && document.documentElement.dataset.theme === 'mother') bendGlass();
+    }, 150);
+  });
+}
+const animateElement = Element.prototype.animate;
+Element.prototype.animate = function (...args) {
+  const anim = animateElement.apply(this, args);
+  const main = document.getElementById('main');
+  if (main && (main.contains(this) || this.classList?.contains('tile-lid'))) holdFlat(anim.finished);
+  return anim;
+};
+document.addEventListener('pointerdown', e => {
+  if (e.button !== 0 || !e.target.closest?.('.hub-tile, .hub-section-head')) return;
+  holdFlat(new Promise(resolve => {
+    const up = () => {
+      window.removeEventListener('pointerup', up, true);
+      window.removeEventListener('pointercancel', up, true);
+      // The drop's own animations start after this; give them a frame to.
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    };
+    window.addEventListener('pointerup', up, true);
+    window.addEventListener('pointercancel', up, true);
+  }));
+}, true);
+
 let resizeTimer = 0;
 function onResize() {
   clearTimeout(resizeTimer);
