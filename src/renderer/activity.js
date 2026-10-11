@@ -1,12 +1,10 @@
-// Your Claude Code activity, shown in the Hub when no agents are there: a
-// calendar with one square per day (darker = more use), totals, streaks, your
-// most used model and your busiest day. The data comes from Claude Code's
-// session files (src/activity.js).
-
-// One amber hue from dark to bright (dark background: more = brighter).
-// Checked with the dataviz validator: even lightness steps, one hue, and the
-// weakest step at 2.1:1 against the card. Days without use are a neutral grey.
-const ACTIVITY_LEVELS = ['#2a241e', '#624619', '#8f651d', '#bd8522', '#f0b142'];
+// Where your tokens go: one chart of the tokens your Claude Code sessions
+// used per day, by category, drawn four ways (stacked bars, lines, stacked
+// area, or each category's share of the day), with a legend that is also the
+// breakdown (tokens, share, messages, tokens per message; click a row to hide
+// or show that category). Shown in the usage card, and in the Hub when no
+// agents are there. The data comes from Claude Code's session files
+// (src/activity.js), each API answer counted once.
 
 // Categories in the charts, in this fixed order (the dark steps of the
 // default categorical palette, checked with the dataviz validator against the
@@ -15,28 +13,29 @@ const ACTIVITY_LEVELS = ['#2a241e', '#624619', '#8f651d', '#bd8522', '#f0b142'];
 const CATEGORY_COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181'];
 const OTHER_COLOR = '#6f6a62';
 
-const ACTIVITY_METRICS = {
-  tokens: { label: 'Tokens', unit: 'tokens' },
-  prompts: { label: 'Messages', unit: 'messages' },
-  sessions: { label: 'Sessions', unit: 'sessions' },
-};
+const CHART_MODES = [
+  ['bars', 'Bars', 'Tokens per day, stacked by category'],
+  ['lines', 'Lines', 'One line per category'],
+  ['area', 'Area', 'Tokens over time, stacked by category'],
+  ['share', 'Share', 'Each category\'s share of the day'],
+];
 
 function shortNumber(n) {
   if (n >= 1e9) return `${(n / 1e9).toFixed(n >= 1e10 ? 0 : 1)}B`;
   if (n >= 1e6) return `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M`;
   if (n >= 1e3) return `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}k`;
-  return String(n);
+  return String(Math.round(n));
 }
 
 function dayKey(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function modelName(id) {
-  // claude-opus-5-5 -> Opus 5.5, claude-sonnet-4-6 -> Sonnet 4.6
-  const m = id.match(/claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-|$)/);
-  if (!m) return id;
-  return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? '.' + m[3] : ''}`;
+const ACT_SVG_NS = 'http://www.w3.org/2000/svg';
+function actSvg(tag, attrs = {}) {
+  const node = document.createElementNS(ACT_SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  return node;
 }
 
 class ActivityPanel {
@@ -44,11 +43,16 @@ class ActivityPanel {
   constructor(box, { compact = false } = {}) {
     this.box = box;
     this.compact = compact;
-    this.metric = 'tokens';
-    this.asTable = false;
-    this.range = 30;   // days in the charts
+    this.range = 30;          // days in the chart
+    this.mode = 'bars';       // see CHART_MODES
+    this.hidden = new Set();  // categories you hid by clicking their row
     this.data = null;
     this.loadedAt = 0;
+    try {
+      const saved = JSON.parse(localStorage.getItem('activityView') || '{}');
+      if ([7, 30, 90].includes(saved.range)) this.range = saved.range;
+      if (CHART_MODES.some(([m]) => m === saved.mode)) this.mode = saved.mode;
+    } catch { /* defaults */ }
   }
 
   // Reads the numbers (quick after the first time) and draws the view.
@@ -68,91 +72,9 @@ class ActivityPanel {
     this.render();
   }
 
-  stats() {
-    const days = this.data.days;
-    const byDate = new Map(days.map(d => [d.date, d]));
-    const active = d => d && (d.prompts > 0 || d.tokens > 0);
-    // Streaks: days in a row with activity. Today without activity yet does
-    // not end the current streak.
-    const today = new Date();
-    let current = 0;
-    const cursor = new Date(today);
-    if (!active(byDate.get(dayKey(cursor)))) cursor.setDate(cursor.getDate() - 1);
-    while (active(byDate.get(dayKey(cursor)))) { current++; cursor.setDate(cursor.getDate() - 1); }
-    let longest = 0;
-    let run = 0;
-    let prev = null;
-    for (const d of days.filter(active)) {
-      const date = new Date(d.date + 'T12:00:00');
-      run = prev && Math.round((date - prev) / 86400000) === 1 ? run + 1 : 1;
-      longest = Math.max(longest, run);
-      prev = date;
-    }
-    const sum = k => days.reduce((n, d) => n + d[k], 0);
-    const topModel = Object.entries(this.data.models).sort((a, b) => b[1] - a[1])[0];
-    const busiest = [...days].sort((a, b) => b[this.metric] - a[this.metric])[0];
-    const hours = this.data.hours || [];
-    const peakHour = hours.indexOf(Math.max(...hours));
-    return {
-      tokens: sum('tokens'), output: sum('output'), prompts: sum('prompts'),
-      sessions: sum('sessions'), activeDays: days.filter(active).length,
-      current, longest, topModel: topModel ? modelName(topModel[0]) : '—', busiest, peakHour,
-    };
+  remember() {
+    try { localStorage.setItem('activityView', JSON.stringify({ range: this.range, mode: this.mode })); } catch { /* not important */ }
   }
-
-  render() {
-    const box = this.box;
-    box.textContent = '';
-    if (!this.data?.days?.length) return;
-    const s = this.stats();
-
-    const head = el('div', 'act-head');
-    head.appendChild(el('div', 'act-title', 'Your activity'));
-    const seg = el('div', 'act-metrics');
-    for (const [key, m] of Object.entries(ACTIVITY_METRICS)) {
-      const b = el('button', key === this.metric ? 'on' : '', m.label);
-      b.type = 'button';
-      b.onclick = () => { window.uiSound?.('select'); this.metric = key; this.render(); };
-      seg.appendChild(b);
-    }
-    const tableBtn = el('button', 'act-table-btn' + (this.asTable ? ' on' : ''), this.asTable ? 'Calendar' : 'Table');
-    tableBtn.type = 'button';
-    tableBtn.title = this.asTable ? 'Show the calendar' : 'Show the days as a table';
-    tableBtn.onclick = () => { window.uiSound?.('select'); this.asTable = !this.asTable; this.render(); };
-    head.append(seg, tableBtn);
-    box.appendChild(head);
-
-    const tiles = el('div', 'act-tiles');
-    const tile = (value, label, sub) => {
-      const t = el('div', 'act-tile');
-      t.append(el('div', 'act-value', value), el('div', 'act-label', label));
-      if (sub) t.appendChild(el('div', 'act-sub', sub));
-      tiles.appendChild(t);
-    };
-    tile(shortNumber(s.tokens), 'Tokens', `${shortNumber(s.output)} written by Claude`);
-    tile(s.prompts.toLocaleString(), 'Messages', 'that you sent');
-    tile(s.sessions.toLocaleString(), 'Sessions');
-    tile(String(s.activeDays), 'Active days');
-    tile(`${s.current} ${s.current === 1 ? 'day' : 'days'}`, 'Current streak', `Longest: ${s.longest} ${s.longest === 1 ? 'day' : 'days'}`);
-    tile(s.topModel, 'Most used model');
-    box.appendChild(tiles);
-
-    box.appendChild(this.asTable ? this.table() : this.calendar());
-    if (this.data.sessions) box.appendChild(this.charts());
-
-    const notes = el('div', 'act-notes');
-    if (s.busiest) {
-      const d = new Date(s.busiest.date + 'T12:00:00');
-      notes.appendChild(el('span', null, `Busiest day: ${d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })} · ${shortNumber(s.busiest[this.metric])} ${ACTIVITY_METRICS[this.metric].unit}`));
-    }
-    if (s.peakHour >= 0 && (this.data.hours || [])[s.peakHour] > 0) {
-      notes.appendChild(el('span', null, `Most messages between ${String(s.peakHour).padStart(2, '0')}:00 and ${String((s.peakHour + 1) % 24).padStart(2, '0')}:00`));
-    }
-    notes.appendChild(el('span', 'act-source', 'From Claude Code sessions on this computer'));
-    box.appendChild(notes);
-  }
-
-  // ---------- tokens over time and by category ----------
 
   // Which category a session belongs to: { key, name } from the app (see
   // ActivityPanel.categoryOf in app.js), or one of the two kinds without one.
@@ -174,21 +96,9 @@ class ActivityPanel {
     return new Map(ranked.slice(0, CATEGORY_COLORS.length).map((k, i) => [k, CATEGORY_COLORS[i]]));
   }
 
-  charts() {
-    const wrap = el('div', 'act-charts');
-    const head = el('div', 'act-head');
-    head.appendChild(el('div', 'act-title', 'Where the tokens go'));
-    const seg = el('div', 'act-metrics');
-    for (const n of [7, 30, 90]) {
-      const b = el('button', n === this.range ? 'on' : '', `${n} days`);
-      b.type = 'button';
-      b.onclick = () => { window.uiSound?.('select'); this.range = n; this.render(); };
-      seg.appendChild(b);
-    }
-    head.appendChild(seg);
-    wrap.appendChild(head);
-
-    // The days of the range, oldest first.
+  // The numbers for the chosen range: the days, each series' tokens per day,
+  // and each category's totals.
+  model() {
     const dates = [];
     const today = new Date();
     today.setHours(12, 0, 0, 0);
@@ -199,231 +109,239 @@ class ActivityPanel {
     }
     const inRange = new Set(dates);
     const colors = this.categoryColors();
-    const series = key => (colors.has(key) ? key : 'other');
+    const seriesOf = key => (colors.has(key) ? key : 'other');
     const names = new Map([['other', 'Other']]);
     const perDay = new Map(dates.map(d => [d, new Map()]));
-    const cats = new Map();   // category key -> { name, tokens, prompts, sessions }
+    const cats = new Map();
     for (const [id, s] of Object.entries(this.data.sessions || {})) {
       const c = this.categoryFor(id, s);
       names.set(c.key, c.name);
-      let tokens = 0, prompts = 0;
+      let tokens = 0;
+      let prompts = 0;
       for (const [date, t] of Object.entries(s.days || {})) {
         if (!inRange.has(date)) continue;
         tokens += t;
         const day = perDay.get(date);
-        day.set(series(c.key), (day.get(series(c.key)) || 0) + t);
+        day.set(seriesOf(c.key), (day.get(seriesOf(c.key)) || 0) + t);
       }
       for (const [date, n] of Object.entries(s.promptDays || {})) if (inRange.has(date)) prompts += n;
       if (!tokens && !prompts) continue;
-      const cat = cats.get(c.key) || { key: c.key, name: c.name, tokens: 0, prompts: 0, sessions: 0 };
+      const cat = cats.get(c.key) || { key: c.key, name: c.name, series: seriesOf(c.key), tokens: 0, prompts: 0, sessions: 0 };
       cat.tokens += tokens;
       cat.prompts += prompts;
       cat.sessions++;
       cats.set(c.key, cat);
     }
-    if (!cats.size) {
-      wrap.appendChild(el('div', 'act-empty', 'No tokens used in this time.'));
-      return wrap;
-    }
-    const color = key => colors.get(key) || OTHER_COLOR;
-    // Stack order: the colored categories in their color order, Other last (on top).
-    const order = [...colors.keys(), 'other'].filter(k => dates.some(d => perDay.get(d).get(k)));
+    const series = [...colors.keys(), 'other'].filter(k => dates.some(d => perDay.get(d).get(k)));
+    const color = k => colors.get(k) || OTHER_COLOR;
+    return { dates, perDay, series, names, color, cats: [...cats.values()].sort((a, b) => b.tokens - a.tokens) };
+  }
 
-    // Legend: every series in the chart, named (identity is never color alone).
-    const legend = el('div', 'act-chart-legend');
-    for (const k of order) {
-      const item = el('span', 'act-legend-item');
-      const sw = el('span', 'act-swatch');
-      sw.style.background = color(k);
-      item.append(sw, el('span', null, names.get(k)));
-      legend.appendChild(item);
+  render() {
+    const box = this.box;
+    box.textContent = '';
+    if (!this.data?.sessions) return;
+    const m = this.model();
+
+    // Title, range and how to draw it.
+    const head = el('div', 'act-head');
+    head.appendChild(el('div', 'act-title', 'Where the tokens go'));
+    const seg = (options, current, pick) => {
+      const s = el('div', 'act-metrics');
+      for (const [value, label, title] of options) {
+        const b = el('button', value === current ? 'on' : '', label);
+        b.type = 'button';
+        if (title) b.title = title;
+        b.onclick = () => { window.uiSound?.('select'); pick(value); this.remember(); this.render(); };
+        s.appendChild(b);
+      }
+      return s;
+    };
+    head.append(
+      seg(CHART_MODES, this.mode, v => { this.mode = v; }),
+      seg([[7, '7 days'], [30, '30 days'], [90, '90 days']], this.range, v => { this.range = v; }),
+    );
+    box.appendChild(head);
+
+    if (!m.cats.length) {
+      box.appendChild(el('div', 'act-empty', 'No tokens used in this time.'));
+      return;
     }
 
-    // 1. Tokens per day, stacked by category.
-    const chart = el('div', 'act-chart');
-    chart.appendChild(el('div', 'act-chart-title', 'Tokens per day'));
-    chart.appendChild(legend);
-    const max = Math.max(1, ...dates.map(d => [...perDay.get(d).values()].reduce((a, b) => a + b, 0)));
-    const plot = el('div', 'act-plot');
+    // The headline: tokens in the range, a day on average, and against the
+    // range before it.
+    const total = m.cats.reduce((n, c) => n + c.tokens, 0);
+    const prev = this.previousTotal();
+    const headline = el('div', 'act-headline');
+    const change = prev ? Math.round(((total - prev) / prev) * 100) : null;
+    headline.append(
+      el('span', 'act-big', shortNumber(total)),
+      el('span', 'act-big-label', `tokens in ${this.range} days`),
+      el('span', 'act-big-sub', `${shortNumber(total / this.range)} a day on average`),
+    );
+    // Against the range before it: a percentage, or how many times as much
+    // when that was little.
+    if (change != null) {
+      const text = change > 300 ? `▲ ${Math.round(total / prev)}× the ${this.range} days before` : `${change > 0 ? '▲' : '▼'} ${Math.abs(change)}% vs the ${this.range} days before`;
+      headline.appendChild(el('span', `act-change ${change > 0 ? 'up' : 'down'}`, text));
+    }
+    box.appendChild(headline);
+
+    box.appendChild(this.chart(m));
+    box.appendChild(this.legend(m, total));
+  }
+
+  // Tokens in the same number of days before the chosen range.
+  previousTotal() {
+    const start = new Date();
+    start.setHours(12, 0, 0, 0);
+    start.setDate(start.getDate() - this.range);
+    const keys = new Set();
+    for (let i = 0; i < this.range; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() - i);
+      keys.add(dayKey(d));
+    }
+    let n = 0;
+    for (const s of Object.values(this.data.sessions || {})) for (const [date, t] of Object.entries(s.days || {})) if (keys.has(date)) n += t;
+    return n;
+  }
+
+  // The main chart, drawn the chosen way. A tooltip per day lists every
+  // category's tokens, in all four modes.
+  chart(m) {
+    const wrap = el('div', 'act-chart');
+    const shown = m.series.filter(k => !this.hidden.has(k));
+    const value = (date, k) => m.perDay.get(date).get(k) || 0;
+    const dayTotal = date => shown.reduce((n, k) => n + value(date, k), 0);
+    const W = 640;
+    const H = this.compact ? 150 : 200;
+    const padL = 44;
+    const padB = 20;
+    const plotW = W - padL - 6;
+    const plotH = H - padB - 8;
+    const n = m.dates.length;
+    const share = this.mode === 'share';
+    const max = share ? 1 : Math.max(1, ...(this.mode === 'lines' ? m.dates.flatMap(d => shown.map(k => value(d, k))) : m.dates.map(dayTotal)));
+    const y = v => 8 + plotH - (v / max) * plotH;
+    const svg = actSvg('svg', { viewBox: `0 0 ${W} ${H}`, class: 'act-svg', role: 'img', 'aria-label': `Tokens per day, ${CHART_MODES.find(c => c[0] === this.mode)[2].toLowerCase()}` });
+
     // Three recessive gridlines with their values.
-    for (const f of [1, 0.5]) {
-      const line = el('div', 'act-gridline');
-      line.style.bottom = `${f * 100}%`;
-      line.appendChild(el('span', null, shortNumber(max * f)));
-      plot.appendChild(line);
+    for (const f of [0, 0.5, 1]) {
+      const yy = y(max * f);
+      svg.appendChild(actSvg('line', { x1: padL, x2: W - 6, y1: yy, y2: yy, class: f ? 'act-grid' : 'act-axis' }));
+      const label = actSvg('text', { x: padL - 6, y: yy + 3.5, class: 'act-ylabel', 'text-anchor': 'end' });
+      label.textContent = share ? `${Math.round(f * 100)}%` : shortNumber(max * f);
+      svg.appendChild(label);
     }
-    const cols = el('div', 'act-cols');
-    const tip = el('div', 'act-tip hidden');
-    dates.forEach((date, i) => {
-      const day = perDay.get(date);
-      const total = [...day.values()].reduce((a, b) => a + b, 0);
-      const col = el('div', 'act-col');
-      for (const k of order) {
-        const v = day.get(k);
-        if (!v) continue;
-        const segm = el('span');
-        segm.style.height = `${(v / max) * 100}%`;
-        segm.style.background = color(k);
-        col.appendChild(segm);
+    // Dates under the plot: the first, the last and a few between.
+    const every = Math.ceil(n / 6);
+    m.dates.forEach((date, i) => {
+      if (!(i === n - 1 || (i % every === 0 && n - 1 - i >= every / 2))) return;
+      const t = actSvg('text', { x: padL + (i + 0.5) * (plotW / n), y: H - 4, class: 'act-xlabel', 'text-anchor': 'middle' });
+      t.textContent = new Date(date + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+      svg.appendChild(t);
+    });
+
+    const slot = plotW / n;
+    const cx = i => padL + (i + 0.5) * slot;
+    if (this.mode === 'bars' || share) {
+      // Stacked columns (share: each day scaled to 100%), 2px apart.
+      const bw = Math.max(2, slot - 2);
+      m.dates.forEach((date, i) => {
+        const tot = dayTotal(date);
+        let base = 0;
+        shown.forEach((k, si) => {
+          const v = value(date, k);
+          if (!v) return;
+          const part = share ? v / tot : v;
+          const top = y(base + part);
+          const h = Math.max(0.5, y(base) - top - (si ? 1 : 0));
+          const last = !shown.slice(si + 1).some(k2 => value(date, k2));
+          svg.appendChild(actSvg('rect', { x: padL + i * slot + 1, y: top, width: bw, height: h, rx: last ? 2.5 : 0, fill: m.color(k) }));
+          base += part;
+        });
+      });
+    } else if (this.mode === 'lines') {
+      for (const k of shown) {
+        const pts = m.dates.map((d, i) => `${cx(i)},${y(value(d, k))}`).join(' ');
+        svg.appendChild(actSvg('polyline', { points: pts, fill: 'none', stroke: m.color(k), 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
       }
+    } else {
+      // Stacked area: each band between the categories below it and itself.
+      const below = m.dates.map(() => 0);
+      for (const k of shown) {
+        const top = m.dates.map((d, i) => below[i] + value(d, k));
+        const upper = top.map((v, i) => `${cx(i)},${y(v)}`);
+        const lower = below.map((v, i) => `${cx(i)},${y(v)}`).reverse();
+        svg.appendChild(actSvg('polygon', { points: [...upper, ...lower].join(' '), fill: m.color(k), 'fill-opacity': 0.85, stroke: '#1e1913', 'stroke-width': 1 }));
+        top.forEach((v, i) => { below[i] = v; });
+      }
+    }
+
+    // Hover: a guide line and a tooltip with the day's numbers.
+    const guide = actSvg('line', { y1: 8, y2: 8 + plotH, class: 'act-guide' });
+    guide.style.display = 'none';
+    svg.appendChild(guide);
+    const tip = el('div', 'act-tip hidden');
+    const hit = actSvg('rect', { x: padL, y: 0, width: plotW, height: H - padB, fill: 'transparent' });
+    hit.addEventListener('pointermove', e => {
+      const r = svg.getBoundingClientRect();
+      const x = ((e.clientX - r.left) / r.width) * W;
+      const i = Math.max(0, Math.min(n - 1, Math.floor((x - padL) / slot)));
+      const date = m.dates[i];
+      guide.setAttribute('x1', cx(i));
+      guide.setAttribute('x2', cx(i));
+      guide.style.display = '';
+      const tot = dayTotal(date);
       const label = new Date(date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
-      col.setAttribute('aria-label', `${label}: ${shortNumber(total)} tokens`);
-      col.onmouseenter = () => {
-        tip.textContent = `${label} · ${shortNumber(total)} tokens`
-          + order.filter(k => day.get(k)).reverse().map(k => `\n${names.get(k)}: ${shortNumber(day.get(k))}`).join('');
-        tip.classList.remove('hidden');
-        const r = col.getBoundingClientRect();
-        const b = this.box.getBoundingClientRect();
-        tip.style.left = `${r.left - b.left + r.width / 2}px`;
-        tip.style.top = `${r.top - b.top + r.height - (total / max) * r.height}px`;
-      };
-      col.onmouseleave = () => tip.classList.add('hidden');
-      cols.appendChild(col);
+      tip.textContent = `${label} · ${shortNumber(tot)} tokens`
+        + [...shown].reverse().filter(k => value(date, k)).map(k => `\n${m.names.get(k)}: ${shortNumber(value(date, k))}${tot ? ` (${Math.round((value(date, k) / tot) * 100)}%)` : ''}`).join('');
+      tip.classList.remove('hidden');
+      const wr = wrap.getBoundingClientRect();
+      tip.style.left = `${e.clientX - wr.left}px`;
+      tip.style.top = `${(8 / H) * r.height + r.top - wr.top}px`;
     });
-    plot.appendChild(cols);
-    chart.appendChild(plot);
-    // A few dates under the bars: the first, the last and some between.
-    const xs = el('div', 'act-xlabels');
-    const every = Math.ceil(dates.length / 6);
-    dates.forEach((date, i) => {
-      const show = i === dates.length - 1 || (i % every === 0 && dates.length - 1 - i >= every / 2);
-      xs.appendChild(el('span', null, show ? new Date(date + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : ''));
-    });
-    chart.appendChild(xs);
-    wrap.appendChild(chart);
-    this.box.appendChild(tip);
+    hit.addEventListener('pointerleave', () => { guide.style.display = 'none'; tip.classList.add('hidden'); });
+    svg.appendChild(hit);
+    wrap.append(svg, tip);
+    return wrap;
+  }
 
-    // 2. Tokens by category, and per message you sent: what kind of work costs most.
-    const byCat = el('div', 'act-chart');
-    byCat.appendChild(el('div', 'act-chart-title', 'By category'));
-    const rows = [...cats.values()].sort((a, b) => b.tokens - a.tokens);
-    const top = Math.max(1, rows[0].tokens);
-    const list = el('div', 'act-cat-list');
-    for (const c of rows.slice(0, 8)) {
-      const row = el('div', 'act-cat-row');
+  // The legend and the breakdown in one: per category its colour, name,
+  // tokens and share in the range, messages you sent and tokens per message.
+  // Clicking a row hides or shows its series in the chart.
+  legend(m, total) {
+    const table = el('div', 'act-legend-table');
+    const head = el('div', 'act-lt-row act-lt-head');
+    head.append(el('span'), el('span', null, 'Category'), el('span', null, 'Tokens'), el('span', null, 'Share'), el('span', null, 'Messages'), el('span', null, 'Per message'));
+    table.appendChild(head);
+    for (const c of m.cats.slice(0, 10)) {
+      const row = el('button', 'act-lt-row' + (this.hidden.has(c.series) ? ' off' : ''));
+      row.type = 'button';
+      row.title = this.hidden.has(c.series) ? 'Show in the chart' : 'Hide from the chart';
       const sw = el('span', 'act-swatch');
-      sw.style.background = color(c.key);
-      const name = el('span', 'act-cat-name', c.name);
-      const bar = el('div', 'act-cat-bar');
+      sw.style.background = m.color(c.series);
+      const pct = total ? (c.tokens / total) * 100 : 0;
+      const shareCell = el('span', 'act-lt-share');
+      const bar = el('span', 'act-lt-bar');
       const fill = el('span');
-      fill.style.width = `${Math.max(0.5, (c.tokens / top) * 100)}%`;
-      fill.style.background = color(c.key);
+      fill.style.width = `${pct}%`;
+      fill.style.background = m.color(c.series);
       bar.appendChild(fill);
-      const per = c.prompts ? `${shortNumber(c.tokens / c.prompts)} per message` : 'no messages';
-      const value = el('span', 'act-cat-value', shortNumber(c.tokens));
-      const sub = el('span', 'act-cat-sub', `${c.prompts} ${c.prompts === 1 ? 'message' : 'messages'} · ${per}`);
-      row.title = `${c.name}: ${c.tokens.toLocaleString()} tokens in ${c.sessions} ${c.sessions === 1 ? 'session' : 'sessions'}, ${c.prompts} messages you sent`;
-      row.append(sw, name, bar, value, sub);
-      list.appendChild(row);
+      shareCell.append(bar, el('span', null, `${Math.round(pct)}%`));
+      row.append(sw, el('span', 'act-lt-name', c.name), el('span', 'act-lt-num', shortNumber(c.tokens)), shareCell,
+        el('span', 'act-lt-num', String(c.prompts)), el('span', 'act-lt-num', c.prompts ? shortNumber(c.tokens / c.prompts) : '—'));
+      row.onclick = () => {
+        if (this.hidden.has(c.series)) this.hidden.delete(c.series);
+        else this.hidden.add(c.series);
+        window.uiSound?.('select');
+        this.render();
+      };
+      table.appendChild(row);
     }
-    if (rows.length > 8) list.appendChild(el('div', 'act-cat-more', `and ${rows.length - 8} more`));
-    byCat.appendChild(list);
-    wrap.appendChild(byCat);
-    return wrap;
-  }
-
-  // Levels 1-4 by quartile of the days with any value, so one huge day does
-  // not wash out the rest.
-  levelOf(values) {
-    const sorted = values.filter(v => v > 0).sort((a, b) => a - b);
-    const q = p => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))] || 0;
-    const cuts = [q(0.25), q(0.5), q(0.75)];
-    return v => (v <= 0 ? 0 : v <= cuts[0] ? 1 : v <= cuts[1] ? 2 : v <= cuts[2] ? 3 : 4);
-  }
-
-  calendar() {
-    const metric = this.metric;
-    const byDate = new Map(this.data.days.map(d => [d.date, d]));
-    const level = this.levelOf(this.data.days.map(d => d[metric]));
-
-    // Weeks run Monday to Sunday. Show at least 26 weeks, at most a year,
-    // starting at the week of your first session.
-    const today = new Date();
-    today.setHours(12, 0, 0, 0);
-    const monday = d => { const x = new Date(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
-    const first = new Date(this.data.days[0].date + 'T12:00:00');
-    const weeksSinceFirst = Math.ceil((monday(today) - monday(first)) / (7 * 86400000)) + 1;
-    const weeks = Math.min(53, Math.max(26, weeksSinceFirst));
-    const start = monday(today);
-    start.setDate(start.getDate() - 7 * (weeks - 1));
-
-    const wrap = el('div', 'act-calendar');
-    const months = el('div', 'act-months');
-    const body = el('div', 'act-body');
-    const labels = el('div', 'act-weekdays');
-    ['Mon', '', 'Wed', '', 'Fri', '', ''].forEach(t => labels.appendChild(el('span', null, t)));
-    const grid = el('div', 'act-grid');
-    grid.style.gridTemplateColumns = `repeat(${weeks}, var(--cell))`;
-    months.style.gridTemplateColumns = `repeat(${weeks}, var(--cell))`;
-    const tip = el('div', 'act-tip hidden');
-
-    let lastMonth = -1;
-    for (let w = 0; w < weeks; w++) {
-      const weekStart = new Date(start);
-      weekStart.setDate(start.getDate() + 7 * w);
-      const m = el('span');
-      if (weekStart.getMonth() !== lastMonth) {
-        m.textContent = weekStart.toLocaleDateString(undefined, { month: 'short' });
-        lastMonth = weekStart.getMonth();
-      }
-      months.appendChild(m);
-      for (let i = 0; i < 7; i++) {
-        const date = new Date(weekStart);
-        date.setDate(weekStart.getDate() + i);
-        const cell = el('span', 'act-cell');
-        cell.style.gridColumn = String(w + 1);
-        cell.style.gridRow = String(i + 1);
-        if (date > today) { cell.classList.add('future'); grid.appendChild(cell); continue; }
-        const d = byDate.get(dayKey(date));
-        const lv = level(d ? d[metric] : 0);
-        cell.style.background = ACTIVITY_LEVELS[lv];
-        const label = `${date.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}\n`
-          + (d ? `${shortNumber(d.tokens)} tokens · ${d.prompts} messages · ${d.sessions} sessions` : 'No activity');
-        cell.setAttribute('aria-label', label.replace('\n', ': '));
-        cell.onmouseenter = () => {
-          tip.textContent = label;
-          tip.classList.remove('hidden');
-          const r = cell.getBoundingClientRect();
-          const box = this.box.getBoundingClientRect();
-          tip.style.left = `${r.left - box.left + r.width / 2}px`;
-          tip.style.top = `${r.top - box.top}px`;
-        };
-        cell.onmouseleave = () => tip.classList.add('hidden');
-        grid.appendChild(cell);
-      }
-    }
-    body.append(labels, grid);
-
-    const legend = el('div', 'act-legend');
-    legend.appendChild(el('span', null, 'Less'));
-    for (const c of ACTIVITY_LEVELS) { const sw = el('span', 'act-swatch'); sw.style.background = c; legend.appendChild(sw); }
-    legend.appendChild(el('span', null, 'More'));
-
-    // The tip belongs to the whole view: the calendar scrolls sideways, which
-    // would cut off a tip that sticks out above it.
-    wrap.append(months, body, legend);
-    this.box.appendChild(tip);
-    // When the calendar is wider than its box, start at the newest weeks.
-    requestAnimationFrame(() => { wrap.scrollLeft = wrap.scrollWidth; });
-    return wrap;
-  }
-
-  // The same numbers as a table, newest day first (only days with activity).
-  table() {
-    const wrap = el('div', 'act-table-wrap');
-    const t = document.createElement('table');
-    t.className = 'act-table';
-    t.innerHTML = '<thead><tr><th>Day</th><th>Tokens</th><th>Messages</th><th>Sessions</th></tr></thead>';
-    const tb = document.createElement('tbody');
-    for (const d of [...this.data.days].reverse()) {
-      const tr = document.createElement('tr');
-      const date = new Date(d.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-      for (const v of [date, shortNumber(d.tokens), d.prompts, d.sessions]) tr.appendChild(el('td', null, String(v)));
-      tb.appendChild(tr);
-    }
-    t.appendChild(tb);
-    wrap.appendChild(t);
-    return wrap;
+    if (m.cats.length > 10) table.appendChild(el('div', 'act-empty', `and ${m.cats.length - 10} more categories`));
+    return table;
   }
 }
 

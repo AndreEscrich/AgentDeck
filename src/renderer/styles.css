@@ -1839,3 +1839,33 @@ details.other-files details.change-file > summary { padding-left: 12px; }
 .hub-tile.authwait { --c1: #a99bf7; --c2: #5b4bb8; --glow: rgba(140, 120, 240, 0.25); --wave-speed: 14s; }
 .hub-tile.authwait .tank-icon { transform: scale(1); font-size: clamp(14px, 16cqw, 34px); }
 .hub-tile.authwait .hub-status { color: #b9adf7; }
+
+/* ---------- Where the tokens go (activity.js) ---------- */
+.act-head { flex-wrap: wrap; }
+.act-headline { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; margin-top: 2px; }
+.act-big { font-size: 26px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.act-big-label { font-size: 13px; color: var(--text-dim); }
+.act-big-sub { font-size: 12px; color: var(--text-faint); }
+.act-change { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 99px; background: rgba(255, 236, 210, 0.06); }
+.act-change.up { color: #e8a36b; }
+.act-change.down { color: #7fcf95; }
+.act-chart { position: relative; }
+.act-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.act-svg .act-grid { stroke: rgba(255, 236, 210, 0.07); stroke-width: 1; }
+.act-svg .act-axis { stroke: rgba(255, 236, 210, 0.18); stroke-width: 1; }
+.act-svg .act-ylabel, .act-svg .act-xlabel { fill: var(--text-faint); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.act-svg .act-guide { stroke: rgba(255, 236, 210, 0.35); stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
+.act-chart .act-tip { z-index: 5; }
+.act-legend-table { display: flex; flex-direction: column; gap: 2px; }
+.act-lt-row { display: grid; grid-template-columns: 12px minmax(90px, 1fr) 64px minmax(90px, 140px) 70px 84px; align-items: center; gap: 10px;
+  padding: 5px 8px; border-radius: 8px; border: none; background: transparent; color: var(--text); font: inherit; font-size: 12.5px; text-align: left; }
+button.act-lt-row { cursor: pointer; }
+button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
+.act-lt-row.off { opacity: 0.4; }
+.act-lt-head { font-size: 11px; color: var(--text-faint); padding-top: 0; padding-bottom: 2px; }
+.act-lt-head span:nth-child(n+3) { text-align: right; }
+.act-lt-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act-lt-num { text-align: right; font-variant-numeric: tabular-nums; }
+.act-lt-share { display: flex; align-items: center; gap: 6px; justify-content: flex-end; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.act-lt-bar { flex: 1; height: 6px; border-radius: 3px; background: rgba(255, 236, 210, 0.06); overflow: hidden; }
+.act-lt-bar span { display: block; height: 100%; border-radius: 3px; }
