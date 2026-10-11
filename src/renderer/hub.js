@@ -459,7 +459,8 @@ class Hub {
     if (this.selected.size !== before) this.onSelect?.([...this.selected]);
     // While the app is minimized (or replaying), the tiles keep the
     // state you last saw; thaw() catches them up.
-    if (this.frozen || this.replaying || this.drag) return;
+    // While a chat shrinks back into its tile (returnTo), the tiles hold still.
+    if (this.frozen || this.replaying || this.drag || this.holding) return;
     this.render(agents, currentId, groups);
   }
 
@@ -1154,7 +1155,10 @@ class Hub {
   // follow-up message to an agent.
   wake(agentId) {
     const entry = this.tiles.get(agentId);
-    if (entry) this.replay(entry.el, 'wake', 900);
+    if (!entry) return;
+    // The hop replaces the small wobble of the state change.
+    entry.el.classList.remove('wob');
+    this.replay(entry.el, 'wake', 900);
   }
 
   // A copy of a tile, fixed on top of everything, for the animations below.
@@ -1252,10 +1256,16 @@ class Hub {
   // fits inside it, then the tile's tank and text come back, and the Hub
   // fades in underneath. `view` is the chat that was on screen. Call
   // it right after the Hub is shown again.
-  async returnTo(agentId, view) {
+  //
+  // Until the tile is fully back, the tiles do not change: a message you just
+  // sent changes the agent to "working", and its tile would wobble and refill
+  // under the shrinking chat. onSettled runs once it is over, right before the
+  // tiles catch up.
+  async returnTo(agentId, view, { onSettled } = {}) {
     const entry = this.tiles.get(agentId);
     const area = document.getElementById('views');
-    if (!entry || !area || this.opening) return;
+    if (!entry || !area || this.opening) { onSettled?.(); return; }
+    this.holding = true;
     entry.el.scrollIntoView({ block: 'nearest' });
     const full = area.getBoundingClientRect();
     const home = entry.el.getBoundingClientRect();
@@ -1300,7 +1310,12 @@ class Hub {
     entry.el.classList.remove('opening');
     entry.el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: 'ease-out' });
     copy.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 320, easing: 'ease-in', fill: 'forwards' })
-      .finished.catch(() => {}).then(() => copy.remove());
+      .finished.catch(() => {}).then(() => {
+        copy.remove();
+        this.holding = false;
+        onSettled?.();
+        if (this.latest) this.update(...this.latest);
+      });
     this.opening = false;
   }
 
