@@ -1834,3 +1834,8 @@ details.other-files details.change-file > summary { padding-left: 12px; }
 .hub-section.loose .hub-grid { gap: 22px; }
 .hub-section-hint { display: none; font-size: 11.5px; font-style: italic; color: var(--text-faint); }
 .hub-section.loose .hub-section-hint { display: inline; }
+
+/* Signed out: the agent waits for you to sign in again */
+.hub-tile.authwait { --c1: #a99bf7; --c2: #5b4bb8; --glow: rgba(140, 120, 240, 0.25); --wave-speed: 14s; }
+.hub-tile.authwait .tank-icon { transform: scale(1); font-size: clamp(14px, 16cqw, 34px); }
+.hub-tile.authwait .hub-status { color: #b9adf7; }

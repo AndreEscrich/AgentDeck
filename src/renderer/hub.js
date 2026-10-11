@@ -560,11 +560,15 @@ class Hub {
       // Waiting for the usage limit to reset (limitOf in app.js): a clock, and when it continues.
       const limited = agent.limited || null;
       tile.classList.toggle('limited', !!limited);
-      parts.icon.textContent = limited ? '⏳' : { idle: '✓', error: '✕' }[agent.status] || '';
+      // Signed out: waits for you to sign in again, then continues.
+      const authWait = !limited && !!agent.authWait;
+      tile.classList.toggle('authwait', authWait);
+      parts.icon.textContent = limited ? '⏳' : authWait ? '🔑' : { idle: '✓', error: '✕' }[agent.status] || '';
       // After a follow-up message, the tile shows that message (summarized).
       parts.title.textContent = agent.latestTitle || agent.title;
       const busy = ['working', 'starting', 'stuck', 'waiting'].includes(agent.status);
       const stepText = limited ? 'Waiting for the usage limit to reset'
+        : authWait ? 'Waiting for you to sign in to Claude'
         : agent.status === 'background' && agent.backgroundTasks?.length
         ? `Waiting for: ${agent.backgroundTasks.join(', ')}`
         : busy ? agent.transcript.liveStep : null;
@@ -580,7 +584,8 @@ class Hub {
         ? `${agent.latestPrompt}\n\nTask: ${agent.title}\n${agent.cwd}`
         : `${agent.title}\n${agent.cwd}`;
       parts.statusDot.className = `dot ${agent.status}`;
-      parts.statusText.textContent = limited ? `Usage limit · continues ${Hub.resetText(limited.resetAt / 1000)}` : HUB_STATUS_TEXT[agent.status] || agent.status;
+      parts.statusText.textContent = limited ? `Usage limit · continues ${Hub.resetText(limited.resetAt / 1000)}`
+        : authWait ? 'Signed out · continues after you sign in' : HUB_STATUS_TEXT[agent.status] || agent.status;
       // What a waiting agent needs from you: an answer or an approval.
       const needs = agent.status === 'waiting' ? agent.attention || 'approval' : null;
       tile.classList.toggle('needs-question', needs === 'question');
@@ -1073,7 +1078,7 @@ class Hub {
 
   updateTimer(agent, node) {
     // A tile waiting for the usage limit says when it continues instead.
-    if (agent.limited) { node.textContent = ''; return; }
+    if (agent.limited || agent.authWait) { node.textContent = ''; return; }
     const started = agent.transcript.turnStartedAt;
     if (started && ['working', 'waiting', 'starting', 'stuck'].includes(agent.status)) {
       node.textContent = formatDuration(Date.now() - started);

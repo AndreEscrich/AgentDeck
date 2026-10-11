@@ -1257,6 +1257,7 @@ function parkedItem(p) {
     id: 'p:' + p.sessionId,
     parked: true,
     limited: limitOf(p),
+    authWait: isAuthWaiting(p),
     status: 'idle',
     title: p.title,
     latestPrompt: p.latestPrompt,
@@ -2103,7 +2104,47 @@ function noteAuthProblem() {
   if (document.hasFocus()) showLoginCard();
 }
 
-window.addEventListener('focus', () => { if (authProblem.pending) showLoginCard(); });
+// Agents that stopped because Claude Code was signed out wait (their tile
+// says so) and continue by themselves once you sign in again (see
+// resumeAuthWaits). Kept in local storage, so they survive a restart.
+const AUTH_CONTINUE = 'You are signed in again. Continue where you left off.';
+function authWaits() {
+  try { return JSON.parse(localStorage.getItem('authWaits') || '[]'); } catch { return []; }
+}
+function saveAuthWaits(list) {
+  try { localStorage.setItem('authWaits', JSON.stringify([...new Set(list)])); } catch { /* not important */ }
+}
+function noteAuthWait(a) {
+  if (a.authWait) return;
+  a.authWait = true;
+  if (a.sessionId) saveAuthWaits([...authWaits(), a.sessionId]);
+  a.transcript.note('Claude Code is signed out. This agent continues by itself once you sign in again.');
+  refreshHub();
+}
+function isAuthWaiting(item) {
+  return !!item.authWait || (!!item.sessionId && authWaits().includes(item.sessionId));
+}
+async function resumeAuthWaits() {
+  const live = [...state.agents.values()].filter(a => a.authWait || (a.sessionId && authWaits().includes(a.sessionId)));
+  const rest = new Set(authWaits());
+  saveAuthWaits([]);
+  for (const a of live) {
+    a.authWait = false;
+    rest.delete(a.sessionId);
+    await sendToHubItem(a.id, AUTH_CONTINUE).catch(() => {});
+  }
+  for (const sid of rest) if (state.parked.has(sid)) await sendToHubItem('p:' + sid, AUTH_CONTINUE).catch(() => {});
+  const n = live.length + [...rest].filter(sid => state.parked.has(sid)).length;
+  if (n) toast(`Signed in: ${n} agent${n === 1 ? '' : 's'} continue`);
+  refreshHub();
+}
+
+// While agents wait for a sign-in, the card comes back when you return to
+// the window (not more than every 10 minutes after you chose Later).
+window.addEventListener('focus', () => {
+  const waiting = authWaits().length || [...state.agents.values()].some(a => a.authWait);
+  if (authProblem.pending || (waiting && Date.now() - (authProblem.dismissedAt || 0) > 10 * 60 * 1000)) showLoginCard();
+});
 
 function showLoginCard() {
   if (document.querySelector('.login-modal') || document.querySelector('.quit-modal')) return;
@@ -2122,6 +2163,7 @@ function showLoginCard() {
   let stopOutput = null;
   let signingIn = false;
   const close = () => {
+    authProblem.dismissedAt = Date.now();
     stopOutput?.();
     if (signingIn) window.deck.auth.cancel();
     document.removeEventListener('keydown', onKey, true);
@@ -2199,10 +2241,12 @@ function showLoginCard() {
     const status = result.ok ? await window.deck.auth.status().catch(() => null) : null;
     if (result.ok && status?.loggedIn !== false) {
       title.textContent = 'Signed in';
-      text.textContent = `${status?.email ? `Signed in as ${status.email}. ` : ''}Send your message again to continue where the agent stopped.`;
+      const waiting = authWaits().length + [...state.agents.values()].filter(a => a.authWait).length;
+      text.textContent = `${status?.email ? `Signed in as ${status.email}. ` : ''}${waiting ? 'The agents that stopped continue now.' : 'You can carry on.'}`;
       extra.replaceChildren();
       setButtons(['Done', close, true]);
       sounds.done?.();
+      resumeAuthWaits();
     } else {
       title.textContent = 'Sign-in didn\'t finish';
       text.textContent = result.message || 'Claude Code could not sign in.';
@@ -2556,6 +2600,10 @@ function userContent(text, images = []) {
 
 async function sendToAgent(agent, text, images = []) {
   clearFollowUps(agent);
+  if (agent.authWait || (agent.sessionId && authWaits().includes(agent.sessionId))) {
+    agent.authWait = false;
+    saveAuthWaits(authWaits().filter(s => s !== agent.sessionId));
+  }
   if (agent.limited || (agent.sessionId && limitWaits()[agent.sessionId])) {
     agent.limited = null;
     const waits = limitWaits();
@@ -3165,7 +3213,7 @@ window.deck.onEvent((id, msg) => {
   const a = state.agents.get(id);
   if (!a) return;
   a.transcript.add(msg);
-  if (isAuthFailure(msg)) noteAuthProblem();
+  if (isAuthFailure(msg)) { noteAuthWait(a); noteAuthProblem(); }
   if (msg.type === 'system' && msg.subtype === 'compact_boundary') afterCompact(a);
   if (msg.type === 'assistant') noteClashes(a, msg.message);
   if (msg.type === 'result') clearClashes(a);
@@ -3203,10 +3251,10 @@ window.deck.onEvent((id, msg) => {
   const limitHit = isLimitHit(msg);
   if (limitHit) noteLimitHit(a, msg);
   if (msg.type === 'result' && a.status !== 'background') {
-    window.deck.notify(a.id, a.title, limitHit ? `Usage limit reached: continues at ${new Date(a.limited.resetAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : msg.is_error ? 'Stopped with an error' : 'Finished and waiting for you');
+    window.deck.notify(a.id, a.title, limitHit ? `Usage limit reached: continues at ${new Date(a.limited.resetAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : a.authWait ? 'Signed out: continues after you sign in' : msg.is_error ? 'Stopped with an error' : 'Finished and waiting for you');
     if (playSounds()) {
       if (!msg.is_error) sounds.done();
-      else if (!a.stopping && !limitHit) sounds.error();
+      else if (!a.stopping && !limitHit && !a.authWait) sounds.error();
     }
     // The next queued message goes out now, unless you stopped the task.
     if (a.queue?.length) {
@@ -3321,7 +3369,10 @@ window.deck.onExit((id, { code, stderr }) => {
   const a = state.agents.get(id);
   if (!a || state.quitting) return;
   clearClashes(a);
-  if (code !== 0 && AUTH_FAILURE.test(stderr)) noteAuthProblem();
+  if (code !== 0 && AUTH_FAILURE.test(stderr)) {
+    if (a.sessionId) saveAuthWaits([...authWaits(), a.sessionId]);
+    noteAuthProblem();
+  }
   if (code !== 0 && stderr.trim()) a.transcript.note(stderr.trim().split('\n').slice(-12).join('\n'), true);
   a.transcript.note(`Agent process ended (exit code ${code}).`);
   a.status = 'exited';
@@ -3748,6 +3799,8 @@ setInterval(checkStuck, 3000);
   state.groups = { groups: [], assignments: {}, ...(await window.deck.getGroups()) };
   loadHub();
   await loadAgentList();
+  // Agents that were waiting for a sign-in when the app closed: offer it again.
+  if (authWaits().length) setTimeout(noteAuthProblem, 1500);
   if (!IS_MAC) {
     for (const node of document.querySelectorAll('[title], [placeholder]')) {
       for (const attr of ['title', 'placeholder']) {
