@@ -127,10 +127,10 @@ class ActivityPanel {
       cat.sessions++;
       cats.set(c.key, cat);
     }
-    // Stacked from the most tokens in the range (at the bottom) to the least,
-    // in the same order in every bar.
+    // Stacked with the least tokens in the range at the bottom and the most
+    // on top, in the same order in every bar.
     const rangeTotal = k => dates.reduce((n, d) => n + (perDay.get(d).get(k) || 0), 0);
-    const series = ['none', ...colors.keys(), 'other'].filter(k => rangeTotal(k) > 0).sort((a, b) => rangeTotal(b) - rangeTotal(a));
+    const series = ['none', ...colors.keys(), 'other'].filter(k => rangeTotal(k) > 0).sort((a, b) => rangeTotal(a) - rangeTotal(b));
     const color = k => (k === 'none' ? NONE_COLOR : colors.get(k) || OTHER_COLOR);
     return { dates, perDay, series, names, color, cats: [...cats.values()].sort((a, b) => b.tokens - a.tokens) };
   }
