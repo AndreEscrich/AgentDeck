@@ -56,10 +56,11 @@ function startTube({ powerOn }) {
   }
   document.documentElement.classList.toggle('mu-curved', crt.curved);
   clearInterval(crt.glitch);
+  // Now and then (about every half minute) the picture slips a hair sideways.
   crt.glitch = setInterval(() => {
     if (document.hidden || Math.random() < 0.5) return;
     replayClass(main, 'mu-glitch', 300);
-  }, 6000);
+  }, 15000);
   if (powerOn) {
     replayClass(main, 'mu-on', 1000);
     window.uiSound?.('powerOn');
@@ -162,6 +163,24 @@ function onResize() {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(bendGlass, 200);
 }
+
+// The theme shows everything in capitals (text-transform), and a copy would
+// take the capitals along. In the theme, a copy takes the text as written.
+document.addEventListener('copy', e => {
+  if (document.documentElement.dataset.theme !== 'mother') return;
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+  const sel = getSelection();
+  if (!sel.rangeCount || sel.isCollapsed) return;
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;left:-100000px;top:0;width:800px;text-transform:none';
+  for (let i = 0; i < sel.rangeCount; i++) box.appendChild(sel.getRangeAt(i).cloneContents());
+  for (const n of box.querySelectorAll('*')) n.style.textTransform = 'none';
+  document.body.appendChild(box);
+  const text = box.innerText;
+  box.remove();
+  e.clipboardData.setData('text/plain', text);
+  e.preventDefault();
+});
 
 function replayClass(node, name, ms) {
   node.classList.remove(name);

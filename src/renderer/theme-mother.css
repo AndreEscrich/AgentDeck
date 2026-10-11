@@ -378,3 +378,40 @@ html.mu-curved #mu-roll { display: none; }
   background: linear-gradient(90deg, transparent, rgba(140, 240, 255, 0.5) 15%, rgba(200, 250, 255, 0.85) 50%, rgba(140, 240, 255, 0.5) 85%, transparent);
   box-shadow: 0 0 18px 4px rgba(90, 230, 255, 0.3); animation: mu-scan-streak 9s linear infinite; }
 .hub-tile.state-working .tank::before { animation-timing-function: steps(10) !important; }
+
+/* Everything in capitals, as on the ship's screens. Only the look changes:
+   what you type and what you copy keep their case. Code, file contents and
+   diffs keep theirs on screen too, because there case matters. */
+body { text-transform: uppercase; }
+pre, code, .diff, .diff-line, .sbs-cell, .sbs-row, .box-raw, .uml-member, .uml-name { text-transform: none; }
+
+/* ---------- Easy on the eyes ----------
+   The tube's effects stay, but gentle: no hard flashes or dark drops, small
+   brightness changes that fade instead of jumping, a sync glitch that is
+   rare and small, and no red flashing on a fault. These replace the
+   animations of the same name above. */
+@keyframes mu-crt-flicker { 0%, 100% { opacity: 1; } 50% { opacity: 0.96; } }
+body::before { animation: mu-crt-flicker 8s ease-in-out infinite; }
+@keyframes mu-crt-glitch { 0%, 100% { transform: none; } 50% { transform: translateX(-1.5px); } }
+@keyframes mu-crt-on {
+  0% { transform: scale(1, 0.004); filter: brightness(1.8); }
+  45% { transform: scale(1, 1); filter: brightness(1.25); }
+  100% { transform: none; filter: none; }
+}
+@keyframes mu-interference { 0% { filter: brightness(1.3); } 100% { filter: none; } }
+@keyframes mu-fault { 0% { box-shadow: 0 0 0 1px var(--err), 0 0 16px rgba(255, 90, 60, 0.45); } 100% { box-shadow: none; } }
+@keyframes mu-draw { from { clip-path: inset(0 0 100% 0); filter: brightness(1.3); } to { clip-path: inset(0 0 0 0); filter: none; } }
+@keyframes mu-switch-off {
+  0% { transform: none; opacity: 1; }
+  55% { transform: scale(1, 0.02); filter: brightness(1.5); opacity: 1; }
+  100% { transform: scale(0, 0.02); opacity: 0; }
+}
+@keyframes mu-redraw { 0% { filter: brightness(1.18); } 100% { filter: none; } }
+@keyframes mu-open { 0% { transform: scale(1, 0.01); filter: brightness(1.5); } 60% { transform: scale(1, 1); } 100% { transform: none; filter: none; } }
+.hub-tile.finish, .hub-tile.wob, .hub-tile.wake, .hub-tile.landed { animation: mu-interference 0.5s ease-out !important; }
+.hub-tile.shake { animation: mu-fault 0.9s ease-out !important; }
+#views > .view:not(.hidden), .tile-lid { animation: mu-redraw 0.35s ease-out; }
+.review-stamp { animation: mu-interference 0.5s ease-out both !important; }
+/* The blinks are slower and do not go fully dark. */
+@keyframes mu-blink { 50% { opacity: 0.35; } }
+#mu-streak { opacity: 0.5; animation-duration: 14s; }
