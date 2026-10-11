@@ -25,7 +25,8 @@ function applyTheme(name, { powerOn = true, curved } = {}) {
 }
 
 function startTube({ powerOn }) {
-  for (const id of ['mu-roll', 'mu-noise', 'mu-streak']) {
+  document.getElementById('mu-streak')?.remove();
+  for (const id of ['mu-roll', 'mu-noise']) {
     if (document.getElementById(id)) continue;
     const layer = document.createElement('div');
     layer.id = id;
@@ -48,13 +49,10 @@ function startTube({ powerOn }) {
   }
   const main = document.getElementById('main');
   document.documentElement.classList.toggle('mu-curved', crt.curved);
-  if (crt.curved) {
-    drawGlass();
-    window.addEventListener('resize', onResize);
-  } else {
-    clearGlass();
-    window.removeEventListener('resize', onResize);
-  }
+  if (crt.curved) drawGlass();
+  else clearGlass();
+  measureChat();
+  window.addEventListener('resize', onResize);
   clearInterval(crt.glitch);
   // Now and then (about every half minute) the picture slips a hair sideways.
   crt.glitch = setInterval(() => {
@@ -71,7 +69,7 @@ function stopTube() {
   clearInterval(crt.glitch);
   for (const id of ['mu-roll', 'mu-noise', 'mu-streak']) document.getElementById(id)?.remove();
   document.getElementById('main')?.classList.remove('mu-glitch', 'mu-on');
-  document.documentElement.classList.remove('mu-curved');
+  document.documentElement.classList.remove('mu-curved', 'mu-wide');
   clearGlass();
   window.removeEventListener('resize', onResize);
 }
@@ -140,7 +138,7 @@ function drawGlass() {
   // The scanlines, bowing with the glass, inside the screen.
   g.save();
   g.clip(outline);
-  g.strokeStyle = 'rgba(0, 0, 0, 0.16)';
+  g.strokeStyle = 'rgba(0, 0, 0, 0.1)';
   g.lineWidth = 1;
   const rows = Math.ceil((y1 - y0) / 3);
   g.beginPath();
@@ -217,10 +215,23 @@ function clearGlass() {
   if (views) { views.style.backgroundImage = ''; views.style.backgroundSize = ''; }
 }
 
+// Images and videos in the chat show above the tube's effects, untouched,
+// so the chat cannot be a CSS container (a container keeps what is inside it
+// below the effects). The one layout that asked the container for its width,
+// "You asked" beside the chat when there is room, asks this instead.
+function measureChat() {
+  const w = document.getElementById('views')?.getBoundingClientRect().width || 0;
+  document.documentElement.style.setProperty('--mu-chat-w', `${Math.round(w)}px`);
+  document.documentElement.classList.toggle('mu-wide', w >= 1160);
+}
+
 let resizeTimer = 0;
 function onResize() {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(drawGlass, 150);
+  resizeTimer = setTimeout(() => {
+    if (crt.curved) drawGlass();
+    measureChat();
+  }, 150);
 }
 
 // The theme shows everything in capitals (text-transform), and a copy would

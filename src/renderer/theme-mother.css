@@ -429,3 +429,34 @@ body::before { animation: mu-crt-flicker 8s ease-in-out infinite; }
 #views > .view:not(.hidden), .tile-lid { animation-duration: 0.2s; }
 .chat, .chat * { text-shadow: 0 0 3px rgba(100, 240, 255, 0.28); }
 .chat h1, .chat h2, .chat h3 { text-shadow: var(--glow-strong); }
+
+/* ---------- Pictures and videos as they are ----------
+   Images, videos and before/after comparisons in the chat show above the
+   tube's effects (scanlines, static, glare, the glass), without the glow:
+   what an agent made should be seen as it is. The viewer opens above them
+   too. For this the chat is not a CSS container (theme.js, measureChat). */
+.chat { container-type: normal; }
+.chat-media, .before-after { position: relative; z-index: 10000; }
+.lightbox { z-index: 10001 !important; }
+html.mu-wide .prompt-pin-bar { left: 16px; right: auto; top: 20px; transform: translateX(-8px);
+  width: calc((var(--mu-chat-w) - var(--chat-width)) / 2 + 24px - 48px);
+  flex-direction: column; align-items: stretch; gap: 4px; padding: 10px 12px; }
+html.mu-wide .prompt-pin.show .prompt-pin-bar { transform: none; }
+html.mu-wide .prompt-pin-text { font-size: 12.5px; -webkit-line-clamp: 10; }
+
+/* ---------- Subtle tube ----------
+   The tube's effects stay in the background: no bright scan streak, a
+   rolling band you only notice if you look for it (slow and faint), lighter
+   scanlines and static, a flicker you hardly see, and softer glare. */
+#mu-streak { display: none !important; }
+#mu-roll::before { animation-duration: 16s !important; opacity: 0.45; }
+#mu-noise { opacity: 0.012 !important; }
+@keyframes mu-crt-flicker { 0%, 100% { opacity: 1; } 50% { opacity: 0.985; } }
+html:not(.mu-curved) body::before {
+  background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, 0.1) 2px 3px),
+    repeating-linear-gradient(90deg, rgba(255, 0, 0, 0.015) 0 1px, rgba(0, 255, 255, 0.01) 1px 2px, rgba(0, 0, 255, 0.015) 2px 3px) !important; }
+html.mu-curved body::before {
+  background: repeating-linear-gradient(90deg, rgba(255, 0, 0, 0.015) 0 1px, rgba(0, 255, 255, 0.01) 1px 2px, rgba(0, 0, 255, 0.015) 2px 3px) !important; }
+html.mu-curved body::after {
+  background: radial-gradient(ellipse 85% 18% at 50% 3%, rgba(210, 250, 255, 0.03), transparent 70%),
+    radial-gradient(ellipse 70% 45% at 28% 20%, rgba(255, 255, 255, 0.018), transparent 70%) !important; }
