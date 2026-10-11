@@ -62,10 +62,22 @@ function summarize(file) {
     if (e.type === 'custom-title') customTitle = e.customTitle;
   }
   // The newest custom title wins, and it is usually near the end of the file.
+  // A file that starts with a compaction's summary (then tool output) has no
+  // message of yours near its start: its latest one is near the end, as a
+  // message or as Claude Code's "last-prompt" note.
+  let lastPrompt = null;
   for (const e of tail) {
     if (e.type === 'custom-title') customTitle = e.customTitle;
+    if (e.type === 'last-prompt' && e.lastPrompt) lastPrompt = e.lastPrompt;
+    else if (!firstPrompt) lastPrompt = userText(e) || lastPrompt;
   }
-  if (!firstPrompt && !customTitle) return null;
+  if (!firstPrompt) firstPrompt = lastPrompt;
+  // A session of an agent is listed even when no message of yours is found,
+  // so its Hub tile can still open it.
+  if (!firstPrompt && !customTitle) {
+    if (!cwd) return null;
+    firstPrompt = 'Untitled session';
+  }
 
   return {
     id: path.basename(file, '.jsonl'),
