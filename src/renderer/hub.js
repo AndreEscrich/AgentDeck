@@ -632,6 +632,8 @@ class Hub {
       sec.count.textContent = String(n);
       const group = sec.groupKey ? groups.find(g => g.id === sec.groupKey) : null;
       sec.name.textContent = sec.groupKey ? group?.name || 'Category' : 'No category';
+      // No category: a looser, open panel, because its agents do not share what they know.
+      sec.el.classList.toggle('loose', !sec.groupKey);
       // Shared notes: only for a category; the number of notes when it has some.
       const noteCount = group?.shareLearnings === false ? 0 : (group?.notes?.text || '').split('\n').filter(l => l.trim()).length;
       sec.notes.classList.toggle('hidden', !group);
@@ -655,12 +657,14 @@ class Hub {
       const name = el('span', 'hub-section-name');
       const repoEl = el('span', 'hub-section-repo');
       const count = el('span', 'hub-section-count');
+      // Without a category the agents are separate tasks (see forkSourceFor in app.js).
+      const loneHint = el('span', 'hub-section-hint', 'separate tasks · no shared context');
       const notes = el('button', 'section-notes', 'Notes');
       notes.title = 'The notes every agent in this category reads and adds to';
       notes.onclick = e => { e.stopPropagation(); this.onOpenNotes?.(sec.groupKey); };
       const remove = el('button', 'section-remove', '× Remove group');
       remove.title = 'Remove this group and all its agents from the Hub';
-      head.append(name, repoEl, count, notes, remove);
+      head.append(name, repoEl, count, loneHint, notes, remove);
       const grid = el('div', 'hub-grid');
       elSec.append(head, grid);
       this.grid.appendChild(elSec);

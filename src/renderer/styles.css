@@ -1826,3 +1826,11 @@ details.other-files details.change-file > summary { padding-left: 12px; }
 .usage-rail .hub-usage.usage-card { top: 58px; left: 50%; transform: translateX(-50%) translateY(-10px); transform-origin: 50% 0;
   transition: opacity 0.18s, transform 0.2s cubic-bezier(.2,.8,.3,1); }
 .usage-rail.open[data-panel="usage"] .hub-usage.usage-card { transform: translateX(-50%); }
+
+/* No category: separate tasks that share no context. An open, dashed
+   outline instead of the sunken well a category gets, with a short note. */
+.hub-section.loose { background: transparent; border: 1.5px dashed #3a3027; box-shadow: none; }
+.hub-section.loose:hover { border-color: #4d3f31; }
+.hub-section.loose .hub-grid { gap: 22px; }
+.hub-section-hint { display: none; font-size: 11.5px; font-style: italic; color: var(--text-faint); }
+.hub-section.loose .hub-section-hint { display: inline; }
