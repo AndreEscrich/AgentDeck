@@ -47,7 +47,10 @@ function startTube({ powerOn }) {
     if (document.hidden || Math.random() < 0.5) return;
     replayClass(main, 'mu-glitch', 300);
   }, 6000);
-  if (powerOn) replayClass(main, 'mu-on', 1000);
+  if (powerOn) {
+    replayClass(main, 'mu-on', 1000);
+    window.uiSound?.('powerOn');
+  }
 }
 
 function stopTube() {

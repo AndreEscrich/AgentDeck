@@ -1,6 +1,6 @@
 // Short sounds for agent events, made with Web Audio, so there are no sound
 // files. Each note is a sine tone with a soft overtone that fades out like a
-// small bell.
+// small bell. The retro theme has its own set (mother, below).
 
 const sounds = (() => {
   let ctx = null;
@@ -160,7 +160,7 @@ const sounds = (() => {
     } catch { /* no sound is fine */ }
   }
 
-  return {
+  const plain = {
     // Creating the audio engine takes about 180 ms, once. The app does that
     // while you are idle after it starts, not on the first sound (which is
     // when you press Enter to create an agent).
@@ -229,4 +229,163 @@ const sounds = (() => {
     // Something that cannot be done (a file type the box does not take).
     refuse: () => play([[233.08, 0, 0.12], [233.08, 0.1, 0.16]], 0.08),
   };
+
+  // ---------- MU-TH-UR (the retro theme) ----------
+  // The same events, in the voice of the ship's computer in Alien: short
+  // square-wave chirps, fast chatter of data, alert beeps and a low hum.
+  // Square waves are harsh, so each goes through a low-pass filter.
+
+  function chirp(ac, at, freq, length, volume, type = 'square') {
+    const t = ac.currentTime + at;
+    const osc = ac.createOscillator();
+    const filter = ac.createBiquadFilter();
+    const gain = ac.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    filter.type = 'lowpass';
+    filter.frequency.value = 4200;
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(volume, t + 0.003);
+    gain.gain.setValueAtTime(volume, t + length * 0.6);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + length);
+    osc.connect(filter).connect(gain).connect(ac.destination);
+    osc.start(t);
+    osc.stop(t + length + 0.02);
+  }
+
+  // Data chatter: count chirps in a row at random pitches from the
+  // computer's few tones. direction 1 rises, -1 falls, 0 wanders.
+  const DATA_TONES = [988, 1175, 1319, 1568, 1760, 2093, 2349, 2637];
+  function chatter(ac, at, count, { step = 0.034, volume = 0.045, direction = 0 } = {}) {
+    for (let i = 0; i < count; i++) {
+      let k = Math.floor(Math.random() * DATA_TONES.length);
+      if (direction) {
+        const pos = direction > 0 ? i / count : 1 - i / count;
+        k = Math.min(DATA_TONES.length - 1, Math.max(0, Math.round(pos * (DATA_TONES.length - 1) + (Math.random() * 2 - 1))));
+      }
+      chirp(ac, at + i * step, DATA_TONES[k], step * 0.8, volume);
+    }
+    return at + count * step;
+  }
+
+  // A short burst of filtered noise: a key or a relay clicking.
+  function click(ac, at, freq, length, volume) {
+    const t = ac.currentTime + at;
+    const buffer = ac.createBuffer(1, Math.ceil(ac.sampleRate * length), ac.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    const src = ac.createBufferSource();
+    src.buffer = buffer;
+    const filter = ac.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = freq;
+    filter.Q.value = 1.2;
+    const gain = ac.createGain();
+    gain.gain.value = volume;
+    src.connect(filter).connect(gain).connect(ac.destination);
+    src.start(t);
+  }
+
+  // A low electrical hum or buzz that fades: the tube warming, a fault.
+  function hum(ac, at, freq, length, volume, type = 'sawtooth') {
+    const t = ac.currentTime + at;
+    const osc = ac.createOscillator();
+    const filter = ac.createBiquadFilter();
+    const gain = ac.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    filter.type = 'lowpass';
+    filter.frequency.value = 900;
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(volume, t + 0.02);
+    gain.gain.setValueAtTime(volume, t + length * 0.7);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + length);
+    osc.connect(filter).connect(gain).connect(ac.destination);
+    osc.start(t);
+    osc.stop(t + length + 0.02);
+  }
+
+  // A thin rising whine: a tube's high voltage coming up.
+  function whine(ac, at, from, to, length, volume) {
+    const t = ac.currentTime + at;
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(from, t);
+    osc.frequency.exponentialRampToValueAtTime(to, t + length);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(volume, t + length * 0.3);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + length);
+    osc.connect(gain).connect(ac.destination);
+    osc.start(t);
+    osc.stop(t + length + 0.02);
+  }
+
+  const safely = fn => (...args) => { try { fn(audio(), ...args); } catch { /* no sound is fine */ } };
+
+  const mother = {
+    // A new agent lands in its tile: the computer boots it, a run of data.
+    brew: safely(ac => { const end = chatter(ac, 0, 14, { step: 0.03 }); chirp(ac, end + 0.02, 1568, 0.12, 0.05); }),
+    // An agent needs you: the alert, three quick beeps twice.
+    attention: safely(ac => { for (const at of [0, 0.42]) for (let i = 0; i < 3; i++) chirp(ac, at + i * 0.09, 1397, 0.06, 0.06); }),
+    removed: safely(ac => { const end = chatter(ac, 0, 8, { direction: -1 }); hum(ac, end, 70, 0.22, 0.12, 'square'); }),
+    pick: safely(ac => chirp(ac, 0, 880, 0.05, 0.05)),
+    shift: safely(ac => chirp(ac, 0, 2637, 0.02, 0.025)),
+    drop: safely(ac => { chirp(ac, 0, 330, 0.06, 0.06); click(ac, 0, 900, 0.05, 0.25); }),
+    tab: safely(ac => { chirp(ac, 0, 1175, 0.04, 0.045); chirp(ac, 0.05, 1760, 0.06, 0.045); }),
+    nothing: safely(ac => { hum(ac, 0, 98, 0.1, 0.08, 'square'); hum(ac, 0.14, 98, 0.14, 0.08, 'square'); }),
+    groupRemoved: safely((ac, count) => {
+      const end = chatter(ac, 0, Math.min(6 + count * 3, 30), { direction: -1, step: 0.028 });
+      hum(ac, end, 60, 0.35, 0.14, 'square');
+    }),
+    created: safely(ac => chatter(ac, 0, 7, { direction: 1, step: 0.04, volume: 0.05 })),
+    // Finished: a printout of data, then the computer's two-tone "ready".
+    done: safely(ac => { const end = chatter(ac, 0, 10); chirp(ac, end + 0.05, 1568, 0.14, 0.055); chirp(ac, end + 0.2, 2093, 0.24, 0.055); }),
+    // A fault: a low buzz under two falling beeps.
+    error: safely(ac => { hum(ac, 0, 82, 0.45, 0.12); chirp(ac, 0.02, 784, 0.12, 0.05); chirp(ac, 0.17, 523, 0.22, 0.05); }),
+    // Your message goes out: a fast transmission burst.
+    sent: safely(ac => { const end = chatter(ac, 0, 12, { step: 0.022, volume: 0.04 }); chirp(ac, end, 2349, 0.08, 0.045); }),
+    // A screen comes up: a relay click and the tube's whine; going back, the reverse.
+    open: safely(ac => { click(ac, 0, 1400, 0.03, 0.3); whine(ac, 0, 2400, 5200, 0.22, 0.012); chirp(ac, 0.04, 1760, 0.05, 0.035); }),
+    close: safely(ac => { chirp(ac, 0, 1760, 0.04, 0.035); chirp(ac, 0.05, 1175, 0.06, 0.035); click(ac, 0.08, 900, 0.03, 0.25); }),
+    stopped: safely(ac => { chirp(ac, 0, 440, 0.07, 0.06); chirp(ac, 0.08, 294, 0.12, 0.06); click(ac, 0, 700, 0.04, 0.3); }),
+    stuck: safely(ac => { for (let i = 0; i < 3; i++) chirp(ac, i * 0.28, 220, 0.16, 0.05); }),
+    approve: safely(ac => { chirp(ac, 0, 1175, 0.05, 0.05); chirp(ac, 0.06, 1568, 0.1, 0.05); }),
+    deny: safely(ac => { chirp(ac, 0, 784, 0.05, 0.05); chirp(ac, 0.07, 523, 0.12, 0.05); }),
+    attach: safely(ac => chirp(ac, 0, 1760, 0.05, 0.045)),
+    detach: safely(ac => chirp(ac, 0, 1046, 0.05, 0.04)),
+    tick: safely(ac => chirp(ac, 0, 2349, 0.025, 0.03)),
+    tickDown: safely(ac => chirp(ac, 0, 1760, 0.025, 0.028)),
+    select: safely(ac => chirp(ac, 0, 2093, 0.03, 0.035)),
+    connected: safely(ac => { const end = chatter(ac, 0, 6); chirp(ac, end + 0.04, 2093, 0.18, 0.05); }),
+    refuse: safely(ac => { hum(ac, 0, 110, 0.08, 0.08, 'square'); hum(ac, 0.11, 110, 0.12, 0.08, 'square'); }),
+    // Typing: like the letters coming up on MOTHER's screen, each key gives
+    // a chirp, a little different every time, over the click of the key.
+    // kind: 'char', 'space', 'back' or 'enter'.
+    key: safely((ac, kind = 'char') => {
+      if (kind === 'back') { chirp(ac, 0, 700, 0.03, 0.03); click(ac, 0, 1800, 0.012, 0.12); return; }
+      if (kind === 'enter') { chirp(ac, 0, 1568, 0.04, 0.035); chirp(ac, 0.045, 1175, 0.05, 0.035); click(ac, 0, 1500, 0.02, 0.18); return; }
+      const tones = kind === 'space' ? [1319] : [1760, 1976, 2093, 2349, 2637];
+      chirp(ac, 0, tones[Math.floor(Math.random() * tones.length)], 0.028, 0.032);
+      click(ac, 0, 2600, 0.012, 0.1);
+    }),
+    // The theme switches on: the tube's thunk, its hum and whine, then the
+    // computer says it is ready.
+    powerOn: safely(ac => {
+      click(ac, 0, 300, 0.08, 0.5);
+      hum(ac, 0.02, 55, 0.8, 0.1, 'sine');
+      whine(ac, 0.05, 3000, 7000, 0.7, 0.01);
+      const end = chatter(ac, 0.5, 9, { step: 0.03 });
+      chirp(ac, end + 0.05, 2093, 0.2, 0.05);
+    }),
+  };
+
+  // Each sound in the voice of the theme you picked (Settings → Theme).
+  const voice = () => (document.documentElement.dataset.theme === 'mother' ? mother : plain);
+  const api = { warm: plain.warm };
+  for (const name of new Set([...Object.keys(plain), ...Object.keys(mother)])) {
+    if (name === 'warm') continue;
+    api[name] = (...args) => (voice()[name] || plain[name])?.(...args);
+  }
+  return api;
 })();

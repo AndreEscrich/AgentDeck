@@ -3530,6 +3530,25 @@ function sfx(name) {
 }
 window.uiSound = sfx;
 
+// In the retro theme (theme.js) every key you type in a text box chirps, as
+// the letters do on MOTHER's screen in Alien. Enter in the message box sends,
+// which has its own sound.
+document.addEventListener('keydown', e => {
+  if (document.documentElement.dataset.theme !== 'mother' || !playSounds()) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+  const t = e.target;
+  if (!(t instanceof HTMLTextAreaElement || (t instanceof HTMLInputElement && /^(text|search|number|)$/.test(t.type)) || t?.isContentEditable)) return;
+  // Holding a key down: every other repeat, so it does not drone.
+  if (e.repeat && (keyRepeats = (keyRepeats + 1) % 2)) return;
+  let kind = null;
+  if (e.key === 'Backspace' || e.key === 'Delete') kind = 'back';
+  else if (e.key === 'Enter') kind = t.id === 'input' && !e.shiftKey ? null : 'enter';
+  else if (e.key === ' ') kind = 'space';
+  else if (e.key.length === 1) kind = 'char';
+  if (kind) sounds.key(kind);
+}, true);
+let keyRepeats = 0;
+
 function autosize() {
   const input = $('input');
   input.style.height = 'auto';
