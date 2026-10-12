@@ -129,6 +129,15 @@ async function undoFile(cwd, file) {
     const text = splitText(fs.readFileSync(abs, 'utf8'));
     const lines = unpatch(text.lines, hunksOf(file));
     if (!lines) return { ok: false, error: `${name} was changed again after the task, so its changes no longer fit. Nothing was written.` };
+    // A moved file (file.from: where it was) goes back there too, unless
+    // something else is at that path now.
+    const back = typeof file.from === 'string' && file.from !== file.path ? resolve(cwd, file.from) : null;
+    if (back && !fs.existsSync(back)) {
+      fs.mkdirSync(path.dirname(back), { recursive: true });
+      fs.writeFileSync(back, joinText({ ...text, lines }));
+      fs.unlinkSync(abs);
+      return { ok: true, previous, movedBack: true };
+    }
     fs.writeFileSync(abs, joinText({ ...text, lines }));
     return { ok: true, previous };
   } catch (err) {
@@ -136,10 +145,15 @@ async function undoFile(cwd, file) {
   }
 }
 
-// Redo: puts back the content undoFile returned (null: the file did not exist).
-async function restoreFile(cwd, p, previous) {
+// Redo: puts back the content undoFile returned (null: the file did not
+// exist). from: for a file Undo moved back, its old path, removed again.
+async function restoreFile(cwd, p, previous, from = null) {
   const abs = resolve(cwd, p);
   try {
+    if (typeof from === 'string' && from !== p) {
+      const back = resolve(cwd, from);
+      if (fs.existsSync(back)) fs.unlinkSync(back);
+    }
     if (previous == null) {
       if (fs.existsSync(abs)) fs.unlinkSync(abs);
     } else {

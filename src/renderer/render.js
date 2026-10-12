@@ -1224,7 +1224,7 @@ class Transcript {
     turn.gitShown = true;
     // The snapshot also catches changes you (or other agents) made in the same
     // folder while this agent worked. Only files the agent touched stay.
-    const files = parseUnifiedDiff(diffText).filter(f => !isTempFile(f.path) && (this.agentTouched(turn, f.path) || (f.from && this.agentTouched(turn, f.from))));
+    const files = pairMoves(parseUnifiedDiff(diffText)).filter(f => !isTempFile(f.path) && (this.agentTouched(turn, f.path) || (f.from && this.agentTouched(turn, f.from))));
     if (merge) {
       await this.pruneMissing(turn).catch(() => {});
       // The snapshot's paths use /, the Edit/Write reports the system's own

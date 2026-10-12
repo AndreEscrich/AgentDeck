@@ -529,6 +529,91 @@ function lineComments(files, cwd) {
   };
 }
 
+// ---------- moved and renamed files ----------
+
+// A file that was moved or renamed can reach the card as two files: the old
+// path deleted and the new one added. Git pairs them itself only when the
+// two are at least half the same and both are in its comparison; a move
+// with plain mv in a git repository (the new file is untracked), or a
+// rename with many edits, comes in as two. These are paired here: a deleted
+// and a new file of the same kind are one moved file when enough of their
+// lines are the same (half of them, or a third when the name stayed). The
+// pair becomes one entry at the new path, with `from` the old path and the
+// diff between the two versions, like a file git paired.
+function similarity(a, b) {
+  const set = lines => new Set(lines.map(l => l.trim()).filter(l => l.length > 2));
+  const x = set(a);
+  const y = set(b);
+  if (!x.size || !y.size) return 0;
+  let shared = 0;
+  for (const l of x) if (y.has(l)) shared++;
+  return shared / Math.max(x.size, y.size);
+}
+
+// The full-file diff of lineDiff as hunks with 3 lines around each change,
+// with their "@@ -a,b +c,d @@" headers (the Changes card and the class
+// diagram read the line numbers from them).
+function toHunks(merged, around = 3) {
+  const out = [];
+  const changed = merged.map(([k]) => k !== 'ctx');
+  let i = 0;
+  let oldNo = 1;
+  let newNo = 1;
+  const near = j => changed.slice(Math.max(0, j - around), j + around + 1).some(Boolean);
+  while (i < merged.length) {
+    if (!near(i)) {
+      if (merged[i][0] !== 'add') oldNo++;
+      if (merged[i][0] !== 'del') newNo++;
+      i++;
+      continue;
+    }
+    const start = i;
+    const oldStart = oldNo;
+    const newStart = newNo;
+    const body = [];
+    while (i < merged.length && near(i)) {
+      body.push(merged[i]);
+      if (merged[i][0] !== 'add') oldNo++;
+      if (merged[i][0] !== 'del') newNo++;
+      i++;
+    }
+    const oldCount = body.filter(([k]) => k !== 'add').length;
+    const newCount = body.filter(([k]) => k !== 'del').length;
+    out.push(['hunk', `@@ -${oldCount ? oldStart : oldStart - 1},${oldCount} +${newCount ? newStart : newStart - 1},${newCount} @@`], ...body);
+    if (start === i) i++;
+  }
+  return out;
+}
+
+function pairMoves(files) {
+  const content = (f, kind) => f.lines.filter(([k]) => k === kind).map(([, t]) => t.slice(1));
+  const removed = files.filter(f => f.status === 'del' && !f.from);
+  const added = files.filter(f => f.status === 'new' && !f.from);
+  if (!removed.length || !added.length) return files;
+  const ext = p => (p.match(/\.[^./\\]+$/) || [''])[0].toLowerCase();
+  const base = p => p.split(/[\\/]/).pop();
+  const pairs = [];
+  for (const d of removed) {
+    for (const a of added) {
+      if (ext(d.path) !== ext(a.path)) continue;
+      const sameName = base(d.path) === base(a.path);
+      const score = similarity(content(d, 'del'), content(a, 'add'));
+      if (score >= (sameName ? 0.33 : 0.5)) pairs.push({ d, a, score: score + (sameName ? 0.25 : 0) });
+    }
+  }
+  pairs.sort((p, q) => q.score - p.score);
+  const used = new Set();
+  const merged = new Map();   // the new file -> its moved entry
+  for (const { d, a } of pairs) {
+    if (used.has(d) || used.has(a)) continue;
+    used.add(d);
+    used.add(a);
+    const diff = lineDiff(content(d, 'del'), content(a, 'add'));
+    merged.set(a, { path: a.path, from: d.path, status: 'mod', lines: diff ? toHunks(diff) : [...d.lines, ...a.lines] });
+  }
+  return files.filter(f => !used.has(f) || merged.has(f)).map(f => merged.get(f) || f);
+}
+
 // ---------- the whole file, and side by side ----------
 
 // A line diff of two versions (Myers' algorithm): the lines of both in order
@@ -681,3 +766,4 @@ function fileViews(f, cwd, changesView) {
 window.fileViews = fileViews;
 
 window.changesCard = changesCard;
+window.pairMoves = pairMoves;

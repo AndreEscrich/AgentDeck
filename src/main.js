@@ -261,7 +261,7 @@ app.whenReady().then(() => {
   ipcMain.handle('git:changes', (_e, cwd, snap) => git.changesSince(cwd, snap));
   ipcMain.handle('files:undo', (_e, cwd, file) => undo.undoFile(cwd, file));
   ipcMain.handle('files:versions', (_e, cwd, file) => undo.versions(cwd, file));
-  ipcMain.handle('files:restore', (_e, cwd, p, previous) => undo.restoreFile(cwd, p, previous));
+  ipcMain.handle('files:restore', (_e, cwd, p, previous, from) => undo.restoreFile(cwd, p, previous, from));
   ipcMain.handle('repo:of', (_e, cwd) => repoOf(cwd));
   // Which of these files still exist (for the Changes card).
   ipcMain.handle('fs:existing', (_e, paths) => (Array.isArray(paths) ? paths : []).filter(p => typeof p === 'string' && fs.existsSync(p)));

@@ -32,7 +32,7 @@ contextBridge.exposeInMainWorld('deck', {
   gitChanges: (cwd, snap) => ipcRenderer.invoke('git:changes', cwd, snap),
   undoFile: (cwd, file) => ipcRenderer.invoke('files:undo', cwd, file),
   fileVersions: (cwd, file) => ipcRenderer.invoke('files:versions', cwd, file),
-  restoreFile: (cwd, p, previous) => ipcRenderer.invoke('files:restore', cwd, p, previous),
+  restoreFile: (cwd, p, previous, from) => ipcRenderer.invoke('files:restore', cwd, p, previous, from),
   activity: () => ipcRenderer.invoke('activity:get'),
   // A diff the agent or you asked for (see branchdiff.js).
   runDiff: (cwd, command) => ipcRenderer.invoke('diff:run', cwd, command),

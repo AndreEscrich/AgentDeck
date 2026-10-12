@@ -2909,7 +2909,7 @@ async function rewindTo(transcript, index, text, { undoFiles, files = [] } = {})
   if (undoFiles) {
     const problems = [];
     for (const f of [...files].reverse()) {
-      const r = await window.deck.undoFile(cwd, { path: f.path, status: f.status, lines: f.lines }).catch(err => ({ ok: false, error: String(err) }));
+      const r = await window.deck.undoFile(cwd, { path: f.path, from: f.from, status: f.status, lines: f.lines }).catch(err => ({ ok: false, error: String(err) }));
       if (r.ok) f.undone = { previous: r.previous };
       else problems.push(r.error);
     }
@@ -3075,10 +3075,10 @@ async function undoLastPrompt(agent) {
   const done = [];
   for (const f of redo ? files : [...files].reverse().filter(x => !x.undone)) {
     const r = redo
-      ? await window.deck.restoreFile(agent.cwd, f.path, f.undone.previous).catch(err => ({ ok: false, error: String(err) }))
-      : await window.deck.undoFile(agent.cwd, { path: f.path, status: f.status, lines: f.lines }).catch(err => ({ ok: false, error: String(err) }));
+      ? await window.deck.restoreFile(agent.cwd, f.path, f.undone.previous, f.undone.movedBack ? f.from : null).catch(err => ({ ok: false, error: String(err) }))
+      : await window.deck.undoFile(agent.cwd, { path: f.path, from: f.from, status: f.status, lines: f.lines }).catch(err => ({ ok: false, error: String(err) }));
     if (!r.ok) { problems.push(r.error); continue; }
-    f.undone = redo ? null : { previous: r.previous };
+    f.undone = redo ? null : { previous: r.previous, movedBack: !!r.movedBack };
     done.push(f.path);
   }
   button.disabled = false;
