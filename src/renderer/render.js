@@ -514,6 +514,11 @@ function parseUnifiedDiff(text) {
       file.lines.push(['hunk', line]);
     } else if (line.startsWith('+++ ')) {
       if (line !== '+++ /dev/null') file.path = line.slice(4).replace(/^b\//, '');
+    } else if (line.startsWith('rename from ')) {
+      // A moved file (svn mv, git mv, or moved and saved again): git finds
+      // it by its content. SVN lists it as the old path deleted and the new
+      // one added; here it is one file, with where it came from.
+      file.from = line.slice('rename from '.length);
     } else if (line.startsWith('--- ') || line.startsWith('index ') || line.startsWith('similarity') || line.startsWith('rename ')) {
       continue;
     } else if (line.startsWith('@@')) {
@@ -1219,7 +1224,7 @@ class Transcript {
     turn.gitShown = true;
     // The snapshot also catches changes you (or other agents) made in the same
     // folder while this agent worked. Only files the agent touched stay.
-    const files = parseUnifiedDiff(diffText).filter(f => !isTempFile(f.path) && this.agentTouched(turn, f.path));
+    const files = parseUnifiedDiff(diffText).filter(f => !isTempFile(f.path) && (this.agentTouched(turn, f.path) || (f.from && this.agentTouched(turn, f.from))));
     if (merge) {
       await this.pruneMissing(turn).catch(() => {});
       // The snapshot's paths use /, the Edit/Write reports the system's own

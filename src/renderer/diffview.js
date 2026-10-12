@@ -114,12 +114,18 @@ const BADGES = { new: 'New', mod: 'Edited', del: 'Deleted', bin: 'Binary' };
 const CS_FILE = /\.cs$/i;
 const NAMESPACE_LINE = /^[+\- ]?[ \t]*namespace[ \t]+([A-Za-z_][\w.]*)/;
 
+// The namespace the file has now: a removed line only counts for a deleted
+// file (a moved file can change its namespace, and the old one is the "-"
+// line of the diff).
 function namespaceInDiff(f) {
-  for (const [, text] of f.lines || []) {
+  let removed = null;
+  for (const [kind, text] of f.lines || []) {
     const m = NAMESPACE_LINE.exec(text || '');
-    if (m) return m[1];
+    if (!m) continue;
+    if (kind !== 'del') return m[1];
+    removed = removed || m[1];
   }
-  return null;
+  return f.status === 'del' ? removed : null;
 }
 
 // The two parts of a file's title: dimmed in front, and the name.
@@ -186,10 +192,18 @@ function fileSummary(f) {
   const { front, name } = titleParts(f);
   const pathEl = el('span', 'change-path');
   pathEl.append(el('span', 'change-folder', front), el('span', 'change-name', name));
+  // A moved file says where it came from: SVN shows it as the old path
+  // deleted and the new one added.
+  if (f.from) {
+    const oldFolder = f.from.split(/[\\/]/).slice(0, -1).join('/');
+    const oldName = f.from.split(/[\\/]/).pop();
+    const newName = f.path.split(/[\\/]/).pop();
+    pathEl.appendChild(el('span', 'change-from', `  ← ${oldFolder}${oldName !== newName ? '/' + oldName : ''}`));
+  }
   const summary = el('summary');
   summary.append(
     el('span', 'change-chevron'),
-    el('span', 'change-badge ' + f.status, BADGES[f.status] || 'Edited'),
+    el('span', 'change-badge ' + (f.from ? 'moved' : f.status), f.from ? 'Moved' : BADGES[f.status] || 'Edited'),
     pathEl,
     counts,
   );
@@ -233,7 +247,7 @@ function changesCard(files, cwd, { title = null, animate = false } = {}) {
   const titles = [];   // [file, its summary], to show namespaces once they are known
   const addFile = (parent, f) => {
     const row = el('details', `change-file status-${f.status}`);
-    row.title = f.path;
+    row.title = f.from ? `${f.path}\nmoved from ${f.from}` : f.path;
     const summary = fileSummary(f);
     titles.push([f, summary]);
     rows.set(f, row);
