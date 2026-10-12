@@ -255,7 +255,7 @@ body::before, body::after, #mu-roll, #mu-noise { border-radius: 34px / 30px !imp
 
 /* Cards and pop-ups: black glass with a phosphor frame, not the brown of
    the default look. */
-.settings-card, .palette-modal, .quit-card, .conn-dialog, .changelog-card, .notes-card, .away-card,
+.settings-card, .palette-modal, .quit-card, .conn-dialog, .changelog-card, .notes-card,
 .usage-main, .context-pop, .model-menu, .hub-settings-menu, .uml-detail, .question-card, .permission,
 .toast, .box-card, .jira-card, .changes, .media-card, .queue, .hub-menu-item, .act-tile, .hub-activity,
 .prompt-pin, .hub-settings-btn, .usage-tab, .followup, .question-option {
@@ -344,7 +344,7 @@ body::before, body::after, #mu-roll, #mu-noise { border-radius: 34px / 30px !imp
 .review-stamp { animation: mu-interference 0.45s steps(1) both !important; }
 
 /* Cards and dialogs open like a tube: a bright line that opens up. */
-.settings-card, .palette-modal, .conn-dialog, .quit-card, .changelog-card, .away-card, .notes-card {
+.settings-card, .palette-modal, .conn-dialog, .quit-card, .changelog-card, .notes-card {
   animation: mu-open 0.32s cubic-bezier(.2, .8, .2, 1) both !important; }
 @keyframes mu-open {
   0% { transform: scale(1, 0.01); filter: brightness(4); }

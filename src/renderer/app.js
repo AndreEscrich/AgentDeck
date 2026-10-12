@@ -569,8 +569,6 @@ function show(kind, id) {
     $('input').placeholder = HUB_PLACEHOLDER;
     renderBroadcast();
     if (!state.agents.size) activityPanel.load({ ifOlderThan: 10 * 60 * 1000 });
-    awayCard?.refresh();
-    placeAwayCard();
     // Back in the Hub (after leaving or closing an agent): ready to type.
     focusInput();
   }
@@ -2792,96 +2790,6 @@ async function sendToAgent(agent, text, images = []) {
   await window.deck.sendMessage(agent.id, text, images);
 }
 
-// ---------- while you were away ----------
-
-// While the app is not in front, the agents whose task ends (finished, a
-// question or an approval, an error, stuck) are noted. When you come back
-// after at least AWAY_MS, a card at the top of the Hub lists them with what
-// each needs now; click one to open it. The card stays until you close it.
-const AWAY_MS = 2 * 60 * 1000;
-const away = { since: null, ids: new Set() };
-
-window.addEventListener('blur', () => {
-  if (away.since) return;
-  away.since = Date.now();
-  away.ids = new Set();
-});
-window.addEventListener('focus', () => {
-  const since = away.since;
-  away.since = null;
-  if (since && Date.now() - since >= AWAY_MS && away.ids.size) showAwayCard([...away.ids], Date.now() - since);
-});
-
-function noteAway(id) {
-  if (away.since) away.ids.add(id);
-}
-
-// What an agent needs now, for the card: [dot class, text].
-function awayState(a) {
-  if (a.status === 'waiting') return a.attention === 'question' ? ['waiting', 'Asks you a question'] : ['waiting', 'Needs approval'];
-  if (a.status === 'idle') return ['idle', a.unread ? 'Finished' : 'Finished · opened'];
-  if (a.status === 'error') return ['error', 'Stopped with an error'];
-  if (a.status === 'stuck') return ['stuck', 'Looks stuck'];
-  if (a.status === 'background') return ['background', 'Running in the background'];
-  if (BUSY.includes(a.status)) return ['working', 'Working again'];
-  return ['exited', STATUS_TEXT[a.status] || a.status];
-}
-
-function formatAway(ms) {
-  const mins = Math.round(ms / 60000);
-  if (mins < 60) return `${mins} min`;
-  const h = Math.floor(mins / 60);
-  return `${h} h${mins % 60 ? ` ${mins % 60} min` : ''}`;
-}
-
-// The card stands left of the group panels, which stay centred; without
-// room beside them, it goes above them.
-let awayCard = null;
-function removeAwayCard() {
-  awayCard?.remove();
-  awayCard = null;
-}
-function placeAwayCard() {
-  if (!awayCard) return;
-  awayCard.classList.remove('stacked');
-  // The usage tab takes the window's left edge.
-  if (awayCard.getBoundingClientRect().left < 48) awayCard.classList.add('stacked');
-}
-window.addEventListener('resize', placeAwayCard);
-function showAwayCard(ids, ms) {
-  removeAwayCard();
-  const card = el('div', 'away-card');
-  const head = el('div', 'away-head');
-  const close = el('button', 'away-close', '×');
-  close.title = 'Close';
-  close.onclick = () => { if (awayCard === card) removeAwayCard(); sfx('close'); };
-  head.append(el('span', 'away-title', 'While you were away'), el('span', 'away-time', formatAway(ms)), close);
-  const list = el('div', 'away-list');
-  card.append(head, list);
-  const render = () => {
-    list.innerHTML = '';
-    const agents = ids.map(id => state.agents.get(id)).filter(a => a && !a.removed);
-    if (!agents.length) { if (awayCard === card) removeAwayCard(); return; }
-    // What needs you first, then errors, then the finished ones.
-    const rank = a => ({ waiting: 0, stuck: 1, error: 2, idle: 3 }[a.status] ?? 4);
-    for (const a of agents.sort((x, y) => rank(x) - rank(y))) {
-      const [dot, text] = awayState(a);
-      const row = el('button', `away-row${a.unread || a.status === 'waiting' ? '' : ' seen'}`);
-      row.type = 'button';
-      row.append(el('span', `dot ${dot}`), el('span', 'away-name', a.latestTitle || a.title), el('span', 'away-state', text));
-      row.title = `Open "${a.title}"`;
-      row.onclick = () => { sfx('open'); show('agent', a.id); };
-      list.appendChild(row);
-    }
-  };
-  card.refresh = render;
-  render();
-  awayCard = card;
-  hub.root.prepend(card);
-  placeAwayCard();
-  sfx('pick');
-}
-
 // ---------- going back to one of your messages ----------
 
 // Edit on one of your messages (see Transcript.editPrompt): the conversation
@@ -3467,8 +3375,6 @@ window.deck.onStatus((id, status) => {
   else a.waitingSince = null;
   const viewing = state.current?.kind === 'agent' && state.current.id === id;
   if ((status === 'idle' || status === 'error' || status === 'waiting') && !viewing) a.unread = true;
-  if (status === 'idle' || status === 'error' || status === 'waiting') noteAway(id);
-  awayCard?.refresh();
   updateAttention();
   refreshHeaderIfCurrent(id);
   renderSidebar();
@@ -3981,7 +3887,6 @@ function checkStuck() {
     const info = a.transcript.stuckInfo(limits);
     if (info && a.status === 'working') {
       a.status = 'stuck';
-      noteAway(a.id);
       sfx('stuck');
       a.stuck = info;
       window.deck.notify(a.title, `Seems stuck: ${info.name} · ${info.summary}`.slice(0, 180));
