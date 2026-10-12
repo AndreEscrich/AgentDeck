@@ -70,23 +70,13 @@ function memberLabel(m) {
   return m.type ? `${m.name}: ${m.type}` : m.name;
 }
 
-// The types the task added, changed or removed, plus the types around them
-// that show how the dependencies flow: the ones a changed type uses and the
-// ones that use it (status "context", drawn faded). Two parts of one type
+// Only the types the task added, changed or removed. Two parts of one type
 // (a partial class, or the same type read twice) become one box.
 function changedModel(model) {
   const byKey = new Map();
   const idOf = new Map();
-  const isChanged = n => ['new', 'mod', 'del'].includes(n.status);
-  const changedIds = new Set((model.nodes || []).filter(isChanged).map(n => n.id));
-  // A context type stays when an arrow joins it to a changed type.
-  const neighbours = new Set();
-  for (const e of model.edges || []) {
-    if (changedIds.has(e.from)) neighbours.add(e.to);
-    if (changedIds.has(e.to)) neighbours.add(e.from);
-  }
   for (const n of model.nodes || []) {
-    if (!isChanged(n) && !(n.status === 'context' && neighbours.has(n.id))) continue;
+    if (!['new', 'mod', 'del'].includes(n.status)) continue;
     const key = `${n.namespace}|${n.name}`;
     const prev = byKey.get(key);
     if (prev) {
@@ -444,7 +434,7 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
   for (const fresh of ['', '-fresh']) {
     const tri = svgEl('marker', { id: `uml-triangle${fresh}`, viewBox: '0 0 12 12', refX: 11, refY: 6, markerWidth: 12, markerHeight: 12, orient: 'auto-start-reverse', markerUnits: 'userSpaceOnUse' });
     tri.appendChild(svgEl('path', { d: 'M1,1 L11,6 L1,11 Z', class: `uml-marker-triangle${fresh}` }));
-    const arrow = svgEl('marker', { id: `uml-arrow${fresh}`, viewBox: '0 0 12 12', refX: 11, refY: 6, markerWidth: 10, markerHeight: 10, orient: 'auto-start-reverse', markerUnits: 'userSpaceOnUse' });
+    const arrow = svgEl('marker', { id: `uml-arrow${fresh}`, viewBox: '0 0 12 12', refX: 11, refY: 6, markerWidth: 14, markerHeight: 14, orient: 'auto-start-reverse', markerUnits: 'userSpaceOnUse' });
     arrow.appendChild(svgEl('path', { d: 'M1,1 L11,6 L1,11', class: `uml-marker-arrow${fresh}` }));
     defs.append(tri, arrow);
   }
@@ -643,7 +633,6 @@ function umlLegend() {
   item('new', 'New');
   item('mod', 'Changed');
   item('del', 'Deleted');
-  item('context', 'Unchanged, uses or is used');
   item('edge-inherits', 'Inherits');
   item('edge-implements', 'Implements');
   item('edge-uses', 'Uses');
