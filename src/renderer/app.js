@@ -2558,14 +2558,15 @@ window.deck.onQuitting(() => {
 // writes from it (src/handoff.js), plus the category's shared notes. If the
 // handoff cannot be written, it forks as before.
 const HANDOFF_ABOVE = 60000;
-async function startFrom(forkFrom) {
+// note(text): shows what it is doing (on the new agent's booting tile).
+async function startFrom(forkFrom, note = flashComposerNote) {
   if (!forkFrom) return { forkFrom: null };
   let session = state.sessions.find(s => s.id === forkFrom.sessionId);
   if (!session) { await loadSessions(); session = state.sessions.find(s => s.id === forkFrom.sessionId); }
   if (!session?.file) return { forkFrom };
   const size = await window.deck.sessionContextSize(session.file).catch(() => 0);
   if (size <= HANDOFF_ABOVE) return { forkFrom };
-  flashComposerNote(`Writing a handoff from "${forkFrom.title}"…`);
+  note('Writing a handoff…');
   const text = await window.deck.sessionHandoff(session.file, forkFrom.title).catch(() => null);
   if (!text) return { forkFrom };
   const safe = forkFrom.title.replace(/"/g, "'");
@@ -2576,7 +2577,13 @@ async function startFrom(forkFrom) {
   };
 }
 
-async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId, fromRect, forkFrom, preamble = '', handoffFrom = null, images = [], ticket = null, rewindAt }) {
+// prepare (optional): slow work before Claude Code can start, such as
+// reading a Jira ticket or writing a handoff. It runs after the agent's tile
+// exists, so the tile flies to its group and boots up at once instead of
+// waiting; prepare(note) shows its progress on the booting tile with
+// note(text) and resolves with any of { prompt, forkFrom, preamble,
+// handoffFrom } to use instead of the ones passed in.
+async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId, fromRect, forkFrom, preamble = '', handoffFrom = null, images = [], ticket = null, rewindAt, prepare = null }) {
   const title = resume ? resume.session.title : prompt.split('\n')[0].slice(0, 80);
   choice = choice || defaultChoice();
   permissionMode = permissionMode || defaultMode();
@@ -2600,22 +2607,41 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     groupId: resume ? groupOf(resume.session.id) : groupId || null };
   state.agents.set(id, agent);
   if (ticket) agent.ticket = ticket;
-  if (forkFrom) {
-    agent.forkedFrom = forkFrom;
-    transcript.note(`Continues from "${forkFrom.title}", so it knows what that agent did.`);
-  }
-  if (handoffFrom) {
-    transcript.note(`Starts fresh with a handoff from "${handoffFrom.title}": its conversation was ${formatTokens(handoffFrom.tokens)} tokens, too long to copy.`);
-  }
-  transcript.add({ type: 'user', message: { role: 'user', content: userContent(prompt, images) } });
   if (!resume) summarizeTitle(agent, prompt);
   else if (prompt !== RESUME_PROMPT) notePrompt(agent, prompt);
+  // The chat gets its notes and your message once prepare is done (it can
+  // change the message), so they only wait while the tile is in the Hub.
+  const fillChat = () => {
+    if (forkFrom) {
+      agent.forkedFrom = forkFrom;
+      transcript.note(`Continues from "${forkFrom.title}", so it knows what that agent did.`);
+    }
+    if (handoffFrom) {
+      transcript.note(`Starts fresh with a handoff from "${handoffFrom.title}": its conversation was ${formatTokens(handoffFrom.tokens)} tokens, too long to copy.`);
+    }
+    transcript.add({ type: 'user', message: { role: 'user', content: userContent(prompt, images) } });
+  };
+  if (!prepare) fillChat();
   if (fromRect) {
     // Started from the Hub: stay there and watch the message box become the tile.
     hub.expectArrival(id, fromRect, prompt);
     show('hub');
   } else {
     afterSend(agent, false);
+  }
+
+  if (prepare) {
+    const note = text => {
+      agent.bootNote = text;
+      refreshHub();
+    };
+    const ready = await prepare(note).catch(() => ({}));
+    agent.bootNote = null;
+    // Removed from the Hub while it was getting ready: nothing to start.
+    if (!state.agents.has(id) || agent.removed) return;
+    ({ prompt = prompt, forkFrom = forkFrom, preamble = preamble, handoffFrom = handoffFrom } = ready || {});
+    fillChat();
+    refreshHub();
   }
 
   try {
@@ -3582,17 +3608,21 @@ async function sendFromComposer() {
     const forkFrom = forkSourceFor(d.folder, d.groupId);
     // A message that is (or starts with) a Jira ticket brings the ticket along.
     const ticket = ticketIn(text);
-    let prompt = text;
-    if (ticket) {
-      flashComposerNote(`Reading ${ticket} from Jira…`);
-      const details = await window.deck.jiraDetails(ticket).catch(err => ({ error: String(err?.message || err) }));
-      if (details.error) flashComposerNote(`Could not read ${ticket} (${details.error}). The agent gets your message as it is.`);
-      else prompt = ticketPrompt(details, text);
-    }
-    // A long parent is not copied: a handoff summary instead (see startFrom).
-    const from = await startFrom(forkFrom);
+    // Reading the ticket and writing a handoff (a long parent is not copied,
+    // see startFrom) take a few seconds. They run while the new tile boots
+    // up in its group, so pressing Enter shows the agent at once.
+    const prepare = async note => {
+      let prompt = text;
+      if (ticket) {
+        note(`Reading ${ticket}…`);
+        const details = await window.deck.jiraDetails(ticket).catch(err => ({ error: String(err?.message || err) }));
+        if (details.error) flashComposerNote(`Could not read ${ticket} (${details.error}). The agent gets your message as it is.`);
+        else prompt = ticketPrompt(details, text);
+      }
+      return { prompt, ...(await startFrom(forkFrom, note)) };
+    };
     if (playSounds()) sounds.created();
-    await startAgent({ cwd: d.folder, prompt, permissionMode: d.mode, choice: d.choice, groupId: d.groupId, fromRect, forkFrom: from.forkFrom, preamble: from.preamble, handoffFrom: from.handoffFrom, images, ticket });
+    await startAgent({ cwd: d.folder, prompt: text, permissionMode: d.mode, choice: d.choice, groupId: d.groupId, fromRect, images, ticket, prepare });
   } else if (state.current.kind === 'agent') {
     const a = state.agents.get(state.current.id);
     if (QUEUE_WHILE.includes(a.status)) {

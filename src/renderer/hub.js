@@ -587,7 +587,10 @@ class Hub {
         : `${agent.title}\n${agent.cwd}`;
       parts.statusDot.className = `dot ${agent.status}`;
       parts.statusText.textContent = limited ? `Usage limit · continues ${Hub.resetText(limited.resetAt / 1000)}`
-        : authWait ? 'Signed out · continues after you sign in' : HUB_STATUS_TEXT[agent.status] || agent.status;
+        : authWait ? 'Signed out · continues after you sign in'
+        // Getting ready before Claude Code starts (a Jira ticket, a handoff).
+        : agent.status === 'starting' && agent.bootNote ? `Booting up · ${agent.bootNote}`
+        : HUB_STATUS_TEXT[agent.status] || agent.status;
       // What a waiting agent needs from you: an answer or an approval.
       const needs = agent.status === 'waiting' ? agent.attention || 'approval' : null;
       tile.classList.toggle('needs-question', needs === 'question');
