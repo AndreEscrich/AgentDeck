@@ -358,12 +358,15 @@ const sounds = (() => {
       drone(ac, end - 0.1, 36, 1.0, 0.14, 'square');
     }),
     created: safely(ac => { data(ac, 0, 5, { direction: 1, step: 0.07 }); breath(ac, 0, 700, 0.6, 0.05, { swell: true }); }),
-    // Finished: the computer prints its answer, then a falling minor second,
-    // as if it knows more than it says.
+    // Finished: the computer prints its answer, then three notes climb a
+    // major chord (G, B, D) and settle on it: still the ship's low, echoing
+    // voice, but it says the task went well.
     done: safely(ac => {
-      const end = data(ac, 0, 7, { step: 0.06 });
-      tone(ac, end + 0.08, 494, 0.5, 0.06);
-      tone(ac, end + 0.4, 466, 0.9, 0.06);
+      const end = data(ac, 0, 5, { step: 0.06 });
+      tone(ac, end + 0.06, 392, 0.22, 0.055);
+      tone(ac, end + 0.2, 494, 0.22, 0.055);
+      tone(ac, end + 0.34, 587, 1.0, 0.06);
+      tone(ac, end + 0.34, 392, 1.0, 0.035, { detune: 4 });
     }),
     // A fault: a low growl with a falling tritone in it.
     error: safely(ac => {
