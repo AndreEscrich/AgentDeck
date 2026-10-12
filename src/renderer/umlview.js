@@ -9,8 +9,13 @@
 // at a box for its changed members; click it to open its diff.
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const UML_FONT = '600 13px Nunito, "Segoe UI", sans-serif';
-const UML_SMALL = '11px Nunito, "Segoe UI", sans-serif';
+// The fonts the diagram's text is drawn in (styles.css: .uml-name, and
+// .uml-group / .uml-folder text). They use the theme's --font, so boxes are
+// measured in it too: the retro theme's monospace is much wider than the
+// default look's Nunito, and names measured in Nunito ran out of their box.
+const UML_FONT = 'name';
+const UML_SMALL = 'small';
+const UML_STYLES = { name: '600 13px', small: '600 11px' };
 const UML_BOX_H = 38;
 const COMPOSER_H = 40;
 const COMPOSER_W = 40;       // the composer's bar down the left of its namespace
@@ -28,11 +33,26 @@ function svgEl(tag, attrs = {}, text) {
   return node;
 }
 
-let measureCtx = null;
-function textWidth(text, font) {
-  measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
-  measureCtx.font = font;
-  return measureCtx.measureText(text).width;
+// Measured on a hidden element in the page, not on a canvas: a canvas does
+// not know the theme's font names (such as ui-monospace) and would measure
+// in a fallback font.
+let measureEl = null;
+const measured = new Map();
+function textWidth(text, kind) {
+  const family = getComputedStyle(document.documentElement).getPropertyValue('--font').trim() || 'sans-serif';
+  const font = `${UML_STYLES[kind] || kind} ${family}`;
+  const key = `${font}|${text}`;
+  if (measured.has(key)) return measured.get(key);
+  if (!measureEl) {
+    measureEl = document.createElement('span');
+    Object.assign(measureEl.style, { position: 'absolute', left: '-10000px', top: '0', visibility: 'hidden', whiteSpace: 'pre', textTransform: 'none', letterSpacing: '0' });
+    document.body.appendChild(measureEl);
+  }
+  measureEl.style.font = font;
+  measureEl.textContent = text;
+  const width = measureEl.getBoundingClientRect().width;
+  measured.set(key, width);
+  return width;
 }
 
 const CHANGE_SIGN = { new: '+', mod: '~', del: '−' };
@@ -492,7 +512,10 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
     if (b.composer) {
       g.appendChild(svgEl('text', { class: 'uml-name', x: b.w / 2 + 3, y: b.h / 2 + 4.5, transform: `rotate(-90 ${b.w / 2 + 3} ${b.h / 2})` }, composerLabel(b)));
     } else {
-      g.appendChild(svgEl('text', { class: 'uml-name', x: b.w / 2 + 3, y: b.h / 2 + 4.5 }, b.name));
+      // A name longer than the widest box (340px) is squeezed to fit inside it.
+      const room = b.w - 26;
+      const squeeze = textWidth(b.name, UML_FONT) > room ? { textLength: room, lengthAdjust: 'spacingAndGlyphs' } : {};
+      g.appendChild(svgEl('text', { class: 'uml-name', x: b.w / 2 + 3, y: b.h / 2 + 4.5, ...squeeze }, b.name));
     }
     if (b.facade) {
       g.appendChild(svgEl('rect', { class: 'uml-api-tag', x: b.w - 34, y: -9, width: 30, height: 16, rx: 8 }));
