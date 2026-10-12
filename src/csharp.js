@@ -332,21 +332,50 @@ function projectIndex(root) {
     };
     await walk(root);
     const DECL = /\b(class|interface|struct|enum|record)\s+([A-Za-z_]\w*)/g;
+    const declaredIn = new Map();   // file -> { namespace, usings, types: [{ name, kind }] }
     for (let i = 0; i < files.length; i += 64) {
       await Promise.all(files.slice(i, i + 64).map(async file => {
         let text;
         try { text = await fs.promises.readFile(file, 'utf8'); } catch { return; }
         const ns = /^[ \t]*namespace[ \t]+([A-Za-z_][\w.]*)/m.exec(text)?.[1] || '';
+        const usings = [...text.matchAll(/^[ \t]*using[ \t]+([A-Za-z_][\w.]*)[ \t]*;/gm)].map(m => m[1]);
+        const types = [];
         for (const m of text.matchAll(DECL)) {
           // Skip words in comments: the line must not start with // or *.
           const lineStart = text.lastIndexOf('\n', m.index) + 1;
           if (/^\s*(\/\/|\*|\/\*)/.test(text.slice(lineStart, m.index))) continue;
+          const kind = m[1] === 'record' ? 'class' : m[1];
+          types.push({ name: m[2], kind });
           const list = byName.get(m[2]) || [];
-          if (list.length < 12 && !list.some(d => d.namespace === ns)) list.push({ file, kind: m[1] === 'record' ? 'class' : m[1], namespace: ns });
+          if (list.length < 12 && !list.some(d => d.namespace === ns)) list.push({ file, kind, namespace: ns });
           byName.set(m[2], list);
+        }
+        if (types.length) declaredIn.set(file, { namespace: ns, usings, types });
+      }));
+    }
+    // Who uses each type: a second pass notes, for every type name declared
+    // in the project, the files that mention it (up to 40). The diagram
+    // shows them as the types that depend on a changed type.
+    const usedBy = new Map();
+    for (let i = 0; i < files.length; i += 64) {
+      await Promise.all(files.slice(i, i + 64).map(async file => {
+        let text;
+        try { text = await fs.promises.readFile(file, 'utf8'); } catch { return; }
+        const own = declaredIn.get(file);
+        if (!own) return;
+        const ownNames = new Set(own.types.map(t => t.name));
+        const seen = new Set();
+        for (const m of blank(text).matchAll(/\b[A-Z]\w*/g)) {
+          const word = m[0];
+          if (seen.has(word) || ownNames.has(word) || !byName.has(word) || COMMON.has(word)) continue;
+          seen.add(word);
+          const list = usedBy.get(word) || [];
+          if (list.length < 40) list.push({ file, namespace: own.namespace, usings: own.usings, types: own.types });
+          usedBy.set(word, list);
         }
       }));
     }
+    byName.usedBy = usedBy;
     entry.value = byName;
     return byName;
   })().catch(() => entry.value || new Map());
@@ -378,6 +407,10 @@ function projectRoot(cwd) {
 // ---------- the model ----------
 
 const MAX_CONTEXT = 14;
+// Types outside the changes that use a changed type: at most this many per
+// changed type, and in all.
+const MAX_USERS_EACH = 6;
+const MAX_USERS = 16;
 
 // Names that some package may declare too, but that almost always mean the
 // .NET or Unity type: they would only clutter the diagram.
@@ -535,6 +568,37 @@ async function model(cwd, files) {
       if (link(c, word, 'uses', fresh, Math.min(...lines))) seen.add(word);
     }
   }
+  // Types outside the changes that use a changed type (from the project
+  // index's second pass): the main type of each file that mentions it, when
+  // that file can see the changed type's namespace.
+  const users = new Map();   // context id -> { name, info }
+  const changedNames = new Set(changed.map(c => `${c.node.namespace}|${c.node.name}`));
+  for (const c of changed) {
+    if (!relevantIds.has(c.node.id) || users.size >= MAX_USERS) continue;
+    const own = path.resolve(cwd || '.', c.node.file);
+    const ns = c.node.namespace || '';
+    let count = 0;
+    for (const u of index.usedBy?.get(c.node.name) || []) {
+      if (count >= MAX_USERS_EACH || users.size >= MAX_USERS) break;
+      if (path.resolve(u.file) === own) continue;
+      const sees = !ns || u.namespace === ns || u.usings.includes(ns) || u.namespace.startsWith(ns + '.') || ns.startsWith(u.namespace + '.');
+      if (!sees) continue;
+      const base = path.basename(u.file, path.extname(u.file));
+      const t = u.types.find(x => x.name === base) || u.types[0];
+      if (!t || changedNames.has(`${u.namespace}|${t.name}`)) continue;
+      const id = `ctx#${u.namespace}.${t.name}`;
+      if (!users.has(id)) users.set(id, { name: t.name, info: { file: u.file, kind: t.kind, namespace: u.namespace } });
+      if (!edges.some(e => e.from === id && e.to === c.node.id)) {
+        edges.push({ from: id, to: c.node.id, kind: 'uses', fresh: false, line: 1 });
+        count++;
+      }
+    }
+  }
+
+  // A type outside the changes sits in its folder's lane, like the changed
+  // ones (their folders are relative to cwd too).
+  const folderOf = file => path.relative(path.resolve(cwd || '.'), path.dirname(file)).split(path.sep).join('/');
+
   // Types outside the changes: only the most used ones get a (faded) box.
   const nodes = changed.map(c => c.node);
   const relevant = relevantIds;
@@ -542,7 +606,11 @@ async function model(cwd, files) {
   for (const [id, { name, info }] of context) {
     // A type from a Unity package names its package (com.company.name).
     const pkg = /[\\/]PackageCache[\\/]([^\\/@]+)/.exec(info.file)?.[1] || null;
-    nodes.push({ id, name, kind: info.kind, namespace: info.namespace, package: pkg, status: 'context', file: info.file, line: 1, members: [], bases: [] });
+    nodes.push({ id, name, kind: info.kind, namespace: info.namespace, package: pkg, status: 'context', file: info.file, folder: folderOf(info.file), line: 1, members: [], bases: [] });
+  }
+  for (const [id, { name, info }] of users) {
+    if (nodes.some(n => n.id === id)) continue;
+    nodes.push({ id, name, kind: info.kind, namespace: info.namespace, package: null, status: 'context', role: 'user', file: info.file, folder: folderOf(info.file), line: 1, members: [], bases: [] });
   }
   const nodeIds = new Set(nodes.map(n => n.id));
   for (const e of edges) if (!nodeIds.has(e.to)) e.to = null;
