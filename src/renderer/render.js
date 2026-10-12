@@ -212,6 +212,15 @@ document.addEventListener('click', e => {
   window.open(a.href, '_blank');
 }, true);
 
+// DOMPurify drops a link it cannot place, and it reads the drive in a
+// Windows path ("C:/…", "C:\…") as an unknown kind of link ("c:"), so an
+// agent's image or video with a full path showed as a broken picture. An
+// image's source that is a drive path stays; markdown() then shows the file
+// through media:// (mediaElement), never by loading the path itself.
+DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
+  if (node.nodeName === 'IMG' && data.attrName === 'src' && /^[a-z]:([\\/]|%5c)/i.test(data.attrValue)) data.forceKeepAttr = true;
+});
+
 function markdown(text, cwd) {
   const div = el('div', 'msg-text');
   // Text boxes drawn with ╔═╗ characters become cards (see boxcard.js).
