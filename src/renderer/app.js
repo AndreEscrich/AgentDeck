@@ -440,8 +440,8 @@ function scrollToBottom(view) {
 
 // ---------- images and videos for the agent ----------
 
-// Drop images or videos on the window (while a message box is shown), or
-// paste an image into the message box: they go with your next message (see
+// Drop images, videos or sounds on the window (while a message box is shown),
+// or paste an image into the message box: they go with your next message (see
 // renderer/attachments.js).
 const attachments = new Attachments($('composer-attachments'), {
   key: () => viewKey(state.current),
@@ -475,7 +475,7 @@ const attachments = new Attachments($('composer-attachments'), {
     box().classList.remove('drag-over');
     if (!canDrop()) return;
     const skipped = attachments.add([...e.dataTransfer.files]);
-    if (skipped.length) flashComposerNote(`Only images and videos can be attached (${skipped.join(', ')} skipped).`);
+    if (skipped.length) flashComposerNote(`Only images, videos and sounds can be attached (${skipped.join(', ')} skipped).`);
     $('input').focus();
   });
   $('input').addEventListener('paste', e => {

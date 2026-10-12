@@ -1,11 +1,13 @@
-// Images and videos you drop on (or paste into) the message box, for the
-// agent to look at.
+// Images, videos and sounds you drop on (or paste into) the message box, for
+// the agent to look at.
 //
 // Images go to Claude with your message, sized down to at most 1568 pixels on
 // the longest side (the size Claude reads best). Claude cannot watch videos,
 // so a video is sent as six frames spread over the clip, taken with the
-// browser's own video decoder. The message also names each file's path, so
-// the agent can work with the file itself.
+// browser's own video decoder. Claude cannot listen to sounds either: a sound
+// file goes as its path, length, sample rate and channels, and its chip shows
+// the waveform. The message also names each file's path, so the agent can
+// work with the file itself.
 //
 // Each view (the Hub, every agent, every saved session) has its own list,
 // like the text in the message box.
@@ -14,10 +16,14 @@ const MAX_SIDE = 1568;
 const FRAME_SIDE = 1024;
 const IMAGE_FILE = /\.(png|jpe?g|gif|webp|bmp|heic|tiff?|tga|psd)$/i;
 const VIDEO_FILE = /\.(mp4|mov|m4v|webm|avi|mkv)$/i;
+const AUDIO_FILE = /\.(wav|mp3|ogg|oga|flac|m4a|aac|aiff?|opus)$/i;
+// Larger sound files are attached without reading them (no waveform or length).
+const AUDIO_READ_LIMIT = 200 * 1024 * 1024;
 
 function kindOfFile(file) {
   if (file.type.startsWith('image/') || IMAGE_FILE.test(file.name)) return 'image';
   if (file.type.startsWith('video/') || VIDEO_FILE.test(file.name)) return 'video';
+  if (file.type.startsWith('audio/') || AUDIO_FILE.test(file.name)) return 'audio';
   return null;
 }
 
@@ -79,6 +85,41 @@ async function readVideo(file) {
   }
 }
 
+// A sound: its length, sample rate and channels, and a picture of its
+// waveform for the chip (the loudest and quietest sample in each column).
+async function readAudio(file) {
+  if (file.size > AUDIO_READ_LIMIT) return { images: [] };
+  const decoder = new OfflineAudioContext(1, 1, 44100);
+  let buffer;
+  try {
+    buffer = await decoder.decodeAudioData(await file.arrayBuffer());
+  } catch {
+    throw new Error('This sound format cannot be read here.');
+  }
+  const W = 128, H = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const g = canvas.getContext('2d');
+  g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#e9a23b';
+  const data = buffer.getChannelData(0);
+  const per = Math.max(1, Math.floor(data.length / W));
+  for (let x = 0; x < W; x++) {
+    let lo = 0, hi = 0;
+    for (let i = x * per, end = Math.min(data.length, i + per); i < end; i += 4) {
+      if (data[i] < lo) lo = data[i];
+      if (data[i] > hi) hi = data[i];
+    }
+    const top = H / 2 - hi * (H / 2 - 8), bottom = H / 2 - lo * (H / 2 - 8);
+    g.fillRect(x, top, 1, Math.max(1, bottom - top));
+  }
+  return { images: [], thumb: canvas.toDataURL('image/png'), duration: buffer.duration, sampleRate: buffer.sampleRate, channels: buffer.numberOfChannels };
+}
+
+function channelsText(n) {
+  return n === 1 ? 'mono' : n === 2 ? 'stereo' : `${n} channels`;
+}
+
 class Attachments {
   // row: the element above the text box. key(): the current view's key.
   constructor(row, { key, onChange }) {
@@ -93,8 +134,8 @@ class Attachments {
     return this.lists.get(this.key()) || [];
   }
 
-  // Adds dropped or pasted files to the current view. Files that are neither
-  // an image nor a video are skipped (and named in the returned list).
+  // Adds dropped or pasted files to the current view. Files that are not an
+  // image, a video or a sound are skipped (and named in the returned list).
   add(files) {
     const key = this.key();
     const list = this.lists.get(key) || [];
@@ -102,9 +143,9 @@ class Attachments {
     for (const file of files) {
       const kind = kindOfFile(file);
       if (!kind) { skipped.push(file.name); continue; }
-      const item = { id: this.nextId++, kind, name: file.name || (kind === 'image' ? 'Pasted image' : 'Video'), path: window.deck.pathForFile?.(file) || null, images: [], thumb: null, ready: null };
-      item.ready = (kind === 'image' ? readImage(file) : readVideo(file))
-        .then(r => Object.assign(item, r))
+      const item = { id: this.nextId++, kind, name: file.name || ({ image: 'Pasted image', video: 'Video', audio: 'Sound' })[kind], path: window.deck.pathForFile?.(file) || null, images: [], thumb: null, ready: null };
+      item.ready = ({ image: readImage, video: readVideo, audio: readAudio })[kind](file)
+        .then(r => Object.assign(item, r, { done: true }))
         .catch(err => { item.error = err?.message || 'Could not read this file.'; })
         .finally(() => this.render());
       list.push(item);
@@ -134,9 +175,12 @@ class Attachments {
     const images = [];
     const lines = [];
     for (const a of list) {
-      if (a.error || !a.images.length) continue;
+      if (a.error || (a.kind !== 'audio' && !a.images.length)) continue;
       if (a.kind === 'image') {
         lines.push(`Attached image: ${a.path || a.name}`);
+      } else if (a.kind === 'audio') {
+        const about = a.duration ? ` (${formatClock(a.duration)} long, ${a.sampleRate} Hz, ${channelsText(a.channels)})` : '';
+        lines.push(`Attached sound: ${a.path || a.name}${about}. You cannot listen to it; work with the file itself when you need its contents.`);
       } else {
         lines.push(`Attached video: ${a.path || a.name} (${formatClock(a.duration || 0)} long). The ${a.images.length} pictures for it are frames at ${a.times.map(formatClock).join(', ')}.`);
       }
@@ -150,7 +194,8 @@ class Attachments {
     this.row.textContent = '';
     this.row.classList.toggle('hidden', !list.length);
     for (const a of list) {
-      const chip = el('div', `attach-chip ${a.kind}` + (a.error ? ' error' : '') + (!a.thumb && !a.error ? ' loading' : ''));
+      const reading = !a.thumb && !a.error && !(a.kind === 'audio' && a.done);
+      const chip = el('div', `attach-chip ${a.kind}` + (a.error ? ' error' : '') + (reading ? ' loading' : ''));
       chip.title = a.error ? `${a.name}: ${a.error}` : a.path || a.name;
       if (a.thumb) {
         const img = document.createElement('img');
@@ -159,6 +204,7 @@ class Attachments {
         chip.appendChild(img);
       }
       if (a.kind === 'video') chip.appendChild(el('span', 'attach-badge', a.duration ? `▶ ${formatClock(a.duration)}` : '▶'));
+      if (a.kind === 'audio') chip.appendChild(el('span', 'attach-badge', a.duration ? `♪ ${formatClock(a.duration)}` : '♪'));
       if (a.error) chip.appendChild(el('span', 'attach-badge', '!'));
       const remove = el('button', 'attach-remove', '✕');
       remove.type = 'button';

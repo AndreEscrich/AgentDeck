@@ -1594,7 +1594,7 @@ details.other-files > summary { padding: 6px 4px; }
 details.other-files details.change-file { margin-top: 8px; }
 details.other-files details.change-file > summary { padding-left: 12px; }
 
-/* Images and videos attached to the next message */
+/* Images, videos and sounds attached to the next message */
 .composer-box { position: relative; }
 .composer-attachments { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 0 8px; }
 .attach-chip { position: relative; width: 64px; height: 64px; border-radius: 10px; overflow: hidden; flex-shrink: 0;
@@ -1610,7 +1610,7 @@ details.other-files details.change-file > summary { padding-left: 12px; }
 .attach-chip:hover .attach-remove { opacity: 1; }
 /* While you drag files over the window: the box shows where they go. */
 .composer-box.drag-over { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.25); }
-.composer-box.drag-over::after { content: "Drop images or videos for the agent"; position: absolute; inset: 0; z-index: 3;
+.composer-box.drag-over::after { content: "Drop images, videos or sounds for the agent"; position: absolute; inset: 0; z-index: 3;
   display: flex; align-items: center; justify-content: center; border-radius: inherit; font-size: 14px; font-weight: 600;
   color: var(--text); background: rgba(30, 24, 18, 0.88); border: 2px dashed var(--accent); pointer-events: none; }
 .composer-flash { position: absolute; left: 12px; right: 12px; bottom: calc(100% + 8px); padding: 7px 10px; border-radius: 8px; font-size: 12.5px;

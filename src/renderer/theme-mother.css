@@ -539,3 +539,5 @@ button, .hub-info, .hub-status, .note, .status-pill, .next-hint, #input, .model-
 .hub-tile.state-stuck .tank::after { content: "STALLED"; }
 /* A dark patch behind the word, so it stays readable over a full tank. */
 .tank::after { background: radial-gradient(ellipse 48% 20% at center, rgba(0, 0, 0, 0.88) 55%, transparent 100%); }
+/* With attachments above the text, the prompt sign moves down to the text. */
+.composer-box:has(.composer-attachments:not(.hidden))::before { top: 87px; }
