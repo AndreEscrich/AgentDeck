@@ -3039,6 +3039,21 @@ window.addEventListener('review-comments', e => {
   sfx('pick');
 });
 
+// ---------- snapshots ahead of time ----------
+
+// Before each message the app records the folder's files (src/git.js), and
+// the message waits for that. After the first time it only reads what
+// changed, but the first time it reads every code file and text asset of
+// the project, which can take a while in a big Unity project. So, a few
+// seconds after the app starts, it records the folders of the agents on
+// the Hub once in the background, one after another.
+function warmSnapshots() {
+  const folders = [...new Set([...state.agents.values(), ...state.parked.values()].map(a => a.cwd).filter(f => f && f !== state.config.home))];
+  setTimeout(async () => {
+    for (const folder of folders) await window.deck.gitSnapshot(folder).catch(() => null);
+  }, 8000);
+}
+
 // ---------- undo the last prompt ----------
 
 // "Undo last prompt" in the message box puts every file the agent's last
@@ -3047,8 +3062,11 @@ window.addEventListener('review-comments', e => {
 // version back. The files show crossed out in the task's Changes card, and
 // the agent is told with your next message. Only while the agent is not
 // working, and only when its last task changed files.
+// Binary files (and every other file) can be undone when the task has a
+// snapshot: their old version comes from it.
 function lastTaskFiles(agent) {
-  return (agent?.transcript?.lastFinished?.files || []).filter(f => f.status !== 'bin');
+  const turn = agent?.transcript?.lastFinished;
+  return (turn?.files || []).filter(f => f.status !== 'bin' || turn.snap);
 }
 
 function renderUndoButton(agent) {
@@ -3076,7 +3094,7 @@ async function undoLastPrompt(agent) {
   for (const f of redo ? files : [...files].reverse().filter(x => !x.undone)) {
     const r = redo
       ? await window.deck.restoreFile(agent.cwd, f.path, f.undone.previous, f.undone.movedBack ? f.from : null).catch(err => ({ ok: false, error: String(err) }))
-      : await window.deck.undoFile(agent.cwd, { path: f.path, from: f.from, status: f.status, lines: f.lines }).catch(err => ({ ok: false, error: String(err) }));
+      : await window.deck.undoFile(agent.cwd, { path: f.path, from: f.from, status: f.status, binary: f.binary, lines: f.lines }, turn?.snap || null).catch(err => ({ ok: false, error: String(err) }));
     if (!r.ok) { problems.push(r.error); continue; }
     f.undone = redo ? null : { previous: r.previous, movedBack: !!r.movedBack };
     done.push(f.path);
@@ -3398,6 +3416,8 @@ window.deck.onEvent((id, msg) => {
     const snap = a.snapshot;
     const turn = a.transcript.lastFinished;
     a.snapshot = null;
+    // Kept for "Undo last prompt": binary files come back from it.
+    if (turn) turn.snap = snap;
     window.deck.gitChanges(a.cwd, snap)
       .then(diff => a.transcript.showGitChanges(turn, diff, snap.kind === 'folder'))
       .then(() => refreshHeaderIfCurrent(a.id))
@@ -3993,6 +4013,7 @@ setInterval(checkStuck, 3000);
   state.groups = { groups: [], assignments: {}, ...(await window.deck.getGroups()) };
   loadHub();
   await loadAgentList();
+  warmSnapshots();
   // Agents that were waiting for a sign-in when the app closed: offer it again.
   if (authWaits().length) setTimeout(noteAuthProblem, 1500);
   if (!IS_MAC) {

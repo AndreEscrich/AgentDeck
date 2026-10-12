@@ -10,7 +10,8 @@
 //
 // 2. The folder is not a git repository (for example an SVN checkout). The
 //    app keeps its own git repository for that folder in its settings folder
-//    and records only code files there (see CODE_ONLY). Git reads your files
+//    and records code files and text assets there (see CODE_ONLY), so "Undo
+//    last prompt" can put back prefabs, scenes and the like too. Git reads your files
 //    but writes nothing into your folder. Packages inside the folder that are
 //    git repositories of their own (embedded Unity packages) get snapshot
 //    kind 1, because git does not look inside a nested repository.
@@ -21,12 +22,24 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-// For kind 2: ignore everything, then allow folders and code files back in.
+// For kind 2: ignore everything, then allow folders, code files and assets
+// stored as text back in. Unity saves prefabs, scenes, materials, animations
+// and most settings as text (YAML), and every asset has a .meta file; these
+// are what an agent changes besides code. Textures, models and sounds stay
+// out: they can be gigabytes, and agents rarely change them.
 const CODE_ONLY = [
   '*', '!*/',
   '!*.cs', '!*.shader', '!*.hlsl', '!*.cginc', '!*.compute', '!*.asmdef', '!*.asmref',
   '!*.js', '!*.ts', '!*.tsx', '!*.py', '!*.java', '!*.kt', '!*.swift', '!*.m', '!*.mm', '!*.h', '!*.cpp', '!*.c',
-  '/Library/', '/Temp/', '/Logs/', '/obj/', '/Build/', '/Builds/', 'node_modules/', '.svn/', '.git/',
+  '!*.prefab', '!*.unity', '!*.asset', '!*.mat', '!*.anim', '!*.controller', '!*.overrideController', '!*.mask', '!*.meta',
+  '!*.playable', '!*.signal', '!*.spriteatlas', '!*.spriteatlasv2', '!*.physicMaterial', '!*.physicsMaterial2D', '!*.preset',
+  '!*.shadergraph', '!*.shadersubgraph', '!*.vfx', '!*.uss', '!*.uxml', '!*.tss', '!*.inputactions', '!*.guiskin', '!*.fontsettings',
+  '!*.renderTexture', '!*.lighting', '!*.terrainlayer', '!*.brush', '!*.flare', '!*.giparams', '!*.mixer',
+  '!*.json', '!*.xml', '!*.yaml', '!*.yml', '!*.txt', '!*.csv', '!*.md', '!*.html', '!*.css',
+  '/Library/', '/Temp/', '/Logs/', '/obj/', '/Build/', '/Builds/', '/UserSettings/', '/MemoryCaptures/', '/Recordings/',
+  'node_modules/', '.svn/', '.git/',
+  // Baked lighting is big, binary and rebuilt by Unity.
+  'LightingData.asset', '*.lighting.asset',
 ];
 
 function git(args, { cwd, gitDir, workTree, allowExitCodes = [0] } = {}) {
@@ -145,6 +158,34 @@ async function folderChanges(cwd, snap) {
   return parts.join('');
 }
 
+// ---------- a file as it was ----------
+
+// The content of one file (path relative to cwd) as the snapshot recorded
+// it, as a Buffer; null when the snapshot does not have it. Undo uses it for
+// files it cannot rebuild from the diff (binary files).
+function show(args, opts) {
+  const prefix = [];
+  if (opts.gitDir) prefix.push('--git-dir', opts.gitDir);
+  if (opts.cwd) prefix.push('-C', opts.cwd);
+  return new Promise(resolve => {
+    execFile('git', [...prefix, ...args], { encoding: 'buffer', maxBuffer: 512 * 1024 * 1024, timeout: 60000 }, (err, stdout) => resolve(err ? null : stdout));
+  });
+}
+
+async function fileAt(cwd, snap, rel) {
+  if (!snap || typeof rel !== 'string') return null;
+  rel = rel.split(path.sep).join('/');
+  if (snap.kind === 'folder') {
+    // A file inside an embedded package that is a repository of its own.
+    const nested = (snap.nested || []).find(n => rel.startsWith(n.path + '/'));
+    if (nested) return fileAt(path.join(cwd, nested.path), nested.snap, rel.slice(nested.path.length + 1));
+    return show(['show', `${snap.tree}:${rel}`], { gitDir: snap.dir });
+  }
+  // In a repository, paths in the commit are relative to its top folder.
+  const top = (await git(['rev-parse', '--show-prefix'], { cwd }))?.trim() || '';
+  return show(['show', `${snap.base}:${top}${rel}`], { cwd });
+}
+
 // ---------- public ----------
 
 // root is the folder where the app keeps its private repositories.
@@ -164,4 +205,4 @@ async function changesSince(cwd, snap) {
   return repoChanges(cwd, snap);
 }
 
-module.exports = { snapshot, changesSince };
+module.exports = { snapshot, changesSince, fileAt };

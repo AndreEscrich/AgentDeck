@@ -103,13 +103,29 @@ function patch(lines, hunks) {
 
 // Resolves with { ok: true, previous } (base64 of the content before the
 // undo, or null when the file did not exist) or { ok: false, error }.
-async function undoFile(cwd, file) {
+// snap: the task's snapshot (src/git.js), for binary files: their diff has
+// no content, so their old version comes from the snapshot.
+async function undoFile(cwd, file, snap = null) {
   if (!file || typeof file.path !== 'string' || !Array.isArray(file.lines)) return { ok: false, error: 'Nothing to undo.' };
   const abs = resolve(cwd, file.path);
   const name = path.basename(file.path);
-  if (file.status === 'bin') return { ok: false, error: `${name} is a binary file, which can't be undone here.` };
   const exists = fs.existsSync(abs);
   const previous = exists ? fs.readFileSync(abs).toString('base64') : null;
+  const binary = file.status === 'bin' || file.binary || file.lines.some(([kind, text]) => kind === 'hunk' && /^Binary files /.test(text || ''));
+  if (binary && file.status !== 'new') {
+    const before = await require('./git').fileAt(cwd, snap, file.from || file.path).catch(() => null);
+    if (!before) return { ok: false, error: `${name} is a binary file that the task's snapshot does not have, so it was not put back.` };
+    try {
+      const back = typeof file.from === 'string' && file.from !== file.path ? resolve(cwd, file.from) : null;
+      const target = back && !fs.existsSync(back) ? back : abs;
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, before);
+      if (target !== abs && exists) fs.unlinkSync(abs);
+      return { ok: true, previous, movedBack: target !== abs };
+    } catch (err) {
+      return { ok: false, error: `${name}: ${err.message}` };
+    }
+  }
   try {
     if (file.status === 'new') {
       // A file the task created: undoing it removes it.

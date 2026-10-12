@@ -511,6 +511,7 @@ function parseUnifiedDiff(text) {
       file.status = 'del';
     } else if (line.startsWith('Binary files')) {
       file.status = file.status === 'mod' ? 'bin' : file.status;
+      file.binary = true;
       file.lines.push(['hunk', line]);
     } else if (line.startsWith('+++ ')) {
       if (line !== '+++ /dev/null') file.path = line.slice(4).replace(/^b\//, '');
