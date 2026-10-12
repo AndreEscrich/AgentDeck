@@ -460,3 +460,82 @@ html.mu-curved body::before {
 html.mu-curved body::after {
   background: radial-gradient(ellipse 85% 18% at 50% 3%, rgba(210, 250, 255, 0.03), transparent 70%),
     radial-gradient(ellipse 70% 45% at 28% 20%, rgba(255, 255, 255, 0.018), transparent 70%) !important; }
+
+/* ---------- Readable ----------
+   Text you read is set in the system's own monospace face (SF Mono on a
+   Mac, Cascadia Mono or Consolas on Windows), which stays sharp at small
+   sizes. The wide terminal face is kept for big titles only. Running text
+   (the chat, your messages, tile titles, what you type) keeps its own case;
+   labels, buttons and states stay in capitals. Long text has no blurred
+   glow, only a faint halo. */
+:root {
+  --font: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --label: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  /* The chat's colors: soft cyan to read, and a few others for structure. */
+  --read: #bdeff5;
+  --read-strong: #f2feff;
+  --read-head: #ffffff;
+  --read-sub: #ffc46b;
+  --read-code: #9dffbf;
+  --read-link: #ffb347;
+  --read-you: #f6e7cc;
+}
+.chat, .chat .msg-text, .msg-user, .hub-title, .hub-step, .prompt-pin-text, #input, .note, .followup, .question-option,
+.permission .perm-desc, .queue, .toast, .item .label { text-transform: none; }
+#input::placeholder { text-transform: none; letter-spacing: 0.02em; }
+.chat, .chat * { text-shadow: 0 0 1px rgba(150, 240, 255, 0.25); }
+.turn-answer > .msg-text { color: var(--read); font-size: 14px; line-height: 1.7; letter-spacing: 0; }
+button, .hub-info, .hub-status, .note, .status-pill, .next-hint, #input, .model-btn, .hub-section-hint, .health-text, .health-week { letter-spacing: 0.03em; }
+
+/* The answer: headings in white over a rule, sub-headings in amber, bold
+   words bright, file names and code in phosphor green, links and list
+   markers in amber, quotes dimmed behind an amber bar. */
+.turn-answer > .msg-text h1, .turn-answer > .msg-text h2 { color: var(--read-head); font-family: var(--title); font-weight: 400; font-size: 13px;
+  letter-spacing: 0.22em; text-transform: uppercase; border-bottom-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  text-shadow: 0 0 6px rgba(120, 242, 255, 0.45); }
+.turn-answer > .msg-text h3, .turn-answer > .msg-text h4 { color: var(--read-sub); font-weight: 700; text-shadow: 0 0 6px rgba(255, 180, 70, 0.3); }
+.turn-answer > .msg-text strong, .turn-answer > .msg-text b { color: var(--read-strong); font-weight: 700; }
+.turn-answer > .msg-text em { color: #ffd9a0; }
+.turn-answer > .msg-text :not(pre) > code { color: var(--read-code); background: rgba(40, 255, 140, 0.07) !important;
+  border: 1px solid rgba(110, 255, 170, 0.18); padding: 0 5px; }
+.turn-answer > .msg-text a { color: var(--read-link); text-decoration-color: rgba(255, 179, 71, 0.5); }
+.turn-answer > .msg-text li::marker { color: var(--read-sub); }
+.turn-answer > .msg-text blockquote { color: #93c7cd; border-left: 2px solid var(--read-sub) !important; }
+.turn-answer > .msg-text th { color: var(--read-sub); text-transform: uppercase; font-size: 12px; letter-spacing: 0.08em; }
+.turn-answer > .msg-text pre code { color: #d2f9ff; }
+.turn-answer > .msg-text::before { color: color-mix(in srgb, var(--accent) 55%, transparent); }
+/* Your messages: warm white behind an amber prompt, so you find them. */
+.msg-user { color: var(--read-you) !important; border-left-color: var(--read-sub) !important; font-size: 14px; }
+.msg-user .msg-text::before { color: var(--read-sub); }
+
+/* ---------- Tile states in color ----------
+   Each state has its own phosphor: blue while it boots, cyan while it
+   works, green when it is done, amber when it needs your approval, yellow
+   when it asks you something, violet when it is stuck, red on a fault and
+   a cool grey on standby. The frame, the scan bars, the word in the window
+   and the status line all take it, so you can tell the tiles apart at a
+   glance. */
+.hub-tile.state-starting   { --c1: #6aa8ff; }
+.hub-tile.state-working    { --c1: #5ff3ff; }
+.hub-tile.state-idle       { --c1: #7dffa1; }
+.hub-tile.state-waiting    { --c1: #ffab40; }
+.hub-tile.needs-question   { --c1: #ffe066; }
+.hub-tile.state-stuck      { --c1: #c49bff; }
+.hub-tile.state-error      { --c1: #ff5f4a; }
+.hub-tile.state-background { --c1: #8fb3c9; }
+.hub-tile { border-color: color-mix(in srgb, var(--c1) 55%, #000) !important; }
+.hub-tile.state-waiting, .hub-tile.state-error, .hub-tile.needs-question { border-color: var(--c1) !important;
+  box-shadow: 0 0 14px -4px var(--c1) !important; }
+.tank { border-color: color-mix(in srgb, var(--c1) 60%, transparent) !important; }
+.liquid { opacity: 0.5 !important; }
+.hub-status, .hub-tile .hub-info .hub-status * { color: var(--c1) !important; }
+.hub-tile .hub-title { color: var(--read-strong); }
+.hub-tile .hub-step { color: var(--text-dim); }
+/* The word in the window: bigger and bolder, and its blink never goes dark. */
+.tank::after { font-size: 12.5px; font-weight: 700; letter-spacing: 0.18em; }
+@keyframes mu-word-blink { 50% { opacity: 0.6; } }
+.hub-tile.state-starting .tank::after, .hub-tile.state-waiting .tank::after { animation: mu-word-blink 1.1s steps(1) infinite; }
+.hub-tile.state-stuck .tank::after { content: "STALLED"; }
+/* A dark patch behind the word, so it stays readable over a full tank. */
+.tank::after { background: radial-gradient(ellipse 48% 20% at center, rgba(0, 0, 0, 0.88) 55%, transparent 100%); }
