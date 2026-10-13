@@ -145,7 +145,38 @@ function layout(nodes, edges, { maxLength = 1400, sizeOf = () => 200, gap = 44 }
     head.push(best);
     left.delete(best);
   }
-  const position = new Map([...head, ...tail].map((id, i) => [id, i]));
+  // The greedy order can leave a heavy arrow pointing back (it takes the one
+  // that uses most first, whatever that costs its neighbours). For small
+  // graphs, polish it: move each one to where the fewest arrows, by weight,
+  // point back, until nothing improves.
+  const order = [...head, ...tail];
+  if (order.length <= 60) {
+    const w = (a, b) => weight.get(`${a}>${b}`) || 0;
+    for (let pass = 0, better = true; better && pass < 20; pass++) {
+      better = false;
+      for (const id of [...order]) {
+        const rest = order.filter(x => x !== id);
+        // Placed first, every arrow into it points back; each one it passes
+        // turns its arrow to that one back and the one from it forward.
+        let cost = rest.reduce((sum, x) => sum + w(x, id), 0);
+        let best = 0;
+        let bestCost = cost;
+        rest.forEach((x, i) => {
+          cost += w(id, x) - w(x, id);
+          if (cost < bestCost) { bestCost = cost; best = i + 1; }
+        });
+        const now = order.indexOf(id);
+        let nowCost = 0;
+        order.forEach((x, i) => { if (i < now) nowCost += w(id, x); else if (i > now) nowCost += w(x, id); });
+        if (bestCost < nowCost) {
+          rest.splice(best, 0, id);
+          order.splice(0, order.length, ...rest);
+          better = true;
+        }
+      }
+    }
+  }
+  const position = new Map(order.map((id, i) => [id, i]));
   const forward = edges.filter(e => out.has(e.to) && out.has(e.from) && position.get(e.from) < position.get(e.to));
   const rank = new Map(ids.map(id => [id, 0]));
   // Longest path from the start: repeat until nothing moves (the graph is small).
@@ -606,17 +637,44 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
   // take a row each.
   const levelRows = (items, uses, width, gap, { merge = false } = {}) => {
     const byId = new Map(items.map(it => [it.id, it]));
+    const levels = layout(items, uses, { maxLength: Infinity, sizeOf: () => 1, gap: 0 }).reverse();
+    const levelOf = new Map();
+    levels.forEach((level, i) => level.forEach(id => levelOf.set(id, i)));
+    // A level that wraps: what the levels below use most goes last, right
+    // above them, and what only uses the levels above goes first (the model
+    // right above the UI that uses it, not a side module in between).
+    const up = new Map();
+    const down = new Map();
+    for (const e of uses) {
+      const lf = levelOf.get(e.from);
+      const lt = levelOf.get(e.to);
+      if (lf == null || lt == null || lf === lt) continue;
+      const w = e.weight || 1;
+      if (lf > lt) { up.set(e.from, (up.get(e.from) || 0) + w); down.set(e.to, (down.get(e.to) || 0) + w); }
+    }
+    const lean = id => { const u = up.get(id) || 0; const d = down.get(id) || 0; return (d - u) / (d + u || 1); };
     const rows = [];
     let row = [];
     let used = 0;
-    for (const level of layout(items, uses, { maxLength: Infinity, sizeOf: () => 1, gap: 0 }).reverse()) {
+    for (const level of levels) {
       const levelW = level.reduce((sum, id) => sum + byId.get(id).w, 0) + gap * 2 * level.length;
       if (row.length && !(merge && used + levelW <= width)) { rows.push(row); row = []; used = 0; }
-      for (const id of level) {
+      const fits = levelW - gap * level.length <= width - used;
+      const ordered = fits ? level : [...level].sort((a, b) => lean(a) - lean(b));
+      // This level's rows; a small one that does not fit where it would go
+      // fills a gap in one of them before starting a row of its own.
+      const own = [];
+      for (const id of ordered) {
         const it = byId.get(id);
-        if (row.length && used + gap + it.w > width) { rows.push(row); row = []; used = 0; }
+        if (row.length && used + gap + it.w > width) {
+          const room = own.find(r => r.w + gap + it.w <= width);
+          if (room) { room.row.push(it); room.w += gap + it.w; continue; }
+          rows.push(row); row = []; used = 0;
+        }
         used += (row.length ? gap : 0) + it.w;
         row.push(it);
+        if (!own.length || own[own.length - 1].row !== row) own.push({ row, w: used });
+        else own[own.length - 1].w = used;
       }
     }
     if (row.length) rows.push(row);
@@ -779,27 +837,48 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
     g.h = g.inner.height + TITLE + PAD;
   }
 
-  // The containers under each other, one below those it uses (a composer's
-  // wiring does not count).
+  // The containers under each other, one below those it uses. What a
+  // composer wires says it best: the facades it is given come from
+  // containers above it, and an interface of its own that it needs and
+  // another container implements (the model's client dependencies) makes
+  // that container one it uses too; handing such an implementation over is
+  // not using. Other types a composer takes from elsewhere (a config) count
+  // less than a facade, and the arrows between the types least: they only
+  // settle what the composers leave open.
+  const FACADE_WEIGHT = 50;
+  const WIRED_WEIGHT = 10;
   const groupOfId = new Map();
   for (const g of groups.values()) for (const id of g.ids) groupOfId.set(id, g.id);
-  const groupEdges = new Map();
+  const groupOf = id => groupOfId.get(id) || containerOf.get(id);
+  const implementersOf = new Map();
   for (const e of model.edges) {
-    if (boxes.get(e.from)?.composer) continue;
-    const a = groupOfId.get(e.from);
-    const b = groupOfId.get(e.to);
-    if (!a || !b) continue;
-    if (a === b) continue;
-    // Weighted by how many arrows it stands for: when two namespaces use each
-    // other, the direction with more arrows wins (91 against 1, not a tie).
-    const k = `${a}>${b}`;
-    if (!groupEdges.has(k)) groupEdges.set(k, { from: a, to: b, weight: 0 });
-    groupEdges.get(k).weight++;
+    if (e.kind !== 'implements') continue;
+    if (!implementersOf.has(e.to)) implementersOf.set(e.to, []);
+    implementersOf.get(e.to).push(e.from);
   }
-  // One row per level: a namespace that uses another always comes below it;
-  // namespaces of the same level sit side by side while they fit.
+  const groupEdges = new Map();
+  const link = (from, to, weight) => {
+    if (!from || !to || from === to) return;
+    // Weighted by how many arrows it stands for: when two containers use
+    // each other, the direction with more arrows wins (91 against 1, not a tie).
+    const k = `${from}>${to}`;
+    if (!groupEdges.has(k)) groupEdges.set(k, { from, to, weight: 0 });
+    groupEdges.get(k).weight += weight;
+  };
+  for (const e of model.edges) {
+    const a = groupOf(e.from);
+    const b = groupOf(e.to);
+    if (!boxes.get(e.from)?.composer) { link(a, b, 1); continue; }
+    const implementers = (implementersOf.get(e.to) || []).map(groupOf);
+    if (a === b) { for (const g of implementers) link(a, g, FACADE_WEIGHT); continue; }
+    if (implementers.includes(a)) continue;
+    link(a, b, boxes.get(e.to)?.facade ? FACADE_WEIGHT : WIRED_WEIGHT);
+  }
+  // One row per level: a container that uses another always comes below it
+  // or, when a small level fits in what is left of the row above, to its
+  // right (the dependencies then run down and to the right).
   const rowLimit = Math.max(maxWidth, ...[...groups.values()].map(g => g.w));
-  const groupRows = levelRows([...groups.values()], [...groupEdges.values()], rowLimit, GROUP_GAP);
+  const groupRows = levelRows([...groups.values()], [...groupEdges.values()], rowLimit, GROUP_GAP, { merge: true });
   const groupOrder = groupRows.flat().map(g => g.id);
   const rowWidthOf = row => row.reduce((sum, g) => sum + g.w, 0) + GROUP_GAP * (row.length - 1);
   const maxW = Math.max(0, ...groupRows.map(rowWidthOf));

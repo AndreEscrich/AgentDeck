@@ -507,10 +507,11 @@ async function model(cwd, files) {
         if (!best || sc > best.score) best = { score: sc, id: `ctx#${d.namespace}.${name}`, kind: d.kind, info: d };
       }
     }
-    // Several types of that name and none of them in reach: better no arrow
-    // than a wrong one.
-    const count = (changedByName.get(name)?.length || 0) + (index.get(name)?.length || 0);
-    if (best && best.score < 1 && count > 1) return null;
+    // None of them in reach (not in its namespace, one it imports or one
+    // around it): C# would not find it either, so it is a type that is not
+    // among the files we have (a branch's diff holds only the changed ones),
+    // and better no arrow than a wrong one.
+    if (best && best.score < 1) return null;
     return best;
   };
 
