@@ -719,7 +719,12 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
     if (boxes.get(e.from)?.composer) continue;
     const a = boxes.get(e.from)?.node.namespace || '(no namespace)';
     const b = boxes.get(e.to)?.node.namespace || '(no namespace)';
-    if (a !== b) groupEdges.set(`${a}>${b}`, { from: a, to: b });
+    if (a === b) continue;
+    // Weighted by how many arrows it stands for: when two namespaces use each
+    // other, the direction with more arrows wins (91 against 1, not a tie).
+    const k = `${a}>${b}`;
+    if (!groupEdges.has(k)) groupEdges.set(k, { from: a, to: b, weight: 0 });
+    groupEdges.get(k).weight++;
   }
   // One row per level: a namespace that uses another always comes below it;
   // namespaces of the same level sit side by side while they fit.
