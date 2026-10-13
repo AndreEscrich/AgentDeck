@@ -1857,7 +1857,10 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 /* Which way a dependency goes: a "uses" arrow is a clear dashed line whose
    dashes flow from the type that is used toward the type that uses it,
    where its bigger arrowhead is. */
-.uml-edge.uses path { stroke: var(--text-dim); stroke-width: 1.7; stroke-dasharray: 6 4; animation: uml-flow 1.1s linear infinite; }
+.uml-edge.uses path { stroke: var(--text-dim); stroke-width: 1.7; stroke-dasharray: 6 4; }
+/* Flowing: in a small diagram all of them, in a large one only those of the
+   box you point at (umlview.js, FLOW_LIMIT). */
+.uml-edges.flow .uml-edge.uses path, .uml-edges.focus .uml-edge.uses.lit path { animation: uml-flow 1.1s linear infinite; }
 .uml-edge.uses.fresh path { stroke: var(--accent); stroke-width: 2.1; }
 .uml-marker-arrow { stroke: var(--text-dim); stroke-width: 1.8; }
 @keyframes uml-flow { to { stroke-dashoffset: 20; } }

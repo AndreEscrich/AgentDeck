@@ -539,7 +539,12 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
     add(b, OPPOSITE[side], `${e.from}>${e.to}`, a, vertical);
   }
   for (const [k, list] of slots) slots.set(k, list.sort((p, q) => p.pos - q.pos).map(s => s.key));
-  const edgeLayer = svgEl('g', { class: 'uml-edges' });
+  // The "uses" arrows flow (styles.css, uml-flow). Each flowing arrow is
+  // drawn again every frame, so in a large diagram only the arrows of the box
+  // you point at flow: 280 flowing arrows took the frame rate from 170 to 52.
+  const FLOW_LIMIT = 40;
+  const flowing = edges.filter(e => e.kind === 'uses').length <= FLOW_LIMIT;
+  const edgeLayer = svgEl('g', { class: flowing ? 'uml-edges flow' : 'uml-edges' });
   // A type that uses many others (a composer, a factory) would cover the
   // diagram in arrows: its arrows stay faint until you point at it.
   const outgoing = new Map();
