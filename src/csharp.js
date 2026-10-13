@@ -211,6 +211,12 @@ function parseFile(text) {
       words: new Map(),   // word -> lines it is used on
     });
   }
+  // A type declared inside another one (a widget's Data) knows its owner:
+  // the innermost type around it.
+  for (const t of types) {
+    const around = types.filter(o => o !== t && o.open < t.start && o.end >= t.end);
+    t.outer = around.sort((a, b) => b.start - a.start)[0]?.name || null;
+  }
   // Members belong to the innermost type around them.
   for (const t of types) {
     if (t.open === t.end) continue;
@@ -461,6 +467,7 @@ async function model(cwd, files) {
           line: t.line,
           members,
           bases: t.bases,
+          outer: t.outer,
         },
         type: t,
         usings: types.usings,

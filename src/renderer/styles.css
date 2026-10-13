@@ -1885,3 +1885,6 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .composer-pickers > .composer-fork { flex: 0 50 260px; max-width: fit-content; min-width: 0; }
 .composer-right { flex-shrink: 0; }
 .composer-right > button { white-space: nowrap; }
+/* A nested type (a widget's Data) inside its owner's box. */
+.uml-node.uml-inner .uml-box { fill: var(--bg-hover); }
+.uml-inner-name { font-size: 12px; }

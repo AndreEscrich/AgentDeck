@@ -283,7 +283,50 @@ function isFacade(n) {
 // Draws the diagram into container. Returns { fit, zoom, svg, width,
 // height, order, elementOf }. onOpen(node, line) runs when a box is clicked,
 // with the line of its first change.
+// Types declared inside another changed type (a widget's or a view's Data)
+// are drawn inside their owner's box, as small boxes under its name, not as
+// boxes of their own. Their arrows go to the owner's box; the arrow between
+// a type and its own nested type goes away. Returns { model, owners }:
+// owners: owner id -> [nested node] (a nested type in a nested type goes
+// into the outermost one shown).
+function nestTypes(model) {
+  const byName = new Map(model.nodes.map(n => [`${n.file}|${n.namespace}|${n.name}`, n]));
+  const ownerId = new Map();
+  for (const n of model.nodes) {
+    let owner = n.outer ? byName.get(`${n.file}|${n.namespace}|${n.outer}`) : null;
+    const seen = new Set([n.id]);
+    while (owner?.outer && byName.get(`${owner.file}|${owner.namespace}|${owner.outer}`) && !seen.has(owner.id)) {
+      seen.add(owner.id);
+      owner = byName.get(`${owner.file}|${owner.namespace}|${owner.outer}`);
+    }
+    if (owner && owner.id !== n.id && !isComposer(owner)) ownerId.set(n.id, owner.id);
+  }
+  const owners = new Map();
+  for (const n of model.nodes) {
+    if (!ownerId.has(n.id)) continue;
+    if (!owners.has(ownerId.get(n.id))) owners.set(ownerId.get(n.id), []);
+    owners.get(ownerId.get(n.id)).push(n);
+  }
+  const to = id => ownerId.get(id) || id;
+  const edges = new Map();
+  for (const e of model.edges) {
+    const from = to(e.from);
+    const target = to(e.to);
+    if (from === target) continue;
+    const key = `${from}>${target}`;
+    const prev = edges.get(key);
+    if (!prev || (prev.kind === 'uses' && e.kind !== 'uses')) edges.set(key, { ...e, from, to: target });
+  }
+  return { model: { ...model, nodes: model.nodes.filter(n => !ownerId.has(n.id)), edges: [...edges.values()] }, owners };
+}
+
+const INNER_H = 26;     // a nested type's small box
+const INNER_GAP = 6;
+
 function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
+  const nesting = nestTypes(model);
+  model = nesting.model;
+  const innerBoxes = new Map();   // nested type id -> { node, owner }
   // A box with many arrows on one side is wider, so their ends spread out.
   const ins = new Map();
   const outs = new Map();
@@ -293,11 +336,19 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
   }
   const boxes = new Map();
   for (const n of model.nodes) {
-    const name = n.name + (n.generic || '');
-    const w = Math.max(Math.min(Math.max(Math.ceil(textWidth(name, UML_FONT)) + 40, 110), 340), 18 * (Math.max(ins.get(n.id) || 0, outs.get(n.id) || 0) + 1));
-    const h = UML_BOX_H;
+    // A nested type shown without its owner says whose it is: Owner.Data.
+    const name = (n.outer ? `${n.outer}.` : '') + n.name + (n.generic || '');
+    let w = Math.max(Math.min(Math.max(Math.ceil(textWidth(name, UML_FONT)) + 40, 110), 340), 18 * (Math.max(ins.get(n.id) || 0, outs.get(n.id) || 0) + 1));
+    let h = UML_BOX_H;
     const composer = isComposer(n);
-    boxes.set(n.id, { id: n.id, node: n, name, w, h: composer ? COMPOSER_H : h, composer, facade: !composer && isFacade(n) });
+    // Its nested types, as small boxes under its name.
+    const inner = nesting.owners.get(n.id) || [];
+    for (const c of inner) {
+      w = Math.max(w, Math.min(Math.ceil(textWidth(c.name + (c.generic || ''), UML_FONT)) + 44, 340));
+      innerBoxes.set(c.id, { id: c.id, node: c, owner: n.id });
+    }
+    if (inner.length) h = 34 + inner.length * (INNER_H + INNER_GAP) + 4;
+    boxes.set(n.id, { id: n.id, node: n, name, w, h: composer ? COMPOSER_H : h, composer, facade: !composer && isFacade(n), inner });
   }
   for (const e of model.edges) {
     const b = boxes.get(e.from);
@@ -387,7 +438,8 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
           x += boxes.get(id).w + GAP_X;
         }
       }
-      y += UML_BOX_H + GAP_Y;
+      // A row is as tall as its tallest box (a box with nested types is taller).
+      y += Math.max(UML_BOX_H, ...row.map(id => boxes.get(id).h)) + GAP_Y;
     });
     const height = rows.length ? y - GAP_Y : Math.max(COMPOSER_MIN_H, 0);
     g.lanes = folders.map(f => ({ folder: f, x: laneX.get(f), right: laneX.get(f) + laneWidth.get(f), y: lanesTop, bottom: height }));
@@ -515,7 +567,18 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
       // A name longer than the widest box (340px) is squeezed to fit inside it.
       const room = b.w - 26;
       const squeeze = textWidth(b.name, UML_FONT) > room ? { textLength: room, lengthAdjust: 'spacingAndGlyphs' } : {};
-      g.appendChild(svgEl('text', { class: 'uml-name', x: b.w / 2 + 3, y: b.h / 2 + 4.5, ...squeeze }, b.name));
+      // With nested types, the name sits at the top and they go under it.
+      const nameY = b.inner?.length ? 22 : b.h / 2 + 4.5;
+      g.appendChild(svgEl('text', { class: 'uml-name', x: b.w / 2 + 3, y: nameY, ...squeeze }, b.name));
+      (b.inner || []).forEach((c, i) => {
+        const cw = b.w - 26;
+        const cg = svgEl('g', { class: `uml-node uml-inner status-${c.status} kind-${c.kind}`, transform: `translate(16,${34 + i * (INNER_H + INNER_GAP)})`, 'data-id': c.id });
+        cg.appendChild(svgEl('rect', { class: 'uml-box', width: cw, height: INNER_H, rx: 6 }));
+        cg.appendChild(svgEl('rect', { class: 'uml-band', width: 3, height: INNER_H - 10, x: 5, y: 5, rx: 1.5 }));
+        cg.appendChild(svgEl('text', { class: 'uml-name uml-inner-name', x: cw / 2 + 2, y: INNER_H / 2 + 4 }, c.name + (c.generic || '')));
+        cg.appendChild(svgEl('title', {}, `${KIND_WORDS[c.kind] || c.kind} ${n.name}.${c.name}, nested in ${n.name}\nClick to open the diff`));
+        g.appendChild(cg);
+      });
     }
     if (b.facade) {
       g.appendChild(svgEl('rect', { class: 'uml-api-tag', x: b.w - 34, y: -9, width: 30, height: 16, rx: 8 }));
@@ -581,7 +644,7 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
     svg.classList.remove('dragging');
     // The diff opens at the type's first change.
     if (d && !d.moved && d.target) {
-      const node = boxes.get(d.target.dataset.id).node;
+      const node = (boxes.get(d.target.dataset.id) || innerBoxes.get(d.target.dataset.id)).node;
       const first = node.members.filter(m => m.change).sort((a, b) => a.line - b.line)[0];
       onOpen?.(node, first?.line ?? node.line);
     }
@@ -594,8 +657,9 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
   }, { passive: false });
 
   // Pointing at a box lights up its arrows and the types at their other end.
+  // A nested type's small box counts as its owner's box: its arrows are the owner's.
   svg.addEventListener('pointerover', e => {
-    const node = e.target.closest('.uml-node');
+    const node = e.target.closest('.uml-node:not(.uml-inner)');
     if (!node || drag) return;
     const id = node.dataset.id;
     const linked = new Set([id]);
@@ -604,11 +668,11 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
       g.classList.toggle('lit', on);
       if (on) { linked.add(g.dataset.from); linked.add(g.dataset.to); }
     }
-    for (const g of world.querySelectorAll('.uml-node')) g.classList.toggle('dim', !linked.has(g.dataset.id));
+    for (const g of world.querySelectorAll('.uml-node:not(.uml-inner)')) g.classList.toggle('dim', !linked.has(g.dataset.id));
     edgeLayer.classList.add('focus');
   });
   svg.addEventListener('pointerout', e => {
-    if (e.relatedTarget?.closest?.('.uml-node') === e.target.closest('.uml-node')) return;
+    if (e.relatedTarget?.closest?.('.uml-node:not(.uml-inner)') === e.target.closest('.uml-node:not(.uml-inner)')) return;
     for (const g of world.querySelectorAll('.dim')) g.classList.remove('dim');
     for (const g of edgeLayer.querySelectorAll('.lit')) g.classList.remove('lit');
     edgeLayer.classList.remove('focus');
