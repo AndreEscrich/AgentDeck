@@ -19,7 +19,6 @@ const UML_STYLES = { name: '600 13px', small: '600 11px' };
 const UML_BOX_H = 38;
 const COMPOSER_H = 40;
 const COMPOSER_W = 40;       // the composer's bar down the left of its namespace
-const COMPOSER_MIN_H = 220;
 
 // "⚙ StarterBonusSystemComposer"
 function composerLabel(b) {
@@ -233,11 +232,19 @@ function drawEdge(a, b, edge, slots) {
 
 function edgeSides(a, b) {
   if (a.composer) return 'right';
-  // Between rows (and from a composer) the arrow goes down or up; in a row, sideways.
-  if (a.lane !== b.lane || a.row !== b.row) return b.y > a.y ? 'down' : 'up';
-  if (b.x >= a.x + a.w + 8) return 'right';
-  if (b.x + b.w <= a.x - 8) return 'left';
-  return b.y > a.y ? 'down' : 'up';
+  // In a row, sideways.
+  if (a.lane === b.lane && a.row === b.row) {
+    if (b.x >= a.x + a.w + 8) return 'right';
+    if (b.x + b.w <= a.x - 8) return 'left';
+  }
+  // Otherwise by where the other box is: sideways when it is beside this
+  // one (its card is next to this one's), else down or up.
+  const gap = b.y >= a.y + a.h ? b.y - a.y - a.h : a.y >= b.y + b.h ? a.y - b.y - b.h : -1;
+  if (gap < 16) {
+    if (b.x >= a.x + a.w) return 'right';
+    if (b.x + b.w <= a.x) return 'left';
+  }
+  return b.y + b.h / 2 > a.y + a.h / 2 ? 'down' : 'up';
 }
 
 // Each type's folder, relative to the folder all the changed files share:
@@ -326,9 +333,82 @@ function nestTypes(model) {
 const INNER_H = 26;     // a nested type's small box
 const INNER_GAP = 6;
 
-function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
+// collapsed: the keys of collapsed namespaces ("ns:<namespace>") and folders
+// ("f:<namespace>|<part>|<folder>"); onToggle(key) runs when you click one's
+// name or its box. view: where to look ({ x, y, k }) instead of fitting.
+function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), view: startView = null, wheelZooms = false } = {}) {
   const nesting = nestTypes(model);
   model = nesting.model;
+
+  // Parts: in a namespace with several composers, each type belongs to the
+  // composer that wires it (an arrow from it), and to a shared part when none
+  // or several do. Composers talk to each other through facade interfaces,
+  // which go on each part's entry row.
+  const comp = new Map();
+  const composersIn = new Map();
+  for (const n of model.nodes) {
+    if (!isComposer(n)) continue;
+    const k = n.namespace || '(no namespace)';
+    if (!composersIn.has(k)) composersIn.set(k, []);
+    composersIn.get(k).push(n);
+  }
+  for (const n of model.nodes) {
+    const list = composersIn.get(n.namespace || '(no namespace)') || [];
+    if (list.length < 2) comp.set(n.id, 'main');
+    else if (isComposer(n)) comp.set(n.id, n.id);
+    else {
+      const wiring = list.filter(c => model.edges.some(e => e.from === c.id && e.to === n.id));
+      comp.set(n.id, wiring.length === 1 ? wiring[0].id : 'shared');
+    }
+  }
+  // Each type's folder, relative to the folder all the changes share.
+  const labelOf = folderLabels(model.nodes);
+  const folderOf = new Map(model.nodes.map(n => [n.id, labelOf(n)]));
+  // Collapsed namespaces and folders: their types become one box, and their
+  // arrows go to that box.
+  {
+    const proxyOf = new Map();
+    const proxies = new Map();
+    for (const n of model.nodes) {
+      const ns = n.namespace || '(no namespace)';
+      const folderKey = `f:${ns}|${comp.get(n.id)}|${folderOf.get(n.id)}`;
+      let key = null;
+      let label = null;
+      if (collapsed.has(`ns:${ns}`)) { key = `ns:${ns}`; label = ns.split('.').pop(); }
+      else if (!isComposer(n) && collapsed.has(folderKey)) { key = folderKey; label = folderOf.get(n.id).split('/').pop(); }
+      if (!key) continue;
+      proxyOf.set(n.id, key);
+      if (!proxies.has(key)) {
+        proxies.set(key, {
+          id: `proxy:${key}`, name: label, kind: 'collapsed', namespace: n.namespace, folder: n.folder, file: '', line: 0,
+          members: [], proxy: key, count: 0, statuses: new Set(),
+          comp: key.startsWith('ns:') ? 'main' : comp.get(n.id), folderLabel: key.startsWith('ns:') ? '' : folderOf.get(n.id),
+        });
+      }
+      const p = proxies.get(key);
+      p.count++;
+      p.statuses.add(n.status);
+    }
+    if (proxies.size) {
+      for (const p of proxies.values()) {
+        p.status = p.statuses.size === 1 ? [...p.statuses][0] : 'mod';
+        p.name = `${p.name} · ${p.count} type${p.count === 1 ? '' : 's'}`;
+        comp.set(p.id, p.comp);
+        folderOf.set(p.id, p.folderLabel);
+      }
+      const to = id => (proxyOf.has(id) ? `proxy:${proxyOf.get(id)}` : id);
+      const merged = new Map();
+      for (const e of model.edges) {
+        const from = to(e.from);
+        const target = to(e.to);
+        if (from === target) continue;
+        const k = `${from}>${target}`;
+        const prev = merged.get(k);
+        if (!prev || (prev.kind === 'uses' && e.kind !== 'uses')) merged.set(k, { ...e, from, to: target, fresh: e.fresh || !!prev?.fresh });
+      }
+      model = { ...model, nodes: [...model.nodes.filter(n => !proxyOf.has(n.id)), ...proxies.values()], edges: [...merged.values()] };
+    }
+  }
   const innerBoxes = new Map();   // nested type id -> { node, owner }
   // A box with many arrows on one side is wider, so their ends spread out.
   const ins = new Map();
@@ -357,105 +437,159 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
     const b = boxes.get(e.from);
     if (b?.composer) b.wires = (b.wires || 0) + 1;
   }
-  const GAP_X = 36;     // between the boxes of a row
-  const GAP_Y = 84;     // room for the arrows between rows
-  const LANE_GAP = 56;  // between the folder lanes of a namespace
-  const LABEL = 26;     // the folder names over their lanes
-  const COMPOSER_GAP = 40;
+  // Each box's folder and part (see above).
+  for (const b of boxes.values()) {
+    b.folder = folderOf.get(b.id) ?? '';
+    b.comp = comp.get(b.id) || 'main';
+  }
+  const GAP_X = 28;      // between the boxes of a row
+  const GAP_Y = 56;      // room for the arrows between the rows of a folder
+  const CARD_PAD = 14;   // inside a folder's card
+  const CARD_LABEL = 24; // the folder's name at the top of its card
+  const CARD_GAP = 22;   // between folder cards
+  const COMP_LABEL = 24; // a composer's part: its name at the top
+  const COMP_GAP = 26;   // between the parts of a namespace
+  const COMPOSER_GAP = 28;
   const PAD = 18;
-  const TITLE = 30;     // the namespace's name
+  const TITLE = 30;      // the namespace's name
   const GROUP_GAP = 56;
-  // The width that shows at a readable size: wider rows wrap.
-  const maxWidth = Math.max(700, ((container.clientWidth || 1100) - 48) / 0.85);
+  // The width that shows at a readable size: wider rows wrap. A large
+  // diagram gets about the shape of the window instead, so it does not turn
+  // into a tall column (its area, with room around the boxes, spread at the
+  // window's width-to-height).
+  const area = [...boxes.values()].reduce((s, b) => s + (b.w + GAP_X) * (b.h + GAP_Y), 0) * 1.8;
+  const aspect = Math.max(1, (container.clientWidth || 1600) / Math.max(1, container.clientHeight || 900));
+  const maxWidth = Math.max(700, ((container.clientWidth || 1100) - 48) / 0.85, Math.sqrt(area * aspect));
+  const CARD_MAX = Math.max(420, Math.min(900, maxWidth * 0.55));   // a card's rows wrap at this width
 
-  // A folder name for each type, relative to the folder all changes share.
-  const labelOf = folderLabels(model.nodes);
-  for (const b of boxes.values()) b.folder = labelOf(b.node);
+  // Places items (cards, parts) in rows no wider than width, the tallest
+  // first, so a few tall ones do not leave a row mostly empty. Sets x and y
+  // (relative) and returns the size.
+  const shelve = (items, width, gap) => {
+    const sorted = [...items].sort((a, b) => b.h - a.h || b.w - a.w);
+    let x = 0, y = 0, rowH = 0, maxW = 0;
+    for (const it of sorted) {
+      if (x > 0 && x + it.w > width) { y += rowH + gap; x = 0; rowH = 0; }
+      it.x = x;
+      it.y = y;
+      x += it.w + gap;
+      rowH = Math.max(rowH, it.h);
+      maxW = Math.max(maxW, x - gap);
+    }
+    return { w: maxW, h: items.length ? y + rowH : 0 };
+  };
 
-  // One box per namespace, laid out on its own.
+  // One box per namespace; in it one part per composer when it has several
+  // (the types each one wires, see compartmentOf), and in each part a card
+  // per folder.
   const groups = new Map();
   for (const n of model.nodes) {
     const key = n.namespace || '(no namespace)';
     if (!groups.has(key)) groups.set(key, { id: key, ids: [] });
     groups.get(key).ids.push(n.id);
   }
-  const folderLanes = [];   // { folder, x, right, y } for the lane names
   // How many types of other namespaces use a type (composers do not count).
   const externalUsers = id => new Set(model.edges
     .filter(e => e.to === id && !boxes.get(e.from)?.composer && boxes.get(e.from)?.node.namespace !== boxes.get(id).node.namespace)
     .map(e => e.from)).size;
   for (const g of groups.values()) {
-    // Rows: a type above the types it uses. The composer and the facade's
-    // interface have places of their own (see below).
-    const composers = g.ids.map(id => boxes.get(id)).filter(b => b.composer);
-    const entries = g.ids.map(id => boxes.get(id)).filter(b => b.node.kind === 'interface' && (b.facade || externalUsers(b.id) >= 2));
-    const types = g.ids.map(id => boxes.get(id).node).filter(n => !boxes.get(n.id).composer && !entries.includes(boxes.get(n.id)));
-    const typeIds = new Set(types.map(n => n.id));
-    const composerSpace = composers.length ? composers.length * (COMPOSER_W + 12) + 28 : 0;
-    const rows = layout(types, model.edges.filter(e => typeIds.has(e.from) && typeIds.has(e.to)), {
-      maxLength: maxWidth - PAD * 2 - composerSpace,
-      sizeOf: id => boxes.get(id).w,
-      gap: GAP_X,
-    });
-    // From the top: the rows from the lowest level up (the types the others
-    // use first), then the entry points on a row of their own at the bottom:
-    // facade interfaces and seams, the interfaces several types of other
-    // namespaces depend on. That is where the other domains come in.
-    rows.reverse();
-    if (entries.length) rows.push(entries.map(b => b.id));
-    // Each folder has a lane, the same strip in every row; the folders in
-    // the order their types come on average, so the arrows cross little.
-    const place = new Map();
-    for (const row of rows) row.forEach((id, i) => place.set(id, i / Math.max(1, row.length - 1)));
-    const sums = new Map();
-    for (const [id, p] of place) {
-      const f = boxes.get(id).folder;
-      const v = sums.get(f) || { sum: 0, n: 0 };
-      v.sum += p;
-      v.n++;
-      sums.set(f, v);
+    g.collapsed = collapsed.has(`ns:${g.id}`);
+    // Parts: by compartment (one per composer, or one for all).
+    const parts = new Map();
+    for (const id of g.ids) {
+      const b = boxes.get(id);
+      const key = b.comp || 'main';
+      if (!parts.has(key)) parts.set(key, { key, ids: [] });
+      parts.get(key).ids.push(id);
     }
-    const folders = [...sums.keys()].sort((a, b) => sums.get(a).sum / sums.get(a).n - sums.get(b).sum / sums.get(b).n);
-    const runWidth = ids => ids.reduce((sum, id) => sum + boxes.get(id).w, 0) + GAP_X * Math.max(0, ids.length - 1);
-    const laneWidth = new Map(folders.map(f => [f, Math.max(
-      Math.min(textWidth(f, UML_SMALL) + 8, 240),
-      ...rows.map(row => runWidth(row.filter(id => boxes.get(id).folder === f))),
-    )]));
-    const lanesWidth = folders.reduce((sum, f) => sum + laneWidth.get(f), 0) + LANE_GAP * Math.max(0, folders.length - 1);
-    const innerWidth = composerSpace + Math.max(lanesWidth, Math.min(textWidth(g.id, UML_SMALL) + 24, 280));
-    const laneX = new Map();
-    let x0 = composerSpace + (innerWidth - composerSpace - lanesWidth) / 2;
-    for (const f of folders) {
-      laneX.set(f, x0);
-      x0 += laneWidth.get(f) + LANE_GAP;
-    }
-    let y = 0;
-    const lanesTop = y;
-    if (folders.length) y += LABEL;
-    rows.forEach((row, r) => {
-      for (const f of folders) {
-        const ids = row.filter(id => boxes.get(id).folder === f);
-        let x = laneX.get(f) + (laneWidth.get(f) - runWidth(ids)) / 2;
-        for (const id of ids) {
-          Object.assign(boxes.get(id), { x, y, row: `${g.id}|${r}` });
-          x += boxes.get(id).w + GAP_X;
-        }
+    const partList = [...parts.values()];
+    const several = partList.length > 1;
+    for (const part of partList) {
+      const members = part.ids.map(id => boxes.get(id));
+      const composers = members.filter(b => b.composer);
+      part.composer = composers[0] || null;
+      part.label = part.key === 'shared' ? 'Shared by its composers' : part.composer ? composerLabel(part.composer) : '';
+      // The entry points: facade interfaces and seams (interfaces several
+      // types of other namespaces depend on) on a row of their own at the
+      // bottom of the part, where the other parts and domains come in.
+      const entries = g.collapsed ? members : members.filter(b => !b.composer && b.node.kind === 'interface' && (b.facade || externalUsers(b.id) >= 2));
+      const rest = g.collapsed ? [] : members.filter(b => !b.composer && !entries.includes(b));
+      // A card per folder: its types in rows, a type above the types it uses.
+      const byFolder = new Map();
+      for (const b of rest) {
+        if (!byFolder.has(b.folder)) byFolder.set(b.folder, []);
+        byFolder.get(b.folder).push(b);
       }
-      // A row is as tall as its tallest box (a box with nested types is taller).
-      y += Math.max(UML_BOX_H, ...row.map(id => boxes.get(id).h)) + GAP_Y;
-    });
-    const height = rows.length ? y - GAP_Y : Math.max(COMPOSER_MIN_H, 0);
-    g.lanes = folders.map(f => ({ folder: f, x: laneX.get(f), right: laneX.get(f) + laneWidth.get(f), y: lanesTop, bottom: height }));
-    // The composer: a bar down the left side, as tall as the namespace's
-    // types; its wiring goes out to the right.
-    composers.forEach((b, i) => {
-      // As tall as the namespace, and at least as long as its name.
-      Object.assign(b, { x: i * (COMPOSER_W + 12), y: 0, w: COMPOSER_W, h: Math.max(COMPOSER_MIN_H, height, textWidth(composerLabel(b), UML_FONT) + 40), lane: `composer|${g.id}`, row: `composer|${g.id}` });
-    });
-    g.inner = { width: innerWidth, height: Math.max(height, ...composers.map(b => b.h)) };
-    g.w = innerWidth + PAD * 2;
+      part.cards = [...byFolder].map(([folder, list]) => {
+        const ids = new Set(list.map(b => b.id));
+        // The types in dependency order (a type before the types it uses,
+        // read from the bottom up as before), wrapped into rows about as wide
+        // as the card is tall, so a chain of types is not a tall tower.
+        const order = layout(list.map(b => b.node), model.edges.filter(e => ids.has(e.from) && ids.has(e.to)), {
+          maxLength: Infinity, sizeOf: id => boxes.get(id).w, gap: GAP_X,
+        }).reverse().flat();
+        const sumW = order.reduce((s, id) => s + boxes.get(id).w + GAP_X, 0);
+        const rowH = UML_BOX_H + GAP_Y;
+        const target = Math.min(CARD_MAX - CARD_PAD * 2, Math.max(Math.max(...order.map(id => boxes.get(id).w)), Math.sqrt(sumW * rowH * 1.6)));
+        const rows = [];
+        let current = [];
+        let used = 0;
+        for (const id of order) {
+          const w = boxes.get(id).w;
+          if (current.length && used + GAP_X + w > target) { rows.push(current); current = []; used = 0; }
+          used += (current.length ? GAP_X : 0) + w;
+          current.push(id);
+        }
+        if (current.length) rows.push(current);
+        const rowWidth = row => row.reduce((s, id) => s + boxes.get(id).w, 0) + GAP_X * Math.max(0, row.length - 1);
+        const innerW = Math.max(Math.min(textWidth(folder, UML_SMALL) + 24, 260), ...rows.map(rowWidth));
+        let y = CARD_LABEL;
+        const key = `f:${g.id}|${part.key}|${folder}`;
+        rows.forEach((row, r) => {
+          let x = CARD_PAD + (innerW - rowWidth(row)) / 2;
+          for (const id of row) {
+            Object.assign(boxes.get(id), { cx: x, cy: y, lane: key, row: `${key}|${r}` });
+            x += boxes.get(id).w + GAP_X;
+          }
+          y += Math.max(UML_BOX_H, ...row.map(id => boxes.get(id).h)) + (r < rows.length - 1 ? GAP_Y : 0);
+        });
+        return { key, folder, ids: list.map(b => b.id), w: innerW + CARD_PAD * 2, h: y + CARD_PAD, collapsed: list.length === 1 && list[0].node.proxy === key };
+      });
+      // The cards, packed; then the entry row under them.
+      const left = part.composer ? COMPOSER_W + COMPOSER_GAP : 0;
+      const top = several ? COMP_LABEL : 0;
+      const packed = shelve(part.cards, maxWidth - PAD * 2 - left - (several ? CARD_PAD * 2 : 0), CARD_GAP);
+      let height = packed.h;
+      let width = packed.w;
+      if (entries.length) {
+        const entryW = entries.reduce((s, b) => s + b.w, 0) + GAP_X * (entries.length - 1);
+        let x = Math.max(0, (Math.max(width, entryW) - entryW) / 2);
+        const y = height + (height ? GAP_Y : 0);
+        for (const b of entries) {
+          Object.assign(b, { px: x, py: y, lane: `entries|${g.id}|${part.key}`, row: `entries|${g.id}|${part.key}` });
+          x += b.w + GAP_X;
+        }
+        height = y + UML_BOX_H;
+        width = Math.max(width, entryW);
+      }
+      part.entries = entries;
+      // A part with a composer is at least as tall as its bar's name.
+      const innerH = Math.max(height, part.composer ? Math.max(120, textWidth(composerLabel(part.composer), UML_FONT) + 40) : 0);
+      part.left = left;
+      part.top = top;
+      part.w = left + width + (several ? CARD_PAD * 2 : 0);
+      part.h = top + innerH + (several ? CARD_PAD : 0);
+      part.innerH = innerH;
+    }
+    // The parts, packed; the shared part first (it is what the others lean on).
+    const packed = shelve(partList, maxWidth - PAD * 2, COMP_GAP);
+    g.parts = partList;
+    g.several = several;
+    g.inner = { width: Math.max(packed.w, Math.min(textWidth(g.id, UML_SMALL) + 40, 320)), height: packed.h };
+    g.w = g.inner.width + PAD * 2;
     g.h = g.inner.height + TITLE + PAD;
   }
+
   // The namespaces under each other, a namespace below the ones it uses
   // (a composer's wiring does not count).
   const groupEdges = new Map();
@@ -466,21 +600,64 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
     if (a !== b) groupEdges.set(`${a}>${b}`, { from: a, to: b });
   }
   const groupOrder = layout([...groups.values()], [...groupEdges.values()], { maxLength: Infinity, sizeOf: () => 1, gap: 0 }).flat().reverse();
-  const maxW = Math.max(0, ...[...groups.values()].map(g => g.w));
-  let groupY = 0;
+  // In that order, side by side while they fit in the width, each row
+  // centred: small namespaces do not take a whole row each.
+  const rowLimit = Math.max(maxWidth, ...[...groups.values()].map(g => g.w));
+  const groupRows = [];
+  let current = [];
+  let used = 0;
   for (const id of groupOrder) {
     const g = groups.get(id);
-    g.x = (maxW - g.w) / 2;
-    g.y = groupY;
-    groupY += g.h + GROUP_GAP;
-    const dx = g.x + PAD;
-    const dy = g.y + TITLE;
-    for (const boxId of g.ids) {
-      const b = boxes.get(boxId);
-      b.x += dx;
-      b.y += dy;
+    if (current.length && used + GROUP_GAP + g.w > rowLimit) { groupRows.push(current); current = []; used = 0; }
+    used += (current.length ? GROUP_GAP : 0) + g.w;
+    current.push(g);
+  }
+  if (current.length) groupRows.push(current);
+  const rowWidthOf = row => row.reduce((sum, g) => sum + g.w, 0) + GROUP_GAP * (row.length - 1);
+  const maxW = Math.max(0, ...groupRows.map(rowWidthOf));
+  let groupY = 0;
+  for (const row of groupRows) {
+    let x = (maxW - rowWidthOf(row)) / 2;
+    for (const g of row) {
+      g.x = x;
+      g.y = groupY;
+      x += g.w + GROUP_GAP;
     }
-    for (const lane of g.lanes) folderLanes.push({ folder: lane.folder, x: lane.x + dx, right: lane.right + dx, y: lane.y + dy, bottom: lane.bottom + dy, single: g.lanes.length === 1 });
+    groupY += Math.max(...row.map(g => g.h)) + GROUP_GAP;
+  }
+  for (const id of groupOrder) {
+    const g = groups.get(id);
+    // Absolute places: namespace, then part, then card or entry row.
+    for (const part of g.parts) {
+      part.ax = g.x + PAD + part.x;
+      part.ay = g.y + TITLE + part.y;
+      const inset = g.several ? CARD_PAD : 0;
+      const ox = part.ax + inset + part.left;
+      const oy = part.ay + part.top;
+      for (const card of part.cards) {
+        card.ax = ox + card.x;
+        card.ay = oy + card.y;
+        for (const cid of card.ids) {
+          const b = boxes.get(cid);
+          b.x = card.ax + b.cx;
+          b.y = card.ay + b.cy;
+        }
+      }
+      for (const b of part.entries) {
+        b.x = ox + b.px;
+        b.y = oy + b.py;
+      }
+      // The composer: a bar down the left side of its part.
+      if (part.composer) {
+        const c = part.composer;
+        Object.assign(c, {
+          x: part.ax + inset, y: oy, w: COMPOSER_W,
+          h: Math.max(part.innerH, textWidth(composerLabel(c), UML_FONT) + 40),
+          lane: `composer|${g.id}|${part.key}`, row: `composer|${g.id}|${part.key}`,
+        });
+        part.h = Math.max(part.h, part.top + c.h + (g.several ? CARD_PAD : 0));
+      }
+    }
   }
   const totalH = Math.max(0, groupY - GROUP_GAP);
 
@@ -497,27 +674,35 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
   const world = svgEl('g', { class: 'uml-world' });
   svg.appendChild(world);
 
-  // The namespace boxes, behind everything else.
+  // The namespace boxes, their parts and their folder cards, behind
+  // everything else. A namespace's or folder's name (▾) collapses it into
+  // one box (▸); clicking it again opens it.
   const groupLayer = svgEl('g', { class: 'uml-groups' });
   for (const g of groups.values()) {
     const box = svgEl('g', { class: 'uml-group', transform: `translate(${g.x},${g.y})` });
     box.appendChild(svgEl('rect', { width: g.w, height: g.h, rx: 14 }));
-    box.appendChild(svgEl('text', { x: 14, y: 20 }, fitLabel(g.id, g.w - 28)));
-    box.appendChild(svgEl('title', {}, `namespace ${g.id}\n${g.ids.length} changed type${g.ids.length === 1 ? '' : 's'}`));
+    const title = svgEl('text', { class: 'uml-toggle', x: 14, y: 20, 'data-toggle': `ns:${g.id}` }, `${g.collapsed ? '▸' : '▾'} ${fitLabel(g.id, g.w - 44)}`);
+    box.appendChild(title);
+    box.appendChild(svgEl('title', {}, `namespace ${g.id}\n${g.collapsed ? 'Click its name to open it' : 'Click its name to collapse it'}`));
     groupLayer.appendChild(box);
+    for (const part of g.parts) {
+      if (g.several) {
+        const p = svgEl('g', { class: `uml-part${part.key === 'shared' ? ' shared' : ''}`, transform: `translate(${part.ax},${part.ay})` });
+        p.appendChild(svgEl('rect', { width: part.w, height: part.h, rx: 12 }));
+        p.appendChild(svgEl('text', { x: 12, y: 16 }, fitLabel(part.label, part.w - 24)));
+        p.appendChild(svgEl('title', {}, part.key === 'shared' ? 'Types that no composer of this namespace wires, or several do' : `What ${part.label} wires`));
+        groupLayer.appendChild(p);
+      }
+      for (const card of part.cards) {
+        const c = svgEl('g', { class: `uml-card${card.collapsed ? ' collapsed' : ''}`, transform: `translate(${card.ax},${card.ay})` });
+        c.appendChild(svgEl('rect', { width: card.w, height: card.h, rx: 10 }));
+        c.appendChild(svgEl('text', { class: 'uml-toggle', x: 10, y: 16, 'data-toggle': card.key }, `${card.collapsed ? '▸' : '▾'} ${fitLabel(card.folder, card.w - 30)}`));
+        c.appendChild(svgEl('title', {}, `folder ${card.folder}\n${card.collapsed ? 'Click its name to open it' : 'Click its name to collapse it'}`));
+        groupLayer.appendChild(c);
+      }
+    }
   }
   world.appendChild(groupLayer);
-
-  // Each folder lane: its name and a faint strip behind its types.
-  const folderLayer = svgEl('g', { class: 'uml-folders' });
-  for (const lane of folderLanes) {
-    const g = svgEl('g', { class: 'uml-folder' });
-    g.appendChild(svgEl('rect', { class: 'uml-lane', x: lane.x - 10, y: lane.y - 4, width: lane.right - lane.x + 20, height: lane.bottom - lane.y + 14, rx: 10 }));
-    g.appendChild(svgEl('text', { x: lane.x, y: lane.y + 13 }, fitLabel(lane.folder, Math.max(60, lane.right - lane.x))));
-    g.appendChild(svgEl('title', {}, `folder ${lane.folder}`));
-    folderLayer.appendChild(g);
-  }
-  world.appendChild(folderLayer);
 
   // Arrow ends spread along each side, ordered by where the other end is.
   const edges = model.edges.filter(e => boxes.has(e.from) && boxes.has(e.to))
@@ -568,7 +753,7 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
   // The boxes: a stripe in the color of the change, and the name.
   for (const b of boxes.values()) {
     const n = b.node;
-    const role = b.composer ? ' composer' : b.facade ? ' facade' : '';
+    const role = b.composer ? ' composer' : b.facade ? ' facade' : n.proxy ? ' proxy' : '';
     const g = svgEl('g', { class: `uml-node status-${n.status} kind-${n.kind}${role}`, transform: `translate(${b.x},${b.y})`, 'data-id': n.id });
     g.appendChild(svgEl('rect', { class: 'uml-box', width: b.w, height: b.h, rx: b.composer ? 10 : 8 }));
     g.appendChild(svgEl('rect', { class: 'uml-band', width: 4, height: b.h - 12, x: 6, y: 6, rx: 2 }));
@@ -600,6 +785,11 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
     const shown = changed.slice(0, 20);
     if (changed.length > 20) shown.push(`… and ${changed.length - 20} more`);
     const roleText = b.composer ? '\nCreates and wires the types of its feature (point at it to see the wiring)' : b.facade ? '\nFacade: the API other domains use' : '';
+    if (n.proxy) {
+      g.appendChild(svgEl('title', {}, `${n.count} changed type${n.count === 1 ? '' : 's'}, collapsed\nClick to open`));
+      world.appendChild(g);
+      continue;
+    }
     g.appendChild(svgEl('title', {}, `${KIND_WORDS[n.kind] || n.kind} ${n.namespace ? n.namespace + '.' : ''}${b.name}${roleText}\n${words[n.status]} in this task${shown.length ? `\n\n${shown.join('\n')}` : ''}\n\n${n.file}\nClick to open the diff`));
     world.appendChild(g);
   }
@@ -645,7 +835,7 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
   let drag = null;
   svg.addEventListener('pointerdown', e => {
     if (e.button !== 0) return;
-    drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false, target: e.target.closest('.uml-node') };
+    drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false, target: e.target.closest('.uml-node'), toggle: e.target.closest('[data-toggle]')?.dataset.toggle };
     try { svg.setPointerCapture(e.pointerId); } catch { /* not a real pointer */ }
   });
   svg.addEventListener('pointermove', e => {
@@ -665,9 +855,11 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
     drag = null;
     svg.classList.remove('dragging');
     moving();
-    // The diff opens at the type's first change.
+    if (d && !d.moved && d.toggle) { onToggle?.(d.toggle); return; }
+    // The diff opens at the type's first change; a collapsed box opens.
     if (d && !d.moved && d.target) {
       const node = (boxes.get(d.target.dataset.id) || innerBoxes.get(d.target.dataset.id)).node;
+      if (node.proxy) { onToggle?.(node.proxy); return; }
       const first = node.members.filter(m => m.change).sort((a, b) => a.line - b.line)[0];
       onOpen?.(node, first?.line ?? node.line);
     }
@@ -702,12 +894,17 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
     edgeLayer.classList.remove('focus');
   });
 
-  requestAnimationFrame(() => fit({ readable: true }));
+  if (startView) {
+    Object.assign(view, startView);
+    apply();
+  } else {
+    requestAnimationFrame(() => fit({ readable: true }));
+  }
   // The boxes in reading order (top to bottom, left to right), for stepping
   // from one type's diff to the next.
-  const readingOrder = [...boxes.values()].sort((a, b) => a.y - b.y || a.x - b.x).map(b => b.id);
+  const readingOrder = [...boxes.values()].filter(b => !b.node.proxy).sort((a, b) => a.y - b.y || a.x - b.x).map(b => b.id);
   const elementOf = id => world.querySelector(`.uml-node[data-id="${CSS.escape(id)}"]`);
-  return { fit, zoom, svg, width: maxW, height: totalH, order: readingOrder, elementOf };
+  return { fit, zoom, svg, width: maxW, height: totalH, order: readingOrder, elementOf, view };
 }
 
 // The legend under the diagram.
@@ -924,13 +1121,27 @@ function umlPanel(fullModel, { files = [], comments = null, onFull = null, full 
   // readable size without moving around; the chat scrolls past it.
   const draw = () => {
     if (api || !stage.isConnected || !stage.clientWidth) return false;
-    api = drawUml(stage, model, { onOpen, wheelZooms: full });
-    if (!full) {
+    api = drawUml(stage, model, { onOpen, wheelZooms: full, collapsed, onToggle: toggle, view: keepView });
+    const kept = keepView;
+    keepView = null;
+    if (!full && !kept) {
       const scale = Math.min(1.15, (stage.clientWidth - 48) / Math.max(1, api.width));
       panel.style.height = `${Math.max(260, Math.round(api.height * scale + 90))}px`;
       requestAnimationFrame(() => api.fit());
     }
     return true;
+  };
+  // Collapsing a namespace or folder draws the diagram again, where you were.
+  const collapsed = new Set();
+  let keepView = null;
+  const toggle = key => {
+    if (collapsed.has(key)) collapsed.delete(key);
+    else collapsed.add(key);
+    window.uiSound?.('select');
+    keepView = api ? { ...api.view } : null;
+    stage.innerHTML = '';
+    api = null;
+    draw();
   };
   const observer = new ResizeObserver(() => { if (!draw()) return; });
   observer.observe(stage);
