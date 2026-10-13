@@ -770,6 +770,19 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
         });
         part.h = Math.max(part.h, part.top + c.h + (g.several ? CARD_PAD : 0));
       }
+      // The facade fused with the container's bottom edge: as wide as the
+      // container (its part, or the namespace when it has one part), its
+      // bottom on the container's border. It is the gate into this domain.
+      const bars = part.entries.filter(b => b.bar);
+      if (bars.length) {
+        const box = g.several ? { x: part.ax, y: part.ay, w: part.w, h: part.h, r: 12 } : { x: g.x, y: g.y, w: g.w, h: g.h, r: 14 };
+        const each = box.w / bars.length;
+        bars.forEach((b, i) => {
+          Object.assign(b, { x: box.x + i * each, w: each, y: box.y + box.h - b.h, fuse: { r: box.r, left: i === 0, right: i === bars.length - 1 } });
+        });
+        // The composer's bar stops above it.
+        if (part.composer) part.composer.h = Math.max(COMPOSER_H, Math.min(part.composer.h, bars[0].y - part.composer.y - 10));
+      }
     }
   }
   const totalH = Math.max(0, groupY - GROUP_GAP);
@@ -871,7 +884,15 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
     const n = b.node;
     const role = (b.composer ? ' composer' : b.facade ? ' facade' : n.proxy ? ' proxy' : '') + (b.bar ? ' facade-bar' : '') + (b.pair ? ' paired' : '');
     const g = svgEl('g', { class: `uml-node status-${n.status} kind-${n.kind}${role}`, transform: `translate(${b.x},${b.y})`, 'data-id': n.id });
-    g.appendChild(svgEl('rect', { class: 'uml-box', width: b.w, height: b.h, rx: b.composer ? 10 : 8 }));
+    if (b.fuse) {
+      // Square on top, rounded like its container at the bottom corners.
+      const { r, left, right } = b.fuse;
+      const rl = left ? r : 0;
+      const rr = right ? r : 0;
+      g.appendChild(svgEl('path', { class: 'uml-box', d: `M0,0 H${b.w} V${b.h - rr} Q${b.w},${b.h} ${b.w - rr},${b.h} H${rl} Q0,${b.h} 0,${b.h - rl} Z` }));
+    } else {
+      g.appendChild(svgEl('rect', { class: 'uml-box', width: b.w, height: b.h, rx: b.composer ? 10 : 8 }));
+    }
     g.appendChild(svgEl('rect', { class: 'uml-band', width: 4, height: b.h - 12 - (b.pair ? IFACE_H : 0), x: 6, y: 6 + (b.pair ? IFACE_H : 0), rx: 2 }));
     if (b.composer) {
       g.appendChild(svgEl('text', { class: 'uml-name', x: b.w / 2 + 3, y: b.h / 2 + 4.5, transform: `rotate(-90 ${b.w / 2 + 3} ${b.h / 2})` }, composerLabel(b)));
@@ -884,7 +905,7 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
       if (b.pair) {
         const p = b.pair;
         const ig = svgEl('g', { class: `uml-node uml-inner uml-iface status-${p.status} kind-interface`, 'data-id': p.id });
-        ig.appendChild(svgEl('rect', { class: 'uml-iface-box', x: 1, y: 1, width: b.w - 2, height: IFACE_H - 1, rx: 7 }));
+        ig.appendChild(svgEl('rect', { class: 'uml-iface-box', x: 1, y: 1, width: b.w - 2, height: IFACE_H - 1, rx: b.fuse ? 0 : 7 }));
         ig.appendChild(svgEl('text', { class: 'uml-name uml-iface-name', x: b.w / 2 + 3, y: IFACE_H / 2 + 5 }, p.name + (p.generic || '')));
         ig.appendChild(svgEl('title', {}, `interface ${p.namespace ? p.namespace + '.' : ''}${p.name}, implemented by ${n.name} only\nClick to open its diff`));
         g.appendChild(ig);
