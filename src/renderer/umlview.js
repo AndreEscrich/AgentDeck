@@ -733,6 +733,9 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
   const FLOW_LIMIT = 40;
   const flowing = edges.filter(e => e.kind === 'uses').length <= FLOW_LIMIT;
   const edgeLayer = svgEl('g', { class: flowing ? 'uml-edges flow' : 'uml-edges' });
+  // A large diagram: pointing at a box changes only what it is linked to
+  // (see pointerover), so the window does not draw everything again.
+  if (!flowing) svg.classList.add('large');
   // A type that uses many others (a composer, a factory) would cover the
   // diagram in arrows: its arrows stay faint until you point at it.
   const outgoing = new Map();
@@ -884,12 +887,22 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
       g.classList.toggle('lit', on);
       if (on) { linked.add(g.dataset.from); linked.add(g.dataset.to); }
     }
+    // A small diagram fades everything else. A large one leaves the rest as it
+    // is and outlines the linked boxes: fading every box and arrow made the
+    // window draw the whole diagram again on each move of the pointer, and on
+    // a large window it showed half-drawn frames (part faded, part not).
+    if (svg.classList.contains('large')) {
+      for (const g of world.querySelectorAll('.uml-node.linked')) if (!linked.has(g.dataset.id)) g.classList.remove('linked');
+      for (const lid of linked) elementOf(lid)?.classList.add('linked');
+      return;
+    }
     for (const g of world.querySelectorAll('.uml-node:not(.uml-inner)')) g.classList.toggle('dim', !linked.has(g.dataset.id));
     edgeLayer.classList.add('focus');
   });
   svg.addEventListener('pointerout', e => {
     if (e.relatedTarget?.closest?.('.uml-node:not(.uml-inner)') === e.target.closest('.uml-node:not(.uml-inner)')) return;
     for (const g of world.querySelectorAll('.dim')) g.classList.remove('dim');
+    for (const g of world.querySelectorAll('.uml-node.linked')) g.classList.remove('linked');
     for (const g of edgeLayer.querySelectorAll('.lit')) g.classList.remove('lit');
     edgeLayer.classList.remove('focus');
   });

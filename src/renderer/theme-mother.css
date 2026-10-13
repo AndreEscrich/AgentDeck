@@ -589,3 +589,7 @@ body.history-open :is(.chat-media, .before-after) { z-index: auto; }
 html:has(.uml-full, .branch-view:not(.hidden) .uml-svg, .view:not(.hidden) .changes.show-diagram) #mu-noise,
 html:has(.uml-full, .branch-view:not(.hidden) .uml-svg, .view:not(.hidden) .changes.show-diagram) #mu-roll { display: none; }
 html:has(.uml-full, .branch-view:not(.hidden) .uml-svg, .view:not(.hidden) .changes.show-diagram) body::before { animation: none; }
+
+/* The diagram's names without the glow: blurring every letter of a few
+   hundred names each time the diagram is drawn made it slow to draw. */
+.uml-svg, .uml-svg * { text-shadow: none !important; }

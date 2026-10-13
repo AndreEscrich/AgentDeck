@@ -1984,3 +1984,10 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .uml-edges.focus .uml-edge.lit path { opacity: 1; }
 /* The composer's wiring, arrowheads too, only while you point at it. */
 .uml-edge.composition:not(.lit) { visibility: hidden; }
+
+/* A large diagram (umlview.js, svg.large): pointing at a box lights its
+   arrows and outlines the boxes they link, without fading the rest, and
+   nothing fades in or out, so each change is drawn once. */
+.uml-svg.large .uml-node, .uml-svg.large .uml-edge path { transition: none !important; }
+.uml-edges:not(.flow) .uml-edge.lit path { opacity: 1; }
+.uml-node.linked .uml-box { stroke: var(--accent); stroke-width: 2; }
