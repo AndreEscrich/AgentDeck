@@ -1997,4 +1997,11 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .uml-iface-box { fill: rgba(255, 255, 255, 0.04); stroke: none; }
 .uml-iface-name { font-style: italic; opacity: 0.9; }
 .uml-iface-line { stroke: var(--border); stroke-width: 1; stroke-dasharray: 4 3; }
-.uml-node.facade-bar .uml-box { stroke: var(--accent); stroke-width: 2; fill: color-mix(in srgb, var(--accent) 8%, var(--bg-panel)); }
+/* The facade as its container's bottom edge: quiet like the composer's bar
+   (a faint tint, dimmed names), but dotted where the composer is dashed;
+   the API tag marks it. */
+.uml-node.facade-bar .uml-box { fill: color-mix(in srgb, var(--accent) 5%, transparent); stroke: color-mix(in srgb, var(--accent) 45%, transparent); stroke-width: 1.2; stroke-dasharray: 2 3; }
+.uml-node.facade-bar .uml-name { font-weight: 600; fill: var(--text-dim); }
+.uml-node.facade-bar .uml-iface-box { fill: transparent; }
+.uml-node.facade-bar .uml-iface-line { stroke: color-mix(in srgb, var(--accent) 25%, transparent); }
+.uml-node.facade-bar:hover .uml-box, .uml-node.facade-bar.linked .uml-box { stroke: var(--accent); }
