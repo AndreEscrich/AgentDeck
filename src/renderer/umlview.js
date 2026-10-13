@@ -109,19 +109,44 @@ function layout(nodes, edges, { maxLength = 1400, sizeOf = () => 200, gap = 44 }
   const ids = nodes.map(n => n.id);
   const out = new Map(ids.map(id => [id, []]));
   for (const e of edges) out.get(e.from)?.push(e.to);
-  // Arrows that close a cycle (found by a depth-first walk) do not rank.
-  const state = new Map();
-  const back = new Set();
-  const visit = id => {
-    state.set(id, 1);
-    for (const to of out.get(id) || []) {
-      if (state.get(to) === 1) back.add(`${id}>${to}`);
-      else if (!state.has(to)) visit(to);
+  // In a cycle some arrows must point the other way. Which ones: an order
+  // that leaves as few (by weight: how many arrows of types an arrow between
+  // folders stands for) pointing back as it can (Eades, Lin and Smyth's
+  // greedy order: take the types nothing uses first, those that use nothing
+  // last, else the one that uses most more than it is used). Arrows that go
+  // back in that order do not rank.
+  const weight = new Map();
+  for (const e of edges) {
+    if (!out.has(e.from) || !out.has(e.to) || e.from === e.to) continue;
+    const k = `${e.from}>${e.to}`;
+    weight.set(k, (weight.get(k) || 0) + (e.weight || 1));
+  }
+  const left = new Set(ids);
+  const inW = id => { let w = 0; for (const [k, v] of weight) { const [a, b] = k.split('>'); if (b === id && left.has(a)) w += v; } return w; };
+  const outW = id => { let w = 0; for (const [k, v] of weight) { const [a, b] = k.split('>'); if (a === id && left.has(b)) w += v; } return w; };
+  const head = [];
+  const tail = [];
+  while (left.size) {
+    let moved = true;
+    while (moved) {
+      moved = false;
+      for (const id of [...left]) {
+        if (outW(id) === 0) { tail.unshift(id); left.delete(id); moved = true; }
+        else if (inW(id) === 0) { head.push(id); left.delete(id); moved = true; }
+      }
     }
-    state.set(id, 2);
-  };
-  for (const id of ids) if (!state.has(id)) visit(id);
-  const forward = edges.filter(e => !back.has(`${e.from}>${e.to}`) && out.has(e.to) && out.has(e.from));
+    if (!left.size) break;
+    let best = null;
+    let bestScore = -Infinity;
+    for (const id of left) {
+      const score = outW(id) - inW(id);
+      if (score > bestScore) { bestScore = score; best = id; }
+    }
+    head.push(best);
+    left.delete(best);
+  }
+  const position = new Map([...head, ...tail].map((id, i) => [id, i]));
+  const forward = edges.filter(e => out.has(e.to) && out.has(e.from) && position.get(e.from) < position.get(e.to));
   const rank = new Map(ids.map(id => [id, 0]));
   // Longest path from the start: repeat until nothing moves (the graph is small).
   for (let pass = 0; pass < ids.length; pass++) {
@@ -462,21 +487,63 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
   const maxWidth = Math.max(700, ((container.clientWidth || 1100) - 48) / 0.85, Math.sqrt(area * aspect));
   const CARD_MAX = Math.max(420, Math.min(900, maxWidth * 0.55));   // a card's rows wrap at this width
 
-  // Places items (cards, parts) in rows no wider than width, the tallest
-  // first, so a few tall ones do not leave a row mostly empty. Sets x and y
-  // (relative) and returns the size.
-  const shelve = (items, width, gap) => {
-    const sorted = [...items].sort((a, b) => b.h - a.h || b.w - a.w);
-    let x = 0, y = 0, rowH = 0, maxW = 0;
-    for (const it of sorted) {
-      if (x > 0 && x + it.w > width) { y += rowH + gap; x = 0; rowH = 0; }
-      it.x = x;
-      it.y = y;
-      x += it.w + gap;
-      rowH = Math.max(rowH, it.h);
-      maxW = Math.max(maxW, x - gap);
+  // Dependencies flow downwards at every level: what is used sits above
+  // what uses it, so the arrows (from the used to the user) run down. items:
+  // [{ id, w, h }]; uses: [{ from, to }], from uses to. Returns the rows from
+  // the top: one per level of dependency, a level wrapping onto more rows
+  // when it is wider than width. merge: a level that fits whole in what is
+  // left of the row above continues that row, to the right (dependencies
+  // then run down and to the right), so a chain of small items does not
+  // take a row each.
+  const levelRows = (items, uses, width, gap, { merge = false } = {}) => {
+    const byId = new Map(items.map(it => [it.id, it]));
+    const rows = [];
+    let row = [];
+    let used = 0;
+    for (const level of layout(items, uses, { maxLength: Infinity, sizeOf: () => 1, gap: 0 }).reverse()) {
+      const levelW = level.reduce((sum, id) => sum + byId.get(id).w, 0) + gap * 2 * level.length;
+      if (row.length && !(merge && used + levelW <= width)) { rows.push(row); row = []; used = 0; }
+      for (const id of level) {
+        const it = byId.get(id);
+        if (row.length && used + gap + it.w > width) { rows.push(row); row = []; used = 0; }
+        used += (row.length ? gap : 0) + it.w;
+        row.push(it);
+      }
     }
-    return { w: maxW, h: items.length ? y + rowH : 0 };
+    if (row.length) rows.push(row);
+    return rows;
+  };
+  // Places such rows under each other, each one centred; sets x and y
+  // (relative) and returns the size.
+  const placeRows = (rows, gapX, gapY) => {
+    const rowW = row => row.reduce((s, it) => s + it.w, 0) + gapX * Math.max(0, row.length - 1);
+    const w = Math.max(0, ...rows.map(rowW));
+    let y = 0;
+    rows.forEach((row, r) => {
+      let x = (w - rowW(row)) / 2;
+      for (const it of row) {
+        it.x = x;
+        it.y = y;
+        x += it.w + gapX;
+      }
+      y += Math.max(...row.map(it => it.h)) + (r < rows.length - 1 ? gapY : 0);
+    });
+    return { w, h: rows.length ? y : 0 };
+  };
+  // The "uses" between the boxes in ids, as pairs of the keys keyOf gives
+  // them (a composer's wiring does not count: it uses everything).
+  const usesBetween = keyOf => {
+    const pairs = new Map();
+    for (const e of model.edges) {
+      if (boxes.get(e.from)?.composer) continue;
+      const a = keyOf(e.from);
+      const b = keyOf(e.to);
+      if (a == null || b == null || a === b) continue;
+      const k = `${a}>${b}`;
+      if (!pairs.has(k)) pairs.set(k, { from: a, to: b, weight: 0 });
+      pairs.get(k).weight++;
+    }
+    return [...pairs.values()];
   };
 
   // One box per namespace; in it one part per composer when it has several
@@ -488,10 +555,6 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
     if (!groups.has(key)) groups.set(key, { id: key, ids: [] });
     groups.get(key).ids.push(n.id);
   }
-  // How many types of other namespaces use a type (composers do not count).
-  const externalUsers = id => new Set(model.edges
-    .filter(e => e.to === id && !boxes.get(e.from)?.composer && boxes.get(e.from)?.node.namespace !== boxes.get(id).node.namespace)
-    .map(e => e.from)).size;
   for (const g of groups.values()) {
     g.collapsed = collapsed.has(`ns:${g.id}`);
     // Parts: by compartment (one per composer, or one for all).
@@ -509,10 +572,12 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
       const composers = members.filter(b => b.composer);
       part.composer = composers[0] || null;
       part.label = part.key === 'shared' ? 'Shared by its composers' : part.composer ? composerLabel(part.composer) : '';
-      // The entry points: facade interfaces and seams (interfaces several
-      // types of other namespaces depend on) on a row of their own at the
-      // bottom of the part, where the other parts and domains come in.
-      const entries = g.collapsed ? members : members.filter(b => !b.composer && b.node.kind === 'interface' && (b.facade || externalUsers(b.id) >= 2));
+      // Facade interfaces and seams go in their folder's card like any other
+      // type, placed by their dependencies (they use their namespace's data
+      // types, so a row of their own anywhere ran against the flow); the
+      // facade keeps its API tag. Only a collapsed namespace's one box goes on
+      // this row.
+      const entries = g.collapsed ? members : [];
       const rest = g.collapsed ? [] : members.filter(b => !b.composer && !entries.includes(b));
       // A card per folder: its types in rows, a type above the types it uses.
       const byFolder = new Map();
@@ -522,25 +587,12 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
       }
       part.cards = [...byFolder].map(([folder, list]) => {
         const ids = new Set(list.map(b => b.id));
-        // The types in dependency order (a type before the types it uses,
-        // read from the bottom up as before), wrapped into rows about as wide
-        // as the card is tall, so a chain of types is not a tall tower.
-        const order = layout(list.map(b => b.node), model.edges.filter(e => ids.has(e.from) && ids.has(e.to)), {
-          maxLength: Infinity, sizeOf: id => boxes.get(id).w, gap: GAP_X,
-        }).reverse().flat();
-        const sumW = order.reduce((s, id) => s + boxes.get(id).w + GAP_X, 0);
-        const rowH = UML_BOX_H + GAP_Y;
-        const target = Math.min(CARD_MAX - CARD_PAD * 2, Math.max(Math.max(...order.map(id => boxes.get(id).w)), Math.sqrt(sumW * rowH * 1.6)));
-        const rows = [];
-        let current = [];
-        let used = 0;
-        for (const id of order) {
-          const w = boxes.get(id).w;
-          if (current.length && used + GAP_X + w > target) { rows.push(current); current = []; used = 0; }
-          used += (current.length ? GAP_X : 0) + w;
-          current.push(id);
-        }
-        if (current.length) rows.push(current);
+        // One row per level of dependency (the used types on top), a level
+        // wrapping when it is wider than the card: about as wide as the card
+        // is tall, so the card stays compact.
+        const sumW = list.reduce((s2, b) => s2 + b.w + GAP_X, 0);
+        const target = Math.min(CARD_MAX - CARD_PAD * 2, Math.max(Math.max(...list.map(b => b.w)), Math.sqrt(sumW * (UML_BOX_H + GAP_Y) * 1.6)));
+        const rows = levelRows(list, model.edges.filter(e => ids.has(e.from) && ids.has(e.to)), target, GAP_X).map(row => row.map(b => b.id));
         const rowWidth = row => row.reduce((s, id) => s + boxes.get(id).w, 0) + GAP_X * Math.max(0, row.length - 1);
         const innerW = Math.max(Math.min(textWidth(folder, UML_SMALL) + 24, 260), ...rows.map(rowWidth));
         let y = CARD_LABEL;
@@ -555,22 +607,28 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
         });
         return { key, folder, ids: list.map(b => b.id), w: innerW + CARD_PAD * 2, h: y + CARD_PAD, collapsed: list.length === 1 && list[0].node.proxy === key };
       });
-      // The cards, packed; then the entry row under them.
+      // The cards, by dependency between their types; the entry row above them.
       const left = part.composer ? COMPOSER_W + COMPOSER_GAP : 0;
       const top = several ? COMP_LABEL : 0;
-      const packed = shelve(part.cards, maxWidth - PAD * 2 - left - (several ? CARD_PAD * 2 : 0), CARD_GAP);
+      const cardOf = new Map();
+      for (const card of part.cards) { card.id = card.key; for (const cid of card.ids) cardOf.set(cid, card.key); }
+      const packed = placeRows(levelRows(part.cards, usesBetween(id => cardOf.get(id)), maxWidth - PAD * 2 - left - (several ? CARD_PAD * 2 : 0), CARD_GAP, { merge: true }), CARD_GAP, CARD_GAP + 12);
       let height = packed.h;
       let width = packed.w;
+      // The entry row goes on top of the part: its types implement and use
+      // these interfaces, so with dependencies flowing down they come under
+      // it (other namespaces that use it are lower down too).
       if (entries.length) {
         const entryW = entries.reduce((s, b) => s + b.w, 0) + GAP_X * (entries.length - 1);
-        let x = Math.max(0, (Math.max(width, entryW) - entryW) / 2);
-        const y = height + (height ? GAP_Y : 0);
+        width = Math.max(width, entryW);
+        let x = (width - entryW) / 2;
         for (const b of entries) {
-          Object.assign(b, { px: x, py: y, lane: `entries|${g.id}|${part.key}`, row: `entries|${g.id}|${part.key}` });
+          Object.assign(b, { px: x, py: 0, lane: `entries|${g.id}|${part.key}`, row: `entries|${g.id}|${part.key}` });
           x += b.w + GAP_X;
         }
-        height = y + UML_BOX_H;
-        width = Math.max(width, entryW);
+        const below = packed.h ? UML_BOX_H + GAP_Y : UML_BOX_H;
+        for (const card of part.cards) card.y += below;
+        height = below + packed.h;
       }
       part.entries = entries;
       // A part with a composer is at least as tall as its bar's name.
@@ -581,8 +639,11 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
       part.h = top + innerH + (several ? CARD_PAD : 0);
       part.innerH = innerH;
     }
-    // The parts, packed; the shared part first (it is what the others lean on).
-    const packed = shelve(partList, maxWidth - PAD * 2, COMP_GAP);
+    // The parts, by dependency between their types: the shared part, which
+    // the others use, comes on top.
+    for (const part of partList) part.id = part.key;
+    const partOf = id => (g.ids.includes(id) ? boxes.get(id).comp || 'main' : null);
+    const packed = placeRows(levelRows(partList, usesBetween(partOf), maxWidth - PAD * 2, COMP_GAP, { merge: true }), COMP_GAP, COMP_GAP + 12);
     g.parts = partList;
     g.several = several;
     g.inner = { width: Math.max(packed.w, Math.min(textWidth(g.id, UML_SMALL) + 40, 320)), height: packed.h };
@@ -599,20 +660,11 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
     const b = boxes.get(e.to)?.node.namespace || '(no namespace)';
     if (a !== b) groupEdges.set(`${a}>${b}`, { from: a, to: b });
   }
-  const groupOrder = layout([...groups.values()], [...groupEdges.values()], { maxLength: Infinity, sizeOf: () => 1, gap: 0 }).flat().reverse();
-  // In that order, side by side while they fit in the width, each row
-  // centred: small namespaces do not take a whole row each.
+  // One row per level (the used namespaces on top), side by side within a
+  // level while they fit: small namespaces do not take a whole row each.
   const rowLimit = Math.max(maxWidth, ...[...groups.values()].map(g => g.w));
-  const groupRows = [];
-  let current = [];
-  let used = 0;
-  for (const id of groupOrder) {
-    const g = groups.get(id);
-    if (current.length && used + GROUP_GAP + g.w > rowLimit) { groupRows.push(current); current = []; used = 0; }
-    used += (current.length ? GROUP_GAP : 0) + g.w;
-    current.push(g);
-  }
-  if (current.length) groupRows.push(current);
+  const groupRows = levelRows([...groups.values()], [...groupEdges.values()], rowLimit, GROUP_GAP, { merge: true });
+  const groupOrder = groupRows.flat().map(g => g.id);
   const rowWidthOf = row => row.reduce((sum, g) => sum + g.w, 0) + GROUP_GAP * (row.length - 1);
   const maxW = Math.max(0, ...groupRows.map(rowWidthOf));
   let groupY = 0;
