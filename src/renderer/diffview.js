@@ -350,7 +350,10 @@ function changesCard(files, cwd, { title = null, animate = false } = {}) {
 // of files. While the C# is read the card says so; when the changes declare
 // no types, it shows the files.
 function addDiagram(card, head, files, cwd, comments) {
-  const csFiles = files.filter(f => CS_FILE.test(f.path) && f.status !== 'bin');
+  // Temporary helpers stay out of the diagram, also the ones that only may
+  // be temporary (TempProbe, AtlasTemp): it shows the structure of the work.
+  const csFiles = files.filter(f => CS_FILE.test(f.path) && f.status !== 'bin'
+    && !(window.isTempFile?.(f.path) || window.maybeTempFile?.(f.path)));
   if (!csFiles.length || !window.deck?.csModel || !window.umlPanel) return;
   const switcher = el('div', 'changes-switch');
   const diagramBtn = el('button', 'active', 'Diagram…');

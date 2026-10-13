@@ -460,6 +460,8 @@ function formatTokens(n) {
 function isTempFile(p) {
   const parts = String(p).replace(/\\/g, '/').split('/');
   if (parts.slice(0, -1).some(dir => /^\.?(temp|tmp)$/i.test(dir))) return true;
+  // Agents put their own helpers in folders like ClaudeTemp: always temporary.
+  if (parts.some(n => /claude[_\-]?temp/i.test(n))) return true;
   const name = parts.pop().replace(/\.meta$/i, '');
   if (name === '.DS_Store' || name.endsWith('~')) return true;
   if (/\.(tmp|temp|bak|orig|rej|swp)$/i.test(name)) return true;
