@@ -106,6 +106,7 @@ To go back to an earlier version, check out its tag in the stable copy (`git -C 
 | --- | --- |
 | ⌘N | Start a new agent (cursor in the Hub's message box) |
 | ⌘0 | Hub |
+| ↑ / ↓ | In an agent's message box: ↑ (in an empty box, or with the cursor at the start) puts your latest message to that agent back in the box, to change or send again; ↑ again goes further back, ↓ (cursor at the end) forward, and past the newest you get back what was in the box |
 | ⌘[ | Back to the Hub (also the ← Hub button in an agent; the chat shrinks back into its tile) |
 | ⌘1 … ⌘9 | Switch to running agent 1–9 |
 | ⌘F | Search history |

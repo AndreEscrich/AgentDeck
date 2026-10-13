@@ -3630,7 +3630,45 @@ function autosize() {
 
 $('input').addEventListener('input', autosize);
 window.addEventListener('resize', () => requestAnimationFrame(autosize));
+// ↑ in an agent's message box puts your latest message to it back in the
+// box (to change or send again); ↑ again goes further back, ↓ forward, and
+// past the newest you get back what was in the box. Only from the start of
+// the text (↑) or its end (↓), so moving the cursor in what you type still
+// works. Typing ends the recall.
+const recall = { key: null, index: -1, draft: '', shown: null };
+function recallPrompt(step) {
+  const cur = state.current;
+  const transcript = cur?.kind === 'agent' ? state.agents.get(cur.id)?.transcript : cur?.kind === 'history' ? state.history.get(cur.id)?.transcript : null;
+  const prompts = (transcript?.prompts || []).map(p => p.text).filter(Boolean);
+  if (!prompts.length) return false;
+  const input = $('input');
+  const key = viewKey(cur);
+  // A new recall unless the box still shows the message this one put there
+  // (after sending it, or changing it, it starts again from the newest).
+  if (recall.key !== key || input.value !== recall.shown) Object.assign(recall, { key, index: prompts.length, draft: input.value });
+  const next = recall.index + step;
+  if (next < 0 || next > prompts.length) return false;
+  recall.index = next;
+  input.value = next === prompts.length ? recall.draft : prompts[next];
+  recall.shown = input.value;
+  autosize();
+  const end = step < 0 ? 0 : input.value.length;
+  input.setSelectionRange(end, end);
+  if (next === prompts.length) recall.key = null;
+  return true;
+}
+$('input').addEventListener('input', () => { recall.key = null; });
+
 $('input').addEventListener('keydown', e => {
+  const box = $('input');
+  if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !e.isComposing
+      && ['agent', 'history'].includes(state.current?.kind)) {
+    const atStart = box.selectionStart === 0 && box.selectionEnd === 0;
+    const atEnd = box.selectionStart === box.value.length && box.selectionEnd === box.value.length;
+    const recalling = recall.key === viewKey(state.current) && box.value === recall.shown;
+    if (e.key === 'ArrowUp' && (atStart || !box.value) && recallPrompt(-1)) { e.preventDefault(); return; }
+    if (e.key === 'ArrowDown' && recalling && atEnd && recallPrompt(1)) { e.preventDefault(); return; }
+  }
   // While Claude waits for an answer and the box is empty, 1–9 pick an option.
   const asking = state.current?.kind === 'agent' && state.agents.get(state.current.id)?.pendingQuestion;
   if (asking && !$('input').value && /^[1-9]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) {
