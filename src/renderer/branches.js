@@ -112,6 +112,23 @@ class BranchesView {
       return;
     }
     for (const n of r.notes || []) box.appendChild(el('div', 'branch-note', n));
+    // The branch's own commits (merges from trunk left out), newest first.
+    if (r.commits?.length) {
+      const list = document.createElement('details');
+      list.className = 'branch-commits';
+      list.appendChild(el('summary', null, `${r.commits.length} commit${r.commits.length === 1 ? '' : 's'} of its own`));
+      for (const c of r.commits) {
+        const row = el('div', 'branch-commit');
+        row.append(
+          el('span', 'branch-commit-rev', `r${c.revision}`),
+          el('span', 'branch-commit-msg', c.message.split('\n')[0] || '(no message)'),
+          el('span', 'branch-commit-meta', [c.author, c.date ? timeAgo(Date.parse(c.date)) : '', `${c.files} file${c.files === 1 ? '' : 's'}`].filter(Boolean).join(' · ')),
+        );
+        row.title = c.message;
+        list.appendChild(row);
+      }
+      box.appendChild(list);
+    }
     const all = parseUnifiedDiff(r.diff || '');
     // Unity's .meta files change with every new or moved asset: hidden, counted.
     const meta = all.filter(f => /\.meta$/i.test(f.path));
