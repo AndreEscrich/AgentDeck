@@ -580,3 +580,12 @@ body.history-open :is(.chat-media, .before-after) { z-index: auto; }
 .view-category { background: transparent; border: 1px solid var(--accent); font-family: var(--label); font-weight: 400;
   letter-spacing: 0.14em; padding: 2px 8px 1px; text-shadow: var(--glow-strong); }
 .change-mark.add { background: #7dffa1; }
+
+/* While a class diagram is on screen (full screen, in the Branches view, or
+   in a Changes card showing it), the tube's moving parts rest: the static,
+   the rolling band and the flicker each made the window draw again on top
+   of the diagram, and pointing at boxes (which redraws the whole diagram)
+   could then show half-drawn frames. The glass, bezel and scanlines stay. */
+html:has(.uml-full, .branch-view:not(.hidden) .uml-svg, .view:not(.hidden) .changes.show-diagram) #mu-noise,
+html:has(.uml-full, .branch-view:not(.hidden) .uml-svg, .view:not(.hidden) .changes.show-diagram) #mu-roll { display: none; }
+html:has(.uml-full, .branch-view:not(.hidden) .uml-svg, .view:not(.hidden) .changes.show-diagram) body::before { animation: none; }

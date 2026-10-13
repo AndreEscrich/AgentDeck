@@ -647,6 +647,8 @@ details.change-file > summary:hover .review-tick { opacity: 1; }
 .uml-node.composer .uml-name { font-weight: 600; fill: var(--text-dim); }
 .uml-edge.composition path { opacity: 0; }
 .uml-edges.focus .uml-edge.composition.lit path { opacity: 0.9; }
+/* Pointing at another box must not bring the composer's hidden wiring in faintly. */
+.uml-edges.focus .uml-edge.composition:not(.lit) path { opacity: 0; }
 /* A facade: the API of its domain */
 .uml-node.facade .uml-box { stroke: var(--accent); stroke-width: 2; }
 .uml-api-tag { fill: var(--accent); }
