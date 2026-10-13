@@ -1991,3 +1991,10 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .uml-svg.large .uml-node, .uml-svg.large .uml-edge path { transition: none !important; }
 .uml-edges:not(.flow) .uml-edge.lit path { opacity: 1; }
 .uml-node.linked .uml-box { stroke: var(--accent); stroke-width: 2; }
+
+/* A class with the one interface it implements: the interface's strip on
+   top. The facade as a bar along the bottom of its part (umlview.js). */
+.uml-iface-box { fill: rgba(255, 255, 255, 0.04); stroke: none; }
+.uml-iface-name { font-style: italic; opacity: 0.9; }
+.uml-iface-line { stroke: var(--border); stroke-width: 1; stroke-dasharray: 4 3; }
+.uml-node.facade-bar .uml-box { stroke: var(--accent); stroke-width: 2; fill: color-mix(in srgb, var(--accent) 8%, var(--bg-panel)); }

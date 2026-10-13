@@ -434,6 +434,47 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
       model = { ...model, nodes: [...model.nodes.filter(n => !proxyOf.has(n.id)), ...proxies.values()], edges: [...merged.values()] };
     }
   }
+  // An interface with only one implementation among the changed types (in
+  // its namespace) is drawn with it, as one box: the interface on top, the
+  // class under it. Their arrows are the box's. Facades are the usual case.
+  const pairOf = new Map();   // class id -> its interface's node
+  {
+    const byId = new Map(model.nodes.map(n => [n.id, n]));
+    const implementers = new Map();
+    for (const e of model.edges) {
+      const c = byId.get(e.from);
+      const i = byId.get(e.to);
+      if (e.kind !== 'implements' || !c || !i || i.kind !== 'interface' || c.kind === 'interface' || isComposer(c) || c.proxy || i.proxy) continue;
+      if (!implementers.has(i.id)) implementers.set(i.id, new Set());
+      implementers.get(i.id).add(c.id);
+    }
+    for (const [iid, set] of implementers) {
+      if (set.size !== 1) continue;
+      const c = byId.get([...set][0]);
+      const i = byId.get(iid);
+      if ((i.namespace || '') !== (c.namespace || '')) continue;
+      // A class with several such interfaces keeps the one named after it.
+      const prev = pairOf.get(c.id);
+      if (prev && prev.name === `I${c.name}`) continue;
+      pairOf.set(c.id, i);
+    }
+    if (pairOf.size) {
+      const ifaceOf = new Map([...pairOf].map(([cid, i]) => [i.id, cid]));
+      const to = id => ifaceOf.get(id) || id;
+      const merged = new Map();
+      for (const e of model.edges) {
+        const from = to(e.from);
+        const target = to(e.to);
+        if (from === target) continue;
+        const k = `${from}>${target}`;
+        const prev = merged.get(k);
+        if (!prev || (prev.kind === 'uses' && e.kind !== 'uses')) merged.set(k, { ...e, from, to: target, fresh: e.fresh || !!prev?.fresh });
+      }
+      model = { ...model, nodes: model.nodes.filter(n => !ifaceOf.has(n.id)), edges: [...merged.values()] };
+    }
+  }
+  const IFACE_H = 30;   // a paired interface's strip at the top of its class's box
+
   const innerBoxes = new Map();   // nested type id -> { node, owner }
   // A box with many arrows on one side is wider, so their ends spread out.
   const ins = new Map();
@@ -456,7 +497,13 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
       innerBoxes.set(c.id, { id: c.id, node: c, owner: n.id });
     }
     if (inner.length) h = 34 + inner.length * (INNER_H + INNER_GAP) + 4;
-    boxes.set(n.id, { id: n.id, node: n, name, w, h: composer ? COMPOSER_H : h, composer, facade: !composer && isFacade(n), inner });
+    const pair = pairOf.get(n.id) || null;
+    if (pair) {
+      w = Math.max(w, Math.min(Math.ceil(textWidth(pair.name + (pair.generic || ''), UML_FONT)) + 40, 340));
+      h += IFACE_H;
+      innerBoxes.set(pair.id, { id: pair.id, node: pair, owner: n.id });
+    }
+    boxes.set(n.id, { id: n.id, node: n, name, w, h: composer ? COMPOSER_H : h, composer, facade: !composer && (isFacade(n) || (pair && isFacade(pair))), inner, pair });
   }
   for (const e of model.edges) {
     const b = boxes.get(e.from);
@@ -614,9 +661,21 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
       const packed = placeRows(levelRows(part.cards, usesBetween(id => cardOf.get(id)), maxWidth - PAD * 2 - left - (several ? CARD_PAD * 2 : 0), CARD_GAP, { merge: true }), CARD_GAP, CARD_GAP + 12);
       let height = packed.h;
       let width = packed.w;
-      // The facade at the bottom, under the cards: the interface above the
-      // class that implements it (by their dependencies, like everything else).
-      if (entries.length) {
+      // The facade is the part's bottom edge: a bar as wide as the part (with
+      // its interface on top when paired), where the parts and namespaces
+      // that use it connect. Several facades share the width.
+      if (entries.length && !g.collapsed) {
+        const naturalW = entries.reduce((s2, b) => s2 + b.w, 0) + GAP_X * (entries.length - 1);
+        width = Math.max(width, naturalW);
+        const each = (width - GAP_X * (entries.length - 1)) / entries.length;
+        let x = 0;
+        const y = height + (height ? GAP_Y : 0);
+        for (const b of entries) {
+          Object.assign(b, { w: each, bar: true, px: x, py: y, lane: `entries|${g.id}|${part.key}`, row: `entries|${g.id}|${part.key}` });
+          x += each + GAP_X;
+        }
+        height = y + Math.max(...entries.map(b => b.h));
+      } else if (entries.length) {
         const ids = new Set(entries.map(b => b.id));
         const rows = levelRows(entries, model.edges.filter(e => ids.has(e.from) && ids.has(e.to)), maxWidth - PAD * 2 - left, GAP_X);
         const rowW = row => row.reduce((s2, b) => s2 + b.w, 0) + GAP_X * (row.length - 1);
@@ -810,22 +869,33 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
   // The boxes: a stripe in the color of the change, and the name.
   for (const b of boxes.values()) {
     const n = b.node;
-    const role = b.composer ? ' composer' : b.facade ? ' facade' : n.proxy ? ' proxy' : '';
+    const role = (b.composer ? ' composer' : b.facade ? ' facade' : n.proxy ? ' proxy' : '') + (b.bar ? ' facade-bar' : '') + (b.pair ? ' paired' : '');
     const g = svgEl('g', { class: `uml-node status-${n.status} kind-${n.kind}${role}`, transform: `translate(${b.x},${b.y})`, 'data-id': n.id });
     g.appendChild(svgEl('rect', { class: 'uml-box', width: b.w, height: b.h, rx: b.composer ? 10 : 8 }));
-    g.appendChild(svgEl('rect', { class: 'uml-band', width: 4, height: b.h - 12, x: 6, y: 6, rx: 2 }));
+    g.appendChild(svgEl('rect', { class: 'uml-band', width: 4, height: b.h - 12 - (b.pair ? IFACE_H : 0), x: 6, y: 6 + (b.pair ? IFACE_H : 0), rx: 2 }));
     if (b.composer) {
       g.appendChild(svgEl('text', { class: 'uml-name', x: b.w / 2 + 3, y: b.h / 2 + 4.5, transform: `rotate(-90 ${b.w / 2 + 3} ${b.h / 2})` }, composerLabel(b)));
     } else {
       // A name longer than the widest box (340px) is squeezed to fit inside it.
       const room = b.w - 26;
       const squeeze = textWidth(b.name, UML_FONT) > room ? { textLength: room, lengthAdjust: 'spacingAndGlyphs' } : {};
+      // A paired interface: a strip across the top, clickable for its own diff.
+      const top = b.pair ? IFACE_H : 0;
+      if (b.pair) {
+        const p = b.pair;
+        const ig = svgEl('g', { class: `uml-node uml-inner uml-iface status-${p.status} kind-interface`, 'data-id': p.id });
+        ig.appendChild(svgEl('rect', { class: 'uml-iface-box', x: 1, y: 1, width: b.w - 2, height: IFACE_H - 1, rx: 7 }));
+        ig.appendChild(svgEl('text', { class: 'uml-name uml-iface-name', x: b.w / 2 + 3, y: IFACE_H / 2 + 5 }, p.name + (p.generic || '')));
+        ig.appendChild(svgEl('title', {}, `interface ${p.namespace ? p.namespace + '.' : ''}${p.name}, implemented by ${n.name} only\nClick to open its diff`));
+        g.appendChild(ig);
+        g.appendChild(svgEl('line', { class: 'uml-iface-line', x1: 0, x2: b.w, y1: IFACE_H, y2: IFACE_H }));
+      }
       // With nested types, the name sits at the top and they go under it.
-      const nameY = b.inner?.length ? 22 : b.h / 2 + 4.5;
+      const nameY = top + (b.inner?.length ? 22 : (b.h - top) / 2 + 4.5);
       g.appendChild(svgEl('text', { class: 'uml-name', x: b.w / 2 + 3, y: nameY, ...squeeze }, b.name));
       (b.inner || []).forEach((c, i) => {
         const cw = b.w - 26;
-        const cg = svgEl('g', { class: `uml-node uml-inner status-${c.status} kind-${c.kind}`, transform: `translate(16,${34 + i * (INNER_H + INNER_GAP)})`, 'data-id': c.id });
+        const cg = svgEl('g', { class: `uml-node uml-inner status-${c.status} kind-${c.kind}`, transform: `translate(16,${top + 34 + i * (INNER_H + INNER_GAP)})`, 'data-id': c.id });
         cg.appendChild(svgEl('rect', { class: 'uml-box', width: cw, height: INNER_H, rx: 6 }));
         cg.appendChild(svgEl('rect', { class: 'uml-band', width: 3, height: INNER_H - 10, x: 5, y: 5, rx: 1.5 }));
         cg.appendChild(svgEl('text', { class: 'uml-name uml-inner-name', x: cw / 2 + 2, y: INNER_H / 2 + 4 }, c.name + (c.generic || '')));
