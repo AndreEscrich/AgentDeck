@@ -1958,3 +1958,9 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .branch-commit-rev { flex-shrink: 0; font-family: var(--mono); color: var(--text-faint); }
 .branch-commit-msg { flex: 1; min-width: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .branch-commit-meta { flex-shrink: 0; color: var(--text-faint); }
+
+/* The Branches view's domains: click one (or more) to see only those. */
+.branch-domains { display: flex; flex-wrap: wrap; gap: 6px; }
+.branch-domain { font-size: 12px; padding: 3px 10px; border-radius: 99px; color: var(--text-dim); }
+.branch-domain.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.branch-card { display: flex; flex-direction: column; gap: 8px; }

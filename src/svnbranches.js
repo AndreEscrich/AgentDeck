@@ -154,27 +154,41 @@ async function branchDiff(config, branch, cacheRoot) {
   if (!streamed.ok) return { ok: false, error: streamed.error };
   const text = streamed.blocks.map(block => svnToGit(block)).join('\n');
 
-  // The branch's changed C# files at its latest revision, for the diagram
-  // and the full-file views.
-  const cwd = path.join(cacheRoot, sanitize(config.svnProject), `${sanitize(branch)}@${head}`);
+  // All the branch's changed C# files at its latest revision, for the
+  // diagram and the full-file views. A file the branch added is all in the
+  // diff, so it is written from there; only edited files are fetched (svn cat).
   // A deleted file has nothing to fetch: svn cat fails for it and it is skipped.
-  const changed = [...text.matchAll(/^diff --git a\/(.+?) b\/\1$/gm)].map(m => m[1]);
-  const csFiles = changed.filter(p => /\.cs$/i.test(p)).slice(0, 300);
-  const marker = path.join(cwd, '.agenthub-complete');
+  const cwd = path.join(cacheRoot, sanitize(config.svnProject), `${sanitize(branch)}@${head}`);
+  const write = (rel, content) => {
+    const file = path.join(cwd, ...rel.split('/'));
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, content);
+  };
+  // (v2: earlier versions fetched only the first 300 C# files.)
+  const marker = path.join(cwd, '.agenthub-complete-v2');
   if (!fs.existsSync(marker)) {
     fs.mkdirSync(cwd, { recursive: true });
+    const toFetch = [];
+    for (const block of text.split(/(?=^diff --git )/m)) {
+      const rel = /^diff --git a\/(.+?) b\//.exec(block)?.[1];
+      if (!rel || !/\.cs$/i.test(rel)) continue;
+      if (/^new file mode/m.test(block)) {
+        const body = block.slice(block.indexOf('\n@@') + 1).split('\n').filter(l => l.startsWith('+') && !l.startsWith('+++')).map(l => l.slice(1));
+        write(rel, body.join('\n') + '\n');
+      } else {
+        toFetch.push(rel);
+      }
+    }
     let next = 0;
     const worker = async () => {
-      while (next < csFiles.length) {
-        const rel = csFiles[next++];
+      while (next < toFetch.length) {
+        const rel = toFetch[next++];
         const r = await svn(['cat', `${url}/${rel.split('/').map(encodeURIComponent).join('/')}@${head}`], { timeout: 60000 });
         if (!r.ok) continue;   // a deleted file, or one svn cannot give
-        const file = path.join(cwd, ...rel.split('/'));
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, r.out);
+        write(rel, r.out);
       }
     };
-    await Promise.all(Array.from({ length: 6 }, worker));
+    await Promise.all(Array.from({ length: 10 }, worker));
     fs.writeFileSync(marker, new Date().toISOString());
   }
 

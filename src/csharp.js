@@ -404,7 +404,8 @@ const COMMON = new Set([
 //   edge: { from, to, kind: inherits|implements|uses, fresh, line }
 async function model(cwd, files) {
   const changed = [];   // { node, type, file, diff }
-  for (const f of (Array.isArray(files) ? files : []).slice(0, 200)) {
+  // A whole branch (the Branches view) can bring several hundred files.
+  for (const f of (Array.isArray(files) ? files : []).slice(0, 500)) {
     if (!f || typeof f.path !== 'string' || !/\.cs$/i.test(f.path)) continue;
     // The file as the agent left it, rebuilt from the task's diff (see
     // versions in undo.js), so undoing or reverting it later does not change

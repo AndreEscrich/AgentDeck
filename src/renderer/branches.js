@@ -7,7 +7,21 @@
 // name starts with what you type. A branch's diff is kept while the app
 // runs, per revision.
 
-const BRANCH_FILE_LIMIT = 600;
+const BRANCH_FILE_LIMIT = 2000;
+
+// A file's domain: its folder under Assets/Code (MergeSideBoard); a
+// module's assets (Assets/ModulesAssets/MergeSideBoard) are "MergeSideBoard
+// assets"; anything else under Assets goes by its folder there, else by its
+// first folder.
+function domainOf(file) {
+  const code = /(?:^|\/)Assets\/Code\/([^/]+)\//.exec(file);
+  if (code) return code[1];
+  const module = /(?:^|\/)Assets\/ModulesAssets\/([^/]+)\//.exec(file);
+  if (module) return `${module[1]} assets`;
+  const assets = /(?:^|\/)Assets\/([^/]+)\//.exec(file);
+  if (assets) return `Assets/${assets[1]}`;
+  return file.split('/')[0];
+}
 
 class BranchesView {
   constructor() {
@@ -140,11 +154,39 @@ ${r.hidden} release and other branches not listed (only person_feature names are
       box.appendChild(el('div', 'note', meta.length ? `Only .meta files changed (${meta.length}).` : 'No differences.'));
       return;
     }
-    box.appendChild(changesCard(files.slice(0, BRANCH_FILE_LIMIT), r.cwd, { title: r.title }));
-    const left = [];
-    if (files.length > BRANCH_FILE_LIMIT) left.push(`${files.length - BRANCH_FILE_LIMIT} more files not shown`);
-    if (meta.length) left.push(`${meta.length} .meta file${meta.length === 1 ? '' : 's'} hidden`);
-    if (left.length) box.appendChild(el('div', 'note', left.join(' · ')));
+    // The domains it changed: click one (or several) to see only those.
+    const domains = new Map();
+    for (const f of files) {
+      const d = domainOf(f.path);
+      domains.set(d, (domains.get(d) || 0) + 1);
+    }
+    const picked = new Set();
+    const chips = el('div', 'branch-domains');
+    const slot = el('div', 'branch-card');
+    const draw = () => {
+      chips.replaceChildren();
+      const all = el('button', 'branch-domain' + (picked.size ? '' : ' on'), `All · ${files.length}`);
+      all.type = 'button';
+      all.onclick = () => { picked.clear(); window.uiSound?.('select'); draw(); };
+      chips.appendChild(all);
+      for (const [d, n] of [...domains].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))) {
+        const chip = el('button', 'branch-domain' + (picked.has(d) ? ' on' : ''), `${d} · ${n}`);
+        chip.type = 'button';
+        chip.title = 'Show only this domain; click more to add them';
+        chip.onclick = () => { if (picked.has(d)) picked.delete(d); else picked.add(d); window.uiSound?.('select'); draw(); };
+        chips.appendChild(chip);
+      }
+      const shown = picked.size ? files.filter(f => picked.has(domainOf(f.path))) : files;
+      const title = picked.size ? `${r.title} · ${[...picked].join(', ')}` : r.title;
+      const notes = [];
+      if (shown.length > BRANCH_FILE_LIMIT) notes.push(`${shown.length - BRANCH_FILE_LIMIT} more files not shown: pick a domain`);
+      if (meta.length) notes.push(`${meta.length} .meta file${meta.length === 1 ? '' : 's'} hidden`);
+      slot.replaceChildren(changesCard(shown.slice(0, BRANCH_FILE_LIMIT), r.cwd, { title }));
+      if (notes.length) slot.appendChild(el('div', 'note', notes.join(' · ')));
+    };
+    if (domains.size > 1) box.appendChild(chips);
+    box.appendChild(slot);
+    draw();
   }
 }
 
