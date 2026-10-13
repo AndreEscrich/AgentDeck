@@ -358,48 +358,110 @@ function nestTypes(model) {
 const INNER_H = 26;     // a nested type's small box
 const INNER_GAP = 6;
 
-// collapsed: the keys of collapsed namespaces ("ns:<namespace>") and folders
-// ("f:<namespace>|<part>|<folder>"); onToggle(key) runs when you click one's
+// collapsed: the keys of collapsed containers ("c:<composer id>" or
+// "c:ns:<namespace>") and folders ("f:<container>|<part>|<folder>"); onToggle(key) runs when you click one's
 // name or its box. view: where to look ({ x, y, k }) instead of fitting.
 function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), view: startView = null, wheelZooms = false } = {}) {
   const nesting = nestTypes(model);
   model = nesting.model;
 
-  // Parts: in a namespace with several composers, each type belongs to the
-  // composer that wires it (an arrow from it), and to a shared part when none
-  // or several do. Composers talk to each other through facade interfaces,
-  // which go on each part's entry row.
-  const comp = new Map();
-  const composersIn = new Map();
-  for (const n of model.nodes) {
-    if (!isComposer(n)) continue;
-    const k = n.namespace || '(no namespace)';
-    if (!composersIn.has(k)) composersIn.set(k, []);
-    composersIn.get(k).push(n);
-  }
-  for (const n of model.nodes) {
-    const list = composersIn.get(n.namespace || '(no namespace)') || [];
-    if (list.length < 2) comp.set(n.id, 'main');
-    else if (isComposer(n)) comp.set(n.id, n.id);
-    else {
-      const wiring = list.filter(c => model.edges.some(e => e.from === c.id && e.to === n.id));
-      comp.set(n.id, wiring.length === 1 ? wiring[0].id : 'shared');
-    }
-  }
   // Each type's folder, relative to the folder all the changes share.
   const labelOf = folderLabels(model.nodes);
   const folderOf = new Map(model.nodes.map(n => [n.id, labelOf(n)]));
+
+  // Containers: the system composers say what belongs together, so each
+  // one is a container with the types it wires; namespaces are only labels.
+  // A composer gathers the types of its namespace that its wiring reaches
+  // first (it creates a factory, the factory a controller: the controller is
+  // that composer's too), not through another composer; in a namespace with
+  // one composer, all of them. A type no composer reaches goes with the
+  // composer most of its folder is with. What is left, and namespaces
+  // without a composer, get a container named after the namespace.
+  // Composers talk to each other through facade interfaces, which form each
+  // container's bottom edge.
+  const nsKey = n => n.namespace || '(no namespace)';
+  const containerOf = new Map();
+  const composersIn = new Map();
+  for (const n of model.nodes) {
+    if (!isComposer(n)) continue;
+    if (!composersIn.has(nsKey(n))) composersIn.set(nsKey(n), []);
+    composersIn.get(nsKey(n)).push(n);
+  }
+  const nodeById = new Map(model.nodes.map(n => [n.id, n]));
+  const usesOf = new Map();
+  for (const e of model.edges) {
+    if (!usesOf.has(e.from)) usesOf.set(e.from, []);
+    usesOf.get(e.from).push(e.to);
+  }
+  for (const n of model.nodes) {
+    const list = composersIn.get(nsKey(n)) || [];
+    if (isComposer(n)) containerOf.set(n.id, n.id);
+    else if (list.length === 1) containerOf.set(n.id, list[0].id);
+  }
+  for (const [ns, list] of composersIn) {
+    if (list.length < 2) continue;
+    // How many steps each composer needs to reach each type of its namespace.
+    const steps = new Map();   // type id -> Map(composer id -> steps)
+    for (const c of list) {
+      const seen = new Map([[c.id, 0]]);
+      const queue = [c.id];
+      while (queue.length) {
+        const id = queue.shift();
+        for (const next of usesOf.get(id) || []) {
+          const t = nodeById.get(next);
+          if (!t || seen.has(next) || nsKey(t) !== ns || isComposer(t)) continue;
+          seen.set(next, seen.get(id) + 1);
+          queue.push(next);
+          if (!steps.has(next)) steps.set(next, new Map());
+          steps.get(next).set(c.id, seen.get(next));
+        }
+      }
+    }
+    const members = model.nodes.filter(n => nsKey(n) === ns && !isComposer(n));
+    for (const n of members) {
+      const by = steps.get(n.id);
+      if (!by) continue;
+      const nearest = Math.min(...by.values());
+      const owners = [...by].filter(([, d]) => d === nearest).map(([cid]) => cid);
+      if (owners.length === 1) containerOf.set(n.id, owners[0]);
+    }
+    // Not reached (or a tie): the composer most of its folder is with, or
+    // else of the folder above it (UI/Views/Board/Components goes where
+    // UI/Views/Board goes), and so on up.
+    const reached = members.filter(m => containerOf.has(m.id)).map(m => ({ c: containerOf.get(m.id), folder: folderOf.get(m.id) }));
+    for (const n of members) {
+      if (containerOf.has(n.id)) continue;
+      const path = folderOf.get(n.id).split('/');
+      for (let len = path.length; len > 0 && !containerOf.has(n.id); len--) {
+        const prefix = path.slice(0, len).join('/');
+        const votes = new Map();
+        for (const m of reached) {
+          if (m.folder !== prefix && !m.folder.startsWith(`${prefix}/`)) continue;
+          votes.set(m.c, (votes.get(m.c) || 0) + 1);
+        }
+        const best = [...votes].sort((x, y) => y[1] - x[1])[0];
+        if (best) containerOf.set(n.id, best[0]);
+      }
+    }
+  }
+  for (const n of model.nodes) if (!containerOf.has(n.id)) containerOf.set(n.id, `ns:${nsKey(n)}`);
+  // One part per container (parts were a namespace's composers).
+  const comp = new Map(model.nodes.map(n => [n.id, 'main']));
   // Collapsed namespaces and folders: their types become one box, and their
   // arrows go to that box.
   {
     const proxyOf = new Map();
     const proxies = new Map();
     for (const n of model.nodes) {
-      const ns = n.namespace || '(no namespace)';
-      const folderKey = `f:${ns}|${comp.get(n.id)}|${folderOf.get(n.id)}`;
+      const box = containerOf.get(n.id);
+      const folderKey = `f:${box}|${comp.get(n.id)}|${folderOf.get(n.id)}`;
       let key = null;
       let label = null;
-      if (collapsed.has(`ns:${ns}`)) { key = `ns:${ns}`; label = ns.split('.').pop(); }
+      if (collapsed.has(`c:${box}`)) {
+        key = `c:${box}`;
+        const owner = nodeById.get(box);
+        label = owner ? owner.name : nsKey(n).split('.').pop();
+      }
       else if (!isComposer(n) && collapsed.has(folderKey)) { key = folderKey; label = folderOf.get(n.id).split('/').pop(); }
       if (!key) continue;
       proxyOf.set(n.id, key);
@@ -407,7 +469,7 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
         proxies.set(key, {
           id: `proxy:${key}`, name: label, kind: 'collapsed', namespace: n.namespace, folder: n.folder, file: '', line: 0,
           members: [], proxy: key, count: 0, statuses: new Set(),
-          comp: key.startsWith('ns:') ? 'main' : comp.get(n.id), folderLabel: key.startsWith('ns:') ? '' : folderOf.get(n.id),
+          comp: key.startsWith('c:') ? 'main' : comp.get(n.id), folderLabel: key.startsWith('c:') ? '' : folderOf.get(n.id), container: box,
         });
       }
       const p = proxies.get(key);
@@ -593,17 +655,22 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
     return [...pairs.values()];
   };
 
-  // One box per namespace; in it one part per composer when it has several
-  // (the types each one wires, see compartmentOf), and in each part a card
-  // per folder.
+  // One container per system composer (see containerOf), or per namespace
+  // for what no composer wires; in it a card per folder. A container says
+  // its composer and, small under it, the namespaces of its types.
   const groups = new Map();
   for (const n of model.nodes) {
-    const key = n.namespace || '(no namespace)';
-    if (!groups.has(key)) groups.set(key, { id: key, ids: [] });
+    const key = n.proxy && n.container ? n.container : containerOf.get(n.id) || `ns:${nsKey(n)}`;
+    if (!groups.has(key)) {
+      const owner = nodeById.get(key);
+      groups.set(key, { id: key, ids: [], label: owner ? owner.name : key.slice(3), namespaces: new Set() });
+    }
     groups.get(key).ids.push(n.id);
+    if (!n.proxy || n.proxy.startsWith('f:')) groups.get(key).namespaces.add(nsKey(n));
   }
   for (const g of groups.values()) {
-    g.collapsed = collapsed.has(`ns:${g.id}`);
+    g.collapsed = collapsed.has(`c:${g.id}`);
+    g.sub = nodeById.get(g.id) ? [...g.namespaces].join(' · ') : '';
     // Parts: by compartment (one per composer, or one for all).
     const parts = new Map();
     for (const id of g.ids) {
@@ -707,18 +774,21 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
     const packed = placeRows(levelRows(partList, usesBetween(partOf), maxWidth - PAD * 2, COMP_GAP, { merge: true }), COMP_GAP, COMP_GAP + 12);
     g.parts = partList;
     g.several = several;
-    g.inner = { width: Math.max(packed.w, Math.min(textWidth(g.id, UML_SMALL) + 40, 320)), height: packed.h };
+    g.inner = { width: Math.max(packed.w, Math.min(textWidth(g.label, UML_SMALL) + (g.sub ? textWidth(g.sub, UML_SMALL) + 16 : 0) + 40, 480)), height: packed.h };
     g.w = g.inner.width + PAD * 2;
     g.h = g.inner.height + TITLE + PAD;
   }
 
-  // The namespaces under each other, a namespace below the ones it uses
-  // (a composer's wiring does not count).
+  // The containers under each other, one below those it uses (a composer's
+  // wiring does not count).
+  const groupOfId = new Map();
+  for (const g of groups.values()) for (const id of g.ids) groupOfId.set(id, g.id);
   const groupEdges = new Map();
   for (const e of model.edges) {
     if (boxes.get(e.from)?.composer) continue;
-    const a = boxes.get(e.from)?.node.namespace || '(no namespace)';
-    const b = boxes.get(e.to)?.node.namespace || '(no namespace)';
+    const a = groupOfId.get(e.from);
+    const b = groupOfId.get(e.to);
+    if (!a || !b) continue;
     if (a === b) continue;
     // Weighted by how many arrows it stands for: when two namespaces use each
     // other, the direction with more arrows wins (91 against 1, not a tie).
@@ -812,9 +882,15 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
   for (const g of groups.values()) {
     const box = svgEl('g', { class: 'uml-group', transform: `translate(${g.x},${g.y})` });
     box.appendChild(svgEl('rect', { width: g.w, height: g.h, rx: 14 }));
-    const title = svgEl('text', { class: 'uml-toggle', x: 14, y: 20, 'data-toggle': `ns:${g.id}` }, `${g.collapsed ? '▸' : '▾'} ${fitLabel(g.id, g.w - 44)}`);
+    const name = fitLabel(g.label, g.w - 44);
+    const title = svgEl('text', { class: 'uml-toggle', x: 14, y: 20, 'data-toggle': `c:${g.id}` }, `${g.collapsed ? '▸' : '▾'} ${name}`);
+    // The namespaces of what it wires, small after its name (the name is
+    // bold: about a fifth wider than measured).
+    const room = g.w - 44 - textWidth(name, UML_SMALL) * 1.2 - 12;
+    if (g.sub && room > 40) title.appendChild(svgEl('tspan', { class: 'uml-group-sub', dx: 10 }, fitLabel(g.sub, room)));
     box.appendChild(title);
-    box.appendChild(svgEl('title', {}, `namespace ${g.id}\n${g.collapsed ? 'Click its name to open it' : 'Click its name to collapse it'}`));
+    const what = nodeById.get(g.id) ? `${g.label}: what it wires (${[...g.namespaces].join(', ')})` : `namespace ${g.label}`;
+    box.appendChild(svgEl('title', {}, `${what}\n${g.collapsed ? 'Click its name to open it' : 'Click its name to collapse it'}`));
     groupLayer.appendChild(box);
     for (const part of g.parts) {
       if (g.several) {

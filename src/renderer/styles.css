@@ -640,6 +640,7 @@ details.change-file > summary:hover .review-tick { opacity: 1; }
 /* Namespace boxes, and a lane per folder inside them */
 .uml-group rect { fill: rgba(255, 255, 255, 0.025); stroke: rgba(233, 162, 59, 0.28); stroke-width: 1.2; }
 .uml-group text { font: 600 11px var(--font); fill: var(--accent); letter-spacing: 0.03em; opacity: 0.85; }
+.uml-group .uml-group-sub { font-weight: 400; fill: var(--text-dim, var(--text)); opacity: 0.55; letter-spacing: 0; }
 .uml-lane { fill: rgba(255, 255, 255, 0.025); stroke: none; }
 .uml-folder text { font: 600 11px var(--font); fill: var(--text-dim); letter-spacing: 0.02em; }
 /* The composition root: a bar across its namespace; its wiring shows on hover */
