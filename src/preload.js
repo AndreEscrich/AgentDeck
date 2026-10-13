@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('deck', {
   getGroups: () => ipcRenderer.invoke('groups:get'),
   saveGroups: data => ipcRenderer.invoke('groups:save', data),
   popupMenu: items => ipcRenderer.invoke('menu:popup', items),
+  titleDoubleClick: () => ipcRenderer.invoke('window:titleDoubleClick'),
   gitSnapshot: cwd => ipcRenderer.invoke('git:snapshot', cwd),
   gitChanges: (cwd, snap) => ipcRenderer.invoke('git:changes', cwd, snap),
   undoFile: (cwd, file, snap) => ipcRenderer.invoke('files:undo', cwd, file, snap),

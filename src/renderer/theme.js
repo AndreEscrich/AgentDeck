@@ -22,6 +22,7 @@ function applyTheme(name, { powerOn = true, curved } = {}) {
   document.getElementById('theme-mother').disabled = theme !== 'mother';
   if (theme === 'mother') startTube({ powerOn: powerOn && was !== 'mother' });
   else stopTube();
+  refreshDragRegions();
 }
 
 function startTube({ powerOn }) {
@@ -256,7 +257,23 @@ function replayClass(node, name, ms) {
   node.classList.remove(name);
   void node.offsetWidth;
   node.classList.add(name);
-  setTimeout(() => node.classList.remove(name), ms);
+  setTimeout(() => {
+    node.classList.remove(name);
+    refreshDragRegions();
+  }, ms);
+}
+
+// The top bar is where you drag the window and double-click to zoom it.
+// The browser tells the system where that area is when the layout changes,
+// but the tube's animations (power-on, glitch) only transform the picture:
+// the area could stay where it was mid-animation (a thin line at power-on).
+// Switching the drag area off for one frame makes the browser tell it again.
+function refreshDragRegions() {
+  const bars = document.querySelectorAll('#topbar, .drawer-head');
+  for (const bar of bars) bar.style.setProperty('-webkit-app-region', 'no-drag');
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    for (const bar of bars) bar.style.removeProperty('-webkit-app-region');
+  }));
 }
 
 // Before anything is drawn: the look you had last time.

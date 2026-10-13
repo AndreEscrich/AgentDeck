@@ -733,6 +733,13 @@ function continueReview(left, closing) {
   });
 }
 $('back-to-hub').onclick = backToHub;
+// Double-clicking the top bar zooms the window. The system does that itself
+// on the bar's drag area; a double-click that still reaches the page (where
+// the drag area was not up to date) asks the main process to do the same.
+$('topbar').addEventListener('dblclick', e => {
+  if (e.target.closest('button, input, a, .status-pill, [contenteditable]')) return;
+  window.deck.titleDoubleClick?.();
+});
 
 const hub = new Hub($('hub-view'), {
   // Clicking a Group panel: the next agent goes into that Group (its folder
@@ -3604,8 +3611,17 @@ document.addEventListener('keydown', e => {
 }, true);
 let keyRepeats = 0;
 
+// The message box grows with what you type, up to 240px. An empty box is
+// one line: measured empty, the browser counts the placeholder, and while
+// the box is narrow (flying into a new tile after Enter) that wraps over
+// many lines and left the box tall. It is measured again when the window
+// changes size.
 function autosize() {
   const input = $('input');
+  if (!input.value) {
+    input.style.height = '';
+    return;
+  }
   input.style.height = 'auto';
   // scrollHeight leaves out the border, which the height includes.
   const border = input.offsetHeight - input.clientHeight;
@@ -3613,6 +3629,7 @@ function autosize() {
 }
 
 $('input').addEventListener('input', autosize);
+window.addEventListener('resize', () => requestAnimationFrame(autosize));
 $('input').addEventListener('keydown', e => {
   // While Claude waits for an answer and the box is empty, 1–9 pick an option.
   const asking = state.current?.kind === 'agent' && state.agents.get(state.current.id)?.pendingQuestion;

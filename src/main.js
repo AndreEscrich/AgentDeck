@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Notification, Menu, protocol, net, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Notification, Menu, protocol, net, nativeImage, systemPreferences } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
@@ -287,6 +287,18 @@ app.whenReady().then(() => {
   ipcMain.handle('groups:get', () => readGroups());
   ipcMain.handle('groups:save', (_e, data) => fs.writeFileSync(groupsPath, JSON.stringify(data, null, 2)));
   ipcMain.handle('menu:popup', (_e, items) => popupMenu(items));
+  // A double-click on the top bar that reached the page (the system did not
+  // take it as a title-bar double-click): do what the system would, by its
+  // setting on a Mac (System Settings → Desktop & Dock → "Double-click a
+  // window's title bar to": zoom, minimize or nothing).
+  ipcMain.handle('window:titleDoubleClick', () => {
+    if (!win) return;
+    const action = process.platform === 'darwin' ? systemPreferences.getUserDefault('AppleActionOnDoubleClick', 'string') : 'Maximize';
+    if (action === 'None') return;
+    if (action === 'Minimize') { win.minimize(); return; }
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  });
   ipcMain.handle('sessions:load', (_e, file) => loadTranscript(file));
   ipcMain.handle('dialog:pickFolder', async () => {
     const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] });
