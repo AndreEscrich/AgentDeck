@@ -525,12 +525,13 @@ function show(kind, id) {
   saveInputDraft();
   state.current = { kind, id };
   requestAnimationFrame(updateNextHint);
-  $('back-to-hub').classList.toggle('hidden', !['agent', 'history'].includes(kind));
+  $('back-to-hub').classList.toggle('hidden', !['agent', 'history', 'branches'].includes(kind));
   for (const v of $('views').children) v.classList.add('hidden');
 
   // The Hub also has the message box: a message there starts a new agent.
   const startsAgent = !['agent', 'history'].includes(kind);
-  $('composer').classList.remove('hidden');
+  // The Branches view has no message box.
+  $('composer').classList.toggle('hidden', kind === 'branches');
   $('composer-folder').classList.toggle('hidden', !startsAgent);
   $('composer-group').classList.toggle('hidden', !startsAgent);
   $('composer-fork').classList.toggle('hidden', !startsAgent);
@@ -548,6 +549,10 @@ function show(kind, id) {
     $('input').placeholder = DEFAULT_PLACEHOLDER;
     renderFollowUps();
     $('input').focus();
+  } else if (kind === 'branches') {
+    branchesView.view.classList.remove('hidden');
+    setHeader('Branch diff', state.config?.svnProject ? `${(state.config.svnServer || '').replace(/\/+$/, '')}/${state.config.svnProject}/branches` : '', null);
+    branchesView.open(state.config?.svnProject || '');
   } else if (kind === 'history') {
     const h = state.history.get(id);
     h.view.classList.remove('hidden');
@@ -788,6 +793,9 @@ const connectorsDialog = new ConnectorsDialog({
   folder: () => ensureDraft().folder || state.config.home,
 });
 hub.onOpenConnectors = () => connectorsDialog.open();
+// The Branches view: an SVN branch's own changes (renderer/branches.js).
+const branchesView = new BranchesView();
+hub.onOpenBranches = () => { sfx('open'); show('branches'); };
 hub.onOpenSettings = () => showSettings();
 hub.onOpenNotes = groupId => openNotesEditor(findGroup(groupId));
 hub.onSelect = () => renderBroadcast();

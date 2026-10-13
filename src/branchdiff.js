@@ -114,4 +114,4 @@ async function runDiff(cwd, command) {
   return r.ok ? { ok: true, diff: r.out, title } : r;
 }
 
-module.exports = { runDiff, words };
+module.exports = { runDiff, words, svnToGit };

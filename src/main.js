@@ -12,6 +12,7 @@ const connectors = require('./connectors');
 const auth = require('./auth');
 const agentList = require('./agentlist');
 const { runDiff } = require('./branchdiff');
+const svnBranches = require('./svnbranches');
 const handoff = require('./handoff');
 const { activity } = require('./activity');
 const updates = require('./updates');
@@ -45,6 +46,8 @@ const DEFAULT_CONFIG = {
   hubAfterSend: true,                   // show the Hub after you send a message
   summarizeTitles: true,                // title new agents with a short summary of your message
   suggestFollowUps: true,               // after a task, suggest the messages you will likely send next
+  svnServer: 'svn+ssh://svn@tactile.build',   // the Branches view reads <svnServer>/<svnProject>/branches
+  svnProject: 'MergeTavern',
   theme: 'default',                     // default | mother (the retro terminal of Alien)
   curvedScreen: true,                   // the retro theme bends the picture like a tube's glass
 };
@@ -217,6 +220,9 @@ app.whenReady().then(() => {
   ipcMain.handle('session:contextSize', (_e, file) => (typeof file === 'string' ? handoff.contextSize(file) : 0));
   ipcMain.handle('session:handoff', (_e, file, title) => (typeof file === 'string' ? handoff.handoff(getConfig(), file, String(title || '')) : null));
   ipcMain.handle('diff:run', (_e, cwd, command) => runDiff(cwd, command));
+  // The Branches view (renderer/branches.js, src/svnbranches.js).
+  ipcMain.handle('svn:branches', () => svnBranches.listBranches(getConfig()));
+  ipcMain.handle('svn:branchDiff', (_e, branch) => svnBranches.branchDiff(getConfig(), String(branch || ''), path.join(app.getPath('userData'), 'branch-diffs')));
   ipcMain.handle('agents:remember', (_e, entries) => agentList.remember(entries));
   ipcMain.handle('agents:list', () => agentList.list());
   ipcMain.handle('auth:login', () => auth.login(getConfig(), send));

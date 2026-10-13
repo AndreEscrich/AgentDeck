@@ -154,9 +154,15 @@ class Hub {
       menuItem('Connectors…', 'Jira, Slack, Notion and more for your agents', () => this.onOpenConnectors?.()),
       menuItem('Settings file…', 'Defaults, limits and the claude path', () => this.onOpenSettings?.()),
     );
-    // The floating bar on the left edge: the settings button, then Usage.
+    // The Branches view (renderer/branches.js): an SVN branch's own changes.
+    this.branchesBtn = el('button', 'hub-settings-btn hub-branches-btn');
+    this.branchesBtn.type = 'button';
+    this.branchesBtn.title = 'Branch diff: what an SVN branch changed';
+    this.branchesBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2.2"/><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="7" r="2.2"/><path d="M6 7.2v9.6M18 9.2c0 4.5-6 3.8-11 7.6"/></svg>';
+    this.branchesBtn.onclick = () => { this.rail.classList.remove('open'); this.onOpenBranches?.(); };
+    // The floating bar on the left edge: the branch and settings buttons, then Usage.
     const nav = el('nav', 'hub-nav');
-    nav.append(this.settingsBtn, this.usageTab);
+    nav.append(this.branchesBtn, this.settingsBtn, this.usageTab);
     this.rail.append(nav, this.usage, this.settingsMenu);
     // A button opens its card, or closes it when it is already open.
     const showPanel = this.showPanel = panel => {

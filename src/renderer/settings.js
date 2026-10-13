@@ -85,6 +85,9 @@ function openSettings(config, { onSaved } = {}) {
   const theme = settingsSelect(THEMES, config.theme || 'default');
   const curved = settingsInput('checkbox', config.curvedScreen !== false);
 
+  // Branch diff
+  const svnProject = settingsInput('text', config.svnProject || '', { placeholder: 'MergeTavern' });
+
   // Stuck agents
   const stuckAfter = settingsInput('number', config.stuckAfterSeconds, { min: 5, step: 5 });
 
@@ -114,6 +117,8 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('Suggest follow-ups', 'After a task, the messages you will likely send next, written by Haiku. → or a click puts one in the box, Alt+1–3 sends it', followUps),
       settingsField('Notifications', 'When an agent finishes or needs you while the app is in the background', notify),
       settingsField('Sounds', 'For everything you and the agents do', sounds)),
+    section('Branch diff',
+      settingsField('Project', `The Branches view lists ${(config.svnServer || 'svn+ssh://svn@tactile.build').replace(/\/+$/, '')}/<project>/branches`, svnProject)),
     section('Stuck agents',
       settingsField('Waiting for Unity for', 'Seconds. An agent only counts as stuck while it waits for Unity to be ready', stuckAfter)),
     section('Claude Code',
@@ -175,6 +180,7 @@ function openSettings(config, { onSaved } = {}) {
       theme: theme.value,
       curvedScreen: curved.checked,
       stuckAfterSeconds: number(stuckAfter, 30),
+      svnProject: svnProject.value.trim().replace(/^\/+|\/+$/g, ''),
       claudePath: claudePath.value.trim(),
       extraArgs: extraArgs.value.split('\n').map(l => l.trim()).filter(Boolean),
       env: envVars,
