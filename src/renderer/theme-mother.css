@@ -576,3 +576,6 @@ body.history-open :is(.chat-media, .before-after) { z-index: auto; }
 .hub-tile.state-idle:not(.unread) .liquid { opacity: 0.2 !important; }
 .hub-tile.state-idle:not(.unread) .tank::after { color: color-mix(in srgb, var(--c1) 55%, #000); text-shadow: none; }
 .hub-tile.state-idle:not(.unread) .hub-title { color: var(--text-dim) !important; }
+/* The category before the agent's title: a boxed readout, like the group names. */
+.view-category { background: transparent; border: 1px solid var(--accent); font-family: var(--label); font-weight: 400;
+  letter-spacing: 0.14em; padding: 2px 8px 1px; text-shadow: var(--glow-strong); }

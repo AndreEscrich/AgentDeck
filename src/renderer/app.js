@@ -553,7 +553,7 @@ function show(kind, id) {
     h.view.classList.remove('hidden');
     scrollToBottom(h.view);
     const listed = state.parked.get(id) || state.agentList.get(id);
-    setHeader(listed?.latestTitle || h.session.title, h.cwd || h.session.cwd, null);
+    setHeader(listed?.latestTitle || h.session.title, h.cwd || h.session.cwd, null, findGroup(groupOf(h.session.id))?.name || null);
     composerPicker.setValue(h.choice || defaultChoice());
     composerModePicker.setValue(h.mode || defaultMode());
     $('input').placeholder = 'Send a message to continue this session…';
@@ -1571,7 +1571,14 @@ function headerTitle(a) {
   return a.latestTitle || a.title;
 }
 
-function setHeader(title, subtitle, agent) {
+// category: the name of the category (for a saved session; an agent's
+// comes from the agent). It stands before the title, as on the Hub.
+function setHeader(title, subtitle, agent, category = null) {
+  const cat = $('view-category');
+  const name = category || (agent ? findGroup(agent.groupId || groupOf(agent.sessionId))?.name : null);
+  cat.textContent = name ? `# ${name}` : '';
+  cat.title = name ? `Category: ${name}` : '';
+  cat.classList.toggle('hidden', !name);
   $('view-title').textContent = title;
   $('view-title').title = agent && agent.title !== title ? `Task: ${agent.title}` : '';
   renderFollowUps();
