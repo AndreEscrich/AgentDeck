@@ -572,12 +572,11 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
       const composers = members.filter(b => b.composer);
       part.composer = composers[0] || null;
       part.label = part.key === 'shared' ? 'Shared by its composers' : part.composer ? composerLabel(part.composer) : '';
-      // Facade interfaces and seams go in their folder's card like any other
-      // type, placed by their dependencies (they use their namespace's data
-      // types, so a row of their own anywhere ran against the flow); the
-      // facade keeps its API tag. Only a collapsed namespace's one box goes on
-      // this row.
-      const entries = g.collapsed ? members : [];
+      // The facade (the class and its I…Facade interface) is the part's way
+      // out to the namespaces that use it, which come below: it goes at the
+      // bottom of the part, under the types it reaches into. Other interfaces
+      // go in their folder's card. A collapsed namespace's one box goes there too.
+      const entries = g.collapsed ? members : members.filter(b => b.facade);
       const rest = g.collapsed ? [] : members.filter(b => !b.composer && !entries.includes(b));
       // A card per folder: its types in rows, a type above the types it uses.
       const byFolder = new Map();
@@ -615,20 +614,23 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
       const packed = placeRows(levelRows(part.cards, usesBetween(id => cardOf.get(id)), maxWidth - PAD * 2 - left - (several ? CARD_PAD * 2 : 0), CARD_GAP, { merge: true }), CARD_GAP, CARD_GAP + 12);
       let height = packed.h;
       let width = packed.w;
-      // The entry row goes on top of the part: its types implement and use
-      // these interfaces, so with dependencies flowing down they come under
-      // it (other namespaces that use it are lower down too).
+      // The facade at the bottom, under the cards: the interface above the
+      // class that implements it (by their dependencies, like everything else).
       if (entries.length) {
-        const entryW = entries.reduce((s, b) => s + b.w, 0) + GAP_X * (entries.length - 1);
-        width = Math.max(width, entryW);
-        let x = (width - entryW) / 2;
-        for (const b of entries) {
-          Object.assign(b, { px: x, py: 0, lane: `entries|${g.id}|${part.key}`, row: `entries|${g.id}|${part.key}` });
-          x += b.w + GAP_X;
-        }
-        const below = packed.h ? UML_BOX_H + GAP_Y : UML_BOX_H;
-        for (const card of part.cards) card.y += below;
-        height = below + packed.h;
+        const ids = new Set(entries.map(b => b.id));
+        const rows = levelRows(entries, model.edges.filter(e => ids.has(e.from) && ids.has(e.to)), maxWidth - PAD * 2 - left, GAP_X);
+        const rowW = row => row.reduce((s2, b) => s2 + b.w, 0) + GAP_X * (row.length - 1);
+        width = Math.max(width, ...rows.map(rowW));
+        let y = height + (height ? GAP_Y : 0);
+        rows.forEach((row, r) => {
+          let x = (width - rowW(row)) / 2;
+          for (const b of row) {
+            Object.assign(b, { px: x, py: y, lane: `entries|${g.id}|${part.key}`, row: `entries|${g.id}|${part.key}|${r}` });
+            x += b.w + GAP_X;
+          }
+          y += Math.max(...row.map(b => b.h)) + (r < rows.length - 1 ? GAP_Y : 0);
+        });
+        height = y;
       }
       part.entries = entries;
       // A part with a composer is at least as tall as its bar's name.
@@ -660,10 +662,10 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
     const b = boxes.get(e.to)?.node.namespace || '(no namespace)';
     if (a !== b) groupEdges.set(`${a}>${b}`, { from: a, to: b });
   }
-  // One row per level (the used namespaces on top), side by side within a
-  // level while they fit: small namespaces do not take a whole row each.
+  // One row per level: a namespace that uses another always comes below it;
+  // namespaces of the same level sit side by side while they fit.
   const rowLimit = Math.max(maxWidth, ...[...groups.values()].map(g => g.w));
-  const groupRows = levelRows([...groups.values()], [...groupEdges.values()], rowLimit, GROUP_GAP, { merge: true });
+  const groupRows = levelRows([...groups.values()], [...groupEdges.values()], rowLimit, GROUP_GAP);
   const groupOrder = groupRows.flat().map(g => g.id);
   const rowWidthOf = row => row.reduce((sum, g) => sum + g.w, 0) + GROUP_GAP * (row.length - 1);
   const maxW = Math.max(0, ...groupRows.map(rowWidthOf));
