@@ -1862,3 +1862,12 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .uml-marker-arrow { stroke: var(--text-dim); stroke-width: 1.8; }
 @keyframes uml-flow { to { stroke-dashoffset: -20; } }
 @media (prefers-reduced-motion: reduce) { .uml-edge.uses path { animation: none; } }
+/* The card in the margin tucks into a tab when chat content (a wide class
+   diagram, a table) lies under it; pointing at the tab opens it again. */
+.prompt-pin.tucked .prompt-pin-bar { width: auto; max-width: 140px; padding: 6px 10px; }
+.prompt-pin.tucked .prompt-pin-text { display: none; }
+.prompt-pin.tucked .prompt-pin-label::after { content: " ▸"; }
+.prompt-pin.tucked .prompt-pin-bar:hover { width: calc((100cqw - var(--chat-width)) / 2 + 24px - 48px); max-width: none; padding: 10px 12px; }
+.prompt-pin.tucked .prompt-pin-bar:hover .prompt-pin-text { display: -webkit-box; }
+.prompt-pin.tucked .prompt-pin-bar:hover .prompt-pin-label::after { content: none; }
+.prompt-pin.hidden-over .prompt-pin-bar { opacity: 0; pointer-events: none; }

@@ -582,11 +582,35 @@ class Transcript {
       this.scroller.scrollTo({ top, behavior: 'smooth' });
     };
     this.pin.appendChild(bar);
+    this.pinBar = bar;
     container.insertBefore(this.pin, this.root);
     let frame = 0;
-    container.addEventListener('scroll', () => {
-      if (!frame) frame = requestAnimationFrame(() => { frame = 0; this.updatePromptPin(); });
-    }, { passive: true });
+    const later = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; this.updatePromptPin(); }); };
+    container.addEventListener('scroll', later, { passive: true });
+    // Wide content can appear without a scroll (a class diagram opening).
+    window.addEventListener('resize', later);
+    new ResizeObserver(later).observe(this.root);
+  }
+
+  // True when chat content lies under the bar: a few points across it are
+  // checked for anything of the chat below it. The containers that hold the
+  // messages (turns, answers) span the whole chat area but are empty in the
+  // margin, so they do not count; anything else there (a class diagram
+  // wider than the chat, a wide table) does.
+  pinCovers() {
+    const r = this.pinBar.getBoundingClientRect();
+    if (!r.width || !r.height) return false;
+    const xs = [r.left + 4, r.left + r.width / 2, r.right - 4];
+    const ys = [r.top + 4, r.top + r.height / 2, r.bottom - 4];
+    for (const x of xs) {
+      for (const y of ys) {
+        for (const node of document.elementsFromPoint(x, y)) {
+          if (node === this.root || !this.root.contains(node)) continue;
+          if (!node.querySelector('.msg-text, .msg-user')) return true;
+        }
+      }
+    }
+    return false;
   }
 
   updatePromptPin() {
@@ -610,6 +634,18 @@ class Transcript {
       this.pinText.textContent = current.text;
       this.pinText.title = current.text;
     }
+    // In the margin beside the chat (wide windows), the card must not cover
+    // what is under it, such as a class diagram wider than the chat: it
+    // tucks into a small tab (pointing at it opens it), and hides when even
+    // the tab would cover something. At the top of a narrow chat it is a
+    // bar over the chat on purpose.
+    if (!show) return;
+    const inMargin = getComputedStyle(this.pinBar).flexDirection === 'column';
+    if (!inMargin || this.pinBar.matches(':hover')) return;
+    this.pin.classList.remove('tucked', 'hidden-over');
+    if (!this.pinCovers()) return;
+    this.pin.classList.add('tucked');
+    if (this.pinCovers()) this.pin.classList.add('hidden-over');
   }
 
   // Keep the view pinned to the bottom only when the person has not scrolled up.

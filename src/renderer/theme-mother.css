@@ -541,3 +541,4 @@ button, .hub-info, .hub-status, .note, .status-pill, .next-hint, #input, .model-
 .tank::after { background: radial-gradient(ellipse 48% 20% at center, rgba(0, 0, 0, 0.88) 55%, transparent 100%); }
 /* With attachments above the text, the prompt sign moves down to the text. */
 .composer-box:has(.composer-attachments:not(.hidden))::before { top: 87px; }
+html.mu-wide .prompt-pin.tucked .prompt-pin-bar:hover { width: calc((var(--mu-chat-w) - var(--chat-width)) / 2 + 24px - 48px); }
