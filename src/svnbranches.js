@@ -157,7 +157,7 @@ async function branchDiff(config, branch, cacheRoot) {
   // All the branch's changed C# files at its latest revision, for the
   // diagram and the full-file views. A file the branch added is all in the
   // diff, so it is written from there; only edited files are fetched (svn cat).
-  // A deleted file has nothing to fetch: svn cat fails for it and it is skipped.
+  // A deleted file has nothing to fetch: the diagram reads it from the diff.
   const cwd = path.join(cacheRoot, sanitize(config.svnProject), `${sanitize(branch)}@${head}`);
   const write = (rel, content) => {
     const file = path.join(cwd, ...rel.split('/'));
@@ -172,6 +172,7 @@ async function branchDiff(config, branch, cacheRoot) {
     for (const block of text.split(/(?=^diff --git )/m)) {
       const rel = /^diff --git a\/(.+?) b\//.exec(block)?.[1];
       if (!rel || !/\.cs$/i.test(rel)) continue;
+      if (/^deleted file mode/m.test(block)) continue;   // its old lines are all in the diff
       if (/^new file mode/m.test(block)) {
         const body = block.slice(block.indexOf('\n@@') + 1).split('\n').filter(l => l.startsWith('+') && !l.startsWith('+++')).map(l => l.slice(1));
         write(rel, body.join('\n') + '\n');

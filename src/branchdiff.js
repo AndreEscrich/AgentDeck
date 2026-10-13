@@ -41,6 +41,8 @@ function svnToGit(text, prefix = '') {
     if (/^=+$/.test(line)) continue;
     if (/^--- .*\t\((nonexistent|revision 0)\)$/.test(line)) { out.push('new file mode 100644'); continue; }
     const plus = /^\+\+\+ (.+?)\t\(.*\)$/.exec(line);
+    // A deleted file is "nonexistent" on the new side.
+    if (plus && /\t\(nonexistent\)$/.test(line)) out.push('deleted file mode 100644');
     if (plus) { out.push(`+++ b/${p}${plus[1]}`); continue; }
     const minus = /^--- (.+?)\t\(.*\)$/.exec(line);
     if (minus) { out.push(`--- a/${p}${minus[1]}`); continue; }
