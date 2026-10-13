@@ -335,7 +335,85 @@ const sounds = (() => {
 
   const safely = fn => (...args) => { try { fn(audio(), ...args); } catch { /* no sound is fine */ } };
 
+  // The systems running while something loads: a low hum with a slow
+  // beat in it, and now and then a relay, until bootHum(false) fades it.
+  let hum = null;
+  function bootHum(ac, on = true) {
+    if (!on) {
+      if (!hum) return;
+      const { gain, nodes, relays } = hum;
+      hum = null;
+      clearInterval(relays);
+      const t = ac.currentTime;
+      gain.gain.cancelScheduledValues(t);
+      gain.gain.setValueAtTime(gain.gain.value, t);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
+      for (const n of nodes) n.stop(t + 0.85);
+      return;
+    }
+    if (hum) return;
+    const t = ac.currentTime;
+    const gain = ac.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.05, t + 1.2);
+    const filter = ac.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 320;
+    filter.connect(gain).connect(out(ac));
+    const nodes = [];
+    // Two notes a fifth apart, each a pair out of tune: they beat slowly.
+    for (const [freq, level] of [[55, 1], [55.6, 1], [82.4, 0.45], [83.1, 0.45]]) {
+      const osc = ac.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = freq;
+      const g = ac.createGain();
+      g.gain.value = level;
+      osc.connect(g).connect(filter);
+      osc.start(t);
+      nodes.push(osc);
+    }
+    // The filter opens and closes a little, like a machine under load.
+    const lfo = ac.createOscillator();
+    const depth = ac.createGain();
+    lfo.frequency.value = 0.35;
+    depth.gain.value = 90;
+    lfo.connect(depth).connect(filter.frequency);
+    lfo.start(t);
+    nodes.push(lfo);
+    const relays = setInterval(() => {
+      try { breath(ac, 0, 700 + Math.random() * 900, 0.03, 0.05); } catch { /* no sound is fine */ }
+    }, 1700);
+    hum = { gain, nodes, relays };
+  }
+
   const mother = {
+    // Loading (a branch's diff): the systems boot. Relays close, the hum
+    // swells, the tube whines up, the computer runs its first checks.
+    bootStart: safely(ac => {
+      breath(ac, 0, 180, 0.1, 0.45);
+      breath(ac, 0.18, 260, 0.08, 0.3);
+      drone(ac, 0.05, 36.7, 1.6, 0.1, 'square');
+      tone(ac, 0.15, 1800, 1.4, 0.006, { type: 'sine', slideTo: 6400, attack: 0.7 });
+      data(ac, 0.8, 7, { step: 0.06, volume: 0.035, direction: 1 });
+    }),
+    bootHum: safely(bootHum),
+    // One stage done: a relay, a short burst of data and a confirming pulse.
+    bootStep: safely(ac => {
+      breath(ac, 0, 600, 0.04, 0.22);
+      const end = data(ac, 0.03, 4, { step: 0.045, volume: 0.035 });
+      tone(ac, end + 0.02, 466, 0.3, 0.04, { type: 'square', cutoff: 1200 });
+    }),
+    // A subsystem comes online (a domain's container appears): a short blip.
+    bootUnit: safely(ac => tone(ac, 0, 622 + Math.floor(Math.random() * 2) * 37, 0.07, 0.022, { type: 'square', cutoff: 1300, detune: 3 })),
+    // Data streaming in: a quiet chatter.
+    bootData: safely(ac => data(ac, 0, 3, { step: 0.035, volume: 0.022 })),
+    // All systems up: data, then a low fifth that settles and rings out.
+    bootReady: safely(ac => {
+      const end = data(ac, 0, 6, { step: 0.05, volume: 0.04, direction: 1 });
+      tone(ac, end + 0.04, 294, 1.2, 0.05);
+      tone(ac, end + 0.04, 440, 1.2, 0.035, { detune: 4 });
+      drone(ac, end, 73.4, 1.3, 0.06, 'sine');
+    }),
     // A new agent lands in its tile: the computer wakes, a slow run of data
     // over a low drone.
     brew: safely(ac => { drone(ac, 0, 55, 1.4, 0.07); data(ac, 0.1, 9, { step: 0.07 }); }),
@@ -421,5 +499,7 @@ const sounds = (() => {
     if (name === 'warm') continue;
     api[name] = (...args) => (voice()[name] || plain[name])?.(...args);
   }
+  // The loading hum stops whatever the theme is by then.
+  api.bootHum = (on = true) => (on === false ? mother.bootHum(false) : voice().bootHum?.(on));
   return api;
 })();

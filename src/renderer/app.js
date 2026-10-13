@@ -3602,8 +3602,9 @@ function playSounds() {
 
 // Plays one of the sounds in sounds.js, unless sounds are off in the
 // settings. The other renderer files call it as window.uiSound.
-function sfx(name) {
-  if (playSounds()) sounds[name]?.();
+function sfx(name, ...args) {
+  // A hum that is running always stops, even if sounds were turned off since.
+  if (playSounds() || (name === 'bootHum' && args[0] === false)) sounds[name]?.(...args);
 }
 window.uiSound = sfx;
 

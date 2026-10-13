@@ -25,7 +25,9 @@ function domainOf(file) {
 
 // What a branch's diff has come to while it loads (svn can take a minute):
 // the steps with what each found, the branch's latest commits, and a
-// container per domain that fills as the diff's files come in.
+// container per domain that fills as the diff's files come in. In the retro
+// theme it sounds like the ship's systems booting (see sounds.js): they
+// start, hum while it works, chatter as data comes in, and come online.
 class BranchLoading {
   constructor(name) {
     this.root = el('div', 'branch-loading');
@@ -50,8 +52,33 @@ class BranchLoading {
     for (let i = 0; i < 6; i++) this.grid.appendChild(el('div', 'branch-ghost'));
     this.root.append(this.head, this.steps, this.commits, this.grid);
     this.domains = new Map();   // domain -> { card, expected, got, recent, ... }
-    this.timer = setInterval(() => { this.clock.textContent = `${Math.round((Date.now() - this.started) / 1000)}s`; }, 1000);
+    // The hum runs while this is on screen (not when you look elsewhere).
+    this.timer = setInterval(() => {
+      this.clock.textContent = `${Math.round((Date.now() - this.started) / 1000)}s`;
+      window.uiSound?.('bootHum', this.shown());
+    }, 1000);
     this.set('history', 'active');
+    this.lastData = 0;
+    requestAnimationFrame(() => {
+      this.sound('bootStart');
+      window.uiSound?.('bootHum', this.shown());
+    });
+  }
+
+  shown() {
+    return this.root.isConnected && this.root.offsetParent !== null;
+  }
+
+  sound(name) {
+    if (this.shown()) window.uiSound?.(name);
+  }
+
+  // Data coming in: a chatter now and then, not on every batch.
+  chatter() {
+    const now = Date.now();
+    if (now - this.lastData < 450) return;
+    this.lastData = now;
+    this.sound('bootData');
   }
 
   set(id, state, detail) {
@@ -70,6 +97,9 @@ class BranchLoading {
   domain(name) {
     if (!this.domains.has(name)) {
       if (!this.domains.size) this.grid.replaceChildren();
+      // Each new container is a unit coming online: a blip, one after another.
+      const n = this.domains.size;
+      if (n < 14) setTimeout(() => this.sound('bootUnit'), 120 + n * 70);
       const card = el('div', 'branch-ghost filled');
       const title = el('div', 'branch-ghost-title', name);
       const count = el('span', 'branch-ghost-count');
@@ -94,6 +124,7 @@ class BranchLoading {
   step(s) {
     if (!s || typeof s !== 'object') return;
     if (s.stage === 'history' && s.commitCount != null) {
+      this.sound('bootStep');
       this.set('history', 'done', `${s.commitCount} commit${s.commitCount === 1 ? '' : 's'} of its own · ${s.merges} merge${s.merges === 1 ? '' : 's'} from ${s.parent} left out`);
       this.rows.diff.label.textContent = `Comparing with ${s.parent}`;
       this.set('diff', 'active', `${(s.paths || []).length} files to compare`);
@@ -123,19 +154,25 @@ class BranchLoading {
         d.dirty = true;
       }
       for (const d of this.domains.values()) if (d.dirty) { d.dirty = false; this.paint(d); }
+      if (s.files?.length) this.chatter();
     } else if (s.stage === 'fetch') {
       if (!this.rows.diff.row.classList.contains('done')) {
+        this.sound('bootStep');
         this.set('diff', 'done', `${this.got || 0} file${this.got === 1 ? '' : 's'} changed`);
         this.progress('diff', 1);
         for (const d of this.domains.values()) { d.card.classList.add('complete'); }
       }
       this.set('fetch', s.done >= s.total ? 'done' : 'active', s.total ? `${s.done} / ${s.total}` : 'already here');
+      if (s.done < s.total) this.chatter();
       this.progress('fetch', s.total ? s.done / s.total : 1);
     }
   }
 
-  finish() {
+  // ok: whether the diff came (all systems up) or failed.
+  finish(ok) {
     clearInterval(this.timer);
+    window.uiSound?.('bootHum', false);
+    this.sound(ok ? 'bootReady' : 'error');
   }
 }
 
@@ -241,7 +278,7 @@ ${r.hidden} release and other branches not listed (only person_feature names are
       const stop = window.deck.onSvnBranchProgress?.((name, step) => { if (name === b.name) loading.step(step); });
       const p = window.deck.svnBranchDiff(b.name).catch(err => ({ ok: false, error: String(err?.message || err) }));
       this.results.set(key, p);
-      p.then(r => { stop?.(); loading.finish(); this.loadings.delete(key); if (!r?.ok) this.results.delete(key); });
+      p.then(r => { stop?.(); loading.finish(!!r?.ok); this.loadings.delete(key); if (!r?.ok) this.results.delete(key); });
     }
     const loading = this.loadings.get(key);
     if (loading) box.appendChild(loading.root);
