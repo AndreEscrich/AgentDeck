@@ -548,3 +548,16 @@ html.mu-wide .prompt-pin.tucked .prompt-pin-bar:hover { width: calc((var(--mu-ch
    dialog they go back to their normal place, so they never show through. */
 html:has(.uml-detail, .uml-full, .uml-panel.full, .settings-modal, .quit-modal, .conn-overlay:not(.hidden)) :is(.chat-media, .before-after),
 body.history-open :is(.chat-media, .before-after) { z-index: auto; }
+
+/* The selected group (where the next agent goes) is lit like a console
+   lamp: an amber frame that glows, its name in a filled amber box, amber
+   corner marks, and a blinking "◀ NEW AGENTS GO HERE" by its folder. */
+.hub-section.selected { border: 2px solid var(--lamp) !important; border-style: solid !important;
+  background: rgba(255, 170, 60, 0.035) !important;
+  box-shadow: 0 0 0 1px rgba(255, 179, 71, 0.25), 0 0 26px rgba(255, 170, 60, 0.2), inset 0 0 34px rgba(255, 170, 60, 0.06) !important; }
+.hub-section.selected .hub-section-name { background: var(--lamp); border-color: var(--lamp) !important; color: #170c00 !important; text-shadow: none !important; }
+.hub-section.selected::before, .hub-section.selected::after { opacity: 1;
+  background: linear-gradient(var(--lamp), var(--lamp)) center / 1px 100% no-repeat, linear-gradient(var(--lamp), var(--lamp)) center / 100% 1px no-repeat; }
+.hub-section.selected .hub-section-repo::after { content: "  ◀ NEW AGENTS GO HERE"; white-space: pre; color: var(--lamp);
+  font-family: var(--label); font-size: 11px; letter-spacing: 0.12em; text-shadow: 0 0 6px rgba(255, 170, 60, 0.6);
+  animation: mu-word-blink 1.2s steps(1) infinite; }
