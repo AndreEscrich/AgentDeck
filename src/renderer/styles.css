@@ -1888,3 +1888,14 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 /* A nested type (a widget's Data) inside its owner's box. */
 .uml-node.uml-inner .uml-box { fill: var(--bg-hover); }
 .uml-inner-name { font-size: 12px; }
+
+/* A finished agent you have not opened yet stands out: a green frame that
+   glows, and a NEW tag on its tank. One you have seen calms down (muted
+   tank, plain frame), so the new results are what catches the eye. */
+.hub-tile.state-idle.unread { border-color: #74d39d !important; border-width: 2px;
+  box-shadow: 0 0 0 1px rgba(116, 211, 157, 0.35), 0 0 22px -2px rgba(116, 211, 157, 0.55), inset 0 1px 0 rgba(255, 236, 210, 0.07) !important; }
+.hub-tile.state-idle.unread .tank::before { content: "NEW"; position: absolute; top: 7px; right: 7px; z-index: 3; pointer-events: none;
+  padding: 1px 7px; border-radius: 6px; background: #74d39d; color: #0f2a1b;
+  font-size: clamp(9px, 4.6cqw, 11px); font-weight: 800; letter-spacing: 0.08em; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); }
+.hub-tile.state-idle:not(.unread) .tank { filter: saturate(0.55) brightness(0.85); }
+.hub-tile.state-idle:not(.unread) .hub-title { color: var(--text-dim); }
