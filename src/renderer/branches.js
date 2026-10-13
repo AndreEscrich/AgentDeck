@@ -3,8 +3,9 @@
 // branch itself changed, as a Changes card with its class diagram. Changes
 // that came in from trunk are left out (see src/svnbranches.js).
 //
-// Branches are listed newest first; the filter box narrows the list by name
-// or author. A branch's diff is kept while the app runs, per revision.
+// Branches are listed newest first; the filter box keeps the branches whose
+// name starts with what you type. A branch's diff is kept while the app
+// runs, per revision.
 
 const BRANCH_FILE_LIMIT = 600;
 
@@ -78,7 +79,8 @@ ${r.hidden} release and other branches not listed (only person_feature names are
   renderList() {
     if (!this.branches) return;
     const q = this.filter.value.trim().toLowerCase();
-    const shown = this.branches.filter(b => !q || b.name.toLowerCase().includes(q) || b.author.toLowerCase().includes(q)).slice(0, 300);
+    // What you type is the start of the branch's name ("esc": escrich_…).
+    const shown = this.branches.filter(b => !q || b.name.toLowerCase().startsWith(q)).slice(0, 300);
     this.list.replaceChildren();
     for (const b of shown) {
       const row = el('button', 'branch-row' + (this.selected === b.name ? ' selected' : ''));
