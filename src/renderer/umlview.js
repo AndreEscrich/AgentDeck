@@ -222,7 +222,10 @@ function drawEdge(a, b, edge, slots) {
     d = `M${sx},${sy} C${sx},${sy + dy} ${tx},${ty - dy} ${tx},${ty}`;
   }
   const g = svgEl('g', { class: `uml-edge ${edge.kind}${edge.fresh ? ' fresh' : ''}`, 'data-from': edge.from, 'data-to': edge.to });
-  g.appendChild(svgEl('path', { d, 'marker-end': `url(#uml-${edge.kind === 'uses' ? 'arrow' : 'triangle'}${edge.fresh ? '-fresh' : ''})` }));
+  // The arrowhead is at the start, on the type that depends on the other:
+  // the arrow points from what is used to what uses it (the markers turn
+  // round there, see auto-start-reverse).
+  g.appendChild(svgEl('path', { d, 'marker-start': `url(#uml-${edge.kind === 'uses' ? 'arrow' : 'triangle'}${edge.fresh ? '-fresh' : ''})` }));
   const words = { inherits: 'inherits from', implements: 'implements', uses: 'uses' };
   g.appendChild(svgEl('title', {}, `${edge.fromName} ${words[edge.kind]} ${edge.toName}${edge.fresh ? ' (new in this task)' : ''}`));
   return g;
