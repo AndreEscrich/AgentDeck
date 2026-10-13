@@ -634,7 +634,7 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
   // when it is wider than width. merge: a level that fits whole in what is
   // left of the row above continues that row, to the right (dependencies
   // then run down and to the right), so a chain of small items does not
-  // take a row each.
+  // take a row each; a number: at most that many levels share a row.
   const levelRows = (items, uses, width, gap, { merge = false } = {}) => {
     const byId = new Map(items.map(it => [it.id, it]));
     const levels = layout(items, uses, { maxLength: Infinity, sizeOf: () => 1, gap: 0 }).reverse();
@@ -656,9 +656,11 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
     const rows = [];
     let row = [];
     let used = 0;
+    let levelsInRow = 0;
     for (const level of levels) {
       const levelW = level.reduce((sum, id) => sum + byId.get(id).w, 0) + gap * 2 * level.length;
-      if (row.length && !(merge && used + levelW <= width)) { rows.push(row); row = []; used = 0; }
+      if (row.length && !(merge && levelsInRow < (merge === true ? Infinity : merge) && used + levelW <= width)) { rows.push(row); row = []; used = 0; levelsInRow = 0; }
+      levelsInRow++;
       const fits = levelW - gap * level.length <= width - used;
       const ordered = fits ? level : [...level].sort((a, b) => lean(a) - lean(b));
       // This level's rows; a small one that does not fit where it would go
@@ -669,7 +671,7 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
         if (row.length && used + gap + it.w > width) {
           const room = own.find(r => r.w + gap + it.w <= width);
           if (room) { room.row.push(it); room.w += gap + it.w; continue; }
-          rows.push(row); row = []; used = 0;
+          rows.push(row); row = []; used = 0; levelsInRow = 1;
         }
         used += (row.length ? gap : 0) + it.w;
         row.push(it);
@@ -874,24 +876,49 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
     if (implementers.includes(a)) continue;
     link(a, b, boxes.get(e.to)?.facade ? FACADE_WEIGHT : WIRED_WEIGHT);
   }
-  // One row per level: a container that uses another always comes below it
-  // or, when a small level fits in what is left of the row above, to its
-  // right (the dependencies then run down and to the right).
+  // A domain is what its namespaces are named after (Client.X, TactileModules.X
+  // and Client.X.Editor are all X). Each domain is a stack of its own: one
+  // row per level, a container that uses another below it or, when a small
+  // level fits in what is left of the row above, to its right (the
+  // dependencies then run down and to the right). The domains are placed the
+  // same way, so another feature's containers stand beside a domain instead
+  // of in the middle of it.
+  const domainOf = g => {
+    const ns = nodeById.get(g.id) ? nsKey(nodeById.get(g.id)) : g.id.slice(3);
+    const parts = ns.split('.');
+    return parts.length > 1 ? parts[1] : parts[0];
+  };
   const rowLimit = Math.max(maxWidth, ...[...groups.values()].map(g => g.w));
-  const groupRows = levelRows([...groups.values()], [...groupEdges.values()], rowLimit, GROUP_GAP, { merge: true });
-  const groupOrder = groupRows.flat().map(g => g.id);
-  const rowWidthOf = row => row.reduce((sum, g) => sum + g.w, 0) + GROUP_GAP * (row.length - 1);
-  const maxW = Math.max(0, ...groupRows.map(rowWidthOf));
-  let groupY = 0;
-  for (const row of groupRows) {
-    let x = (maxW - rowWidthOf(row)) / 2;
-    for (const g of row) {
-      g.x = x;
-      g.y = groupY;
-      x += g.w + GROUP_GAP;
-    }
-    groupY += Math.max(...row.map(g => g.h)) + GROUP_GAP;
+  const domains = new Map();
+  for (const g of groups.values()) {
+    const d = domainOf(g);
+    if (!domains.has(d)) domains.set(d, { id: d, groups: [] });
+    domains.get(d).groups.push(g);
   }
+  const domainEdges = new Map();
+  for (const e of groupEdges.values()) {
+    const da = domainOf(groups.get(e.from));
+    const db = domainOf(groups.get(e.to));
+    if (da === db) continue;
+    const k = `${da}>${db}`;
+    if (!domainEdges.has(k)) domainEdges.set(k, { from: da, to: db, weight: 0 });
+    domainEdges.get(k).weight += e.weight;
+  }
+  for (const d of domains.values()) {
+    const ids = new Set(d.groups.map(g => g.id));
+    const inside = [...groupEdges.values()].filter(e => ids.has(e.from) && ids.has(e.to));
+    d.rows = levelRows(d.groups, inside, rowLimit, GROUP_GAP, { merge: 2 });
+    const size = placeRows(d.rows, GROUP_GAP, GROUP_GAP);
+    d.w = size.w;
+    d.h = size.h;
+  }
+  const domainList = [...domains.values()];
+  const domainRows = levelRows(domainList, [...domainEdges.values()], Math.max(rowLimit, ...domainList.map(d => d.w)) + maxWidth, GROUP_GAP * 2);
+  const placed = placeRows(domainRows, GROUP_GAP * 2, GROUP_GAP * 2);
+  for (const d of domainList) for (const g of d.groups) { g.x += d.x; g.y += d.y; }
+  const groupOrder = domainRows.flat().flatMap(d => d.rows.flat()).map(g => g.id);
+  const maxW = placed.w;
+  const groupY = placed.h + GROUP_GAP;
   for (const id of groupOrder) {
     const g = groups.get(id);
     // Absolute places: namespace, then part, then card or entry row.
