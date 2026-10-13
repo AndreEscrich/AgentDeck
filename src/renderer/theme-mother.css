@@ -542,3 +542,9 @@ button, .hub-info, .hub-status, .note, .status-pill, .next-hint, #input, .model-
 /* With attachments above the text, the prompt sign moves down to the text. */
 .composer-box:has(.composer-attachments:not(.hidden))::before { top: 87px; }
 html.mu-wide .prompt-pin.tucked .prompt-pin-bar:hover { width: calc((var(--mu-chat-w) - var(--chat-width)) / 2 + 24px - 48px); }
+
+/* Pictures stay above the tube's effects only while nothing covers the
+   chat: under a type's diff, the full diagram, the History drawer or a
+   dialog they go back to their normal place, so they never show through. */
+html:has(.uml-detail, .uml-full, .uml-panel.full, .settings-modal, .quit-modal, .conn-overlay:not(.hidden)) :is(.chat-media, .before-after),
+body.history-open :is(.chat-media, .before-after) { z-index: auto; }
