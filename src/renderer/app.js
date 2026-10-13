@@ -161,11 +161,15 @@ function renderDraftButtons() {
     const category = state.groups.groups.some(g => g.id === d.groupId) ? d.groupId : '';
     hub.markSelected(d.folder ? `${category}\n${repoName(d.folder)}` : null);
   } catch { /* the Hub is not created yet */ }
-  // Which agent the next one continues from (see forkSourceFor).
-  const source = forkSourceFor(d.folder, d.groupId);
+  // Where the message goes: to an idle agent of the category (see
+  // idleAgentFor), or to a new agent that continues from the category's
+  // latest one (see forkSourceFor).
+  const idle = idleAgentFor(d.folder, d.groupId);
+  const source = idle ? null : forkSourceFor(d.folder, d.groupId);
   const fork = $('composer-fork');
-  fork.textContent = source ? `↳ continues from "${source.title}"` : '';
-  fork.title = source ? 'A new agent here continues from this agent: a copy of its conversation when that is short, or a handoff summary of it when it is long.' : '';
+  fork.textContent = idle ? `↳ goes to idle "${idle.latestTitle || idle.title}"` : source ? `↳ continues from "${source.title}"` : '';
+  fork.title = idle ? 'This category has an agent that is idle: your message goes to it, as if you wrote in its chat, instead of starting a new agent.'
+    : source ? 'A new agent here continues from this agent: a copy of its conversation when that is short, or a handoff summary of it when it is long.' : '';
 }
 
 // The folder menu: recent folders, each with ✕ to remove it from the list,
@@ -1288,6 +1292,21 @@ function parkedItem(p) {
 // folder. Returns { sessionId, title } or null for the first agent of a Group.
 // Agents without a category are separate tasks: they still share a panel per
 // repository on the Hub, but a new one starts fresh, not as a fork.
+// An agent of the category (in this folder) that is running and idle: a
+// message typed in the Hub for that category goes to it instead of starting
+// a new agent. The one that finished last when there are several. Not for
+// "No category": those are separate tasks.
+function idleAgentFor(cwd, categoryId) {
+  if (!cwd || !state.groups.groups.some(g => g.id === categoryId)) return null;
+  let best = null;
+  for (const a of state.agents.values()) {
+    if (a.removed || a.status !== 'idle' || a.cwd !== cwd) continue;
+    if ((groupOf(a.sessionId) || a.groupId || null) !== categoryId) continue;
+    if (!best || (a.finishedAt || 0) > (best.finishedAt || 0)) best = a;
+  }
+  return best;
+}
+
 function forkSourceFor(cwd, categoryId) {
   if (!cwd) return null;
   const known = id => state.groups.groups.some(g => g.id === id);
@@ -3374,6 +3393,8 @@ window.deck.onStatus((id, status) => {
   const a = state.agents.get(id);
   if (!a) return;
   a.status = status;
+  // The note under the Hub's message box says whether a message goes to an idle agent.
+  if (state.current?.kind === 'hub') queueMicrotask(renderDraftButtons);
   if (status !== 'idle') clearFollowUps(a);
   if (status !== 'waiting') a.attention = null;
   // Used by the review queue: the agent that has waited longest goes first.
@@ -3537,6 +3558,26 @@ async function sendFromComposer() {
     saveGroups();
     // The next new agent starts with the same folder and group, and the default model.
     state.draft = null;
+    // The category has an idle agent: the message goes to it, as if you
+    // wrote in its chat; its tile goes back to work in the Hub.
+    const idle = idleAgentFor(d.folder, d.groupId);
+    if (idle) {
+      let prompt = text;
+      const ticketKey = ticketIn(text);
+      if (ticketKey) {
+        flashComposerNote(`Reading ${ticketKey}…`);
+        const details = await window.deck.jiraDetails(ticketKey).catch(err => ({ error: String(err?.message || err) }));
+        if (!details.error) prompt = ticketPrompt(details, text);
+      }
+      sfx('sent');
+      idle.transcript.add({ type: 'user', message: { role: 'user', content: userContent(prompt, images) } });
+      notePrompt(idle, prompt);
+      afterSend(idle, true);
+      flashComposerNote(`Sent to "${idle.latestTitle || idle.title}"`);
+      renderDraftButtons();
+      await sendToAgent(idle, prompt, images);
+      return;
+    }
     const forkFrom = forkSourceFor(d.folder, d.groupId);
     // A message that is (or starts with) a Jira ticket brings the ticket along.
     const ticket = ticketIn(text);
