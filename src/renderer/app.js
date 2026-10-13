@@ -1668,15 +1668,6 @@ function deleteGroup(groupId) {
   renderSidebar();
 }
 
-function moveGroup(groupId, delta) {
-  const list = state.groups.groups;
-  const i = list.findIndex(g => g.id === groupId);
-  const j = i + delta;
-  if (i < 0 || j < 0 || j >= list.length) return;
-  [list[i], list[j]] = [list[j], list[i]];
-  saveGroups();
-  renderSidebar();
-}
 
 // ---------- shared notes of a group ----------
 
@@ -1978,22 +1969,19 @@ async function restartInNewFolder(agent) {
   agent.moved = false;
 }
 
+// History orders the categories by their latest update, so there is no
+// Move up / Move down.
 async function groupMenu(group) {
-  const i = state.groups.groups.indexOf(group);
   const picked = await window.deck.popupMenu([
     { id: 'notes', label: 'Shared notes…' },
     { id: 'hub', label: 'Put all its agents on the Hub' },
     { id: 'rename', label: 'Rename' },
-    { id: 'up', label: 'Move up', enabled: i > 0 },
-    { id: 'down', label: 'Move down', enabled: i < state.groups.groups.length - 1 },
     { type: 'separator' },
     { id: 'delete', label: 'Delete category (its sessions become uncategorized)' },
   ]);
   if (picked === 'notes') openNotesEditor(group);
   if (picked === 'hub') bringGroupToHub(group);
   if (picked === 'rename') { state.renamingGroup = group.id; renderSidebar(); }
-  if (picked === 'up') moveGroup(group.id, -1);
-  if (picked === 'down') moveGroup(group.id, 1);
   if (picked === 'delete') deleteGroup(group.id);
 }
 
@@ -2091,30 +2079,34 @@ function renderHistory() {
     (gid ? byGroup.get(gid) : ungrouped).push(s);
   }
 
+  // The category used most recently comes first: each one (and
+  // Uncategorized) is placed by the newest update of its sessions, counting
+  // the ones running on the Hub too. Sessions inside are newest first.
+  const lastUpdate = new Map();
+  for (const s of state.sessions) {
+    const key = groupOf(s.id) || '';
+    lastUpdate.set(key, Math.max(lastUpdate.get(key) || 0, s.updatedAt || 0));
+  }
+  const sections = [
+    ...state.groups.groups.map(group => ({ group, sessions: byGroup.get(group.id) })),
+    ...(ungrouped.length || !state.groups.groups.length ? [{ group: null, sessions: ungrouped }] : []),
+  ].sort((a, b) => (lastUpdate.get(b.group?.id || '') || 0) - (lastUpdate.get(a.group?.id || '') || 0));
+
   const list = $('history-list');
   list.innerHTML = '';
   let shown = 0;
-  for (const group of state.groups.groups) {
-    const sessions = byGroup.get(group.id);
+  for (const { group, sessions } of sections) {
     // While searching, only groups with matches are shown.
-    if (q && !sessions.length) continue;
-    const collapsed = group.collapsed && !q;
-    const g = el('div', 'group' + (collapsed ? ' collapsed' : ''));
-    g.appendChild(groupHeader(group, sessions.length, collapsed));
-    for (const s of sessions) g.appendChild(historyItem(s));
-    if (!sessions.length && !collapsed) g.appendChild(el('div', 'group-empty', 'Drag sessions here'));
-    list.appendChild(g);
-    shown += sessions.length;
-  }
-
-  if (ungrouped.length || !state.groups.groups.length) {
-    const collapsed = !!state.groups.ungroupedCollapsed && !q;
+    if (group && q && !sessions.length) continue;
+    const collapsed = group ? group.collapsed && !q : !!state.groups.ungroupedCollapsed && !q;
     const g = el('div', 'group' + (collapsed ? ' collapsed' : ''));
     // Without any groups yet, the list needs no "Uncategorized" header.
-    if (state.groups.groups.length) g.appendChild(groupHeader(null, ungrouped.length, collapsed));
-    for (const s of ungrouped) g.appendChild(historyItem(s));
+    if (group || state.groups.groups.length) g.appendChild(groupHeader(group, sessions.length, collapsed));
+    sessions.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    for (const s of sessions) g.appendChild(historyItem(s));
+    if (group && !sessions.length && !collapsed) g.appendChild(el('div', 'group-empty', 'Drag sessions here'));
     list.appendChild(g);
-    shown += ungrouped.length;
+    shown += sessions.length;
   }
   if (!shown && (q || !state.groups.groups.length)) list.appendChild(el('div', 'note', q ? 'No matches' : 'No saved sessions'));
 }
