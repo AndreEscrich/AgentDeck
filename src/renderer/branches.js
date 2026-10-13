@@ -69,8 +69,9 @@ class BranchesView {
       return;
     }
     this.branches = r.branches;
-    this.source.textContent = `${r.branches.length} branches · ${r.url}`;
-    this.source.title = r.url;
+    this.source.textContent = `${r.branches.length} feature branches · ${r.url}`;
+    this.source.title = `${r.url}${r.hidden ? `
+${r.hidden} release and other branches not listed (only person_feature names are)` : ''}`;
     this.renderList();
   }
 

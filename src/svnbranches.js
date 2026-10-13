@@ -47,7 +47,15 @@ function projectUrl(config) {
   return `${server}/${project}`;
 }
 
-// The branches, newest first: [{ name, revision, author, date }].
+// Feature branches are named <person>_<feature> (ariel_GachaCardOffer).
+// Release branches (0.29.x, 0.7.x_MysteryConcept) and other names are left
+// out of the list.
+const RELEASE = /^d+.d+/;
+const FEATURE = /^[A-Za-z][A-Za-z0-9.-]*_[A-Za-z0-9]/;
+const isFeatureBranch = name => !RELEASE.test(name) && FEATURE.test(name);
+
+// The feature branches, newest first: [{ name, revision, author, date }],
+// and how many other branches were left out (hidden).
 async function listBranches(config) {
   const root = projectUrl(config);
   if (!root) return { ok: false, error: 'Set the project in Settings → Branch diff project.' };
@@ -64,7 +72,8 @@ async function listBranches(config) {
     });
   }
   branches.sort((a, b) => b.revision - a.revision);
-  return { ok: true, url: `${root}/branches`, branches };
+  const features = branches.filter(b => isFeatureBranch(b.name));
+  return { ok: true, url: `${root}/branches`, branches: features, hidden: branches.length - features.length };
 }
 
 // Revisions from svn mergeinfo --show-revs: "r123" lines, "r124*" for partial.
