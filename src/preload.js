@@ -39,6 +39,8 @@ contextBridge.exposeInMainWorld('deck', {
   runDiff: (cwd, command) => ipcRenderer.invoke('diff:run', cwd, command),
   svnBranches: () => ipcRenderer.invoke('svn:branches'),
   svnBranchDiff: branch => ipcRenderer.invoke('svn:branchDiff', branch),
+  // How far a branch's diff has come (see branchDiff's progress).
+  onSvnBranchProgress: fn => on('svn:branchProgress', fn),
   // A large parent is not forked: a handoff instead (see handoff.js).
   sessionContextSize: file => ipcRenderer.invoke('session:contextSize', file),
   sessionHandoff: (file, title) => ipcRenderer.invoke('session:handoff', file, title),

@@ -564,7 +564,7 @@ details.change-file > summary:hover .review-tick { opacity: 1; }
 .changes:not(.show-diagram) > .uml-panel { display: none; }
 .changes-switch button:disabled { opacity: 0.5; cursor: default; }
 .changes.diagram-waiting > details.change-file, .changes.diagram-waiting > details.other-files { display: none; }
-.uml-waiting { padding: 18px; text-align: center; color: var(--text-faint); font-size: 12px; border: 1px dashed var(--border); border-radius: 10px; }
+.uml-waiting { padding: 14px; color: var(--text-faint); font-size: 12px; border: 1px dashed var(--border); border-radius: 10px; }
 /* Send N comments (comments on diff lines) */
 .comments-send { font-size: 12px; padding: 3px 12px; font-weight: 600; background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 .comments-send.hidden { display: none; }
@@ -2005,3 +2005,55 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .uml-node.facade-bar.status-mod .uml-box { stroke: rgba(224, 168, 58, 0.6); }
 .uml-node.facade-bar.status-del .uml-box { stroke: rgba(224, 90, 90, 0.7); }
 .uml-node.facade-bar.linked .uml-box { stroke: var(--accent); stroke-width: 2; }
+
+/* ---------- Loading: what is known so far, while a diff or diagram loads ---------- */
+@keyframes loading-sheen { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+@keyframes loading-breathe { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+.loading-sheen, .branch-ghost, .uml-waiting-group {
+  background-image: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--accent) 7%, transparent) 50%, transparent 70%);
+  background-size: 250% 100%;
+  animation: loading-sheen 1.8s linear infinite;
+}
+.uml-waiting-head { text-align: center; margin-bottom: 12px; animation: loading-breathe 1.6s ease-in-out infinite; }
+.uml-waiting-grid { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.uml-waiting-group { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; background-color: var(--bg-panel); max-width: 340px; min-width: 140px; }
+.uml-waiting-title { font-size: 11px; font-weight: 600; color: var(--accent); opacity: 0.8; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uml-waiting-boxes { display: flex; flex-wrap: wrap; gap: 5px; }
+.uml-waiting-box { font: 11px var(--mono); color: var(--text-dim); border: 1px solid var(--border); border-left: 3px solid var(--text-faint); border-radius: 5px; padding: 2px 6px; white-space: nowrap; }
+.uml-waiting-box.new { border-left-color: var(--ok); }
+.uml-waiting-box.mod { border-left-color: var(--accent); }
+.uml-waiting-box.del { border-left-color: var(--err); text-decoration: line-through; opacity: 0.7; }
+.uml-waiting-more { font-size: 11px; color: var(--text-faint); align-self: center; }
+
+.branch-loading { display: flex; flex-direction: column; gap: 12px; }
+.branch-loading-head { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); }
+.branch-loading-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: loading-breathe 1.2s ease-in-out infinite; }
+.branch-loading-clock { margin-left: auto; font-family: var(--mono); font-size: 11.5px; color: var(--text-faint); }
+.branch-loading-steps { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); padding: 8px 12px; }
+.branch-step { display: grid; grid-template-columns: 16px auto 1fr 120px; align-items: center; gap: 10px; font-size: 12.5px; color: var(--text-faint); padding: 3px 0; }
+.branch-step-mark { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--border); justify-self: center; }
+.branch-step.active { color: var(--text); }
+.branch-step.active .branch-step-mark { border-color: var(--accent); border-top-color: transparent; animation: spin 0.9s linear infinite; }
+.branch-step.done { color: var(--text-dim); }
+.branch-step.done .branch-step-mark { border-color: var(--ok); background: var(--ok); }
+.branch-step-detail { color: var(--text-faint); font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.branch-step-bar, .branch-ghost-bar { height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; }
+.branch-step-bar { visibility: hidden; }
+.branch-step-bar.shown { visibility: visible; }
+.branch-step-bar > span, .branch-ghost-bar > span { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.25s ease; }
+.branch-step.done .branch-step-bar > span { background: var(--ok); }
+.branch-loading-commits:empty { display: none; }
+.branch-loading-commits { border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); padding: 2px 12px; }
+.branch-loading-commits .branch-commit:first-child { border-top: none; }
+.branch-loading-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.branch-ghost { min-height: 96px; border: 1px dashed var(--border); border-radius: 10px; background-color: var(--bg-panel); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.branch-ghost.filled { border-style: solid; }
+.branch-ghost.complete { animation: none; background-image: none; }
+.branch-ghost-title { display: flex; gap: 8px; font-size: 11.5px; font-weight: 600; color: var(--accent); opacity: 0.85; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.branch-ghost-count { margin-left: auto; flex-shrink: 0; font-family: var(--mono); font-weight: 400; color: var(--text-faint); }
+.branch-ghost-files { flex: 1; display: flex; flex-direction: column; gap: 2px; min-height: 0; }
+.branch-ghost-file { font: 11px var(--mono); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; animation: loading-breathe 1.4s ease-out 1; }
+.branch-ghost.complete .branch-ghost-bar > span { background: var(--ok); }
+@media (prefers-reduced-motion: reduce) {
+  .loading-sheen, .branch-ghost, .uml-waiting-group, .uml-waiting-head, .branch-loading-dot, .branch-ghost-file { animation: none; }
+}

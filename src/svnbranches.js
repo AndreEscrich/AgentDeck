@@ -80,7 +80,12 @@ async function listBranches(config) {
 const revisions = text => [...String(text).matchAll(/^r(\d+)/gm)].map(m => Number(m[1]));
 
 // Resolves with { ok, diff, title, cwd, base, notes } or { ok: false, error }.
-async function branchDiff(config, branch, cacheRoot) {
+// progress(step) tells how far it has come, for the view to show meanwhile:
+// { stage: 'history' } while the log is read, then with what it found
+// (commits, merges, parent); { stage: 'diff', files } with the files that
+// came in since the last one; { stage: 'fetch', done, total } while the C#
+// files are fetched.
+async function branchDiff(config, branch, cacheRoot, progress = () => {}) {
   const root = projectUrl(config);
   if (!root) return { ok: false, error: 'Set the project in Settings → Branch diff project.' };
   if (!/^[^/\\]+$/.test(String(branch || ''))) return { ok: false, error: 'No branch.' };
@@ -95,6 +100,7 @@ async function branchDiff(config, branch, cacheRoot) {
   // The branch's history since it was copied, oldest first: its first entry
   // says where it was copied from; each other one is a merge from trunk (it
   // changed the root folder's properties) or a commit of its own.
+  progress({ stage: 'history', head });
   const log = await svn(['log', '--xml', '-v', '--stop-on-copy', '-r', '1:HEAD', url], { timeout: 180000 });
   if (!log.ok) return { ok: false, error: log.error };
   const relPath = decodeURIComponent(url.slice(reposRoot.length));
@@ -121,6 +127,13 @@ async function branchDiff(config, branch, cacheRoot) {
   if (!copyFrom) return { ok: false, error: `Could not find where ${branch} was copied from.` };
   const parentUrl = reposRoot + copyFrom.split('/').map(encodeURIComponent).join('/');
   const parentName = copyFrom.split('/').filter(Boolean).pop();
+  progress({
+    stage: 'history', head, merges, parent: parentName, commitCount: own.length,
+    // The files its commits touched (not folders, not .meta), to show by
+    // domain before the diff comes.
+    paths: [...ownFiles].filter(f => /\.[^/]+$/.test(f) && !/\.meta$/i.test(f)).slice(0, 5000),
+    commits: own.slice(-60).reverse().map(c => ({ revision: c.revision, author: c.author, date: c.date, message: c.message.split('\n')[0], files: c.files })),
+  });
 
   // The newest parent revision merged into the branch, and any older ones
   // that were left out.
@@ -146,11 +159,19 @@ async function branchDiff(config, branch, cacheRoot) {
   let hidden = 0;
   let metaCount = 0;
   const tooBig = [];
+  // The files as they come, a few times a second.
+  let pending = [];
+  const flush = () => { if (pending.length) { progress({ stage: 'diff', files: pending, base, parent: parentName }); pending = []; } };
+  const ticker = setInterval(flush, 250);
+  progress({ stage: 'diff', files: [], base, parent: parentName });
   const streamed = await svnDiffStream(['diff', '--ignore-properties', `${parentUrl}@${base}`, `${url}@${head}`], name => {
     if (!touched(name)) { hidden++; return false; }
     if (/\.meta$/i.test(name)) { metaCount++; return false; }
+    pending.push(name);
     return true;
   }, name => tooBig.push(name));
+  clearInterval(ticker);
+  flush();
   if (!streamed.ok) return { ok: false, error: streamed.error };
   const text = streamed.blocks.map(block => svnToGit(block)).join('\n');
 
@@ -166,7 +187,8 @@ async function branchDiff(config, branch, cacheRoot) {
   };
   // (v2: earlier versions fetched only the first 300 C# files.)
   const marker = path.join(cwd, '.agenthub-complete-v2');
-  if (!fs.existsSync(marker)) {
+  if (fs.existsSync(marker)) progress({ stage: 'fetch', done: 0, total: 0 });
+  else {
     fs.mkdirSync(cwd, { recursive: true });
     const toFetch = [];
     for (const block of text.split(/(?=^diff --git )/m)) {
@@ -181,10 +203,14 @@ async function branchDiff(config, branch, cacheRoot) {
       }
     }
     let next = 0;
+    let done = 0;
+    progress({ stage: 'fetch', done, total: toFetch.length });
     const worker = async () => {
       while (next < toFetch.length) {
         const rel = toFetch[next++];
         const r = await svn(['cat', `${url}/${rel.split('/').map(encodeURIComponent).join('/')}@${head}`], { timeout: 60000 });
+        done++;
+        if (done % 5 === 0 || done === toFetch.length) progress({ stage: 'fetch', done, total: toFetch.length });
         if (!r.ok) continue;   // a deleted file, or one svn cannot give
         write(rel, r.out);
       }

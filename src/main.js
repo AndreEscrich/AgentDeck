@@ -222,7 +222,9 @@ app.whenReady().then(() => {
   ipcMain.handle('diff:run', (_e, cwd, command) => runDiff(cwd, command));
   // The Branches view (renderer/branches.js, src/svnbranches.js).
   ipcMain.handle('svn:branches', () => svnBranches.listBranches(getConfig()));
-  ipcMain.handle('svn:branchDiff', (_e, branch) => svnBranches.branchDiff(getConfig(), String(branch || ''), path.join(app.getPath('userData'), 'branch-diffs')));
+  ipcMain.handle('svn:branchDiff', (e, branch) => svnBranches.branchDiff(getConfig(), String(branch || ''), path.join(app.getPath('userData'), 'branch-diffs'), progress => {
+    if (!e.sender.isDestroyed()) e.sender.send('svn:branchProgress', String(branch || ''), progress);
+  }));
   ipcMain.handle('agents:remember', (_e, entries) => agentList.remember(entries));
   ipcMain.handle('agents:list', () => agentList.list());
   ipcMain.handle('auth:login', () => auth.login(getConfig(), send));

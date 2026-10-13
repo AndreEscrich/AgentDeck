@@ -23,6 +23,122 @@ function domainOf(file) {
   return file.split('/')[0];
 }
 
+// What a branch's diff has come to while it loads (svn can take a minute):
+// the steps with what each found, the branch's latest commits, and a
+// container per domain that fills as the diff's files come in.
+class BranchLoading {
+  constructor(name) {
+    this.root = el('div', 'branch-loading');
+    this.started = Date.now();
+    this.head = el('div', 'branch-loading-head');
+    this.clock = el('span', 'branch-loading-clock', '0s');
+    this.head.append(el('span', 'branch-loading-dot'), el('span', null, `Working out what ${name} changed`), this.clock);
+    this.steps = el('div', 'branch-loading-steps');
+    this.rows = {};
+    for (const [id, label] of [['history', 'Reading its history'], ['diff', 'Comparing with trunk'], ['fetch', 'Fetching its C# files']]) {
+      const row = el('div', 'branch-step');
+      const detail = el('span', 'branch-step-detail');
+      const bar = el('span', 'branch-step-bar');
+      bar.appendChild(el('span'));
+      row.append(el('span', 'branch-step-mark'), el('span', 'branch-step-label', label), detail, bar);
+      this.rows[id] = { row, detail, bar, label: row.children[1] };
+      this.steps.appendChild(row);
+    }
+    this.commits = el('div', 'branch-loading-commits');
+    this.grid = el('div', 'branch-loading-grid');
+    // Placeholders until the files are known.
+    for (let i = 0; i < 6; i++) this.grid.appendChild(el('div', 'branch-ghost'));
+    this.root.append(this.head, this.steps, this.commits, this.grid);
+    this.domains = new Map();   // domain -> { card, expected, got, recent, ... }
+    this.timer = setInterval(() => { this.clock.textContent = `${Math.round((Date.now() - this.started) / 1000)}s`; }, 1000);
+    this.set('history', 'active');
+  }
+
+  set(id, state, detail) {
+    const r = this.rows[id];
+    r.row.classList.remove('active', 'done');
+    if (state) r.row.classList.add(state);
+    if (detail != null) r.detail.textContent = detail;
+  }
+
+  progress(id, fraction) {
+    const r = this.rows[id];
+    r.bar.classList.add('shown');
+    r.bar.firstChild.style.width = `${Math.round(Math.min(1, fraction) * 100)}%`;
+  }
+
+  domain(name) {
+    if (!this.domains.has(name)) {
+      if (!this.domains.size) this.grid.replaceChildren();
+      const card = el('div', 'branch-ghost filled');
+      const title = el('div', 'branch-ghost-title', name);
+      const count = el('span', 'branch-ghost-count');
+      title.appendChild(count);
+      const files = el('div', 'branch-ghost-files');
+      const bar = el('div', 'branch-ghost-bar');
+      bar.appendChild(el('span'));
+      card.append(title, files, bar);
+      this.grid.appendChild(card);
+      this.domains.set(name, { card, count, files, bar, expected: 0, got: 0, recent: [] });
+    }
+    return this.domains.get(name);
+  }
+
+  paint(d) {
+    d.count.textContent = d.expected ? `${Math.min(d.got, d.expected)} / ${d.expected}` : `${d.got}`;
+    d.bar.firstChild.style.width = d.expected ? `${Math.round(Math.min(1, d.got / d.expected) * 100)}%` : '0%';
+    d.files.replaceChildren(...d.recent.slice(-4).map(f => el('div', 'branch-ghost-file', f.split('/').pop())));
+    d.card.classList.toggle('complete', d.expected > 0 && d.got >= d.expected);
+  }
+
+  step(s) {
+    if (!s || typeof s !== 'object') return;
+    if (s.stage === 'history' && s.commitCount != null) {
+      this.set('history', 'done', `${s.commitCount} commit${s.commitCount === 1 ? '' : 's'} of its own · ${s.merges} merge${s.merges === 1 ? '' : 's'} from ${s.parent} left out`);
+      this.rows.diff.label.textContent = `Comparing with ${s.parent}`;
+      this.set('diff', 'active', `${(s.paths || []).length} files to compare`);
+      this.expected = (s.paths || []).length;
+      // The files its commits touched, by domain (biggest first).
+      const by = new Map();
+      for (const p of s.paths || []) by.set(domainOf(p), (by.get(domainOf(p)) || 0) + 1);
+      for (const [name, n] of [...by].sort((a, b) => b[1] - a[1])) { const d = this.domain(name); d.expected = n; this.paint(d); }
+      this.commits.replaceChildren(...(s.commits || []).slice(0, 5).map(c => {
+        const row = el('div', 'branch-commit');
+        row.append(
+          el('span', 'branch-commit-rev', `r${c.revision}`),
+          el('span', 'branch-commit-msg', c.message || '(no message)'),
+          el('span', 'branch-commit-meta', [c.author, c.date ? timeAgo(Date.parse(c.date)) : ''].filter(Boolean).join(' · ')),
+        );
+        return row;
+      }));
+    } else if (s.stage === 'diff') {
+      if (s.base) this.rows.diff.label.textContent = `Comparing with ${s.parent}@r${s.base}`;
+      this.got = (this.got || 0) + (s.files || []).length;
+      this.set('diff', 'active', this.expected ? `${Math.min(this.got, this.expected)} of ${this.expected} files` : `${this.got} files so far`);
+      if (this.expected) this.progress('diff', this.got / this.expected);
+      for (const f of s.files || []) {
+        const d = this.domain(domainOf(f));
+        d.got++;
+        d.recent.push(f);
+        d.dirty = true;
+      }
+      for (const d of this.domains.values()) if (d.dirty) { d.dirty = false; this.paint(d); }
+    } else if (s.stage === 'fetch') {
+      if (!this.rows.diff.row.classList.contains('done')) {
+        this.set('diff', 'done', `${this.got || 0} file${this.got === 1 ? '' : 's'} changed`);
+        this.progress('diff', 1);
+        for (const d of this.domains.values()) { d.card.classList.add('complete'); }
+      }
+      this.set('fetch', s.done >= s.total ? 'done' : 'active', s.total ? `${s.done} / ${s.total}` : 'already here');
+      this.progress('fetch', s.total ? s.done / s.total : 1);
+    }
+  }
+
+  finish() {
+    clearInterval(this.timer);
+  }
+}
+
 class BranchesView {
   constructor() {
     this.view = el('div', 'view branch-view hidden');
@@ -50,6 +166,7 @@ class BranchesView {
     this.branches = null;
     this.selected = null;
     this.results = new Map();   // "name@revision" -> promise of the result
+    this.loadings = new Map();  // "name@revision" -> its BranchLoading, while it loads
     this.showIdle();
   }
 
@@ -114,13 +231,20 @@ ${r.hidden} release and other branches not listed (only person_feature names are
     this.renderList();
     const key = `${b.name}@${b.revision}`;
     const box = el('div', 'branch-result');
-    box.append(el('div', 'branch-title', b.name), el('div', 'note', `Working out what ${b.name} changed, leaving out what came in from trunk…`));
+    box.append(el('div', 'branch-title', b.name));
     this.main.replaceChildren(box);
+    // While it loads: what is known so far (see BranchLoading), kept per
+    // branch so coming back to it shows how far it has got.
     if (!this.results.has(key)) {
+      const loading = new BranchLoading(b.name);
+      this.loadings.set(key, loading);
+      const stop = window.deck.onSvnBranchProgress?.((name, step) => { if (name === b.name) loading.step(step); });
       const p = window.deck.svnBranchDiff(b.name).catch(err => ({ ok: false, error: String(err?.message || err) }));
       this.results.set(key, p);
-      p.then(r => { if (!r?.ok) this.results.delete(key); });
+      p.then(r => { stop?.(); loading.finish(); this.loadings.delete(key); if (!r?.ok) this.results.delete(key); });
     }
+    const loading = this.loadings.get(key);
+    if (loading) box.appendChild(loading.root);
     const r = await this.results.get(key);
     if (this.selected !== b.name) return;   // another branch was picked meanwhile
     box.replaceChildren(el('div', 'branch-title', b.name));

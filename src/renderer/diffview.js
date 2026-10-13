@@ -349,6 +349,41 @@ function changesCard(files, cwd, { title = null, animate = false } = {}) {
 // starts, with the whole card widened to most of the window), Files the list
 // of files. While the C# is read the card says so; when the changes declare
 // no types, it shows the files.
+// While the class diagram is worked out (a big change takes a while): its
+// containers already, from what the diff tells. A box per C# file (named
+// after the file, as its class mostly is; green when new, struck when
+// deleted), grouped by the namespace the diff shows, else by folder.
+function umlWaiting(csFiles) {
+  const root = el('div', 'uml-waiting');
+  root.appendChild(el('div', 'uml-waiting-head', `Drawing the class diagram · ${csFiles.length} C# file${csFiles.length === 1 ? '' : 's'}…`));
+  const groups = new Map();
+  for (const f of csFiles) {
+    const parts = f.path.split('/');
+    const key = namespaceInDiff(f) || parts[parts.length - 2] || '';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(f);
+  }
+  const grid = el('div', 'uml-waiting-grid');
+  const sorted = [...groups].sort((a, b) => b[1].length - a[1].length);
+  const MAX_GROUPS = 12;
+  const MAX_BOXES = 10;
+  sorted.slice(0, MAX_GROUPS).forEach(([key, list], i) => {
+    const box = el('div', 'uml-waiting-group');
+    box.style.animationDelay = `${(i % 6) * 0.15}s`;
+    box.appendChild(el('div', 'uml-waiting-title', `${key || '(no folder)'} · ${list.length}`));
+    const boxes = el('div', 'uml-waiting-boxes');
+    for (const f of list.slice(0, MAX_BOXES)) {
+      boxes.appendChild(el('span', `uml-waiting-box ${f.status}`, f.path.split('/').pop().replace(/\.cs$/i, '')));
+    }
+    if (list.length > MAX_BOXES) boxes.appendChild(el('span', 'uml-waiting-more', `+${list.length - MAX_BOXES}`));
+    box.appendChild(boxes);
+    grid.appendChild(box);
+  });
+  if (sorted.length > MAX_GROUPS) grid.appendChild(el('div', 'uml-waiting-more', `+${sorted.length - MAX_GROUPS} more`));
+  root.appendChild(grid);
+  return root;
+}
+
 function addDiagram(card, head, files, cwd, comments) {
   // Temporary helpers stay out of the diagram, also the ones that only may
   // be temporary (TempProbe, AtlasTemp): it shows the structure of the work.
@@ -366,7 +401,7 @@ function addDiagram(card, head, files, cwd, comments) {
   // Until the diagram is ready: a line that says so instead of the files
   // (unless you ask for the files).
   let choseFiles = false;
-  const waiting = el('div', 'uml-waiting', 'Drawing the class diagram…');
+  const waiting = umlWaiting(csFiles);
   card.insertBefore(waiting, head.nextSibling);
   card.classList.add('diagram-waiting');
   const showFiles = () => {
