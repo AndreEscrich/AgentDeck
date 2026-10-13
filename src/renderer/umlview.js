@@ -542,6 +542,9 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
   // The "uses" arrows flow (styles.css, uml-flow). Each flowing arrow is
   // drawn again every frame, so in a large diagram only the arrows of the box
   // you point at flow: 280 flowing arrows took the frame rate from 170 to 52.
+  // A large diagram also draws its arrows solid (dashes cost two to three
+  // times as much to draw); the arrowheads still tell "uses" from
+  // "implements", and the arrows you light up are dashed and flow.
   const FLOW_LIMIT = 40;
   const flowing = edges.filter(e => e.kind === 'uses').length <= FLOW_LIMIT;
   const edgeLayer = svgEl('g', { class: flowing ? 'uml-edges flow' : 'uml-edges' });
@@ -605,6 +608,16 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
   // ---------- moving around ----------
   const view = { x: 0, y: 0, k: 1 };
   const apply = () => world.setAttribute('transform', `translate(${view.x},${view.y}) scale(${view.k})`);
+  // While you drag or zoom, every frame redraws the whole diagram. Lines and
+  // boxes are then drawn without smoothing (svg.moving, styles.css), which
+  // brought a large diagram on a large window from 20 to 8 ms a frame; they
+  // are smooth again a moment after it stops.
+  let settle = 0;
+  const moving = () => {
+    svg.classList.add('moving');
+    clearTimeout(settle);
+    settle = setTimeout(() => { if (!drag?.moved) svg.classList.remove('moving'); }, 150);
+  };
   // readable: never smaller than a size where the names can be read; a
   // bigger diagram then starts at its left, and you drag to the rest (Fit
   // shows it all).
@@ -644,12 +657,14 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
     svg.classList.add('dragging');
     view.x = drag.vx + dx;
     view.y = drag.vy + dy;
+    moving();
     apply();
   });
   svg.addEventListener('pointerup', () => {
     const d = drag;
     drag = null;
     svg.classList.remove('dragging');
+    moving();
     // The diff opens at the type's first change.
     if (d && !d.moved && d.target) {
       const node = (boxes.get(d.target.dataset.id) || innerBoxes.get(d.target.dataset.id)).node;
@@ -661,6 +676,7 @@ function drawUml(container, model, { onOpen, wheelZooms = false } = {}) {
     if (!wheelZooms && !e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
     const r = svg.getBoundingClientRect();
+    moving();
     zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top);
   }, { passive: false });
 

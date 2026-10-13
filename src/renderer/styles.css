@@ -1861,6 +1861,11 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 /* Flowing: in a small diagram all of them, in a large one only those of the
    box you point at (umlview.js, FLOW_LIMIT). */
 .uml-edges.flow .uml-edge.uses path, .uml-edges.focus .uml-edge.uses.lit path { animation: uml-flow 1.1s linear infinite; }
+/* A large diagram: solid arrows, except those you light up (umlview.js). */
+.uml-edges:not(.flow) .uml-edge:not(.lit) path { stroke-dasharray: none; }
+/* While you drag or zoom: no smoothing, so each frame draws fast. */
+.uml-svg.moving path, .uml-svg.moving rect, .uml-svg.moving line { shape-rendering: optimizeSpeed; }
+.uml-svg.moving text { text-rendering: optimizeSpeed; }
 .uml-edge.uses.fresh path { stroke: var(--accent); stroke-width: 2.1; }
 .uml-marker-arrow { stroke: var(--text-dim); stroke-width: 1.8; }
 @keyframes uml-flow { to { stroke-dashoffset: 20; } }
