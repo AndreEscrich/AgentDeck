@@ -711,6 +711,143 @@ function renderSideBySide(path, merged) {
   return grid;
 }
 
+// ---------- finding your way in a long file ----------
+
+// The blocks of changed lines in a Full file or Side by side view: runs of
+// rows next to each other that were added, removed or both, as
+// [{ rows, kind: 'add' | 'del' | 'mod' }].
+function changeClusters(view) {
+  const rows = view.classList.contains('sbs') ? [...view.querySelectorAll(':scope > .sbs-row')] : [...view.querySelectorAll(':scope > .diff-line')];
+  const kindOf = row => {
+    if (row.classList.contains('sbs-row')) {
+      const del = row.querySelector('.sbs-cell.del');
+      const add = row.querySelector('.sbs-cell.add');
+      return del && add ? 'mod' : del ? 'del' : add ? 'add' : null;
+    }
+    return row.classList.contains('add') ? 'add' : row.classList.contains('del') ? 'del' : null;
+  };
+  const clusters = [];
+  let current = null;
+  for (const row of rows) {
+    const kind = kindOf(row);
+    if (!kind) { current = null; continue; }
+    if (!current) clusters.push(current = { rows: [], kinds: new Set() });
+    current.rows.push(row);
+    current.kinds.add(kind);
+  }
+  return clusters.map(c => ({ rows: c.rows, kind: c.kinds.has('mod') || c.kinds.size > 1 ? 'mod' : [...c.kinds][0] }));
+}
+
+// The element that scrolls the view: the view itself (in a Changes card it
+// has a maximum height) or a box around it (the diff that opens from the
+// class diagram).
+function scrollerOf(node) {
+  for (let n = node; n && n !== document.body; n = n.parentElement) {
+    const o = getComputedStyle(n).overflowY;
+    if ((o === 'auto' || o === 'scroll') && n.scrollHeight > n.clientHeight + 1) return n;
+  }
+  return null;
+}
+
+// Marks beside the scrollbar where the changes are (green added, red
+// removed, amber both; click one to go there), and ↑ ↓ buttons in the bar
+// that go to the previous and next block of changes, with "2 / 7". Returns
+// a function that removes them again.
+function changeNavigation(view, bar) {
+  const clusters = changeClusters(view);
+  const nav = el('span', 'change-nav');
+  const count = el('span', 'change-nav-count');
+  const prev = el('button', 'change-nav-btn', '↑');
+  const next = el('button', 'change-nav-btn', '↓');
+  prev.type = next.type = 'button';
+  prev.title = 'Previous change';
+  next.title = 'Next change';
+  nav.append(prev, next, count);
+  bar.appendChild(nav);
+  let rail = null;
+  let observer = null;
+  const scroller = () => scrollerOf(view);
+  const topOf = (row, sc) => row.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop;
+  // The sticky bar covers the top of the scrolling box when the box is
+  // around the view.
+  const covered = sc => (sc.contains(bar) ? bar.offsetHeight : 0);
+  const go = i => {
+    const sc = scroller();
+    const c = clusters[i];
+    if (!sc || !c) return;
+    sc.scrollTo({ top: Math.max(0, topOf(c.rows[0], sc) - covered(sc) - 48), behavior: 'smooth' });
+    for (const row of c.rows) {
+      row.classList.remove('change-flash');
+      void row.offsetWidth;
+      row.classList.add('change-flash');
+    }
+    window.uiSound?.('select');
+  };
+  // Which block is at the top of the box now: the last one that starts
+  // above a line a little under its top edge.
+  const index = () => {
+    const sc = scroller();
+    if (!sc) return -1;
+    const edge = sc.scrollTop + covered(sc) + 56;
+    let at = -1;
+    clusters.forEach((c, i) => { if (topOf(c.rows[0], sc) <= edge) at = i; });
+    return at;
+  };
+  const update = () => {
+    const at = index();
+    count.textContent = clusters.length ? `${at < 0 ? '–' : at + 1} / ${clusters.length}` : 'No changes';
+    prev.disabled = at <= 0;
+    next.disabled = at >= clusters.length - 1;
+  };
+  prev.onclick = e => { e.stopPropagation(); go(Math.max(0, index() - 1)); };
+  next.onclick = e => { e.stopPropagation(); go(Math.min(clusters.length - 1, index() + 1)); };
+  const drawRail = () => {
+    rail?.remove();
+    const sc = scroller();
+    if (!sc || !clusters.length) return;
+    const parent = sc.parentElement;
+    if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
+    const sr = sc.getBoundingClientRect();
+    const pr = parent.getBoundingClientRect();
+    rail = el('div', 'change-rail');
+    const scrollbar = sc.offsetWidth - sc.clientWidth;
+    Object.assign(rail.style, { top: `${sr.top - pr.top}px`, height: `${sc.clientHeight}px`, right: `${pr.right - sr.right + scrollbar}px` });
+    const total = sc.scrollHeight;
+    clusters.forEach((c, i) => {
+      const top = topOf(c.rows[0], sc);
+      const last = c.rows[c.rows.length - 1];
+      const height = topOf(last, sc) + last.offsetHeight - top;
+      const mark = el('button', `change-mark ${c.kind}`);
+      mark.type = 'button';
+      mark.title = `Change ${i + 1} of ${clusters.length}`;
+      Object.assign(mark.style, { top: `${(top / total) * 100}%`, height: `max(3px, ${(height / total) * 100}%)` });
+      mark.onclick = e => { e.stopPropagation(); go(i); };
+      rail.appendChild(mark);
+    });
+    parent.appendChild(rail);
+  };
+  let frame = 0;
+  const later = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; update(); }); };
+  // The view is in the page only after it is drawn; then the box that
+  // scrolls it is known.
+  requestAnimationFrame(() => {
+    const sc = scroller();
+    if (sc) {
+      sc.addEventListener('scroll', later, { passive: true });
+      observer = new ResizeObserver(() => { drawRail(); update(); });
+      observer.observe(sc);
+    }
+    drawRail();
+    update();
+  });
+  return () => {
+    nav.remove();
+    rail?.remove();
+    observer?.disconnect();
+    scroller()?.removeEventListener('scroll', later);
+  };
+}
+
 // The views of one file's change: Changes (the diff, made by changesView,
 // where you can comment on lines), Full file (all of it, the changes marked
 // in place) and Side by side (before and after). The last view you picked is
@@ -735,9 +872,12 @@ function fileViews(f, cwd, changesView) {
     return f.versions;
   };
   let current = null;
+  let dropNav = null;
   const show = async mode => {
     current = mode;
     lastFileView = mode;
+    dropNav?.();
+    dropNav = null;
     box.dataset.mode = mode;
     for (const [m, b] of buttons) b.classList.toggle('active', m === mode);
     if (mode === 'changes') {
@@ -756,9 +896,11 @@ function fileViews(f, cwd, changesView) {
       body.replaceChildren(el('div', 'diff-line hunk', 'The two versions are too different to compare here.'));
       return;
     }
-    body.replaceChildren(mode === 'full'
+    const view = mode === 'full'
       ? renderDiff({ path: f.path, status: f.status, lines: merged }, { maxLines: 50000 })
-      : renderSideBySide(f.path, merged));
+      : renderSideBySide(f.path, merged);
+    body.replaceChildren(view);
+    dropNav = changeNavigation(view, bar);
   };
   show(f.status === 'bin' ? 'changes' : lastFileView);
   if (f.status === 'bin') bar.classList.add('hidden');

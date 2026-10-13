@@ -579,3 +579,4 @@ body.history-open :is(.chat-media, .before-after) { z-index: auto; }
 /* The category before the agent's title: a boxed readout, like the group names. */
 .view-category { background: transparent; border: 1px solid var(--accent); font-family: var(--label); font-weight: 400;
   letter-spacing: 0.14em; padding: 2px 8px 1px; text-shadow: var(--glow-strong); }
+.change-mark.add { background: #7dffa1; }

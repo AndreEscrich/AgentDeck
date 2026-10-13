@@ -1903,3 +1903,18 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .view-category { flex-shrink: 0; align-self: center; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
   color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); -webkit-app-region: no-drag; }
+
+/* Finding your way in a long file (Full file, Side by side): ↑ ↓ to the
+   previous and next block of changes, and marks beside the scrollbar. */
+.change-nav { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.file-views-bar .change-nav-btn { padding: 1px 9px; font-size: 13px; line-height: 18px; border: 1px solid var(--border); }
+.file-views-bar .change-nav-btn:disabled { opacity: 0.35; cursor: default; }
+.change-nav-count { font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; min-width: 52px; text-align: right; }
+.change-rail { position: absolute; width: 8px; z-index: 3; pointer-events: none; }
+.change-mark { position: absolute; left: 0; right: 0; padding: 0; border: none; border-radius: 2px; pointer-events: auto; cursor: pointer; opacity: 0.85; }
+.change-mark:hover { opacity: 1; transform: scaleX(1.4); }
+.change-mark.add { background: var(--ok); }
+.change-mark.del { background: var(--err); }
+.change-mark.mod { background: var(--busy); }
+@keyframes change-flash { 0% { box-shadow: inset 4px 0 0 var(--accent); filter: brightness(1.5); } 100% { box-shadow: inset 4px 0 0 transparent; filter: none; } }
+.change-flash { animation: change-flash 1s ease-out; }
