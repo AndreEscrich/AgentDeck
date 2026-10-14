@@ -7,7 +7,8 @@
 //   scan   reading, explaining, reviewing, searching (a star chart)
 //   text   docs, messages, tickets (MU-TH-UR's terminal)
 //   dock   tests, builds, commits, merges (the approach radar)
-//   map    levels and scenes, and anything else (the terrain scan)
+//   map    levels and scenes (the terrain scan)
+//   none   nothing matches: the theme's own tank (its scan bars and line)
 //   boot   the first moments, while it is not yet clear
 //
 // Your message gives the first hints (its words), then every tool the agent
@@ -129,14 +130,14 @@ const taskType = (() => {
     if (agent.task) { add(agent.task, 'track', 0.6); decide(agent.task); }
   }
 
-  // The kind to show: boot while it is not clear (for at most a while, then
-  // the terrain scan), and the terrain scan for tasks it never saw start.
+  // The kind to show: boot while it is not clear (for at most a while), and
+  // none when no kind matches (or for tasks it never saw start).
   function kindOf(agent) {
     const task = agent.task;
-    if (!task) return 'map';
+    if (!task) return 'none';
     if (task.kind !== 'boot') return task.kind;
     const finished = agent.status === 'idle' || agent.status === 'error';
-    if (finished || Date.now() - task.since > 12000) return leader(task) || 'map';
+    if (finished || Date.now() - task.since > 12000) return leader(task) || 'none';
     return 'boot';
   }
 

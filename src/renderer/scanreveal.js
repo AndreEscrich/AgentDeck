@@ -10,7 +10,8 @@
 //   scan   a star chart: a course plotted from star to star
 //   text   MU-TH-UR's terminal typing out the task
 //   dock   the approach radar: the ship follows the glide path in
-//   map    the terrain scan, mapped line by line (and anything else)
+//   map    the terrain scan, mapped line by line
+//   none   nothing matches: not drawn (the theme's own tank shows)
 //
 // The states look the same on every screen:
 //   working, starting: it runs

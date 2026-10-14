@@ -614,8 +614,10 @@ html:has(.uml-full, .branch-view:not(.hidden) .uml-svg, .view:not(.hidden) .chan
 .hub-repo-count { font-family: var(--label); letter-spacing: 0.06em; text-transform: uppercase; }
 .hub-repo-branch { font-family: var(--label); letter-spacing: 0.06em; text-transform: uppercase; border-radius: 0 !important; border-color: color-mix(in srgb, var(--accent) 45%, transparent) !important; }
 
-/* The tank is a terrain scan (scanreveal.js): the map drawn line by line in
-   the tile's state colour, instead of the scan bars and the moving line. */
+/* The tank is one of the ship's screens, by the kind of task (scanreveal.js),
+   drawn in the tile's state colour, instead of the scan bars and the moving
+   line. A task no screen matches (data-task="none") keeps those. */
 .tank-scan { display: block; position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
-.liquid { display: none !important; }
-.hub-tile.state-working .tank::before { display: none; }
+.hub-tile[data-task="none"] .tank-scan { display: none; }
+.hub-tile:not([data-task="none"]) .liquid { display: none !important; }
+.hub-tile.state-working:not([data-task="none"]) .tank::before { display: none; }
