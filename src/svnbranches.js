@@ -19,12 +19,14 @@
 // settings folder, one per branch revision.
 //
 // Only reading commands run (svn ls, log, info, mergeinfo, diff, cat), with
-// --non-interactive, so a missing password fails instead of waiting.
+// --non-interactive, so a missing password fails instead of waiting; for a
+// package it changed, git clone, fetch, diff and show (see packagediff.js).
 
 const { execFile, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { svnToGit } = require('./branchdiff');
+const { packageDiffs } = require('./packagediff');
 
 const DEFAULT_SERVER = 'svn+ssh://svn@tactile.build';
 
@@ -177,7 +179,7 @@ async function branchDiff(config, branch, cacheRoot, progress = () => {}) {
   clearInterval(ticker);
   flush();
   if (!streamed.ok) return { ok: false, error: streamed.error };
-  const text = streamed.blocks.map(block => svnToGit(block)).join('\n');
+  let text = streamed.blocks.map(block => svnToGit(block)).join('\n');
 
   // All the branch's changed C# files at its latest revision, for the
   // diagram and the full-file views. A file the branch added is all in the
@@ -223,11 +225,18 @@ async function branchDiff(config, branch, cacheRoot, progress = () => {}) {
     fs.writeFileSync(marker, new Date().toISOString());
   }
 
+  // Packages whose version it changed in Packages/manifest.json: their
+  // repositories' changes between the two versions, shown as its own (see
+  // packagediff.js).
+  const pkgs = await packageDiffs(text, { cwd, cacheRoot, progress });
+  if (pkgs.diff) text += (text.endsWith('\n') ? '' : '\n') + pkgs.diff;
+
   const notes = [];
   notes.push(`${own.length} commit${own.length === 1 ? '' : 's'} of its own; ${merges} merge${merges === 1 ? '' : 's'} from ${parentName} left out. Compared with ${parentName}@r${base}${mergedUpTo > copyRev ? ` (the newest ${parentName} revision merged in)` : ` (where the branch was copied from)`}, up to r${head}.`);
   if (hidden) notes.push(`${hidden} file${hidden === 1 ? '' : 's'} that only merges changed ${hidden === 1 ? 'is' : 'are'} not shown.`);
   if (metaCount) notes.push(`${metaCount} .meta file${metaCount === 1 ? '' : 's'} not shown.`);
   if (tooBig.length) notes.push(`Too large to show: ${tooBig.slice(0, 6).join(', ')}${tooBig.length > 6 ? ` and ${tooBig.length - 6} more` : ''}.`);
+  notes.push(...pkgs.notes);
   if (gaps.length) notes.push(`${gaps.length} older ${parentName} revision${gaps.length === 1 ? ' was' : 's were'} never merged into the branch (${gaps.slice(0, 8).map(r => 'r' + r).join(', ')}${gaps.length > 8 ? ', …' : ''}). In files the branch also changed, ${gaps.length === 1 ? 'its changes show' : 'their changes show'} reversed.`);
   return { ok: true, diff: text, title: `${branch} (r${base}…r${head})`, cwd, base, head, parent: parentName, notes, commits: own.reverse() };
 }

@@ -9,11 +9,15 @@
 
 const BRANCH_FILE_LIMIT = 2000;
 
-// A file's domain: its folder under Assets/Code (MergeSideBoard); a
+// A file's domain: a changed package (merge-board package); its folder
+// under Assets/Code (MergeSideBoard); a
 // module's assets (Assets/ModulesAssets/MergeSideBoard) are "MergeSideBoard
 // assets"; anything else under Assets goes by its folder there, else by its
 // first folder.
 function domainOf(file) {
+  // A package the branch changed (its repository's changes, see packagediff.js).
+  const pkg = /(?:^|\/)Packages\/([^/]+\.[^/]+)\//.exec(file);
+  if (pkg) return `${pkg[1].replace(/^com\.[^.]+\./, '')} package`;
   const code = /(?:^|\/)Assets\/Code\/([^/]+)\//.exec(file);
   if (code) return code[1];
   const module = /(?:^|\/)Assets\/ModulesAssets\/([^/]+)\//.exec(file);
@@ -37,15 +41,7 @@ class BranchLoading {
     this.head.append(el('span', 'branch-loading-dot'), el('span', null, `Working out what ${name} changed`), this.clock);
     this.steps = el('div', 'branch-loading-steps');
     this.rows = {};
-    for (const [id, label] of [['history', 'Reading its history'], ['diff', 'Comparing with trunk'], ['fetch', 'Fetching its C# files']]) {
-      const row = el('div', 'branch-step');
-      const detail = el('span', 'branch-step-detail');
-      const bar = el('span', 'branch-step-bar');
-      bar.appendChild(el('span'));
-      row.append(el('span', 'branch-step-mark'), el('span', 'branch-step-label', label), detail, bar);
-      this.rows[id] = { row, detail, bar, label: row.children[1] };
-      this.steps.appendChild(row);
-    }
+    for (const [id, label] of [['history', 'Reading its history'], ['diff', 'Comparing with trunk'], ['fetch', 'Fetching its C# files']]) this.addRow(id, label);
     this.commits = el('div', 'branch-loading-commits');
     this.grid = el('div', 'branch-loading-grid');
     // Placeholders until the files are known.
@@ -79,6 +75,16 @@ class BranchLoading {
     if (now - this.lastData < 450) return;
     this.lastData = now;
     this.sound('bootData');
+  }
+
+  addRow(id, label) {
+    const row = el('div', 'branch-step');
+    const detail = el('span', 'branch-step-detail');
+    const bar = el('span', 'branch-step-bar');
+    bar.appendChild(el('span'));
+    row.append(el('span', 'branch-step-mark'), el('span', 'branch-step-label', label), detail, bar);
+    this.rows[id] = { row, detail, bar, label: row.children[1] };
+    this.steps.appendChild(row);
   }
 
   set(id, state, detail) {
@@ -165,6 +171,17 @@ class BranchLoading {
       this.set('fetch', s.done >= s.total ? 'done' : 'active', s.total ? `${s.done} / ${s.total}` : 'already here');
       if (s.done < s.total) this.chatter();
       this.progress('fetch', s.total ? s.done / s.total : 1);
+    } else if (s.stage === 'packages') {
+      // A package it changed in the manifest: its repository's changes.
+      if (!this.rows.packages) {
+        this.set('fetch', 'done');
+        this.progress('fetch', 1);
+        this.addRow('packages', 'Comparing changed packages');
+        this.sound('bootStep');
+      }
+      this.set('packages', 'active', s.name);
+      this.domain(domainOf(`Packages/${s.name}/`)).card.classList.remove('complete');
+      this.chatter();
     }
   }
 
