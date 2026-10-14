@@ -162,3 +162,5 @@ details.change-file > summary:hover { background: #f1ebe3; }
 .github-state[data-state="merged"], .github-state[data-state="done"] { --gh: #8250df; }
 .github-state[data-state="closed"], .github-state[data-state="failure"] { --gh: #cf222e; }
 .github-state[data-state="running"] { --gh: #9a6700; }
+.msg-user .slack-card { background: rgba(255, 255, 255, 0.6); }
+.slack-kind { color: #a3164a; }

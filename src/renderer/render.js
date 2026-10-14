@@ -319,12 +319,81 @@ function githubCard(href, gh, text) {
   return a;
 }
 
+// ---------- Slack links ----------
+
+// What a Slack link points to, from the link alone (the app has no Slack
+// login): { workspace, where, ts, thread, kind }, or null.
+//   https://team.slack.com/archives/C0123/p1728900000123456[?thread_ts=…]
+//   https://app.slack.com/client/T0123/C0123[/thread/C0123-1728900000.123456]
+// The p… number is the message's time (seconds and microseconds), so the
+// card can say when it was sent. C…: a channel, G…: a private channel or
+// group, D…: a direct message.
+function slackOf(href) {
+  let url;
+  try { url = new URL(href); } catch { return null; }
+  const host = url.hostname.toLowerCase();
+  if (!/(^|\.)slack\.com$/.test(host)) return null;
+  const where = id => (/^D/.test(id) ? 'Direct message' : /^G/.test(id) ? 'Private channel' : 'Channel');
+  const parts = url.pathname.split('/').filter(Boolean);
+  let channel = null;
+  let ts = null;
+  let thread = null;
+  if (parts[0] === 'archives' && /^[CDG][A-Z0-9]+$/.test(parts[1] || '')) {
+    channel = parts[1];
+    const p = /^p(\d{10})(\d{6})$/.exec(parts[2] || '');
+    if (p) ts = Number(`${p[1]}.${p[2]}`);
+    const t = url.searchParams.get('thread_ts');
+    if (t && ts && Math.abs(Number(t) - ts) > 0.0000005) thread = Number(t);
+  } else if (host === 'app.slack.com' && parts[0] === 'client' && /^[CDG][A-Z0-9]+$/.test(parts[2] || '')) {
+    channel = parts[2];
+    const t = /^[A-Z0-9]+-(\d+\.\d+)$/.exec(parts[4] || '');
+    if (parts[3] === 'thread' && t) { ts = Number(t[1]); thread = ts; }
+  } else {
+    return null;
+  }
+  const workspace = host === 'app.slack.com' ? 'Slack' : host.replace(/\.(enterprise\.)?slack\.com$/, '');
+  return { workspace, channel, where: where(channel), ts, thread, kind: ts ? 'message' : 'channel' };
+}
+
+// "Tue 14 Oct, 10:32" (with the year when it is not this year), or "Today, 10:32".
+function slackTime(ts) {
+  const d = new Date(ts * 1000);
+  const now = new Date();
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === now.toDateString()) return `Today, ${time}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return `Yesterday, ${time}`;
+  const date = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) });
+  return `${date}, ${time}`;
+}
+
+const SLACK_ICON = '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="#e01e5a" d="M3.4 10.1a1.7 1.7 0 1 1-1.7-1.7h1.7zm.8 0a1.7 1.7 0 0 1 3.4 0v4.2a1.7 1.7 0 1 1-3.4 0z"/><path fill="#36c5f0" d="M5.9 3.4a1.7 1.7 0 1 1 1.7-1.7v1.7zm0 .8a1.7 1.7 0 0 1 0 3.4H1.7a1.7 1.7 0 0 1 0-3.4z"/><path fill="#2eb67d" d="M12.6 5.9a1.7 1.7 0 1 1 1.7 1.7h-1.7zm-.8 0a1.7 1.7 0 0 1-3.4 0V1.7a1.7 1.7 0 1 1 3.4 0z"/><path fill="#ecb22e" d="M10.1 12.6a1.7 1.7 0 1 1-1.7 1.7v-1.7zm0-.8a1.7 1.7 0 0 1 0-3.4h4.2a1.7 1.7 0 0 1 0 3.4z"/></svg>';
+
+// A Slack link as a card: the Slack mark, the workspace, what was linked (a
+// message, a reply in a thread, or a channel), the link's own words when it
+// has them, and when the message was sent.
+function slackCard(href, sl, text) {
+  const a = document.createElement('a');
+  a.className = 'slack-card';
+  a.href = href;
+  const logo = el('span', 'slack-logo');
+  logo.innerHTML = SLACK_ICON;
+  const what = sl.kind === 'channel' ? sl.where : sl.thread ? 'Thread reply' : sl.where === 'Direct message' ? 'Direct message' : 'Message';
+  const named = text && text.trim() !== href && !/^https?:\/\//i.test(text.trim()) ? text.trim() : '';
+  a.append(logo, el('span', 'slack-workspace', sl.workspace), el('span', 'slack-kind', what));
+  if (named) a.append(el('span', 'slack-title', named));
+  if (sl.ts) a.append(el('span', 'slack-time', slackTime(sl.ts)));
+  a.title = `${what} in ${sl.workspace}${sl.kind === 'message' && sl.where !== 'Direct message' ? ` (${sl.where.toLowerCase()} ${sl.channel})` : ''}${sl.ts ? '\nSent ' + new Date(sl.ts * 1000).toLocaleString() : ''}${named ? '\n' + named : ''}\nOpen in Slack`;
+  return a;
+}
+
 // Every link opens in your browser; Jira ticket links become ticket cards,
-// Google Sheets, Docs, Slides and Forms links become file cards, and GitHub
-// links become cards with their title and state.
+// Google Sheets, Docs, Slides and Forms links become file cards, GitHub
+// links become cards with their title and state, and Slack links message cards.
 function decorateLinks(root) {
   for (const a of [...root.querySelectorAll('a[href]')]) {
-    if (a.closest('.jira-card, .gdoc-card, .github-card')) continue;
+    if (a.closest('.jira-card, .gdoc-card, .github-card, .slack-card')) continue;
     const href = a.getAttribute('href');
     if (!/^https?:/i.test(href)) continue;
     a.target = '_blank';
@@ -333,7 +402,9 @@ function decorateLinks(root) {
     const doc = gdocOf(href);
     if (doc) { a.replaceWith(gdocCard(href, doc, a.textContent)); continue; }
     const gh = githubOf(href);
-    if (gh) a.replaceWith(githubCard(href, gh, a.textContent));
+    if (gh) { a.replaceWith(githubCard(href, gh, a.textContent)); continue; }
+    const sl = slackOf(href);
+    if (sl) a.replaceWith(slackCard(href, sl, a.textContent));
   }
   return root;
 }
