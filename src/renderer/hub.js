@@ -779,6 +779,8 @@ class Hub {
     box.append(head, body);
     this.grid.appendChild(box);
     repo = { name, el: box, title, branch, count, unity, body, cwds: [], cwd: null };
+    // Drag a repository by its title row to put it before or after the others.
+    head.addEventListener('pointerdown', e => this.pressGroup(e, repo));
     this.repos.set(name, repo);
     return repo;
   }
@@ -1047,10 +1049,12 @@ class Hub {
     const panel = sec.el;
     const r = panel.getBoundingClientRect();
     const byOrder = (a, b) => Number(a.style.order) - Number(b.style.order);
-    // A panel moves among the panels of its own repository.
+    // A panel moves among the panels of its own repository; a repository
+    // among the repositories.
     const box = panel.parentNode;
+    const kind = panel.classList.contains('hub-repo') ? 'hub-repo' : 'hub-section';
     const list = [...box.children]
-      .filter(c => c.classList.contains('hub-section') && !c.classList.contains('hidden') && !c.classList.contains('removing-group'))
+      .filter(c => c.classList.contains(kind) && !c.classList.contains('hidden') && !c.classList.contains('removing-group'))
       .sort(byOrder);
     const slot = el('div', 'hub-section-slot');
     slot.style.height = `${r.height}px`;
@@ -1135,9 +1139,11 @@ class Hub {
     document.body.classList.remove('grabbing');
     d.slot.remove();
     this.drag = null;
+    // The panels in their repositories' order, then their own.
+    const repoOrder = s => Number(s.el.closest('.hub-repo')?.style.order || 0);
     const keys = [...this.sections.values()]
       .filter(s => !s.el.classList.contains('hidden'))
-      .sort((a, b) => Number(a.el.style.order) - Number(b.el.style.order))
+      .sort((a, b) => repoOrder(a) - repoOrder(b) || Number(a.el.style.order) - Number(b.el.style.order))
       .map(s => s.key);
     this.onReorderGroups?.(keys);
     if (this.latest) this.render(...this.latest);
