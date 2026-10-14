@@ -389,26 +389,9 @@ const sounds = (() => {
     hum = { gain, nodes, relays };
   }
 
-  // Each task screen's voice (the Nostromo theme's tank, scanreveal.js).
-  // STEPS: a quiet sound for a step the agent takes; LOCKS: the screen's
-  // signature when a tile first finds its task.
-  const STEPS = {
-    // Code: the memory bank takes a write, a few dull bytes and a relay.
-    code: (ac, at) => { data(ac, at, 3, { step: 0.03, volume: 0.022 }); breath(ac, at + 0.09, 2200, 0.012, 0.06); },
-    // Art: the scan line passes, a soft rising sweep of air.
-    art: (ac, at) => { breath(ac, at, 1400, 0.35, 0.035, { q: 4, swell: true }); tone(ac, at + 0.05, 784, 0.3, 0.008, { type: 'sine', slideTo: 1046, cutoff: 3000 }); },
-    // Track: the motion tracker's ping, high and clean, with its echo.
-    track: (ac, at) => { tone(ac, at, 2349, 0.22, 0.03, { type: 'sine', cutoff: 5000, detune: 2 }); tone(ac, at + 0.24, 2349, 0.18, 0.012, { type: 'sine', cutoff: 5000, detune: 2 }); },
-    // Scan: a star plotted, two quiet blips a fifth apart.
-    scan: (ac, at) => { tone(ac, at, 523, 0.08, 0.02, { type: 'sine', cutoff: 3000 }); tone(ac, at + 0.09, 784, 0.12, 0.018, { type: 'sine', cutoff: 3000 }); },
-    // Text: the teletype prints a few letters.
-    text: (ac, at) => { for (let i = 0; i < 4; i++) { tone(ac, at + i * 0.045, [311, 330, 311, 294][i], 0.035, 0.02, { type: 'square', cutoff: 1100, detune: 2 }); breath(ac, at + i * 0.045, 2400, 0.01, 0.05); } },
-    // Dock: the radar's sonar pulse and a low thrust.
-    dock: (ac, at) => { tone(ac, at, 880, 0.5, 0.018, { type: 'sine', cutoff: 2000, slideTo: 830 }); drone(ac, at, 46, 0.4, 0.04, 'sine'); },
-    // Map: the terrain scan's low tick.
-    map: (ac, at) => tone(ac, at, 196, 0.12, 0.025, { type: 'triangle', cutoff: 900 }),
-    boot: (ac, at) => data(ac, at, 2, { step: 0.04, volume: 0.02 }),
-  };
+  // Each task screen's signature (the Nostromo theme's tank, scanreveal.js),
+  // once, when a new agent's tile finds its task. (Agents make no sound while
+  // they work: only when they start and when they need you.)
   const LOCKS = {
     code: (ac, at) => { const e = data(ac, at, 6, { step: 0.035, volume: 0.04, direction: 1 }); tone(ac, e, 311, 0.4, 0.04, { type: 'square', cutoff: 1200 }); },
     art: (ac, at) => { tone(ac, at, 392, 0.7, 0.035, { type: 'sine', slideTo: 587, cutoff: 2600 }); tone(ac, at + 0.25, 784, 0.8, 0.015, { type: 'sine', cutoff: 3000 }); breath(ac, at, 1200, 0.6, 0.04, { q: 3, swell: true }); },
@@ -438,8 +421,6 @@ const sounds = (() => {
       const end = data(ac, 0.02, 3, { step: 0.04, volume: 0.03 });
       (LOCKS[kind] || LOCKS.map)(ac, end + 0.02);
     }),
-    // The agent took a step, in the voice of its tile's screen (kind).
-    taskStep: safely((ac, kind) => (STEPS[kind] || STEPS.map)(ac, 0)),
     // One stage done: a relay, a short burst of data and a confirming pulse.
     bootStep: safely(ac => {
       breath(ac, 0, 600, 0.04, 0.22);
