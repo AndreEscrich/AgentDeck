@@ -405,7 +405,9 @@ class Hub {
     const icon = el('div', 'tank-icon');
     const badge = el('div', 'tank-badge', '!');
     const ping = el('div', 'tank-ping');
-    tank.append(liquid, bubbles, el('div', 'tank-shine'), icon, ping, badge, burst);
+    // The Nostromo theme draws its terrain scan here instead (scanreveal.js).
+    const scan = el('canvas', 'tank-scan');
+    tank.append(liquid, bubbles, scan, el('div', 'tank-shine'), icon, ping, badge, burst);
 
     // Under the tank: the task title, then its status and time.
     const info = el('div', 'hub-info');
@@ -566,6 +568,7 @@ class Hub {
         void parts.liquid.offsetHeight;
       }
       entry.level = this.levelFor(agent);
+      tile.dataset.level = String(entry.level);
       parts.liquid.style.height = `${entry.level}%`;
       // Waiting for the usage limit to reset (limitOf in app.js): a clock, and when it continues.
       const limited = agent.limited || null;
