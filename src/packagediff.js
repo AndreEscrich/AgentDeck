@@ -11,6 +11,9 @@
 // for a registry package on GitHub Packages (npm.pkg.github.com/@org, from
 // packages-lock.json) github.com/<org>/<name without "com.<org>.">.
 //
+// Commits marked [skip ci] (template, lint and formatting updates) are left
+// out (see skipCi).
+//
 // The repositories are cloned once (bare, without file contents until they
 // are needed) into the cache folder and fetched again when a version is not
 // there yet. Your own git credentials are used: any user name or token
@@ -146,6 +149,37 @@ async function resolveOrFetch(dir, refs) {
   return resolve(dir, refs);
 }
 
+const SKIP_CI = /\[(skip ci|ci skip|no ci|skip actions|actions skip)\]/i;
+
+// The commits from..to, oldest first, and which of them to leave out:
+// { base, paths, skipped, kept, onlySkipped }. base: where the comparison
+// starts (after the [skip ci] commits that come first); paths: when one
+// comes later, the files the other commits touched (in the repository),
+// else null for all.
+async function skipCi(dir, from, to) {
+  const all = { base: from, paths: null, skipped: 0, kept: 0, onlySkipped: false };
+  const log = await git(['log', '--reverse', '--format=%x01%H%x09%s', '--name-only', `${from}..${to}`], { cwd: dir });
+  if (!log.ok) return all;
+  const commits = log.out.split('\x01').filter(Boolean).map(entry => {
+    const [head, ...files] = entry.split('\n');
+    const [sha, subject = ''] = head.split('\t');
+    return { sha, skip: SKIP_CI.test(subject), files: files.map(f => f.trim()).filter(Boolean) };
+  });
+  // Going back (an older version), or nothing marked: compare as it is.
+  if (!commits.length || !commits.some(c => c.skip)) return { ...all, kept: commits.length };
+  let base = from;
+  let i = 0;
+  while (i < commits.length && commits[i].skip) base = commits[i++].sha;
+  const rest = commits.slice(i);
+  const skipped = commits.filter(c => c.skip).length;
+  if (!rest.length) return { ...all, skipped, onlySkipped: true };
+  const later = rest.some(c => c.skip);
+  return {
+    base, skipped, kept: rest.filter(c => !c.skip).length, onlySkipped: false,
+    paths: later ? new Set(rest.filter(c => !c.skip).flatMap(c => c.files)) : null,
+  };
+}
+
 // branchText: the branch's diff (git format). cwd: the folder its files are
 // in (the package's C# files are written there too). Resolves with
 // { diff, notes, packages: [{ name, from, to, files }] }.
@@ -180,22 +214,37 @@ async function packageDiffs(branchText, { cwd, cacheRoot, progress = () => {} } 
       notes.push(`Package ${name}: could not find ${!from ? label(change.from) : label(change.to)} in ${repo.url}.`);
       continue;
     }
+    // Commits marked [skip ci] (formatting, template and lint updates) are
+    // left out: when they come first, the comparison starts after them; one
+    // in between leaves out the files only such commits touched.
+    const skip = await skipCi(c.dir, from, to);
+    if (skip.onlySkipped) {
+      notes.push(`Package ${name}: ${label(change.from)} → ${label(change.to)}, only commits marked [skip ci] (${skip.skipped}), so nothing is shown.`);
+      continue;
+    }
     // A package in a folder of its repository (?path=): only that folder,
     // with paths from there.
     const prefix = `${folder}/${name}/`;
     const args = ['diff', '--no-color', '--no-ext-diff', '-M', `--src-prefix=a/${prefix}`, `--dst-prefix=b/${prefix}`];
     if (repo.sub) args.push(`--relative=${repo.sub}`);
-    args.push(from, to);
+    args.push(skip.base, to);
     const d = await git(args, { cwd: c.dir, timeout: 600000 });
     if (!d.ok) { notes.push(`Package ${name}: could not compare the versions (${d.error}).`); continue; }
     // .meta files are left out, as in the branch's own diff; so are very big
     // files, and hidden ones (.github, .editorconfig), which Unity does not load.
     let files = 0;
     const kept = [];
+    // Its folder holds only what this comparison shows (an earlier one may differ).
+    fs.rmSync(path.join(cwd, ...prefix.split('/').filter(Boolean)), { recursive: true, force: true });
     for (const block of d.out.split(/(?=^diff --git )/m)) {
       if (!block.startsWith('diff --git ')) continue;
       const rel = /^diff --git a\/\S+ b\/(\S+)/.exec(block)?.[1] || '';
       if (/\.meta$/i.test(rel) || block.length > BIG || rel.slice(prefix.length).split('/').some(p => p.startsWith('.'))) continue;
+      if (skip.paths) {
+        const inRepo = p => (repo.sub ? `${repo.sub}/` : '') + p.slice(prefix.length);
+        const old = /^diff --git a\/(\S+) b\//.exec(block)?.[1] || rel;
+        if (!skip.paths.has(inRepo(rel)) && !skip.paths.has(inRepo(old))) continue;
+      }
       kept.push(block);
       files++;
       // Its C# files at the new version, for the diagram and the full-file view.
@@ -211,7 +260,8 @@ async function packageDiffs(branchText, { cwd, cacheRoot, progress = () => {} } 
     }
     diff += (diff && !diff.endsWith('\n') ? '\n' : '') + kept.join('');
     packages.push({ name, from: label(change.from), to: label(change.to), files });
-    notes.push(`Package ${name}: ${label(change.from)} → ${label(change.to)}, ${files} file${files === 1 ? '' : 's'} changed (${repo.url.replace(/\.git$/, '')}), shown with the branch's own.`);
+    const left = skip.skipped ? `; ${skip.skipped} commit${skip.skipped === 1 ? '' : 's'} marked [skip ci] left out` : '';
+    notes.push(`Package ${name}: ${label(change.from)} → ${label(change.to)}, ${files} file${files === 1 ? '' : 's'} changed by ${skip.kept} commit${skip.kept === 1 ? '' : 's'}${left} (${repo.url.replace(/\.git$/, '')}), shown with the branch's own.`);
   }
   return { diff, notes, packages };
 }
