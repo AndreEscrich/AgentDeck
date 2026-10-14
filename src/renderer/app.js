@@ -2693,21 +2693,36 @@ async function confirmStop(agents, { action, label }) {
 // same card as quitting and continue after the restart.
 window.deck.onUpdate(showUpdate);
 function showUpdate(info) {
+  latestInfo = info || null;
   const btn = $('app-update');
   btn.classList.toggle('hidden', !info);
   btn.classList.remove('failed');
   if (!info) return;
   btn.disabled = false;
   btn.textContent = info.version ? `v${info.version} available` : 'Update available';
-  offerUpdate(info);
+  // The check runs when the window gets the focus, so its answer counts as
+  // part of that moment when it comes soon after.
+  if (Date.now() - focusedAt < 20000) offerUpdate();
   const what = info.commits.length ? `\n\nWhat's new:\n${info.commits.map(c => `• ${c}`).join('\n')}` : '';
   btn.title = `Click to update and restart (${info.behind} new commit${info.behind === 1 ? '' : 's'}).${what}`;
 }
 
 // A new version also gets a card once, which offers to update right away.
 // "Later" leaves the button; more new commits on GitHub bring the card back.
+// The card comes only when you come back to the window and no agent needs
+// you: none asks a question or waits for an approval, and you have opened
+// every finished agent (the agents Tab would show, see reviewQueue). Until
+// then the button next to the version is there.
 const offeredUpdates = new Set();
-async function offerUpdate(info) {
+let latestInfo = null;
+let focusedAt = 0;
+window.addEventListener('focus', () => {
+  focusedAt = Date.now();
+  offerUpdate();
+});
+async function offerUpdate() {
+  const info = latestInfo;
+  if (!info || !document.hasFocus() || reviewQueue().length) return;
   const key = `${info.version}:${info.behind}`;
   if (offeredUpdates.has(key) || document.querySelector('.quit-modal, .settings-modal')) return;
   offeredUpdates.add(key);
