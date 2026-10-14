@@ -1,13 +1,14 @@
 // The app's look (Settings → Theme). "default" is the app's own look;
 // "light" is the same look on white (theme-light.css);
-// "mother" is the retro terminal of Alien (theme-mother.css), which also
+// "mother" (named Nostromo in Settings) is the retro terminal of Alien
+// (theme-mother.css), which also
 // gets the moving parts of an old tube here: static, a rolling band, now and
 // then a sync glitch, and a power-on when the theme starts.
 //
 // The choice lives in config.json; a copy in localStorage lets the window
 // open in the right look before the config arrives.
 
-const THEMES = [['default', 'Default'], ['light', 'Light'], ['mother', 'MU-TH-UR · retro terminal']];
+const THEMES = [['default', 'Default'], ['light', 'Light'], ['mother', 'Nostromo · retro terminal']];
 const crt = { glitch: 0, curved: true };
 
 // curved: bend the picture like the glass of a tube (Settings → Curved screen).

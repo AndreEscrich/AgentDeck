@@ -233,7 +233,7 @@ const sounds = (() => {
     refuse: () => play([[233.08, 0, 0.12], [233.08, 0.1, 0.16]], 0.08),
   };
 
-  // ---------- MU-TH-UR (the retro theme) ----------
+  // ---------- Nostromo (the retro theme) ----------
   // The same events, in the voice of the ship's computer in Alien: cold and
   // uneasy rather than cheerful. Low tones, intervals that do not resolve
   // (tritones, minor seconds), pairs of oscillators a little out of tune so
