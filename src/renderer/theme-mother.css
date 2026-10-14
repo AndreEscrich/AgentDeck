@@ -517,8 +517,8 @@ button, .hub-info, .hub-status, .note, .status-pill, .next-hint, #input, .model-
    and the status line all take it, so you can tell the tiles apart at a
    glance. */
 .hub-tile.state-starting   { --c1: #6aa8ff; }
-.hub-tile.state-working    { --c1: #5ff3ff; }
-.hub-tile.state-idle       { --c1: #7dffa1; }
+.hub-tile.state-working    { --c1: #2fd8ff; }
+.hub-tile.state-idle       { --c1: #46ff5a; }
 .hub-tile.state-waiting    { --c1: #ffab40; }
 .hub-tile.needs-question   { --c1: #ffe066; }
 .hub-tile.state-stuck      { --c1: #c49bff; }
@@ -528,6 +528,10 @@ button, .hub-info, .hub-status, .note, .status-pill, .next-hint, #input, .model-
 .hub-tile.state-waiting, .hub-tile.state-error, .hub-tile.needs-question { border-color: var(--c1) !important;
   box-shadow: 0 0 14px -4px var(--c1) !important; }
 .tank { border-color: color-mix(in srgb, var(--c1) 60%, transparent) !important; }
+/* Done: the tank glows faintly green behind its picture, so a finished tile
+   reads differently from a working one even at a glance. */
+.hub-tile.state-idle .tank { background: color-mix(in srgb, var(--c1) 9%, #000) !important; }
+.hub-tile.state-idle:not(.unread) .tank { background: color-mix(in srgb, var(--c1) 4%, #000) !important; }
 .liquid { opacity: 0.5 !important; }
 .hub-status, .hub-tile .hub-info .hub-status * { color: var(--c1) !important; }
 .hub-tile .hub-title { color: var(--read-strong); }
