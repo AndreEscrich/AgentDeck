@@ -599,3 +599,9 @@ html:has(.uml-full, .branch-view:not(.hidden) .uml-svg, .view:not(.hidden) .chan
    the top edge of the window does in the default look. theme.js adds the
    strip; dialogs and the picture below stay clickable. */
 #mu-bezel-top { position: fixed; left: 0; right: 0; top: 0; height: 14px; z-index: 1; -webkit-app-region: drag; }
+
+/* The list of / commands above the message box */
+.slash-menu { background: var(--bg) !important; border-color: var(--border) !important; box-shadow: 0 0 0 1px var(--border), 0 0 24px rgba(60, 236, 255, 0.08) !important; border-radius: 0; }
+.slash-row { border-radius: 0; }
+.slash-row.on { background: var(--bg-active); }
+.slash-row.on .slash-name { text-shadow: var(--glow-strong); }

@@ -2924,7 +2924,10 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     refreshHub();
     return;
   }
-  await sendToAgent(agent, preamble + prompt, images);
+  // A / command must start the message, or Claude Code does not run it: the
+  // handoff then goes with your next message.
+  if (preamble && isSlashCommand(prompt)) agent.pendingPreamble = preamble;
+  await sendToAgent(agent, isSlashCommand(prompt) ? prompt : preamble + prompt, images);
 }
 
 // ---------- titles ----------
@@ -3039,12 +3042,20 @@ async function sendToAgent(agent, text, images = []) {
   }
   // After "Undo last prompt", the agent learns that its files are back as
   // they were before its last task (the chat shows your message as you wrote it).
-  if (agent.undoNote) {
-    text = `(Before this message I undid every file change of your previous task, so these files are back the way they were before it: ${agent.undoNote.join(', ')}.)\n\n${text}`;
-    agent.undoNote = null;
+  // A / command (a skill or a custom command) must start the message, or
+  // Claude Code does not run it: the notes below then wait for your next message.
+  if (!isSlashCommand(text)) {
+    if (agent.pendingPreamble) {
+      text = agent.pendingPreamble + text;
+      agent.pendingPreamble = null;
+    }
+    if (agent.undoNote) {
+      text = `(Before this message I undid every file change of your previous task, so these files are back the way they were before it: ${agent.undoNote.join(', ')}.)\n\n${text}`;
+      agent.undoNote = null;
+    }
+    // The group's shared notes, when the agent has not read this version yet.
+    text = notesBlock(agent) + text;
   }
-  // The group's shared notes, when the agent has not read this version yet.
-  text = notesBlock(agent) + text;
   // Images and videos changed after this moment count as the task's media.
   // A second of slack covers clocks that round file times.
   if (!agent.mediaSince) agent.mediaSince = Date.now() - 1000;
@@ -3570,6 +3581,7 @@ window.deck.onEvent((id, msg) => {
   const a = state.agents.get(id);
   if (!a) return;
   a.transcript.add(msg);
+  if (msg.type === 'system' && msg.subtype === 'init' && Array.isArray(msg.slash_commands)) rememberSlashCommands(a, msg.slash_commands);
   if (isAuthFailure(msg)) { noteAuthWait(a); noteAuthProblem(); }
   if (msg.type === 'system' && msg.subtype === 'compact_boundary') afterCompact(a);
   if (msg.type === 'assistant') noteClashes(a, msg.message);
@@ -4039,6 +4051,161 @@ $('input').addEventListener('keydown', e => {
     if (list) { e.preventDefault(); fillFollowUp(list[0]); }
   }
 });
+// ---------- / commands ----------
+
+// A message that starts with /name runs that skill or custom command in
+// Claude Code (/auditing:project-audit, /review, /compact …). While you type
+// the name, a list above the message box shows the matching commands: ↑ ↓
+// to move, Tab or ↩ to take one, Esc to close. The names come from Claude
+// Code itself (the list it sends when an agent starts, kept for the Hub's
+// box too) and from the command and skill files (src/slashcommands.js),
+// which also give the descriptions.
+const SLASH_NAME = /^\/[A-Za-z0-9][\w:.-]*(\s|$)/;
+function isSlashCommand(text) {
+  return SLASH_NAME.test(String(text || '').trimStart()) && !/^\/diff(\s|$)/.test(String(text).trimStart());
+}
+
+function rememberSlashCommands(agent, names) {
+  agent.slashCommands = names;
+  try { localStorage.setItem('slashCommands', JSON.stringify(names)); } catch {}
+  slashFiles.clear();
+}
+
+const slashFiles = new Map();   // folder -> { at, list: promise }
+function slashFolder() {
+  const cur = state.current;
+  if (cur?.kind === 'agent') return state.agents.get(cur.id)?.cwd || null;
+  if (cur?.kind === 'history') return state.history.get(cur.id)?.cwd || null;
+  return ensureDraft().folder || state.config?.home || null;
+}
+
+async function slashCommandList() {
+  const cwd = slashFolder();
+  let cached = slashFiles.get(cwd || '');
+  if (!cached || Date.now() - cached.at > 30000) {
+    cached = { at: Date.now(), list: window.deck.slashCommands(cwd).catch(() => []) };
+    slashFiles.set(cwd || '', cached);
+  }
+  const files = await cached.list;
+  const cur = state.current?.kind === 'agent' ? state.agents.get(state.current.id) : null;
+  let names = cur?.slashCommands;
+  if (!names) { try { names = JSON.parse(localStorage.getItem('slashCommands') || 'null'); } catch { names = null; } }
+  const byName = new Map(files.map(c => [c.name, c]));
+  const list = [...files];
+  for (const n of names || []) if (!byName.has(n)) list.push({ name: n, description: '', hint: '', source: 'claude' });
+  if (['agent', 'history'].includes(state.current?.kind)) {
+    list.push({ name: 'diff', description: 'The diff of this branch, drawn by Agent Hub (the agent is not asked)', hint: '[what]', source: 'app' });
+  }
+  return list;
+}
+
+// Best matches first: the name starts with what you typed, then the part
+// after "plugin:" does, then the name or the description contains it.
+function rankSlash(list, query) {
+  const q = query.toLowerCase();
+  const score = c => {
+    const n = c.name.toLowerCase();
+    const short = n.includes(':') ? n.slice(n.indexOf(':') + 1) : n;
+    if (!q) return 1;
+    if (n.startsWith(q)) return 4;
+    if (short.startsWith(q)) return 3;
+    if (n.includes(q)) return 2;
+    if ((c.description || '').toLowerCase().includes(q)) return 1;
+    return 0;
+  };
+  return list.map(c => ({ c, s: score(c) })).filter(x => x.s > 0)
+    .sort((a, b) => b.s - a.s || a.c.name.localeCompare(b.c.name)).map(x => x.c);
+}
+
+const slashMenu = { el: null, items: [], index: 0, query: null };
+function closeSlashMenu() {
+  slashMenu.el?.remove();
+  slashMenu.el = null;
+  slashMenu.items = [];
+  slashMenu.query = null;
+}
+
+// The name being typed: the box starts with / and the cursor is still in
+// the first word.
+function slashQuery() {
+  const box = $('input');
+  const m = /^\/([\w:.-]*)$/.exec(box.value.slice(0, box.selectionStart));
+  if (!m || box.selectionStart !== box.selectionEnd) return null;
+  const rest = box.value.slice(box.selectionStart);
+  return /^\S/.test(rest) ? null : m[1];
+}
+
+async function updateSlashMenu() {
+  const query = slashQuery();
+  if (query == null) return closeSlashMenu();
+  const items = rankSlash(await slashCommandList(), query);
+  if (slashQuery() !== query) return;   // you typed on in the meantime
+  if (!items.length) return closeSlashMenu();
+  const keep = slashMenu.items[slashMenu.index]?.name;
+  slashMenu.items = items;
+  slashMenu.query = query;
+  slashMenu.index = Math.max(0, items.findIndex(c => c.name === keep));
+  renderSlashMenu();
+}
+
+function renderSlashMenu() {
+  if (!slashMenu.el) {
+    slashMenu.el = el('div', 'slash-menu');
+    document.querySelector('.composer-box').appendChild(slashMenu.el);
+  }
+  const menu = slashMenu.el;
+  menu.textContent = '';
+  slashMenu.items.forEach((c, i) => {
+    const row = el('div', `slash-row${i === slashMenu.index ? ' on' : ''}`);
+    const name = el('span', 'slash-name', '/' + c.name);
+    row.append(name);
+    if (c.hint) row.append(el('span', 'slash-hint', c.hint));
+    row.append(el('span', 'slash-desc', c.description || (c.source === 'claude' ? 'Claude Code command' : '')));
+    if (c.source === 'plugin' || c.source === 'project') row.append(el('span', 'slash-source', c.source));
+    row.title = c.description || '';
+    row.onmousedown = e => { e.preventDefault(); pickSlash(i); };
+    row.onmousemove = () => { if (slashMenu.index !== i) { slashMenu.index = i; renderSlashMenu(); } };
+    menu.appendChild(row);
+  });
+  menu.querySelector('.slash-row.on')?.scrollIntoView({ block: 'nearest' });
+}
+
+function pickSlash(i) {
+  const c = slashMenu.items[i];
+  if (!c) return;
+  const box = $('input');
+  const rest = box.value.slice(box.selectionStart).replace(/^\S*/, '');
+  const head = `/${c.name}`;
+  box.value = head + (rest.startsWith(' ') ? rest : ' ' + rest);
+  box.setSelectionRange(head.length + 1, head.length + 1);
+  box.dispatchEvent(new Event('input'));
+  closeSlashMenu();
+  sfx('tick');
+}
+
+$('input').addEventListener('input', () => { updateSlashMenu(); });
+$('input').addEventListener('click', () => { updateSlashMenu(); });
+$('input').addEventListener('blur', () => setTimeout(closeSlashMenu, 120));
+// Runs before the box's other keys (↩ sends, ↑ recalls your last message).
+$('input').addEventListener('keydown', e => {
+  if (!slashMenu.el || e.isComposing) return;
+  const n = slashMenu.items.length;
+  let handled = true;
+  if (e.key === 'ArrowDown') slashMenu.index = (slashMenu.index + 1) % n;
+  else if (e.key === 'ArrowUp') slashMenu.index = (slashMenu.index - 1 + n) % n;
+  else if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+    // ↩ on a name you typed in full sends it, like without the list.
+    const exact = slashMenu.items[slashMenu.index]?.name === slashMenu.query;
+    if (e.key === 'Enter' && exact) { closeSlashMenu(); return; }
+    pickSlash(slashMenu.index);
+  } else if (e.key === 'Escape') closeSlashMenu();
+  else handled = false;
+  if (!handled) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  if (slashMenu.el) renderSlashMenu();
+}, true);
+
 // Alt+1–3 sends that suggestion right away (Ctrl+1–9 switch agents).
 document.addEventListener('keydown', e => {
   if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !/^Digit[1-9]$/.test(e.code)) return;

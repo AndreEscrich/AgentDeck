@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('deck', {
   existingFiles: paths => ipcRenderer.invoke('fs:existing', paths),
   csNamespaces: paths => ipcRenderer.invoke('cs:namespaces', paths),
   csModel: (cwd, files) => ipcRenderer.invoke('cs:model', cwd, files),
+  slashCommands: cwd => ipcRenderer.invoke('slash:list', cwd),
   saveTurnChanges: (id, data) => ipcRenderer.invoke('turns:save', id, data),
   loadTurnChanges: ids => ipcRenderer.invoke('turns:load', ids),
   openFile: p => ipcRenderer.invoke('file:open', p),
