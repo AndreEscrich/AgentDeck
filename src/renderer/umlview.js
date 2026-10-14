@@ -495,9 +495,11 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
   // arrows inside a card and made them a quarter shorter.)
   const homeFolder = new Map(folderOf);
   {
-    const STAY = 0.75;
+    const STAY = 0.3;
     const pulls = n => n && !isComposer(n) && !isFacade(n);
     const linksOf = new Map();
+    const usesOf2 = new Map();   // id -> the ids it uses (in its container)
+    const usedBy2 = new Map();   // id -> the ids that use it
     for (const e of model.edges) {
       const a = nodeById.get(e.from);
       const b = nodeById.get(e.to);
@@ -506,19 +508,85 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
         if (!linksOf.has(x)) linksOf.set(x, new Map());
         linksOf.get(x).set(y, (linksOf.get(x).get(y) || 0) + 1);
       }
+      if (!usesOf2.has(a.id)) usesOf2.set(a.id, []);
+      if (!usedBy2.has(b.id)) usedBy2.set(b.id, []);
+      usesOf2.get(a.id).push(b.id);
+      usedBy2.get(b.id).push(a.id);
     }
-    for (let round = 0; round < 10; round++) {
-      let moved = false;
-      for (const [id, links] of linksOf) {
-        const votes = new Map();
-        for (const [other, w] of links) votes.set(folderOf.get(other), (votes.get(folderOf.get(other)) || 0) + w);
-        const mine = folderOf.get(id);
-        let best = mine;
-        let bestW = (votes.get(mine) || 0) + STAY;
-        for (const [card, w] of votes) if (w > bestW) { best = card; bestW = w; }
-        if (best !== mine) { folderOf.set(id, best); moved = true; }
+    // The cards must keep flowing downwards: a type does not move into a
+    // card if that would make two cards use each other (some arrows would
+    // then have to point up). cardUses: card -> Map(card -> arrows).
+    const cardUses = new Map();
+    const link = (from, to, d) => {
+      if (from === to) return;
+      if (!cardUses.has(from)) cardUses.set(from, new Map());
+      const m = cardUses.get(from);
+      const n = (m.get(to) || 0) + d;
+      if (n > 0) m.set(to, n); else m.delete(to);
+    };
+    const place = (id, card, d) => {
+      for (const x of usesOf2.get(id) || []) link(card, folderOf.get(x), d);
+      for (const x of usedBy2.get(id) || []) link(folderOf.get(x), card, d);
+    };
+    for (const [from, list] of usesOf2) for (const to of list) link(folderOf.get(from), folderOf.get(to), 1);
+    const reaches = (from, to) => {
+      if (from === to) return true;
+      const seen = new Set([from]);
+      const queue = [from];
+      while (queue.length) {
+        for (const next of cardUses.get(queue.shift())?.keys() || []) {
+          if (next === to) return true;
+          if (!seen.has(next)) { seen.add(next); queue.push(next); }
+        }
       }
-      if (!moved) break;
+      return false;
+    };
+    // Would id in card close a loop between cards (its own arrows taken out)?
+    const loops = (id, card) => {
+      for (const x of usesOf2.get(id) || []) { const c = folderOf.get(x); if (c !== card && reaches(c, card)) return true; }
+      for (const x of usedBy2.get(id) || []) { const c = folderOf.get(x); if (c !== card && reaches(card, c)) return true; }
+      return false;
+    };
+    // Moving a type to a card is worth its links into that card, less what
+    // a card that big would be expected to get by chance (modularity, as in
+    // the Louvain method's local moving): types join what they really work
+    // with, and no card swallows everything. RESOLUTION above 1 favours
+    // smaller cards.
+    const RESOLUTION = 1;
+    const byContainer = new Map();
+    for (const id of linksOf.keys()) {
+      const c = containerOf.get(id);
+      if (!byContainer.has(c)) byContainer.set(c, []);
+      byContainer.get(c).push(id);
+    }
+    for (const ids of byContainer.values()) {
+      const degree = new Map(ids.map(id => [id, [...linksOf.get(id).values()].reduce((s, w) => s + w, 0)]));
+      const total = [...degree.values()].reduce((s, d) => s + d, 0);
+      if (!total) continue;
+      const sizeOf = new Map();   // card -> sum of its types' degrees
+      for (const id of ids) sizeOf.set(folderOf.get(id), (sizeOf.get(folderOf.get(id)) || 0) + degree.get(id));
+      for (let round = 0; round < 12; round++) {
+        let moved = false;
+        for (const id of ids) {
+          const k = degree.get(id);
+          const mine = folderOf.get(id);
+          sizeOf.set(mine, sizeOf.get(mine) - k);
+          const into = new Map([[mine, 0]]);
+          for (const [other, w] of linksOf.get(id)) into.set(folderOf.get(other), (into.get(folderOf.get(other)) || 0) + w);
+          const gain = card => into.get(card) - RESOLUTION * (sizeOf.get(card) || 0) * k / total;
+          let best = mine;
+          let bestGain = gain(mine) + STAY;
+          const candidates = [...into.keys()].filter(card => card !== mine && gain(card) > bestGain + 1e-9).sort((x, y) => gain(y) - gain(x));
+          if (candidates.length) {
+            place(id, mine, -1);
+            best = candidates.find(card => !loops(id, card)) || mine;
+            place(id, best, 1);
+          }
+          sizeOf.set(best, (sizeOf.get(best) || 0) + k);
+          if (best !== mine) { folderOf.set(id, best); moved = true; }
+        }
+        if (!moved) break;
+      }
     }
   }
   // One part per container (parts were a namespace's composers).
@@ -834,8 +902,21 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
         const others = list.length - (ranked[0]?.[1] || 0);
         const label = others ? `${main} +${others}` : main;
         const title = others ? `Types that work together, from ${ranked.map(([f, n]) => `${f} (${n})`).join(', ')}` : `folder ${main}`;
-        return { key, folder, label, title, ids: list.map(b => b.id), w: innerW + CARD_PAD * 2, h: y + CARD_PAD, collapsed: list.length === 1 && list[0].node.proxy === key };
+        return { key, folder, main, others, label, title, ids: list.map(b => b.id), w: innerW + CARD_PAD * 2, h: y + CARD_PAD, collapsed: list.length === 1 && list[0].node.proxy === key };
       });
+      // Card names from the folder the container's cards share (Board/Queue,
+      // not Assets/Code/MergeDiggingSideBoard/Board/Queue); the tooltip has it all.
+      const shared = part.cards.length > 1 ? part.cards.map(c => String(c.main).split('/')).reduce((p, parts) => {
+        let i = 0;
+        while (i < p.length && i < parts.length - 1 && p[i] === parts[i]) i++;
+        return p.slice(0, i);
+      }) : [];
+      if (shared.length) {
+        for (const card of part.cards) {
+          const rest = String(card.main).split('/').slice(shared.length).join('/') || shared[shared.length - 1];
+          card.label = card.others ? `${rest} +${card.others}` : rest;
+        }
+      }
       // The cards, by dependency between their types; the entry row above them.
       const left = part.composer ? COMPOSER_W + COMPOSER_GAP : 0;
       const top = several ? COMP_LABEL : 0;
