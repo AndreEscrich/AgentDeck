@@ -1,0 +1,152 @@
+/* The Light theme (Settings → Theme): the default look, on white. The same
+   warm family of colours, turned around: warm off-white surfaces, dark
+   brown text, and a deeper amber accent so it reads on white. The tank
+   liquids keep their state colours. theme.js turns this sheet on and off.
+
+   The default stylesheet sets most colours through the variables below;
+   the rules after them cover the places that use a fixed dark colour. */
+
+:root {
+  --bg: #faf8f5;
+  --bg-sidebar: #f2eee8;
+  --bg-panel: #ffffff;
+  --bg-hover: #f1ece5;
+  --bg-active: #e8e1d7;
+  --border: #e2dad0;
+  --text: #2a2118;
+  --text-output: #3a3026;
+  --text-output-strong: #1c150f;
+  --text-dim: #6b5e50;
+  --text-faint: #9a8d7e;
+  --accent: #c27a12;
+  --accent-text: #ffffff;
+  --user-bubble: #f2ece3;
+  --code-bg: #f6f2ed;
+  --ok: #2e9a5e;
+  --busy: #c48715;
+  --err: #d0463f;
+  --info: #3b6fd0;
+}
+
+/* Overlays and small bits */
+#drawer-backdrop { background: rgba(60, 45, 30, 0.18); }
+.followup kbd { background: rgba(0, 0, 0, 0.06); }
+.settings-modal, .quit-modal, .conn-overlay { background: rgba(60, 45, 30, 0.22); }
+
+/* The message box */
+.composer-box { background: #ffffff; border-color: #e2dad0; box-shadow: 0 8px 28px -12px rgba(60, 40, 20, 0.25); }
+#input { background: #fbf9f6; border-color: #e6dfd5; }
+.composer-box.drag-over::after { background: rgba(255, 252, 247, 0.9); }
+.composer-flash { background: #ffffff; border-color: #e2dad0; }
+
+/* Code and diffs: dark text on light, with a light syntax palette */
+.diff-line .code, .sbs-cell .code { color: #2b2620; }
+.diff-line.add, .sbs-cell.add { background: rgba(46, 154, 94, 0.12); }
+.diff-line.del, .sbs-cell.del { background: rgba(208, 70, 63, 0.11); }
+.hljs, .hljs-subst { color: #2b2620; }
+.hljs-keyword, .hljs-selector-tag, .hljs-type, .hljs-doctag, .hljs-template-tag { color: #b5321f; }
+.hljs-title, .hljs-title.class_, .hljs-title.function_, .hljs-section { color: #6c3bb0; }
+.hljs-string, .hljs-regexp, .hljs-meta .hljs-string { color: #1b5fa8; }
+.hljs-number, .hljs-literal, .hljs-variable, .hljs-attr, .hljs-attribute, .hljs-built_in, .hljs-symbol { color: #0b6e75; }
+.hljs-comment, .hljs-quote, .hljs-meta { color: #8a7f72; }
+.hljs-params { color: #4b4239; }
+.uml-legend { background: rgba(255, 255, 255, 0.85); }
+
+/* Usage: the tab, the card and the health bar */
+.usage-tab, .hub-settings-btn, .usage-rail.open[data-panel="settings"] .usage-tab { background: linear-gradient(180deg, #ffffff, #f3eee7); border-color: #e2dad0; }
+.usage-tab:hover, .usage-rail.open .usage-tab, .hub-settings-btn:hover, .usage-rail.open[data-panel="settings"] .hub-settings-btn { background: linear-gradient(180deg, #ffffff, #ece5db); }
+.usage-tab-bar, .usage-bar { background: #ece6de; box-shadow: inset 0 1px 2px rgba(60, 40, 20, 0.15); }
+.hub-usage { background: linear-gradient(180deg, #ffffff, #f7f3ee); border-color: #e2dad0; box-shadow: 0 18px 40px -14px rgba(60, 40, 20, 0.3); }
+.hub-health { background: #ffffff; border-color: #e6dfd5; }
+.hub-health:hover { border-color: #d6ccbf; }
+.health-track { background: #efe9e1; border-color: #e0d8cd; }
+
+/* Group panels: a light well instead of a dark one */
+.hub-section { background: #f3efe9; border-color: #e6dfd5; box-shadow: inset 0 2px 6px rgba(60, 40, 20, 0.07); }
+.hub-section.loose { background: transparent; border-color: #d9d0c4; }
+.hub-section.loose:hover { border-color: #c6baab; }
+.hub-section.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), inset 0 2px 6px rgba(60, 40, 20, 0.07); }
+.hub-section-slot { border-color: #d3c8ba; background: rgba(194, 122, 18, 0.04); }
+
+/* Tiles and tanks: white cards, with a light glass the liquid sits in */
+.hub-tile { background: #ffffff; border-color: #e6dfd5; box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8), 0 6px 16px -8px rgba(60, 40, 20, 0.28); }
+.hub-tile:hover { border-color: #cbbfb0; }
+.tank, .zoom-ghost { background: #eef0f2; border-color: #dcd5cb; }
+.hub-tile .tank { box-shadow: inset 0 0 14px rgba(60, 50, 40, 0.12); }
+.liquid::before, .liquid::after { background: #eef0f2; }
+.morph-ghost { border-color: #dcd5cb; }
+.tank-shine { background: linear-gradient(rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0)); }
+.tile-stop:hover span { background: #ffffff; }
+.hub-tile.state-idle.unread { box-shadow: 0 0 0 1px rgba(46, 154, 94, 0.35), 0 0 18px -2px rgba(46, 154, 94, 0.45) !important; }
+
+/* Pictures: a light checkerboard behind transparent images */
+.msg-text .chat-media, .media-item .chat-media, .lightbox img, .ba-stage {
+  background: repeating-conic-gradient(#ebe6df 0% 25%, #f6f3ef 0% 50%) 0 0 / 16px 16px; }
+.attach-chip { background: repeating-conic-gradient(#ebe6df 0% 25%, #f6f3ef 0% 50%) 0 0 / 12px 12px; }
+
+/* Cards and dialogs */
+.settings-card, .quit-card, .conn-dialog, .palette { background: #ffffff; border-color: #e2dad0; box-shadow: 0 24px 60px -16px rgba(60, 40, 20, 0.35); }
+.quit-list, .notes-text, .login-code { background: #f7f3ee; }
+.palette-input { border-bottom-color: #e8e1d7; }
+.conn-search { background: #faf8f5; border-color: #e2dad0; }
+.conn-group { background: #f4efe8; }
+.conn-footer, .conn-form { border-top-color: #e8e1d7; }
+.prompt-pin-bar { background: rgba(255, 255, 255, 0.94); box-shadow: 0 8px 22px -8px rgba(60, 40, 20, 0.28); }
+.prompt-pin-bar:hover { background: #ffffff; }
+
+/* Jira cards */
+.jira-status { background: #e8eaf0; color: #3f4556; }
+.jira-status[data-category="indeterminate"] { background: #dbe7fb; color: #1d4f9e; }
+.jira-status[data-category="done"] { background: #d9f1e3; color: #1d6b40; }
+.msg-user .jira-card { background: rgba(255, 255, 255, 0.6); }
+
+/* Activity */
+.hub-activity, .act-chart, .act-tile { background: #ffffff; border-color: #e6dfd5; }
+.act-metrics { background: #f1ece5; }
+.act-metrics button.on { background: #ffffff; box-shadow: 0 1px 2px rgba(60, 40, 20, 0.15); }
+.act-table-btn { border-color: #e2dad0; }
+.act-tip { background: #ffffff; border-color: #e2dad0; box-shadow: 0 8px 20px -6px rgba(60, 40, 20, 0.3); }
+.act-table th, .usage-activity .act-table th { background: #ffffff; border-bottom-color: #ebe5dd; }
+.act-table td { border-bottom-color: #f1ece5; }
+.usage-activity { border-left-color: #ebe5dd; }
+
+/* The Changes card */
+.changes { background: rgba(255, 255, 255, 0.7); }
+details.change-file > summary { background: #f7f3ee; }
+details.change-file > summary:hover { background: #f1ebe3; }
+
+/* Labels on pictures stay dark, for contrast over any image */
+.attach-badge, .attach-remove, .ba-label { background: rgba(30, 24, 18, 0.7); color: #ffffff; }
+.review-stamp { background: rgba(255, 255, 255, 0.75); }
+
+/* The agent's answers: a white card (the default sinks them into a dark
+   well, which turns grey on white), and the text field a light inset. */
+.turn-answer > .msg-text { background: #ffffff; border: 1px solid #ebe4da;
+  box-shadow: 0 1px 2px rgba(60, 40, 20, 0.06), 0 8px 24px -14px rgba(60, 40, 20, 0.25); }
+#input { background: #fbf9f6; border-color: #e2dad0; box-shadow: inset 0 1px 3px rgba(60, 40, 20, 0.1); }
+.hub-section.dragging-group { box-shadow: inset 0 2px 6px rgba(60, 40, 20, 0.07), 0 30px 50px -20px rgba(60, 40, 20, 0.4); }
+.msg-user { box-shadow: none; }
+
+/* Three clear levels, like the default look: the page a medium warm grey,
+   the group panels a darker well set into it, and the agent tiles white
+   cards raised on top. The chat sits on the same grey, so the white answer
+   cards stand out. */
+:root {
+  --bg: #ece6de;
+  --bg-sidebar: #e4ddd3;
+  --bg-hover: #e6dfd5;
+  --bg-active: #dcd3c7;
+  --border: #d8cfc3;
+  --user-bubble: #ffffff;
+}
+.hub-section { background: #ddd5ca; border: 1px solid #cdc2b4;
+  box-shadow: inset 0 2px 8px rgba(60, 40, 20, 0.12), 0 1px 0 rgba(255, 255, 255, 0.7); }
+.hub-section.loose { background: rgba(221, 213, 202, 0.45); border-color: #c4b8a8; }
+.hub-section.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), inset 0 2px 8px rgba(60, 40, 20, 0.12); }
+.hub-tile { background: #ffffff; border-color: #d9d0c4;
+  box-shadow: 0 1px 2px rgba(60, 40, 20, 0.12), 0 8px 18px -8px rgba(60, 40, 20, 0.35); }
+.hub-tile:hover { border-color: #b9ab99; }
+.tank, .zoom-ghost { background: #e9ecef; border-color: #d3cbbf; }
+.liquid::before, .liquid::after { background: #e9ecef; }
+.hub-health, .composer-box, .prompt-pin-bar { border-color: #d8cfc3; }
+.msg-user { border: 1px solid #e0d8cc; }
