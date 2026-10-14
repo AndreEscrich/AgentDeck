@@ -150,3 +150,4 @@ details.change-file > summary:hover { background: #f1ebe3; }
 .liquid::before, .liquid::after { background: #e9ecef; }
 .hub-health, .composer-box, .prompt-pin-bar { border-color: #d8cfc3; }
 .msg-user { border: 1px solid #e0d8cc; }
+.msg-user .gdoc-card, .msg-user .jira-card { background: rgba(255, 255, 255, 0.6); }

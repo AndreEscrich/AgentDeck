@@ -189,15 +189,77 @@ function jiraCard(href, key) {
   return a;
 }
 
-// Every link opens in your browser; Jira ticket links become ticket cards.
+// ---------- Google Sheets, Docs, Slides and Forms links ----------
+
+// What a docs.google.com link points to: { kind, label, color, where }, or
+// null. where: the tab (gid) or cell range the link opens at, when it says.
+const GDOC_KINDS = {
+  spreadsheets: { kind: 'sheets', label: 'Google Sheet', color: '#1e8e3e' },
+  document: { kind: 'docs', label: 'Google Doc', color: '#4285f4' },
+  presentation: { kind: 'slides', label: 'Google Slides', color: '#f4b400' },
+  forms: { kind: 'forms', label: 'Google Form', color: '#7248b9' },
+};
+function gdocOf(href) {
+  let url;
+  try { url = new URL(href); } catch { return null; }
+  if (url.hostname !== 'docs.google.com') return null;
+  const m = /^\/(spreadsheets|document|presentation|forms)\/d\//.exec(url.pathname);
+  if (!m) return null;
+  const hash = new URLSearchParams(url.hash.slice(1));
+  const range = url.searchParams.get('range') || hash.get('range');
+  const gid = url.searchParams.get('gid') || hash.get('gid');
+  const where = range ? `Range ${range}` : gid && gid !== '0' ? `Tab ${gid}` : '';
+  return { ...GDOC_KINDS[m[1]], where };
+}
+
+// A Google file link as a card, like a Jira ticket: the file's icon, its
+// name (the link's own text, or the title Google shows for a file shared
+// with anyone who has the link, see src/gdocs.js), and the tab or range.
+// A page with a folded corner in the file's colour, and its kind's sign in
+// white: a grid (Sheets), lines of text (Docs), a slide (Slides), a
+// checklist (Forms).
+const GDOC_SIGNS = {
+  sheets: '<path fill="#fff" d="M4 9h8v6H4z"/><path fill="COLOR" d="M4.8 9.8h2.8v1.8H4.8zm3.6 0h2.8v1.8H8.4zm-3.6 2.6h2.8v1.8H4.8zm3.6 0h2.8v1.8H8.4z"/>',
+  docs: '<path fill="#fff" d="M4 9h8v1.3H4zm0 2.5h8v1.3H4zm0 2.5h5.5v1.3H4z"/>',
+  slides: '<rect x="3.5" y="9.5" width="9" height="6" rx="0.8" fill="none" stroke="#fff" stroke-width="1.4"/>',
+  forms: '<circle cx="5" cy="10.2" r="0.9" fill="#fff"/><path fill="#fff" d="M6.8 9.6h5.2v1.2H6.8z"/><circle cx="5" cy="13.4" r="0.9" fill="#fff"/><path fill="#fff" d="M6.8 12.8h5.2v1.2H6.8z"/>',
+};
+const GDOC_ICON = (color, kind) => `<svg viewBox="0 0 16 20" width="12" height="15"><path fill="${color}" d="M10 0H2a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6z"/><path fill="#fff" fill-opacity="0.45" d="M10 0v4a2 2 0 0 0 2 2h4z"/>${(GDOC_SIGNS[kind] || '').replaceAll('COLOR', color)}</svg>`;
+function gdocCard(href, doc, text) {
+  const a = document.createElement('a');
+  a.className = `gdoc-card gdoc-${doc.kind}`;
+  a.href = href;
+  a.style.setProperty('--gdoc', doc.color);
+  const logo = el('span', 'gdoc-logo');
+  logo.innerHTML = GDOC_ICON(doc.color, doc.kind);
+  // A link written with its own words ([Sprint plan](…)) has its name.
+  const named = text && text.trim() !== href && !/^https?:\/\//i.test(text.trim()) ? text.trim() : '';
+  const name = el('span', 'gdoc-name', named || doc.label);
+  const kind = el('span', 'gdoc-kind', doc.where || doc.label.replace(/^Google /, ''));
+  a.append(logo, name, kind);
+  a.title = `${named || doc.label}${doc.where ? ' · ' + doc.where : ''}\nOpen in your browser`;
+  if (!named) {
+    window.deck?.gdocTitle?.(href).then(t => {
+      if (!t) return;
+      name.textContent = t;
+      a.title = `${t}${doc.where ? ' · ' + doc.where : ''}\n${doc.label} · open in your browser`;
+    }).catch(() => {});
+  }
+  return a;
+}
+
+// Every link opens in your browser; Jira ticket links become ticket cards,
+// and Google Sheets, Docs, Slides and Forms links become file cards.
 function decorateLinks(root) {
   for (const a of [...root.querySelectorAll('a[href]')]) {
-    if (a.closest('.jira-card')) continue;
+    if (a.closest('.jira-card, .gdoc-card')) continue;
     const href = a.getAttribute('href');
     if (!/^https?:/i.test(href)) continue;
     a.target = '_blank';
     const key = jiraKeyOf(href);
-    if (key) a.replaceWith(jiraCard(href, key));
+    if (key) { a.replaceWith(jiraCard(href, key)); continue; }
+    const doc = gdocOf(href);
+    if (doc) a.replaceWith(gdocCard(href, doc, a.textContent));
   }
   return root;
 }
