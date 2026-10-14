@@ -605,3 +605,10 @@ html:has(.uml-full, .branch-view:not(.hidden) .uml-svg, .view:not(.hidden) .chan
 .slash-row { border-radius: 0; }
 .slash-row.on { background: var(--bg-active); }
 .slash-row.on .slash-name { text-shadow: var(--glow-strong); }
+
+/* Repository containers: a double phosphor frame around its category panels */
+.hub-repo { background: transparent !important; border: 1px solid var(--border) !important; border-radius: 0 !important;
+  box-shadow: inset 0 0 0 3px var(--bg), inset 0 0 0 4px color-mix(in srgb, var(--border) 60%, transparent) !important; padding: 12px 14px 14px; }
+.hub-repo-name { font-family: var(--title); font-weight: 400; letter-spacing: 0.24em; text-transform: uppercase; text-shadow: var(--glow-strong); }
+.hub-repo-name::before { border-radius: 0; background: var(--lamp); box-shadow: 0 0 6px var(--lamp); }
+.hub-repo-count { font-family: var(--label); letter-spacing: 0.06em; text-transform: uppercase; }

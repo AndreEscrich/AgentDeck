@@ -2111,3 +2111,20 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .slash-hint { flex-shrink: 0; font-size: 11.5px; color: var(--text-faint); }
 .slash-desc { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-dim); }
 .slash-source { flex-shrink: 0; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-faint); }
+
+/* The Hub's two levels: a container per repository (a raised tray with the
+   repository's name), holding its category panels (the sunken wells). The
+   repository's name is in its title row, so the panels leave it out. */
+.hub-repo { display: flex; flex-direction: column; border-radius: 22px; padding: 10px 12px 12px;
+  background: #1c1611; border: 1px solid #2c241c;
+  box-shadow: inset 0 1px 0 rgba(255, 236, 210, 0.05), 0 10px 24px -14px rgba(0, 0, 0, 0.9); }
+.hub-repo-head { display: flex; align-items: center; gap: 10px; margin: 0 4px 10px; min-height: 24px; }
+.hub-repo-name { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--text); }
+.hub-repo-name::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 8px; border-radius: 2px;
+  background: var(--accent); opacity: 0.8; vertical-align: 1px; }
+.hub-repo-count { font-size: 12px; color: var(--text-faint); }
+.hub-repo-body { display: flex; flex-direction: column; gap: 12px; }
+.hub-repo .hub-section-repo { font-size: 12px; font-weight: 500; color: var(--text-dim); }
+.hub-board.tight .hub-repo { padding: 7px 9px 9px; border-radius: 17px; }
+.hub-board.tight .hub-repo-head { margin-bottom: 6px; }
+.hub-board.tight .hub-repo-body { gap: 8px; }

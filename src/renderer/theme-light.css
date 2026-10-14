@@ -153,3 +153,6 @@ details.change-file > summary:hover { background: #f1ebe3; }
 .msg-user .gdoc-card, .msg-user .jira-card { background: rgba(255, 255, 255, 0.6); }
 .slash-menu { background: #ffffff; border-color: #d8cfc3; box-shadow: 0 16px 40px -12px rgba(60, 40, 20, 0.35); }
 .slash-row.on { background: rgba(194, 122, 18, 0.12); }
+/* Repository containers: a light tray on the grey page, with the category
+   wells set into it */
+.hub-repo { background: #f6f2ec; border-color: #d3c9bc; box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8), 0 10px 24px -16px rgba(60, 40, 20, 0.4); }

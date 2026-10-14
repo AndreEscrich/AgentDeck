@@ -53,6 +53,7 @@ class Hub {
     this.onRemove = onRemove;
     this.onContext = onContext;
     this.sections = new Map();       // group id ('' for no group) + repository -> { el, name, repo, count, grid }
+    this.repos = new Map();          // repository -> { el, name, count, unity, body }: holds that repository's category panels
     this.tiles = new Map();          // agent id -> { el, parts, status }
     // Tiles you Ctrl+clicked: your next message in the Hub goes to each of
     // them (see broadcast in app.js).
@@ -530,7 +531,7 @@ class Hub {
       counts.set(key, (counts.get(key) || 0) + 1);
       if (!firstAt.has(key)) firstAt.set(key, order);
       const sec = this.section(key, groupKey, agent.repo || '');
-      if (!seenSections.has(sec)) { seenSections.add(sec); sec.cwd = agent.cwd; }
+      if (!seenSections.has(sec)) { seenSections.add(sec); sec.cwd = agent.cwd; sec.root = agent.repoRoot || agent.repo || ''; }
       const grid = sec.grid;
       if (tile.parentNode !== grid) grid.appendChild(tile);
       if (entry.arrival) {
@@ -656,9 +657,38 @@ class Hub {
       sec.notes.classList.toggle('hidden', !group);
       sec.notes.classList.toggle('has-notes', noteCount > 0);
       sec.notes.textContent = group?.shareLearnings === false ? 'Notes off' : noteCount ? `Notes · ${noteCount}` : 'Notes';
-      sec.repoEl.textContent = sec.repo;
+      // In its repository's container, a panel names only the folder inside
+      // the repository it works in (MyGame/Unity: "Unity"), if any.
+      const root = sec.root ?? sec.repo;
+      sec.repoEl.textContent = sec.repo.startsWith(root + '/') ? sec.repo.slice(root.length + 1) : sec.repo === root ? '' : sec.repo;
       sec.el.style.order = String(i);
     });
+
+    // Two levels: a container per repository, holding its category panels.
+    // A repository stands where its first panel stands; inside it, the
+    // panels keep their order.
+    const repoCounts = new Map();
+    const repoFirst = new Map();
+    const repoCwds = new Map();
+    sorted.forEach((sec, i) => {
+      const n = counts.get(sec.key) || 0;
+      const name = sec.root ?? sec.repo;
+      const repo = this.repoBox(name);
+      if (sec.el.parentNode !== repo.body && !sec.el.classList.contains('dragging-group')) repo.body.appendChild(sec.el);
+      if (!n) return;
+      repoCounts.set(name, (repoCounts.get(name) || 0) + n);
+      if (!repoFirst.has(name)) repoFirst.set(name, i);
+      if (!repoCwds.has(name)) repoCwds.set(name, []);
+      if (sec.cwd) repoCwds.get(name).push(sec.cwd);
+    });
+    for (const [name, repo] of this.repos) {
+      const n = repoCounts.get(name) || 0;
+      repo.el.classList.toggle('hidden', !n);
+      repo.el.style.order = String(repoFirst.get(name) ?? 0);
+      repo.count.textContent = `${n} agent${n === 1 ? '' : 's'}`;
+      repo.cwds = repoCwds.get(name) || [];
+    }
+    if (this.unityStates) this.setUnity(this.unityStates);
 
     this.empty.classList.toggle('hidden', agents.length > 0);
     requestAnimationFrame(() => this.fitToHeight());
@@ -688,8 +718,7 @@ class Hub {
       unity.onclick = e => { e.stopPropagation(); if (sec.cwd) this.onOpenUnity?.(sec.cwd); };
       head.append(name, repoEl, count, loneHint, notes, unity, remove);
       const grid = el('div', 'hub-grid');
-      elSec.append(head, grid);
-      this.grid.appendChild(elSec);
+      elSec.append(head, grid);   // render puts it into its repository's container
       sec = { key, groupKey, repo, el: elSec, name, repoEl, count, notes, unity, grid, cwd: null };
       elSec.classList.toggle('selected', key === this.selectedKey);
       elSec.title = 'Click to start the next agent in this group';
@@ -718,10 +747,36 @@ class Hub {
     return sec;
   }
 
+  // The container of a repository: its name, how many agents it has, the
+  // Unity button, and its category panels below.
+  repoBox(name) {
+    let repo = this.repos.get(name);
+    if (repo) return repo;
+    const box = el('div', 'hub-repo');
+    const head = el('div', 'hub-repo-head');
+    const title = el('span', 'hub-repo-name', name || 'No folder');
+    const count = el('span', 'hub-repo-count');
+    const unity = el('button', 'section-unity hidden');
+    unity.type = 'button';
+    unity.onclick = e => { e.stopPropagation(); if (repo.cwd) this.onOpenUnity?.(repo.cwd); };
+    head.append(title, count, unity);
+    const body = el('div', 'hub-repo-body');
+    box.append(head, body);
+    this.grid.appendChild(box);
+    repo = { name, el: box, title, count, unity, body, cwds: [], cwd: null };
+    this.repos.set(name, repo);
+    return repo;
+  }
+
   // The Unity buttons of the groups: states maps a folder to what
   // window.deck.unityStatus says about it ({ unity, running, version }).
   setUnity(states) {
-    for (const sec of this.sections.values()) {
+    // Each panel's own button stays hidden: the repository's title row has it.
+    for (const sec of this.sections.values()) sec.unity.classList.add('hidden');
+    this.unityStates = states;
+    // The repository's button opens the first of its folders that is a Unity project.
+    for (const sec of this.repos.values()) {
+      sec.cwd = (sec.cwds || []).find(c => states.get(c)?.unity) || null;
       const st = sec.cwd ? states.get(sec.cwd) : null;
       sec.unity.classList.toggle('hidden', !st?.unity);
       if (!st?.unity) continue;
@@ -907,11 +962,13 @@ class Hub {
     // Per group: its height without the tiles' tanks, the tank's shape, and
     // the widest a tile can be in its row (the row's width shared by its tiles).
     const parts = [];
-    let fixed = gap * (sections.length - 1);
+    // Everything on the board but the tanks: the board's height minus the
+    // tank of each panel (a panel's tiles stand in one row).
+    let fixed = this.grid.offsetHeight;
     for (const sec of sections) {
       const tiles = [...sec.querySelectorAll('.hub-tile')].filter(t => !t.classList.contains('removing') && !t.classList.contains('dragging'));
       const tank = tiles[0]?.querySelector('.tank');
-      if (!tank?.offsetWidth) { fixed += sec.offsetHeight; continue; }
+      if (!tank?.offsetWidth) continue;
       const tile = tiles[0];
       const row = tile.parentNode;
       const rowGap = parseFloat(getComputedStyle(row).columnGap) || 0;
@@ -920,7 +977,7 @@ class Hub {
         padX: tile.offsetWidth - tank.offsetWidth,
         share: (row.clientWidth - rowGap * (tiles.length - 1)) / tiles.length,
       });
-      fixed += sec.offsetHeight - tank.offsetHeight;
+      fixed -= tank.offsetHeight;
     }
     if (!parts.length) return;
     const height = w => fixed + parts.reduce((sum, p) => sum + (Math.min(w, p.share) - p.padX) * p.shape, 0);
@@ -975,13 +1032,15 @@ class Hub {
     const panel = sec.el;
     const r = panel.getBoundingClientRect();
     const byOrder = (a, b) => Number(a.style.order) - Number(b.style.order);
-    const list = [...this.grid.children]
+    // A panel moves among the panels of its own repository.
+    const box = panel.parentNode;
+    const list = [...box.children]
       .filter(c => c.classList.contains('hub-section') && !c.classList.contains('hidden') && !c.classList.contains('removing-group'))
       .sort(byOrder);
     const slot = el('div', 'hub-section-slot');
     slot.style.height = `${r.height}px`;
     slot.style.order = panel.style.order;
-    this.grid.appendChild(slot);
+    box.appendChild(slot);
     this.drag = {
       kind: 'group', panel, slot,
       siblings: list.filter(p => p !== panel),
@@ -1061,11 +1120,10 @@ class Hub {
     document.body.classList.remove('grabbing');
     d.slot.remove();
     this.drag = null;
-    const keys = [...this.grid.children]
-      .filter(c => c.classList.contains('hub-section') && !c.classList.contains('hidden'))
-      .sort((a, b) => Number(a.style.order) - Number(b.style.order))
-      .map(p => [...this.sections.values()].find(s => s.el === p)?.key)
-      .filter(k => k != null);
+    const keys = [...this.sections.values()]
+      .filter(s => !s.el.classList.contains('hidden'))
+      .sort((a, b) => Number(a.el.style.order) - Number(b.el.style.order))
+      .map(s => s.key);
     this.onReorderGroups?.(keys);
     if (this.latest) this.render(...this.latest);
   }

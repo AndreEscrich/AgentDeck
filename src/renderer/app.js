@@ -1326,7 +1326,7 @@ function hubItems() {
   const liveSessions = new Set(live.map(a => a.sessionId).filter(Boolean));
   const parked = [...state.parked.values()].filter(p => !liveSessions.has(p.sessionId)).map(parkedItem);
   const items = [...live, ...parked];
-  for (const item of items) item.repo = repoName(item.cwd);
+  for (const item of items) { item.repo = repoName(item.cwd); item.repoRoot = repoRootName(item.cwd); }
   // Every tile has a lasting place: a new agent gets the next place at the
   // end, so it shows right of the others in its group (and a new group shows
   // below the others). Dragging tiles swaps places (see saveTileOrder).
@@ -1382,19 +1382,25 @@ function saveGroupOrder(keys) {
 // The Hub has one panel per group and repository. The main process finds the
 // repository (the nearest folder with .git or .svn); until it answers, the
 // agent's folder name is used.
-const repoNames = new Map();   // folder -> repository name
+const repoNames = new Map();   // folder -> repository name (plus the folder inside it)
+const repoRoots = new Map();   // folder -> the repository's own name, for its container in the Hub
 function repoName(cwd) {
   if (!cwd) return '';
   if (!repoNames.has(cwd)) {
     repoNames.set(cwd, shortPath(cwd));
     window.deck.repoOf(cwd).then(r => {
-      if (r && r.name !== repoNames.get(cwd)) {
+      const root = r?.root ? r.root.split(SEP).filter(Boolean).pop() : null;
+      if (r && (r.name !== repoNames.get(cwd) || root !== repoRoots.get(cwd))) {
         repoNames.set(cwd, r.name);
+        if (root) repoRoots.set(cwd, root);
         refreshHub();
       }
     }).catch(() => {});
   }
   return repoNames.get(cwd);
+}
+function repoRootName(cwd) {
+  return repoRoots.get(cwd) || repoName(cwd);
 }
 
 // ---------- the list of every agent you have had ----------
