@@ -593,3 +593,9 @@ html:has(.uml-full, .branch-view:not(.hidden) .uml-svg, .view:not(.hidden) .chan
 /* The diagram's names without the glow: blurring every letter of a few
    hundred names each time the diagram is drawn made it slow to draw. */
 .uml-svg, .uml-svg * { text-shadow: none !important; }
+
+/* The tube's bezel above the picture (its 14px top frame) is part of the
+   window's title bar: drag it, or double-click it to zoom the window, as
+   the top edge of the window does in the default look. theme.js adds the
+   strip; dialogs and the picture below stay clickable. */
+#mu-bezel-top { position: fixed; left: 0; right: 0; top: 0; height: 14px; z-index: 1; -webkit-app-region: drag; }

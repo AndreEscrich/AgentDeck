@@ -30,7 +30,7 @@ function applyTheme(name, { powerOn = true, curved } = {}) {
 
 function startTube({ powerOn }) {
   document.getElementById('mu-streak')?.remove();
-  for (const id of ['mu-roll', 'mu-noise']) {
+  for (const id of ['mu-roll', 'mu-noise', 'mu-bezel-top']) {
     if (document.getElementById(id)) continue;
     const layer = document.createElement('div');
     layer.id = id;
@@ -71,7 +71,7 @@ function startTube({ powerOn }) {
 
 function stopTube() {
   clearInterval(crt.glitch);
-  for (const id of ['mu-roll', 'mu-noise', 'mu-streak']) document.getElementById(id)?.remove();
+  for (const id of ['mu-roll', 'mu-noise', 'mu-streak', 'mu-bezel-top']) document.getElementById(id)?.remove();
   document.getElementById('main')?.classList.remove('mu-glitch', 'mu-on');
   document.documentElement.classList.remove('mu-curved', 'mu-wide');
   clearGlass();
@@ -272,7 +272,7 @@ function replayClass(node, name, ms) {
 // the area could stay where it was mid-animation (a thin line at power-on).
 // Switching the drag area off for one frame makes the browser tell it again.
 function refreshDragRegions() {
-  const bars = document.querySelectorAll('#topbar, .drawer-head');
+  const bars = document.querySelectorAll('#mu-bezel-top, #topbar, .drawer-head');
   for (const bar of bars) bar.style.setProperty('-webkit-app-region', 'no-drag');
   requestAnimationFrame(() => requestAnimationFrame(() => {
     for (const bar of bars) bar.style.removeProperty('-webkit-app-region');

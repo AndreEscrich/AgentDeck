@@ -745,6 +745,10 @@ $('topbar').addEventListener('dblclick', e => {
   if (e.target.closest('button, input, a, .status-pill, [contenteditable]')) return;
   window.deck.titleDoubleClick?.();
 });
+// The retro theme's bezel above the picture counts as the title bar too.
+document.addEventListener('dblclick', e => {
+  if (e.target.id === 'mu-bezel-top') window.deck.titleDoubleClick?.();
+});
 
 const hub = new Hub($('hub-view'), {
   // Clicking a Group panel: the next agent goes into that Group (its folder
