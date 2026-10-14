@@ -569,6 +569,8 @@ class Hub {
       }
       entry.level = this.levelFor(agent);
       tile.dataset.level = String(entry.level);
+      // What kind of task (the Nostromo theme's tank draws a screen per kind).
+      tile.dataset.task = window.taskType ? taskType.kindOf(agent) : 'map';
       parts.liquid.style.height = `${entry.level}%`;
       // Waiting for the usage limit to reset (limitOf in app.js): a clock, and when it continues.
       const limited = agent.limited || null;

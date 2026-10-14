@@ -400,6 +400,16 @@ const sounds = (() => {
       data(ac, 0.8, 7, { step: 0.06, volume: 0.035, direction: 1 });
     }),
     bootHum: safely(bootHum),
+    // A tile has worked out what its task is and changes channel to that
+    // screen: a relay, a short burst of data, and the screen's own tone
+    // (kind: see tasktype.js).
+    taskLock: safely((ac, kind) => {
+      const pitch = { code: 311, art: 392, track: 233, scan: 466, text: 349, dock: 262, map: 294 }[kind] || 311;
+      breath(ac, 0, 700, 0.035, 0.18);
+      const end = data(ac, 0.02, 3, { step: 0.04, volume: 0.03 });
+      tone(ac, end, pitch, 0.35, 0.04, { type: 'square', cutoff: 1300 });
+      if (kind === 'track') tone(ac, end + 0.3, pitch * 2, 0.5, 0.03, { type: 'sine', cutoff: 2600 });
+    }),
     // One stage done: a relay, a short burst of data and a confirming pulse.
     bootStep: safely(ac => {
       breath(ac, 0, 600, 0.04, 0.22);

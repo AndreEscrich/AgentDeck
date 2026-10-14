@@ -2889,6 +2889,8 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
   state.agents.set(id, agent);
   if (ticket) agent.ticket = ticket;
   if (!resume) summarizeTitle(agent, prompt);
+  // What kind of task it is (the Nostromo theme's tank shows it, see tasktype.js).
+  if (!resume) taskType.start(agent, prompt);
   else if (prompt !== RESUME_PROMPT) notePrompt(agent, prompt);
   // In a Unity project: is the Unity bridge set up? (A popup says how, if not.)
   checkUnityBridge(cwd);
@@ -2985,6 +2987,7 @@ function notePrompt(agent, text) {
   if (!text) return;
   agent.latestPrompt = text;
   agent.latestTitle = text.split('\n')[0].slice(0, 80);
+  taskType.start(agent, text);
   refreshHub();
   saveHub();
   refreshHeaderIfCurrent(agent.id);
@@ -3605,7 +3608,8 @@ window.deck.onEvent((id, msg) => {
   if (msg.type === 'system' && msg.subtype === 'init' && Array.isArray(msg.slash_commands)) rememberSlashCommands(a, msg.slash_commands);
   if (isAuthFailure(msg)) { noteAuthWait(a); noteAuthProblem(); }
   if (msg.type === 'system' && msg.subtype === 'compact_boundary') afterCompact(a);
-  if (msg.type === 'assistant') noteClashes(a, msg.message);
+  if (msg.type === 'assistant') { noteClashes(a, msg.message); taskType.noteMessage(a, msg.message); }
+  if (msg.type === 'user' && Array.isArray(msg.message?.content) && msg.message.content.some(b => b?.type === 'tool_result' && b.is_error)) taskType.noteError(a);
   if (msg.type === 'result') clearClashes(a);
   // New textures and videos from this task (see showMedia). Your home folder
   // is too big to search.
