@@ -20,7 +20,9 @@
 //   done, standby:     a still, finished picture (bright until you open it)
 //
 // A tile that changes screen flips over to the new one like a CRT changing
-// channel. One loop draws every tile's canvas (.tank-scan, made in hub.js),
+// channel; finding its task plays the screen's signature, and each step the
+// agent takes a quiet sound in the screen's voice (sounds.js, at most one
+// a second across the Hub). One loop draws every tile's canvas (.tank-scan, made in hub.js),
 // about 24 times a second, only while the theme is on and the Hub is on
 // screen. Still tiles are drawn again only when something about them changes.
 
@@ -321,6 +323,21 @@
     }
   }
 
+  // One step sound at a time across the Hub, at most about one a second,
+  // so a Hub full of busy agents does not chatter: the tiles that took a
+  // step meanwhile wait, and one of them (any) is heard.
+  let lastStep = -9;
+  let pending = [];
+  function stepSound(kind) {
+    pending.push(kind);
+  }
+  function playStep(t) {
+    if (!pending.length || t - lastStep < 1.1) return;
+    lastStep = t;
+    window.uiSound?.('taskStep', pending[Math.floor(Math.random() * pending.length)]);
+    pending = [];
+  }
+
   function draw(canvas, tile, t) {
     let st = state.get(canvas);
     if (!st) {
@@ -356,6 +373,13 @@
       st.kindAt = t;
     }
     const target = Math.max(0, Math.min(100, Number(tile.dataset.level) || 0)) / 100;
+    // A step (the level went up while it works): a sound in the screen's
+    // voice. The tracker also pings now and then while it hunts.
+    if (s === 'working' && kind !== 'boot') {
+      if (st.lastTarget != null && target > st.lastTarget) stepSound(kind);
+      else if (kind === 'track' && t - (st.pingAt || 0) > 3.2) { st.pingAt = t; stepSound(kind); }
+    }
+    st.lastTarget = target;
     st.level += (target - st.level) * 0.08;
     if (Math.abs(target - st.level) < 0.002) st.level = target;
     const flipping = t - st.flipAt < FLIP;
@@ -430,6 +454,7 @@
       if (!canvas.getClientRects().length) continue;   // not on screen (another view, a hidden group)
       draw(canvas, canvas.closest('.hub-tile'), t);
     }
+    playStep(t);
   }
   requestAnimationFrame(frame);
 })();
