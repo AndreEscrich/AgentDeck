@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('deck', {
   setupClaude: () => ipcRenderer.invoke('setup:claude'),
   setupUnity: cwd => ipcRenderer.invoke('setup:unity', cwd),
   writeMcpJson: root => ipcRenderer.invoke('setup:writeMcpJson', root),
+  unityStatus: cwd => ipcRenderer.invoke('unity:status', cwd),
+  openUnity: cwd => ipcRenderer.invoke('unity:open', cwd),
   gitSnapshot: cwd => ipcRenderer.invoke('git:snapshot', cwd),
   gitChanges: (cwd, snap) => ipcRenderer.invoke('git:changes', cwd, snap),
   undoFile: (cwd, file, snap) => ipcRenderer.invoke('files:undo', cwd, file, snap),

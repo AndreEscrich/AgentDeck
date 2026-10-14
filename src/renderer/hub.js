@@ -40,6 +40,7 @@ class Hub {
   constructor(container, { onOpen, onRemove, onInterrupt, onRemoveGroup, onContext, onLanded, onReplay, onTab, onReorder, onReorderGroups, onDragSound, onPickGroup }) {
     // Clicking a Group panel (not a tile) points the message box at that Group.
     this.onPickGroup = onPickGroup;
+    this.onOpenUnity = null;   // set by the app: open or focus Unity for a folder
     this.selectedKey = null;
     this.onOpen = onOpen;
     this.onInterrupt = onInterrupt;
@@ -680,11 +681,16 @@ class Hub {
       notes.onclick = e => { e.stopPropagation(); this.onOpenNotes?.(sec.groupKey); };
       const remove = el('button', 'section-remove', '× Remove group');
       remove.title = 'Remove this group and all its agents from the Hub';
-      head.append(name, repoEl, count, loneHint, notes, remove);
+      // A group in a Unity project: open its Unity Editor, or bring it to
+      // the front when it is open (the app sets its state, see setUnity).
+      const unity = el('button', 'section-unity hidden');
+      unity.type = 'button';
+      unity.onclick = e => { e.stopPropagation(); if (sec.cwd) this.onOpenUnity?.(sec.cwd); };
+      head.append(name, repoEl, count, loneHint, notes, unity, remove);
       const grid = el('div', 'hub-grid');
       elSec.append(head, grid);
       this.grid.appendChild(elSec);
-      sec = { key, groupKey, repo, el: elSec, name, repoEl, count, notes, grid, cwd: null };
+      sec = { key, groupKey, repo, el: elSec, name, repoEl, count, notes, unity, grid, cwd: null };
       elSec.classList.toggle('selected', key === this.selectedKey);
       elSec.title = 'Click to start the next agent in this group';
       // The title row is the handle for dragging the whole panel.
@@ -710,6 +716,19 @@ class Hub {
       this.sections.set(key, sec);
     }
     return sec;
+  }
+
+  // The Unity buttons of the groups: states maps a folder to what
+  // window.deck.unityStatus says about it ({ unity, running, version }).
+  setUnity(states) {
+    for (const sec of this.sections.values()) {
+      const st = sec.cwd ? states.get(sec.cwd) : null;
+      sec.unity.classList.toggle('hidden', !st?.unity);
+      if (!st?.unity) continue;
+      sec.unity.innerHTML = `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M8 1.5 14 5v6l-6 3.5L2 11V5z"/><path d="M8 8v6.5M8 8l6-3M8 8 2 5"/></svg><span>${st.running ? 'Focus Unity' : 'Open Unity'}</span>`;
+      sec.unity.classList.toggle('running', !!st.running);
+      sec.unity.title = st.running ? 'Bring this project\'s Unity Editor to the front' : `Open this project in Unity${st.version ? ' ' + st.version : ''}`;
+    }
   }
 
   // Outlines the panel the message box points at (key: Category id + "\n" + repository).

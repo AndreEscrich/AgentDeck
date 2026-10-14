@@ -305,6 +305,9 @@ app.whenReady().then(() => {
   ipcMain.handle('setup:claude', () => require('./setupcheck').claudeStatus(getConfig()));
   ipcMain.handle('setup:unity', (_e, cwd) => require('./setupcheck').unityBridge(getConfig(), cwd));
   ipcMain.handle('setup:writeMcpJson', (_e, root) => require('./setupcheck').writeMcpJson(root));
+  // The Unity Editor for a folder: open or not, and focus or start it.
+  ipcMain.handle('unity:status', (_e, cwd) => require('./unityapp').status(cwd));
+  ipcMain.handle('unity:open', (_e, cwd) => require('./unityapp').open(cwd));
   ipcMain.handle('window:titleDoubleClick', () => {
     if (!win) return;
     const action = process.platform === 'darwin' ? systemPreferences.getUserDefault('AppleActionOnDoubleClick', 'string') : 'Maximize';

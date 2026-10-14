@@ -1607,6 +1607,7 @@ function setHeader(title, subtitle, agent, category = null) {
   $('btn-interrupt').classList.toggle('hidden', !agent || !['working', 'stuck'].includes(agent.status));
   $('composer-stop').classList.toggle('hidden', !agent || !['working', 'stuck'].includes(agent.status));
   renderUndoButton(agent);
+  renderUnityButton();
   $('btn-close').classList.toggle('hidden', !agent || agent.status === 'exited');
 }
 
@@ -2209,6 +2210,52 @@ function isAuthFailure(msg) {
   if (msg?.type === 'assistant') return msg.error === 'authentication_failed';
   return false;
 }
+
+// ---------- the Unity Editor ----------
+
+// Groups in a Unity project, and an agent's message box when its folder is
+// one, have a button for the project's Unity Editor: "Focus Unity" brings it
+// to the front when it is open, "Open Unity" starts it (src/unityapp.js).
+// Whether it is open is checked every few seconds.
+const unityStates = new Map();   // folder -> { unity, running, version, root }
+const UNITY_ICON = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M8 1.5 14 5v6l-6 3.5L2 11V5z"/><path d="M8 8v6.5M8 8l6-3M8 8 2 5"/></svg>';
+async function refreshUnity() {
+  const folders = new Set([...hub.sections.values()].map(s => s.cwd).filter(Boolean));
+  const cur = state.current;
+  const curCwd = cur?.kind === 'agent' ? state.agents.get(cur.id)?.cwd : cur?.kind === 'history' ? (state.history.get(cur.id)?.cwd || state.history.get(cur.id)?.session.cwd) : null;
+  if (curCwd) folders.add(curCwd);
+  await Promise.all([...folders].filter(f => f !== state.config?.home).map(async f => {
+    unityStates.set(f, await window.deck.unityStatus(f).catch(() => ({ unity: false })));
+  }));
+  hub.setUnity(unityStates);
+  renderUnityButton();
+}
+function renderUnityButton() {
+  // The top bar is drawn once before this part of the file has run.
+  try { unityStates; } catch { return; }
+  const cur = state.current;
+  const cwd = cur?.kind === 'agent' ? state.agents.get(cur.id)?.cwd : cur?.kind === 'history' ? (state.history.get(cur.id)?.cwd || state.history.get(cur.id)?.session.cwd) : null;
+  const st = cwd ? unityStates.get(cwd) : null;
+  const b = $('composer-unity');
+  b.classList.toggle('hidden', !st?.unity);
+  if (!st?.unity) return;
+  b.innerHTML = `${UNITY_ICON}<span>${st.running ? 'Focus Unity' : 'Open Unity'}</span>`;
+  b.classList.toggle('running', !!st.running);
+  b.title = st.running ? 'Bring this project\'s Unity Editor to the front' : `Open this project in Unity${st.version ? ' ' + st.version : ''}`;
+  b.dataset.cwd = cwd;
+}
+async function openUnity(cwd) {
+  if (!cwd) return;
+  sfx('open');
+  const r = await window.deck.openUnity(cwd).catch(err => ({ ok: false, message: String(err?.message || err) }));
+  if (!r.ok) { sfx('refuse'); toast(r.message || 'Could not open Unity.'); return; }
+  if (r.action === 'opened') toast(`Opening Unity ${r.version || ''}… it takes a moment to load the project.`);
+  setTimeout(refreshUnity, r.action === 'opened' ? 8000 : 1500);
+}
+hub.onOpenUnity = openUnity;
+$('composer-unity').onclick = () => openUnity($('composer-unity').dataset.cwd);
+setTimeout(refreshUnity, 3000);
+setInterval(() => { if (!document.hidden) refreshUnity(); }, 5000);
 
 // ---------- what the agents need ----------
 
