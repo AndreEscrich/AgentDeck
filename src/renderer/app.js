@@ -3662,14 +3662,22 @@ window.deck.onStatus((id, status) => {
 window.deck.onPermission((id, req) => {
   const a = state.agents.get(id);
   if (!a) return;
+  const isQuestion = req.tool_name === 'AskUserQuestion' && Array.isArray(req.input?.questions);
   const answer = decision => {
     if (a.pendingQuestion?.requestId === req.requestId) a.pendingQuestion = null;
     window.deck.respondPermission(id, req.requestId, decision);
+    // Answering its questions sends the agent back to work, like a new
+    // message: the chat closes into its tile (unless "Show the Hub after
+    // sending" is off). The card shows the answers for a moment first.
+    if (isQuestion && decision.behavior === 'allow' && state.current?.kind === 'agent' && state.current.id === id
+        && state.config.hubAfterSend !== false) {
+      setTimeout(() => { if (state.current?.kind === 'agent' && state.current.id === id) afterSend(a, true); }, 450);
+    }
   };
   // A question from Claude (AskUserQuestion) arrives as a permission request;
   // it gets a card with its options instead of Allow/Deny.
   if (!(state.current?.kind === 'agent' && state.current.id === id)) a.unread = true;
-  if (req.tool_name === 'AskUserQuestion' && Array.isArray(req.input?.questions)) {
+  if (isQuestion) {
     a.attention = 'question';
     a.pendingQuestion = { requestId: req.requestId, card: a.transcript.question(req, answer) };
     window.deck.notify(a.id, a.title, `Asks: ${req.input.questions[0]?.question || 'a question'}`);
