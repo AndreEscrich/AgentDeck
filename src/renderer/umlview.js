@@ -785,7 +785,7 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
       const top = several ? COMP_LABEL : 0;
       const cardOf = new Map();
       for (const card of part.cards) { card.id = card.key; for (const cid of card.ids) cardOf.set(cid, card.key); }
-      const packed = placeRows(levelRows(part.cards, usesBetween(id => cardOf.get(id)), maxWidth - PAD * 2 - left - (several ? CARD_PAD * 2 : 0), CARD_GAP, { merge: true }), CARD_GAP, CARD_GAP + 12);
+      const packed = placeRows(levelRows(part.cards, usesBetween(id => cardOf.get(id)), maxWidth - PAD * 2 - left - (several ? CARD_PAD * 2 : 0), CARD_GAP), CARD_GAP, CARD_GAP + 12);
       let height = packed.h;
       let width = packed.w;
       // The facade is the part's bottom edge: a bar as wide as the part (with
@@ -831,7 +831,7 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
     // the others use, comes on top.
     for (const part of partList) part.id = part.key;
     const partOf = id => (g.ids.includes(id) ? boxes.get(id).comp || 'main' : null);
-    const packed = placeRows(levelRows(partList, usesBetween(partOf), maxWidth - PAD * 2, COMP_GAP, { merge: true }), COMP_GAP, COMP_GAP + 12);
+    const packed = placeRows(levelRows(partList, usesBetween(partOf), maxWidth - PAD * 2, COMP_GAP), COMP_GAP, COMP_GAP + 12);
     g.parts = partList;
     g.several = several;
     g.inner = { width: Math.max(packed.w, Math.min(textWidth(g.label, UML_SMALL) + (g.sub ? textWidth(g.sub, UML_SMALL) + 16 : 0) + 40, 480)), height: packed.h };
@@ -878,9 +878,9 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
   }
   // A domain is what its namespaces are named after (Client.X, TactileModules.X
   // and Client.X.Editor are all X). Each domain is a stack of its own: one
-  // row per level, a container that uses another below it or, when a small
-  // level fits in what is left of the row above, to its right (the
-  // dependencies then run down and to the right). The domains are placed the
+  // row per level, a container that uses another always below it, however
+  // tall that makes the diagram, so the dependencies run straight down
+  // (folder cards and composer parts too). The domains are placed the
   // same way, so another feature's containers stand beside a domain instead
   // of in the middle of it.
   const domainOf = g => {
@@ -907,7 +907,7 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
   for (const d of domains.values()) {
     const ids = new Set(d.groups.map(g => g.id));
     const inside = [...groupEdges.values()].filter(e => ids.has(e.from) && ids.has(e.to));
-    d.rows = levelRows(d.groups, inside, rowLimit, GROUP_GAP, { merge: 2 });
+    d.rows = levelRows(d.groups, inside, rowLimit, GROUP_GAP);
     const size = placeRows(d.rows, GROUP_GAP, GROUP_GAP);
     d.w = size.w;
     d.h = size.h;
