@@ -28,10 +28,14 @@ const { svnToGit } = require('./branchdiff');
 
 const DEFAULT_SERVER = 'svn+ssh://svn@tactile.build';
 
+const SVN_MISSING = process.platform === 'win32'
+  ? 'The svn command was not found. Install TortoiseSVN with "command line client tools" turned on, then restart Agent Hub.'
+  : 'The svn command was not found. Install it (brew install subversion), then restart Agent Hub.';
+
 function svn(args, { timeout = 120000 } = {}) {
   return new Promise(resolve => {
     execFile('svn', [...args, '--non-interactive'], { maxBuffer: 120 * 1024 * 1024, timeout, windowsHide: true }, (err, stdout, stderr) => {
-      if (err) resolve({ ok: false, error: String(stderr || err.message).trim().split('\n').slice(0, 6).join('\n') });
+      if (err) resolve({ ok: false, error: err.code === 'ENOENT' ? SVN_MISSING : String(stderr || err.message).trim().split('\n').slice(0, 6).join('\n') });
       else resolve({ ok: true, out: stdout });
     });
   });
@@ -263,7 +267,7 @@ function svnDiffStream(args, want, tooBig) {
     });
     child.stderr.on('data', chunk => { stderr += chunk; });
     const timer = setTimeout(() => child.kill(), 600000);
-    child.on('error', err => { clearTimeout(timer); resolve({ ok: false, error: err.message }); });
+    child.on('error', err => { clearTimeout(timer); resolve({ ok: false, error: err.code === 'ENOENT' ? SVN_MISSING : err.message }); });
     child.on('close', code => {
       clearTimeout(timer);
       if (rest) line(rest);

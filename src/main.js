@@ -171,6 +171,21 @@ function watchSessions() {
   } catch { /* watching is a convenience; the refresh button still works */ }
 }
 
+// Opened from the Dock, Finder or the Start menu, the app gets the system's
+// short search path, without the folders Homebrew and other installers use,
+// so commands like svn, gh and acli would not be found ("spawn svn ENOENT").
+// Those folders go at the end of the search path when they exist.
+(function extendPath() {
+  const home = require('os').homedir();
+  const extra = process.platform === 'win32'
+    ? ['C:\\Program Files\\TortoiseSVN\\bin', 'C:\\Program Files\\SlikSvn\\bin', 'C:\\Program Files\\Subversion\\bin',
+       'C:\\Program Files\\Git\\cmd', 'C:\\Program Files\\GitHub CLI', path.join(home, '.local', 'bin')]
+    : ['/opt/homebrew/bin', '/opt/homebrew/sbin', '/usr/local/bin', '/opt/local/bin', path.join(home, '.local', 'bin'), path.join(home, 'bin')];
+  const parts = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
+  for (const dir of extra) if (!parts.includes(dir) && fs.existsSync(dir)) parts.push(dir);
+  process.env.PATH = parts.join(path.delimiter);
+})();
+
 // The app is called Agent Hub, but its settings (config.json, groups.json,
 // snapshots, the Hub's saved agents) stay in the folder from when it was
 // called AgentDeck. Electron would otherwise pick a folder named after the app.
