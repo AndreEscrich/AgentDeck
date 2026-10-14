@@ -2597,7 +2597,7 @@ const BUSY = ['working', 'starting', 'waiting', 'stuck', 'background'];
 // Enter confirms, Esc (or a click outside the card) keeps them working.
 // Resolves true when you confirm. While it waits after confirming
 // (busyText), the buttons are disabled.
-function confirmCard({ title, text, agents = [], confirmLabel, busyText = null }) {
+function confirmCard({ title, text, agents = [], lines = [], confirmLabel, stayLabel = 'Keep working', busyText = null }) {
   return new Promise(resolve => {
     if (document.querySelector('.quit-modal')) return resolve(false);
     const overlay = el('div', 'quit-modal');
@@ -2613,8 +2613,13 @@ function confirmCard({ title, text, agents = [], confirmLabel, busyText = null }
       if (agents.length > 6) list.appendChild(el('div', 'quit-more', `and ${agents.length - 6} more`));
       card.appendChild(list);
     }
+    if (lines.length) {
+      const list = el('div', 'quit-list');
+      for (const line of lines) list.appendChild(el('div', 'quit-agent', `• ${line}`));
+      card.appendChild(list);
+    }
     const buttons = el('div', 'quit-buttons');
-    const stay = el('button', 'quit-stay', 'Keep working');
+    const stay = el('button', 'quit-stay', stayLabel);
     const go = el('button', 'quit-go', confirmLabel);
     buttons.append(stay, go);
     card.appendChild(buttons);
@@ -2688,8 +2693,28 @@ function showUpdate(info) {
   if (!info) return;
   btn.disabled = false;
   btn.textContent = info.version ? `v${info.version} available` : 'Update available';
+  offerUpdate(info);
   const what = info.commits.length ? `\n\nWhat's new:\n${info.commits.map(c => `• ${c}`).join('\n')}` : '';
   btn.title = `Click to update and restart (${info.behind} new commit${info.behind === 1 ? '' : 's'}).${what}`;
+}
+
+// A new version also gets a card once, which offers to update right away.
+// "Later" leaves the button; more new commits on GitHub bring the card back.
+const offeredUpdates = new Set();
+async function offerUpdate(info) {
+  const key = `${info.version}:${info.behind}`;
+  if (offeredUpdates.has(key) || document.querySelector('.quit-modal, .settings-modal')) return;
+  offeredUpdates.add(key);
+  sfx('open');
+  const ok = await confirmCard({
+    title: info.version ? `Agent Hub v${info.version} is available` : 'A new version of Agent Hub is available',
+    text: `Updating restarts the app. Agents that are working stop, then continue where they left off after the restart.${info.commits.length ? " What's new:" : ''}`,
+    lines: info.commits.slice(0, 8),
+    confirmLabel: 'Update and restart',
+    stayLabel: 'Later',
+  });
+  // The card needs a moment to close before the update may show its own.
+  if (ok) setTimeout(() => $('app-update').onclick(), 250);
 }
 
 // The changelog: click the version next to the title. It comes from git

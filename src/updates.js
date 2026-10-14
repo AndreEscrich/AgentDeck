@@ -25,10 +25,12 @@ async function packagesAt(dir, rev) {
 }
 
 // Resolves with { version, behind, commits } when GitHub's master is ahead
-// of this copy, or null when there is nothing to update (or no way to tell).
+// of this copy, null when there is nothing to update, or undefined when it
+// can't tell (GitHub can't be reached, for example right after waking up
+// without a network): then the app keeps what it knew before.
 async function check(dir) {
   if (await run(dir, ['rev-parse', '--abbrev-ref', 'HEAD']) !== 'master') return null;
-  if (await run(dir, ['fetch', '-q', 'origin', 'master'], 60000) == null) return null;
+  if (await run(dir, ['fetch', '-q', 'origin', 'master'], 60000) == null) return undefined;
   // Only a plain step forward: a copy with commits of its own is left alone.
   if (await run(dir, ['merge-base', '--is-ancestor', 'HEAD', 'origin/master']) == null) return null;
   const behind = Number(await run(dir, ['rev-list', '--count', 'HEAD..origin/master']));

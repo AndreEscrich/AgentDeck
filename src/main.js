@@ -149,7 +149,7 @@ function createWindow() {
   // Closing the window with busy agents asks first, then quits the app.
   win.on('close', event => allowStop(event));
   // The taskbar button stops flashing when you come back.
-  win.on('focus', () => win.flashFrame(false));
+  win.on('focus', () => { win.flashFrame(false); lookForUpdate(); });
   // Links in agent replies open in the normal browser, not inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -413,15 +413,28 @@ function allowStop(event) {
 }
 
 // The stable copy looks for a new version on GitHub a little after it
-// opens, then every 30 minutes, and tells the window when there is one.
+// opens, every time its window gets the focus (at most once a minute), and
+// every 30 minutes, and tells the window when there is one.
 let latestUpdate = null;
+let lookForUpdate = () => {};
 function watchForUpdates() {
+  let running = false;
+  let lastLook = 0;
   const look = async () => {
-    const found = await updates.check(app.getAppPath());
-    if (JSON.stringify(found) === JSON.stringify(latestUpdate)) return;
-    latestUpdate = found;
-    send('update:available', found);
+    if (running) return;
+    running = true;
+    lastLook = Date.now();
+    try {
+      const found = await updates.check(app.getAppPath());
+      // undefined: GitHub couldn't be reached, so what was found before stays.
+      if (found === undefined || JSON.stringify(found) === JSON.stringify(latestUpdate)) return;
+      latestUpdate = found;
+      send('update:available', found);
+    } finally {
+      running = false;
+    }
   };
+  lookForUpdate = () => { if (Date.now() - lastLook > 60 * 1000) look(); };
   setTimeout(look, 15 * 1000);
   setInterval(look, 30 * 60 * 1000);
 }
