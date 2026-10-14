@@ -167,8 +167,11 @@ const sounds = (() => {
     warm: () => { try { audio(); } catch { /* no audio */ } },
     // The new agent's message lands in its tile in the Hub: it starts to brew.
     brew,
-    // An agent asks you a question or needs your approval: two bell taps.
+    // An agent needs your approval: two bell taps.
     attention: () => play([[880, 0, 0.4], [880, 0.17, 0.6]], 0.2),
+    // An agent asks you a question: three notes that rise, ending high, like
+    // a voice asking.
+    question: () => play([[523.25, 0, 0.16], [659.25, 0.11, 0.16], [880, 0.22, 0.5]], 0.17),
     // An agent is removed from the Hub.
     removed: swoosh,
     // Dragging a tile: a soft pop when you pick it up, a tiny tick each
@@ -424,6 +427,15 @@ const sounds = (() => {
         tone(ac, at, 311, 0.4, 0.06, { type: 'square', cutoff: 1100 });
         tone(ac, at, 440, 0.4, 0.045, { type: 'square', cutoff: 1100 });
       }
+    }),
+    // A question: a short blip of data, then three notes that climb and the
+    // last one bends up at its end, the way a spoken question does. Still
+    // the ship's low, echoing voice, but asking, not warning.
+    question: safely(ac => {
+      const end = data(ac, 0, 3, { step: 0.05, volume: 0.04 });
+      tone(ac, end + 0.04, 392, 0.16, 0.055);
+      tone(ac, end + 0.18, 494, 0.16, 0.055);
+      tone(ac, end + 0.32, 587, 0.55, 0.06, { slideTo: 698 });
     }),
     removed: safely(ac => { const end = data(ac, 0, 6, { direction: -1, step: 0.05 }); drone(ac, end - 0.1, 41, 0.6, 0.12, 'square'); }),
     pick: safely(ac => tone(ac, 0, 233, 0.12, 0.06)),

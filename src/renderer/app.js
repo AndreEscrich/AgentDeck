@@ -780,7 +780,7 @@ const hub = new Hub($('hub-view'), {
   onReplay: agent => {
     if (!playSounds()) return;
     if (agent.status === 'idle') sounds.done();
-    else if (agent.status === 'waiting') sounds.attention();
+    else if (agent.status === 'waiting') (agent.attention === 'question' ? sounds.question : sounds.attention)();
     else if (agent.status === 'error') sounds.error();
   },
   onContext: id => sessionMenu(id.startsWith('p:') ? id.slice(2) : state.agents.get(id)?.sessionId, id),
@@ -3567,7 +3567,8 @@ window.deck.onPermission((id, req) => {
     a.transcript.permission(req, answer);
     window.deck.notify(a.id, a.title, req.title || `Needs approval to use ${req.display_name || req.tool_name}`);
   }
-  if (playSounds()) sounds.attention();
+  // A question sounds like one; an approval like a call for attention.
+  if (playSounds()) (a.attention === 'question' ? sounds.question : sounds.attention)();
   refreshHeaderIfCurrent(id);
   refreshHub();
 });
