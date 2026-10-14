@@ -196,17 +196,25 @@ function layout(nodes, edges, { maxLength = 1400, sizeOf = () => 200, gap = 44 }
   const layers = [];
   for (const id of ids) (layers[rank.get(id)] = layers[rank.get(id)] || []).push(id);
   const filled = layers.filter(Boolean);
-  // Fewer crossings: each type moves toward the middle of its neighbours.
+  // Fewer crossings: each type moves toward the middle of its neighbours,
+  // weighted by how many arrows join them (so what is most linked ends up
+  // closest).
   const neighbours = new Map(ids.map(id => [id, []]));
-  for (const e of edges) { neighbours.get(e.from)?.push(e.to); neighbours.get(e.to)?.push(e.from); }
+  for (const e of edges) {
+    const w = e.weight || 1;
+    neighbours.get(e.from)?.push([e.to, w]);
+    neighbours.get(e.to)?.push([e.from, w]);
+  }
   for (let sweep = 0; sweep < 8; sweep++) {
     const order = new Map();
     filled.forEach(layer => layer.forEach((id, i) => order.set(id, i / Math.max(1, layer.length - 1))));
     const list = sweep % 2 ? [...filled].reverse() : filled;
     for (const layer of list) {
       const key = id => {
-        const ns = neighbours.get(id).filter(n => order.has(n));
-        return ns.length ? ns.reduce((s, n) => s + order.get(n), 0) / ns.length : order.get(id);
+        let sum = 0;
+        let total = 0;
+        for (const [n, w] of neighbours.get(id)) if (order.has(n)) { sum += order.get(n) * w; total += w; }
+        return total ? sum / total : order.get(id);
       };
       layer.sort((a, b) => key(a) - key(b));
       layer.forEach((id, i) => order.set(id, i / Math.max(1, layer.length - 1)));
@@ -476,6 +484,43 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
     }
   }
   for (const n of model.nodes) if (!containerOf.has(n.id)) containerOf.set(n.id, `ns:${nsKey(n)}`);
+
+  // Cards: a card per folder to start with, then by dependency: a type
+  // whose links (both ways, inside its container) are mostly with another
+  // card's types moves to that card, so what depends on each other sits
+  // together. A folder that hangs together keeps its card (staying counts a
+  // little extra); composers and facades do not move or pull. A card is
+  // named after the folder most of its types are from, with how many are
+  // from others. (On a large branch this put about half again as many
+  // arrows inside a card and made them a quarter shorter.)
+  const homeFolder = new Map(folderOf);
+  {
+    const STAY = 0.75;
+    const pulls = n => n && !isComposer(n) && !isFacade(n);
+    const linksOf = new Map();
+    for (const e of model.edges) {
+      const a = nodeById.get(e.from);
+      const b = nodeById.get(e.to);
+      if (!pulls(a) || !pulls(b) || a === b || containerOf.get(a.id) !== containerOf.get(b.id)) continue;
+      for (const [x, y] of [[a.id, b.id], [b.id, a.id]]) {
+        if (!linksOf.has(x)) linksOf.set(x, new Map());
+        linksOf.get(x).set(y, (linksOf.get(x).get(y) || 0) + 1);
+      }
+    }
+    for (let round = 0; round < 10; round++) {
+      let moved = false;
+      for (const [id, links] of linksOf) {
+        const votes = new Map();
+        for (const [other, w] of links) votes.set(folderOf.get(other), (votes.get(folderOf.get(other)) || 0) + w);
+        const mine = folderOf.get(id);
+        let best = mine;
+        let bestW = (votes.get(mine) || 0) + STAY;
+        for (const [card, w] of votes) if (w > bestW) { best = card; bestW = w; }
+        if (best !== mine) { folderOf.set(id, best); moved = true; }
+      }
+      if (!moved) break;
+    }
+  }
   // One part per container (parts were a namespace's composers).
   const comp = new Map(model.nodes.map(n => [n.id, 'main']));
   // Collapsed namespaces and folders: their types become one box, and their
@@ -662,7 +707,9 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
       if (row.length && !(merge && levelsInRow < (merge === true ? Infinity : merge) && used + levelW <= width)) { rows.push(row); row = []; used = 0; levelsInRow = 0; }
       levelsInRow++;
       const fits = levelW - gap * level.length <= width - used;
-      const ordered = fits ? level : [...level].sort((a, b) => lean(a) - lean(b));
+      // (By the side it leans to only: within a side, the order the layout
+      // found, with what is most linked side by side, stays.)
+      const ordered = fits ? level : [...level].sort((a, b) => Math.sign(lean(a)) - Math.sign(lean(b)));
       // This level's rows; a small one that does not fit where it would go
       // fills a gap in one of them before starting a row of its own.
       const own = [];
@@ -778,7 +825,16 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
           }
           y += Math.max(UML_BOX_H, ...row.map(id => boxes.get(id).h)) + (r < rows.length - 1 ? GAP_Y : 0);
         });
-        return { key, folder, ids: list.map(b => b.id), w: innerW + CARD_PAD * 2, h: y + CARD_PAD, collapsed: list.length === 1 && list[0].node.proxy === key };
+        // Named after the folder most of its types are from (see the cards'
+        // grouping above), with how many are from other folders.
+        const homes = new Map();
+        for (const b of list) { const f = homeFolder.get(b.id) ?? folder; homes.set(f, (homes.get(f) || 0) + 1); }
+        const ranked = [...homes].sort((a, b) => b[1] - a[1]);
+        const main = ranked[0]?.[0] ?? folder;
+        const others = list.length - (ranked[0]?.[1] || 0);
+        const label = others ? `${main} +${others}` : main;
+        const title = others ? `Types that work together, from ${ranked.map(([f, n]) => `${f} (${n})`).join(', ')}` : `folder ${main}`;
+        return { key, folder, label, title, ids: list.map(b => b.id), w: innerW + CARD_PAD * 2, h: y + CARD_PAD, collapsed: list.length === 1 && list[0].node.proxy === key };
       });
       // The cards, by dependency between their types; the entry row above them.
       const left = part.composer ? COMPOSER_W + COMPOSER_GAP : 0;
@@ -1009,8 +1065,8 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
       for (const card of part.cards) {
         const c = svgEl('g', { class: `uml-card${card.collapsed ? ' collapsed' : ''}`, transform: `translate(${card.ax},${card.ay})` });
         c.appendChild(svgEl('rect', { width: card.w, height: card.h, rx: 10 }));
-        c.appendChild(svgEl('text', { class: 'uml-toggle', x: 10, y: 16, 'data-toggle': card.key }, `${card.collapsed ? '▸' : '▾'} ${fitLabel(card.folder, card.w - 30)}`));
-        c.appendChild(svgEl('title', {}, `folder ${card.folder}\n${card.collapsed ? 'Click its name to open it' : 'Click its name to collapse it'}`));
+        c.appendChild(svgEl('text', { class: 'uml-toggle', x: 10, y: 16, 'data-toggle': card.key }, `${card.collapsed ? '▸' : '▾'} ${fitLabel(card.label || card.folder, card.w - 30)}`));
+        c.appendChild(svgEl('title', {}, `${card.title || `folder ${card.folder}`}\n${card.collapsed ? 'Click its name to open it' : 'Click its name to collapse it'}`));
         groupLayer.appendChild(c);
       }
     }
