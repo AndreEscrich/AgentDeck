@@ -825,6 +825,8 @@ class Transcript {
     if (!turn) return;
     this.clearDraft();
     this.turn = null;
+    // Names the task's saved Changes card (see restoreChanges).
+    turn.endUuid = this.lastAssistant?.uuid || null;
 
     this.pinned(() => {
       // The changed files come first, then Claude's message about them.
@@ -1353,6 +1355,18 @@ class Transcript {
       this.lastTurn.changedFiles = files.length;
       this.onUpdate?.();
     }
+  }
+
+  // Puts back a task's Changes card as the snapshot comparison made it
+  // (saved in src/turnchanges.js), when a saved session is opened again.
+  restoreChanges(turn, files) {
+    if (!turn || !Array.isArray(files) || !files.length) return;
+    turn.gitShown = true;
+    turn.files = files;
+    this.pinned(() => {
+      turn.answer.querySelector(':scope > .changes')?.remove();
+      turn.answer.prepend(changesCard(this.withEarlier(turn, files), this.cwd));
+    });
   }
 
   // ---------- new images and videos ----------

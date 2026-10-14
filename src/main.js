@@ -268,6 +268,10 @@ app.whenReady().then(() => {
   ipcMain.handle('sessions:list', () => listSessions());
   ipcMain.handle('git:snapshot', (_e, cwd) => git.snapshot(cwd, path.join(app.getPath('userData'), 'snapshots')));
   ipcMain.handle('git:changes', (_e, cwd, snap) => git.changesSince(cwd, snap));
+  const turnDir = path.join(app.getPath('userData'), 'turn-changes');
+  require('./turnchanges').prune(turnDir);
+  ipcMain.handle('turns:save', (_e, id, data) => require('./turnchanges').save(turnDir, id, data));
+  ipcMain.handle('turns:load', (_e, ids) => require('./turnchanges').load(turnDir, ids));
   ipcMain.handle('files:undo', (_e, cwd, file, snap) => undo.undoFile(cwd, file, snap));
   ipcMain.handle('files:versions', (_e, cwd, file) => undo.versions(cwd, file));
   ipcMain.handle('files:restore', (_e, cwd, p, previous, from) => undo.restoreFile(cwd, p, previous, from));

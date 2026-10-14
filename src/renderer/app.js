@@ -2162,6 +2162,7 @@ async function loadHistory(session) {
     for (const m of data.messages) transcript.add(m);
     transcript.finishTurn();
     transcript.note('End of saved session. Send a message to continue it.');
+    await restoreTurnChanges(transcript);
     state.history.set(session.id, { session, view, transcript, cwd: data.cwd });
     view.scrollTop = view.scrollHeight;
   }
@@ -2175,6 +2176,27 @@ async function openHistory(session) {
   await loadHistory(session);
   show('history', session.id);
   setHistoryOpen(false);
+}
+
+// Each task's Changes card as the snapshot comparison made it, saved when
+// the task ends and put back when its session is opened again (after a
+// restart or an update), with the task's snapshot for Undo.
+function saveTurnChanges(turn) {
+  if (!turn?.endUuid || !turn.gitShown || !Array.isArray(turn.files)) return;
+  window.deck.saveTurnChanges(turn.endUuid, { files: turn.files, snap: turn.snap || null }).catch(() => {});
+}
+
+async function restoreTurnChanges(transcript) {
+  const turns = transcript.prompts.map(p => p.turn).filter(t => t?.endUuid);
+  if (!turns.length) return;
+  const saved = await window.deck.loadTurnChanges(turns.map(t => t.endUuid)).catch(() => ({}));
+  // Oldest first, so each card finds the earlier tasks' files (withEarlier).
+  for (const turn of turns) {
+    const s = saved[turn.endUuid];
+    if (!s) continue;
+    if (s.snap) turn.snap = s.snap;
+    transcript.restoreChanges(turn, s.files);
+  }
 }
 
 // Agents that were busy when the app quit continue on their saved session.
@@ -3547,6 +3569,7 @@ window.deck.onEvent((id, msg) => {
     if (turn) turn.snap = snap;
     window.deck.gitChanges(a.cwd, snap)
       .then(diff => a.transcript.showGitChanges(turn, diff, snap.kind === 'folder'))
+      .then(() => saveTurnChanges(turn))
       .then(() => refreshHeaderIfCurrent(a.id))
       .catch(() => {});
   }
