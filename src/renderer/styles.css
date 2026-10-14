@@ -2128,3 +2128,22 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .hub-board.tight .hub-repo { padding: 7px 9px 9px; border-radius: 17px; }
 .hub-board.tight .hub-repo-head { margin-bottom: 6px; }
 .hub-board.tight .hub-repo-body { gap: 8px; }
+
+/* GitHub links: cards with the repository, number, title and state, like Jira tickets. */
+.github-card { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; vertical-align: middle;
+  padding: 3px 9px 3px 7px; margin: 1px 2px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--bg-panel); color: var(--text) !important; text-decoration: none !important; font-size: 13px; line-height: 1.4; cursor: pointer; }
+.github-card:hover { border-color: var(--text-faint); background: var(--bg-hover); }
+.github-logo { display: flex; flex-shrink: 0; color: var(--text); }
+.github-repo { flex-shrink: 1; min-width: 0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+.github-key { flex-shrink: 0; font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--text); }
+.github-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+.github-title:empty, .github-detail:empty, .github-state:empty { display: none; }
+.github-detail { flex-shrink: 0; font-family: var(--mono); font-size: 11px; color: var(--text-faint); }
+.github-state { flex-shrink: 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 1px 6px; border-radius: 99px; --gh: #8b949e; color: var(--gh); background: color-mix(in srgb, var(--gh) 18%, transparent); }
+.github-state[data-state="open"], .github-state[data-state="success"] { --gh: #3fb950; }
+.github-state[data-state="merged"], .github-state[data-state="done"] { --gh: #a371f7; }
+.github-state[data-state="closed"], .github-state[data-state="failure"] { --gh: #f85149; }
+.github-state[data-state="running"] { --gh: #d29922; }
+.msg-user .github-card { background: rgba(0, 0, 0, 0.2); }

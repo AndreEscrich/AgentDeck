@@ -248,18 +248,92 @@ function gdocCard(href, doc, text) {
   return a;
 }
 
+// ---------- GitHub links ----------
+
+// What a github.com link points to: { kind, owner, repo, id, key, name,
+// fetch }, or null for pages that are not about a repository. kind: pull,
+// issue, commit, run, release, file (a file or folder at a commit or
+// branch), repo (the repository, or another page of it).
+const GITHUB_NOT_OWNERS = new Set(['settings', 'orgs', 'organizations', 'marketplace', 'notifications', 'login', 'logout', 'join', 'search', 'explore',
+  'topics', 'sponsors', 'features', 'about', 'pricing', 'apps', 'users', 'new', 'enterprise', 'collections', 'trending', 'codespaces', 'pulls',
+  'issues', 'dashboard', 'account', 'security', 'site', 'contact', 'readme', 'copilot', 'stars', 'watching']);
+function githubOf(href) {
+  let url;
+  try { url = new URL(href); } catch { return null; }
+  if (!/^(www\.)?github\.com$/i.test(url.hostname)) return null;
+  const parts = url.pathname.split('/').filter(Boolean).map(p => { try { return decodeURIComponent(p); } catch { return p; } });
+  const [owner, repo, section, a, b] = parts;
+  if (!owner || !repo || GITHUB_NOT_OWNERS.has(owner.toLowerCase()) || !/^[\w.-]+$/.test(owner) || !/^[\w.-]+$/.test(repo)) return null;
+  const base = { owner, repo: repo.replace(/\.git$/, '') };
+  if (section === 'pull' && /^\d+$/.test(a || '')) return { ...base, kind: 'pull', id: a, key: `#${a}`, fetch: true };
+  if (section === 'issues' && /^\d+$/.test(a || '')) return { ...base, kind: 'issue', id: a, key: `#${a}`, fetch: true };
+  if (section === 'commit' && /^[0-9a-f]{7,40}$/i.test(a || '')) return { ...base, kind: 'commit', id: a, key: a.slice(0, 7), fetch: true };
+  if (section === 'actions' && a === 'runs' && /^\d+$/.test(b || '')) return { ...base, kind: 'run', id: b, key: 'Run', fetch: true };
+  if (section === 'releases' && a === 'tag' && b) return { ...base, kind: 'release', id: b, key: b, fetch: true };
+  if ((section === 'blob' || section === 'tree') && a) {
+    const file = parts.slice(4).join('/');
+    const lines = /^#L(\d+)(?:-L(\d+))?$/.exec(url.hash);
+    const where = lines ? ` · L${lines[1]}${lines[2] ? '–' + lines[2] : ''}` : '';
+    const folder = file.includes('/') ? file.slice(0, file.lastIndexOf('/')) : '';
+    return { ...base, kind: 'file', id: a, key: file ? file.split('/').pop() + where : a, name: file ? `${folder ? folder + ' · ' : ''}${a}` : `Branch ${a}`, fetch: false };
+  }
+  const pages = { pulls: 'Pull requests', issues: 'Issues', actions: 'Actions', releases: 'Releases', compare: 'Compare', wiki: 'Wiki', branches: 'Branches', commits: 'Commits' };
+  if (section && !pages[section]) return { ...base, kind: 'repo', key: '', name: section, fetch: false };
+  return { ...base, kind: 'repo', key: '', name: section ? pages[section] : '', fetch: !section };
+}
+
+const GITHUB_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>';
+
+// A GitHub link as a card, like a Jira ticket: the GitHub mark, the
+// repository, the number (or commit, or file), and from GitHub (src/github.js,
+// with your gh login) the title, its state (open, merged, closed, draft,
+// passed, failed) and the lines it changes.
+function githubCard(href, gh, text) {
+  const a = document.createElement('a');
+  a.className = `github-card github-is-${gh.kind}`;
+  a.href = href;
+  const logo = el('span', 'github-logo');
+  logo.innerHTML = GITHUB_ICON;
+  const repo = el('span', 'github-repo', `${gh.owner}/${gh.repo}`);
+  a.append(logo, repo);
+  if (gh.key) a.append(el('span', 'github-key', gh.key));
+  const named = text && text.trim() !== href && !/^https?:\/\//i.test(text.trim()) ? text.trim() : '';
+  const title = el('span', 'github-title', named || gh.name || '');
+  const detail = el('span', 'github-detail');
+  const state = el('span', 'github-state');
+  a.append(title, detail, state);
+  const what = { pull: 'Pull request', issue: 'Issue', commit: 'Commit', run: 'Workflow run', release: 'Release', file: 'File', repo: 'Repository' }[gh.kind];
+  a.title = `${what} · ${gh.owner}/${gh.repo}${gh.key ? ' ' + gh.key : ''}${title.textContent ? '\n' + title.textContent : ''}\nOpen on GitHub`;
+  if (gh.fetch) {
+    window.deck?.githubLookup?.({ kind: gh.kind, owner: gh.owner, repo: gh.repo, id: gh.id }).then(info => {
+      if (!info) return;
+      if (info.title) title.textContent = info.title;
+      if (info.detail) detail.textContent = info.detail;
+      if (info.label) {
+        state.textContent = info.label;
+        state.dataset.state = info.state;
+      }
+      a.title = `${what} · ${gh.owner}/${gh.repo}${gh.key ? ' ' + gh.key : ''}\n${info.title || ''}${info.author ? `\nby ${info.author}` : ''}${info.label ? ' · ' + info.label : ''}\nOpen on GitHub`;
+    }).catch(() => {});
+  }
+  return a;
+}
+
 // Every link opens in your browser; Jira ticket links become ticket cards,
-// and Google Sheets, Docs, Slides and Forms links become file cards.
+// Google Sheets, Docs, Slides and Forms links become file cards, and GitHub
+// links become cards with their title and state.
 function decorateLinks(root) {
   for (const a of [...root.querySelectorAll('a[href]')]) {
-    if (a.closest('.jira-card, .gdoc-card')) continue;
+    if (a.closest('.jira-card, .gdoc-card, .github-card')) continue;
     const href = a.getAttribute('href');
     if (!/^https?:/i.test(href)) continue;
     a.target = '_blank';
     const key = jiraKeyOf(href);
     if (key) { a.replaceWith(jiraCard(href, key)); continue; }
     const doc = gdocOf(href);
-    if (doc) a.replaceWith(gdocCard(href, doc, a.textContent));
+    if (doc) { a.replaceWith(gdocCard(href, doc, a.textContent)); continue; }
+    const gh = githubOf(href);
+    if (gh) a.replaceWith(githubCard(href, gh, a.textContent));
   }
   return root;
 }

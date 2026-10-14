@@ -73,6 +73,7 @@ contextBridge.exposeInMainWorld('deck', {
   },
   jiraIssue: key => ipcRenderer.invoke('jira:issue', key),
   gdocTitle: url => ipcRenderer.invoke('gdoc:title', url),
+  githubLookup: what => ipcRenderer.invoke('github:lookup', what),
   jiraDetails: key => ipcRenderer.invoke('jira:details', key),
   jiraComment: (key, body) => ipcRenderer.invoke('jira:comment', key, body),
   recentMedia: (cwd, sinceMs) => ipcRenderer.invoke('media:recent', cwd, sinceMs),

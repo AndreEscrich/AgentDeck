@@ -156,3 +156,9 @@ details.change-file > summary:hover { background: #f1ebe3; }
 /* Repository containers: a light tray on the grey page, with the category
    wells set into it */
 .hub-repo { background: #f6f2ec; border-color: #d3c9bc; box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8), 0 10px 24px -16px rgba(60, 40, 20, 0.4); }
+/* GitHub cards: GitHub's own light colours for the states */
+.msg-user .github-card { background: rgba(255, 255, 255, 0.6); }
+.github-state[data-state="open"], .github-state[data-state="success"] { --gh: #1a7f37; }
+.github-state[data-state="merged"], .github-state[data-state="done"] { --gh: #8250df; }
+.github-state[data-state="closed"], .github-state[data-state="failure"] { --gh: #cf222e; }
+.github-state[data-state="running"] { --gh: #9a6700; }
