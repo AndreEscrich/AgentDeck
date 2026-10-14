@@ -189,8 +189,11 @@ function chooseFolder() {
   };
   const outside = e => { if (!panel.contains(e.target) && e.target !== $('composer-folder')) close(); };
   const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+  // A folder picked here starts with no category (a category belongs to the
+  // panel you were on, not to the new folder); pick one after, if you want.
   const pick = folder => {
     d.folder = folder;
+    d.groupId = null;
     setFolderHidden(folder, false);
     close();
     renderDraftButtons();
