@@ -417,10 +417,22 @@ async function model(cwd, files) {
     const changedLines = new Set(diff.added.keys());
     for (const r of diff.removed) changedLines.add(r.at);
     const types = parseFile(text);
+    // Changed lines outside every type that still change what the file's
+    // types are: compiler directives (#if TACTILE_CHEATS … #endif around a
+    // class makes it exist only in cheat builds) and using lines. They make
+    // the file's top-level types count as changed, with the lines in their
+    // boxes, so the diagram has every file the task changed.
+    const inType = l => types.some(t => l >= t.line - 1 && l <= t.endLine);
+    const OUTSIDE = /^\s*(#\s*(if|elif|else|endif|define|undef)\b|using\s+[\w.=\s]+;)/;
+    const outside = f.status === 'mod' ? [
+      ...[...diff.added].filter(([l, text]) => !inType(l) && OUTSIDE.test(text)).map(([l, text]) => ({ text: text.trim(), change: 'new', line: l })),
+      ...diff.removed.filter(r => !inType(r.at) && OUTSIDE.test(r.text)).map(r => ({ text: r.text.trim(), change: 'del', line: r.at })),
+    ] : [];
     for (const t of types) {
       // A type is changed when lines inside it changed; in a new or deleted
       // file, every type is.
-      const touched = f.status === 'new' || f.status === 'del'
+      const notes = !t.outer ? outside : [];
+      const touched = f.status === 'new' || f.status === 'del' || notes.length > 0
         || [...changedLines].some(l => l >= t.line - 1 && l <= t.endLine);
       const allNew = f.status === 'new' || (diff.added.has(t.line) && [...Array(t.endLine - t.line + 1).keys()].every(k => diff.added.has(t.line + k)));
       const status = f.status === 'del' ? 'del' : allNew ? 'new' : touched ? 'mod' : 'same';
@@ -440,8 +452,28 @@ async function model(cwd, files) {
         }
         return { name: m.name, kind: m.kind, type: m.type, params: m.params, change, line: m.line };
       });
-      // Members whose declaration was removed (and that are not there any more).
-      if (status === 'mod') {
+      // The directive lines around it first in its box (they say when the
+      // type exists at all), the using lines last; many using lines become one.
+      const note = n => ({ name: n.text, kind: 'note', type: '', params: '', change: n.change, line: n.line });
+      const directives = notes.filter(n => n.text.startsWith('#'));
+      const usings = notes.filter(n => !n.text.startsWith('#'));
+      members.unshift(...directives.map(note));
+      if (usings.length > 2) {
+        const plus = usings.filter(n => n.change === 'new').length;
+        members.push({ name: `using lines (+${plus} −${usings.length - plus})`, kind: 'note', type: '', params: '', change: 'mod', line: usings[0].line });
+      } else members.push(...usings.map(note));
+      // Members that are gone: the type as it was before the task, read the
+      // same way, has them and the type now does not. Without that version,
+      // removed lines that look like a declaration.
+      const before = status === 'mod' && v.before ? parseFile(v.before.join('\n')).find(b => b.name === t.name && (b.outer || '') === (t.outer || '')) : null;
+      if (before) {
+        const names = new Set(t.members.map(m => m.name));
+        for (const m of before.members) {
+          if (names.has(m.name)) continue;
+          names.add(m.name);
+          members.push({ name: m.name, kind: m.kind, type: m.type, params: m.params, change: 'del', line: t.line });
+        }
+      } else if (status === 'mod') {
         const names = new Set(t.members.map(m => m.name));
         for (const r of diff.removed) {
           if (r.at < t.line || r.at > t.endLine + 1) continue;
