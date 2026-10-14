@@ -299,6 +299,11 @@ app.whenReady().then(() => {
   // take it as a title-bar double-click): do what the system would, by its
   // setting on a Mac (System Settings → Desktop & Dock → "Double-click a
   // window's title bar to": zoom, minimize or nothing).
+  // What the agents need (see setupcheck.js): Claude Code, and in a Unity
+  // project the Unity bridge.
+  ipcMain.handle('setup:claude', () => require('./setupcheck').claudeStatus(getConfig()));
+  ipcMain.handle('setup:unity', (_e, cwd) => require('./setupcheck').unityBridge(getConfig(), cwd));
+  ipcMain.handle('setup:writeMcpJson', (_e, root) => require('./setupcheck').writeMcpJson(root));
   ipcMain.handle('window:titleDoubleClick', () => {
     if (!win) return;
     const action = process.platform === 'darwin' ? systemPreferences.getUserDefault('AppleActionOnDoubleClick', 'string') : 'Maximize';

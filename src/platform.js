@@ -109,8 +109,18 @@ function findClaude(configured) {
     const version = versionOf(real);
     if (!best || compareVersions(version, best.version) > 0) best = { path: real, version };
   }
-  cachedClaude = { path: best?.path || 'claude', version: best?.version, at: Date.now() };
+  cachedClaude = { path: best?.path || 'claude', version: best?.version, found: !!best, at: Date.now() };
   return cachedClaude.path;
+}
+
+// Whether Claude Code is on this computer: { found, path, version }. Not
+// found means no install folder and no PATH entry has it (agents then fail
+// to start).
+function claudeInfo(configured) {
+  if (configured && fs.existsSync(configured)) return { found: true, path: configured, version: versionOf(configured) };
+  cachedClaude = null;
+  const path = findClaude(configured);
+  return { found: !!cachedClaude?.found, path, version: cachedClaude?.version || null };
 }
 
 // ---------- starting claude ----------
@@ -196,4 +206,4 @@ function childEnv(extra) {
   return env;
 }
 
-module.exports = { isWin, findClaude, spawnClaude, killTree, childEnv };
+module.exports = { isWin, findClaude, claudeInfo, spawnClaude, killTree, childEnv };

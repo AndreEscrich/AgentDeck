@@ -2206,6 +2206,156 @@ function isAuthFailure(msg) {
   return false;
 }
 
+// ---------- what the agents need ----------
+
+// A popup like the quit card: a title, a text, any extra content and
+// buttons ([label, onClick, primary]). Returns { overlay, close, title,
+// text, extra, setButtons }.
+function setupCard() {
+  const overlay = el('div', 'quit-modal setup-modal');
+  const card = el('div', 'quit-card setup-card');
+  const title = el('div', 'quit-title');
+  const text = el('p', 'quit-text');
+  const extra = el('div', 'setup-extra');
+  const buttons = el('div', 'quit-buttons');
+  card.append(title, text, extra, buttons);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('show'));
+  const close = () => {
+    document.removeEventListener('keydown', onKey, true);
+    overlay.classList.remove('show');
+    setTimeout(() => overlay.remove(), 200);
+  };
+  const onKey = e => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); }
+  };
+  document.addEventListener('keydown', onKey, true);
+  const setButtons = (...list) => {
+    buttons.replaceChildren();
+    for (const [label, onClick, primary] of list) {
+      const b = el('button', primary ? 'quit-go' : 'quit-stay', label);
+      b.type = 'button';
+      b.onclick = onClick;
+      buttons.appendChild(b);
+    }
+    buttons.querySelector('.quit-go')?.focus();
+  };
+  return { overlay, close, title, text, extra, setButtons };
+}
+
+// A command to type in a terminal, with a Copy button.
+function commandRow(label, command) {
+  const row = el('div', 'setup-command');
+  const head = el('div', 'setup-command-label', label);
+  const code = el('code', null, command);
+  const copy = el('button', 'setup-copy', 'Copy');
+  copy.type = 'button';
+  copy.onclick = () => { navigator.clipboard.writeText(command).catch(() => {}); copy.textContent = 'Copied'; sfx('select'); setTimeout(() => { copy.textContent = 'Copy'; }, 1500); };
+  const line = el('div', 'setup-command-line');
+  line.append(code, copy);
+  row.append(head, line);
+  return row;
+}
+
+// Claude Code is not on this computer: the agents cannot start. Says how to
+// install it and sign in, and checks again on request. Shown when the app
+// starts without it, and when an agent fails to start because of it.
+let claudeMissingOpen = false;
+function showClaudeMissing() {
+  if (claudeMissingOpen) return;
+  claudeMissingOpen = true;
+  sfx('refuse');
+  const c = setupCard();
+  const close = () => { claudeMissingOpen = false; c.close(); };
+  c.title.textContent = 'Claude Code is not installed';
+  c.text.textContent = 'Agent Hub runs your agents with Claude Code, the command-line tool, and could not find it on this computer. Install it, then sign in once:';
+  c.extra.append(
+    IS_MAC ? commandRow('1. In Terminal (Mac):', 'curl -fsSL https://claude.ai/install.sh | bash')
+      : commandRow('1. In PowerShell (Windows):', 'irm https://claude.ai/install.ps1 | iex'),
+    commandRow('   or, with Node.js installed:', 'npm install -g @anthropic-ai/claude-code'),
+    commandRow('2. Then sign in (it opens your browser):', 'claude'),
+    el('p', 'setup-note', 'Installed somewhere unusual? Set its path in Settings → Claude Code.'),
+  );
+  const check = async () => {
+    const r = await window.deck.setupClaude().catch(() => ({ found: false }));
+    if (r.found) {
+      close();
+      toast(`Found Claude Code${r.version ? ' ' + r.version : ''}. New agents can start now.`);
+      sfx('connected');
+    } else {
+      c.text.textContent = 'Still not found. Install it with one of the commands below (a new terminal may be needed for it to be on the PATH), then check again:';
+      sfx('refuse');
+    }
+  };
+  c.setButtons(['Later', close], ['Settings', () => { close(); showSettings(); }], ['Check again', check, true]);
+}
+
+// The Unity bridge (the com.tactilegames.unity-mcp package) lets agents work
+// in the Unity Editor. When an agent starts in a Unity project where it is
+// not set up, a popup lists the steps (done or not) and how to do the rest.
+// Once per project while the app runs; "Don't show again" stops it for
+// that project.
+const UNITY_STEPS = {
+  node: ['Node.js is installed', 'Install Node.js (version 18 or later) from nodejs.org, then restart Agent Hub.'],
+  package: ['The Unity MCP package is in the project', 'Add com.tactilegames.unity-mcp to the project with the Package Manager.'],
+  activated: ['The bridge is activated', 'In Unity: Tactile → AI → MCPs → Unity MCP, and tick Activated. That copies the bridge into Library/McpServer.'],
+  installed: ['Its Node.js part is installed', 'The Unity MCP window runs npm install when you activate it. If that failed, run it yourself:'],
+  mcpJson: ['Claude Code knows about it (.mcp.json)', 'A .mcp.json next to the Assets folder tells Claude Code to start the bridge.'],
+};
+const unityChecked = new Set();
+async function checkUnityBridge(cwd) {
+  const r = await window.deck.setupUnity(cwd).catch(() => null);
+  if (!r?.unity || r.ok || unityChecked.has(r.root)) return;
+  unityChecked.add(r.root);
+  let hidden = [];
+  try { hidden = JSON.parse(localStorage.getItem('unityBridgeHidden') || '[]'); } catch { hidden = []; }
+  if (hidden.includes(r.root)) return;
+  showUnityBridge(r);
+}
+
+function showUnityBridge(result) {
+  if (document.querySelector('.setup-modal')) return;
+  sfx('attention');
+  const c = setupCard();
+  const render = r => {
+    c.title.textContent = r.ok ? 'The Unity bridge is set up' : 'Set up the Unity bridge';
+    c.text.textContent = r.ok
+      ? 'Agents you start from now on can work in the Unity Editor (open the project in Unity for that).'
+      : `Your agents can't reach the Unity Editor in ${r.root.split(SEP).slice(-2).join('/')}: the Unity bridge is not set up yet. They can still edit files, but not inspect scenes, prefabs or the console, or run the game. To set it up:`;
+    c.extra.replaceChildren();
+    for (const step of r.steps) {
+      const [done, how] = UNITY_STEPS[step.id];
+      const row = el('div', `setup-step ${step.ok ? 'ok' : 'todo'}`);
+      row.append(el('span', 'setup-step-mark', step.ok ? '✓' : '✗'), el('span', 'setup-step-text', done));
+      c.extra.appendChild(row);
+      if (step.ok) continue;
+      const help = el('div', 'setup-step-help', how);
+      c.extra.appendChild(help);
+      const sep = window.deck.platform === 'win32' ? '\\' : '/';
+      if (step.id === 'installed') c.extra.appendChild(commandRow('', `cd "${r.root}${sep}Library${sep}McpServer" && npm install`));
+      if (step.id === 'mcpJson') {
+        const make = el('button', 'setup-copy', 'Create .mcp.json');
+        make.type = 'button';
+        make.onclick = async () => {
+          const w = await window.deck.writeMcpJson(r.root).catch(err => ({ ok: false, message: String(err) }));
+          if (w.ok) { sfx('approve'); render(await window.deck.setupUnity(r.root)); } else { help.textContent = `Could not write it: ${w.message}`; sfx('refuse'); }
+        };
+        help.appendChild(make);
+      }
+    }
+    if (!r.ok) c.extra.appendChild(el('p', 'setup-note', 'Agents you start after this get the bridge; running ones need a new agent.'));
+    const hide = () => {
+      let hidden = [];
+      try { hidden = JSON.parse(localStorage.getItem('unityBridgeHidden') || '[]'); } catch { hidden = []; }
+      try { localStorage.setItem('unityBridgeHidden', JSON.stringify([...new Set([...hidden, r.root])])); } catch { /* not important */ }
+      c.close();
+    };
+    c.setButtons(...(r.ok ? [['Close', c.close, true]] : [["Don't show again for this project", hide], ['Later', c.close], ['Check again', async () => render(await window.deck.setupUnity(r.root)), true]]));
+  };
+  render(result);
+}
+
 function noteAuthProblem() {
   authProblem.pending = true;
   if (document.hasFocus()) showLoginCard();
@@ -2621,6 +2771,8 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
   if (ticket) agent.ticket = ticket;
   if (!resume) summarizeTitle(agent, prompt);
   else if (prompt !== RESUME_PROMPT) notePrompt(agent, prompt);
+  // In a Unity project: is the Unity bridge set up? (A popup says how, if not.)
+  checkUnityBridge(cwd);
   // The chat gets its notes and your message once prepare is done (it can
   // change the message), so they only wait while the tile is in the Hub.
   const fillChat = () => {
@@ -3309,6 +3461,8 @@ setInterval(checkLimitReset, 15 * 1000);
 const tickedAnswers = new Set();
 
 window.deck.onEvent((id, msg) => {
+  // The agent could not start because claude is not there.
+  if (msg.type === 'app_error' && /could not start claude/i.test(msg.message || '') && /ENOENT|not found|no such file/i.test(msg.message || '')) showClaudeMissing();
   noteUsage(msg);
   if (msg.type === 'assistant' && msg.message?.usage && msg.message.id && !tickedAnswers.has(msg.message.id)) {
     tickedAnswers.add(msg.message.id);
@@ -3982,6 +4136,8 @@ setInterval(checkStuck, 3000);
   loadHub();
   await loadAgentList();
   warmSnapshots();
+  // Without Claude Code no agent can start: say so, and how to install it.
+  window.deck.setupClaude().then(r => { if (!r.found) showClaudeMissing(); }).catch(() => {});
   // Agents that were waiting for a sign-in when the app closed: offer it again.
   if (authWaits().length) setTimeout(noteAuthProblem, 1500);
   if (!IS_MAC) {
