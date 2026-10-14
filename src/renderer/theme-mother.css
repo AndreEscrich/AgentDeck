@@ -612,6 +612,7 @@ html:has(.uml-full, .branch-view:not(.hidden) .uml-svg, .view:not(.hidden) .chan
 .hub-repo-name { font-family: var(--title); font-weight: 400; letter-spacing: 0.24em; text-transform: uppercase; text-shadow: var(--glow-strong); }
 .hub-repo-name::before { border-radius: 0; background: var(--lamp); box-shadow: 0 0 6px var(--lamp); }
 .hub-repo-count { font-family: var(--label); letter-spacing: 0.06em; text-transform: uppercase; }
+.hub-repo-branch { font-family: var(--label); letter-spacing: 0.06em; text-transform: uppercase; border-radius: 0 !important; border-color: color-mix(in srgb, var(--accent) 45%, transparent) !important; }
 
 /* The tank is a terrain scan (scanreveal.js): the map drawn line by line in
    the tile's state colour, instead of the scan bars and the moving line. */

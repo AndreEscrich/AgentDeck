@@ -5,7 +5,7 @@ const { execFile } = require('child_process');
 const { AgentManager, fetchModels, summarizeTitle, mergeNotes, suggestFollowUps, fetchUsage } = require('./agents');
 const { listSessions, loadTranscript, PROJECTS_DIR } = require('./sessions');
 const git = require('./git');
-const { repoOf } = require('./repos');
+const { repoOf, branchOf } = require('./repos');
 const media = require('./media');
 const jira = require('./jira');
 const connectors = require('./connectors');
@@ -292,6 +292,7 @@ app.whenReady().then(() => {
   ipcMain.handle('files:versions', (_e, cwd, file) => undo.versions(cwd, file));
   ipcMain.handle('files:restore', (_e, cwd, p, previous, from) => undo.restoreFile(cwd, p, previous, from));
   ipcMain.handle('repo:of', (_e, cwd) => repoOf(cwd));
+  ipcMain.handle('repo:branch', (_e, cwd) => branchOf(cwd));
   // Which of these files still exist (for the Changes card).
   ipcMain.handle('fs:existing', (_e, paths) => (Array.isArray(paths) ? paths : []).filter(p => typeof p === 'string' && fs.existsSync(p)));
   // The namespace of C# files, for their titles in the Changes card: the

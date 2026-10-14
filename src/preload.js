@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('deck', {
   onUpdate: fn => on('update:available', fn),
   fetchUsage: () => ipcRenderer.invoke('usage:fetch'),
   repoOf: cwd => ipcRenderer.invoke('repo:of', cwd),
+  // The branch its repository is on: { vcs: 'git' | 'svn', name } or null.
+  repoBranch: cwd => ipcRenderer.invoke('repo:branch', cwd),
   existingFiles: paths => ipcRenderer.invoke('fs:existing', paths),
   csNamespaces: paths => ipcRenderer.invoke('cs:namespaces', paths),
   csModel: (cwd, files) => ipcRenderer.invoke('cs:model', cwd, files),

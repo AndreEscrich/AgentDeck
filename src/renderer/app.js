@@ -1403,6 +1403,28 @@ function repoRootName(cwd) {
   return repoRoots.get(cwd) || repoName(cwd);
 }
 
+// The branch a folder's repository is on, for its container in the Hub.
+// Asked again when the answer is over 20 seconds old, so switching branches
+// shows up.
+const repoBranches = new Map();   // folder -> { branch, at, asking }
+function repoBranch(cwd) {
+  if (!cwd || !window.deck.repoBranch) return null;
+  const known = repoBranches.get(cwd) || { branch: null, at: 0, asking: false };
+  repoBranches.set(cwd, known);
+  if (!known.asking && Date.now() - known.at > 20000) {
+    known.asking = true;
+    window.deck.repoBranch(cwd).then(b => {
+      const name = b?.name || null;
+      const changed = name !== known.branch?.name || b?.vcs !== known.branch?.vcs;
+      known.branch = name ? b : null;
+      known.at = Date.now();
+      known.asking = false;
+      if (changed) refreshHub();
+    }).catch(() => { known.asking = false; known.at = Date.now(); });
+  }
+  return known.branch;
+}
+
 // ---------- the list of every agent you have had ----------
 
 // agents.json in the main process (see agentlist.js), by session id: the
@@ -2281,6 +2303,7 @@ async function openUnity(cwd) {
   setTimeout(refreshUnity, r.action === 'opened' ? 8000 : 1500);
 }
 hub.onOpenUnity = openUnity;
+hub.branchOf = repoBranch;
 $('composer-unity').onclick = () => openUnity($('composer-unity').dataset.cwd);
 setTimeout(refreshUnity, 3000);
 setInterval(() => { if (!document.hidden) refreshUnity(); }, 5000);
