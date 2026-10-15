@@ -745,7 +745,18 @@ class Hub {
       const unity = el('button', 'section-unity hidden');
       unity.type = 'button';
       unity.onclick = e => { e.stopPropagation(); if (sec.cwd) this.onOpenUnity?.(sec.cwd); };
-      head.append(name, repoEl, count, loneHint, notes, unity, remove);
+      // Move the whole group to another folder (another repository): its
+      // agents continue their conversations there (see moveGroup in app.js).
+      const move = el('button', 'section-move', '⇄ Folder');
+      move.title = 'Move this group to another folder or repository; its agents continue there';
+      const idsHere = () => [...this.tiles].filter(([, t]) => t.el.parentNode === grid && !t.removing).map(([id]) => id);
+      move.onclick = e => { e.stopPropagation(); this.onMoveGroup?.(idsHere(), sec.cwd, sec.groupKey || null); };
+      elSec.addEventListener('contextmenu', e => {
+        if (e.target.closest('.hub-tile')) return;
+        e.preventDefault();
+        this.onMoveGroup?.(idsHere(), sec.cwd, sec.groupKey || null);
+      });
+      head.append(name, repoEl, count, loneHint, notes, move, unity, remove);
       const grid = el('div', 'hub-grid');
       elSec.append(head, grid);   // render puts it into its repository's container
       sec = { key, groupKey, repo, el: elSec, name, repoEl, count, notes, unity, grid, cwd: null };

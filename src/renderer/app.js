@@ -2085,6 +2085,50 @@ function moveToFolder(hubId, folder) {
   saveHub();
 }
 
+// Moves a whole group (a category in one folder, a panel on the Hub) to
+// another folder, so its agents continue their work in another repository:
+// each one moves like with Move to folder, and continues its conversation
+// there with your next message. Agents that are working right now move
+// once they are done (agent.moveWhenDone, see the status handler). A
+// message box pointing at the group follows it.
+async function moveGroup(ids, from, groupId) {
+  if (!ids.length) return;
+  const here = (from || '').replace(/[\\/]+$/, '').toLowerCase();
+  const others = recentFolders().filter(f => f.replace(/[\\/]+$/, '').toLowerCase() !== here).slice(0, 8);
+  const group = findGroup(groupId);
+  const picked = await window.deck.popupMenu([
+    { label: `Move ${group ? group.name : 'this group'} (${ids.length} agent${ids.length === 1 ? '' : 's'}) to`, enabled: false },
+    ...others.map(f => ({ id: 'folder:' + f, label: homePath(f) })),
+    ...(others.length ? [{ type: 'separator' }] : []),
+    { id: 'folder-pick', label: 'Choose folder…' },
+  ]);
+  if (!picked) return;
+  const folder = picked === 'folder-pick' ? await window.deck.pickFolder() : picked.slice(7);
+  if (folder) moveGroupTo(ids, from, groupId, folder);
+}
+
+function moveGroupTo(ids, from, groupId, folder) {
+  const group = findGroup(groupId);
+  if (!folder || folder.replace(/[\\/]+$/, '').toLowerCase() === (from || '').replace(/[\\/]+$/, '').toLowerCase()) return;
+  let later = 0;
+  for (const id of ids) {
+    const a = hubAgentFor(id);
+    if (!a) continue;
+    if (!id.startsWith('p:') && BUSY.includes(a.status) && a.status !== 'background') {
+      a.moveWhenDone = folder;
+      later++;
+    } else moveToFolder(id, folder);
+  }
+  const d = ensureDraft();
+  if (d.folder && from && d.folder.toLowerCase() === from.toLowerCase() && (d.groupId || null) === (groupId || null)) {
+    d.folder = folder;
+    renderDraftButtons();
+  }
+  refreshHub();
+  saveHub();
+  toast(`${group ? group.name : 'The group'} moves to ${homePath(folder)}${later ? ` · ${later} working agent${later === 1 ? ' moves' : 's move'} when done` : ''}`);
+}
+
 // Before a moved agent's next message: stop it, and start it again in its
 // new folder, continuing a copy of its conversation. Same id, so its tile
 // stays where it is.
@@ -2400,6 +2444,7 @@ async function openUnity(cwd) {
   setTimeout(refreshUnity, r.action === 'opened' ? 8000 : 1500);
 }
 hub.onOpenUnity = openUnity;
+hub.onMoveGroup = moveGroup;
 hub.branchOf = repoBranch;
 $('composer-unity').onclick = () => openUnity($('composer-unity').dataset.cwd);
 setTimeout(refreshUnity, 3000);
@@ -3793,6 +3838,12 @@ window.deck.onStatus((id, status) => {
   if (!a) return;
   a.status = status;
   if (status !== 'idle') clearFollowUps(a);
+  // Its group moved to another folder while it worked (moveGroup): it moves now.
+  if (a.moveWhenDone && !BUSY.includes(status)) {
+    const folder = a.moveWhenDone;
+    a.moveWhenDone = null;
+    moveToFolder(a.id, folder);
+  }
   if (status !== 'waiting') a.attention = null;
   // Used by the review queue: the agent that has waited longest goes first.
   if (status === 'waiting') a.waitingSince = a.waitingSince || Date.now();
