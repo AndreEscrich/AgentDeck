@@ -168,3 +168,4 @@ details.change-file > summary:hover { background: #f1ebe3; }
 .hub-repo { border: 1.5px solid #c6b9a8; box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8), 0 14px 28px -16px rgba(60, 40, 20, 0.45); }
 .hub-repo-head { border-bottom-color: #d9cec0; }
 .hub-tile.stopped { --c1: #b3a79c; --c2: #85786d; }
+.usage-rail.open[data-panel="settings"] .hub-branches-btn:not(:hover) { background: linear-gradient(180deg, #ffffff, #f3eee7); }

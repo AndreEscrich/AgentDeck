@@ -2251,3 +2251,8 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .hub-repo.drop-target { border-color: var(--accent) !important; box-shadow: 0 0 0 2px var(--accent), 0 14px 30px -14px rgba(0, 0, 0, 0.95) !important; }
 .hub-repo.drop-target .hub-repo-head::after { content: "Drop to move the group here"; margin-left: auto; font-size: 12px; color: var(--accent); }
 .hub-repo-head .section-unity:not(.hidden) ~ .repo-tsvn { margin-left: 6px; }
+
+/* Settings stands apart at the top of the left bar. Only it lights up while
+   its menu is open, not the branch diff button next to it. */
+.hub-nav .hub-nav-settings { margin-bottom: 18px; }
+.usage-rail.open[data-panel="settings"] .hub-branches-btn:not(:hover) { width: 40px; color: var(--text-dim); background: linear-gradient(180deg, #2c241d, #1d1813); }
