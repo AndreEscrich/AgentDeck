@@ -192,6 +192,7 @@ function chooseFolder() {
   $('composer-folder').parentNode.appendChild(panel);
 
   const close = () => {
+    state.folderPanelRender = null;
     panel.remove();
     document.removeEventListener('mousedown', outside, true);
     document.removeEventListener('keydown', onKey, true);
@@ -223,7 +224,17 @@ function chooseFolder() {
         try { if (localStorage.getItem('lastFolder') === f) localStorage.removeItem('lastFolder'); } catch { /* not important */ }
         render();
       };
-      row.append(el('span', 'folder-name', homePath(f)), remove);
+      // The branch its repository is on, like on the folder button.
+      const branch = repoBranch(f);
+      row.append(el('span', 'folder-name', homePath(f)));
+      if (branch) {
+        const tag = el('span', 'composer-branch folder-branch');
+        tag.innerHTML = BRANCH_ICON;
+        tag.appendChild(document.createTextNode(branch.name));
+        row.title = `${f}\n${branch.vcs === 'svn' ? 'SVN' : 'Git'} branch: ${branch.name}`;
+        row.appendChild(tag);
+      }
+      row.appendChild(remove);
       row.onclick = () => { sfx('select'); pick(f); };
       list.appendChild(row);
     }
@@ -237,6 +248,8 @@ function chooseFolder() {
     list.appendChild(choose);
   }
 
+  // Branches that arrive while the menu is open show right away.
+  state.folderPanelRender = render;
   render();
   document.addEventListener('mousedown', outside, true);
   document.addEventListener('keydown', onKey, true);
@@ -1439,6 +1452,7 @@ function repoBranch(cwd) {
       if (changed) {
         refreshHub();
         renderDraftButtons();
+        state.folderPanelRender?.();
       }
     }).catch(() => { known.asking = false; known.at = Date.now(); });
   }

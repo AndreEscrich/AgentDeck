@@ -2240,3 +2240,9 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .milestone-text { flex: 1 1 auto; min-width: 0; }
 .milestone-time { flex-shrink: 0; font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
 @keyframes milestone-in { from { opacity: 0; transform: translateY(-3px); } }
+/* The branch of each folder in the folder menu, before its ✕. */
+.folder-row .folder-branch { margin-left: 8px; flex-shrink: 0; max-width: 45%; }
+.folder-row .folder-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.folder-panel { width: min(600px, calc(100vw - 48px)); }
+.folder-row .folder-branch { margin-left: auto; max-width: 50%; }
+.folder-row .folder-name + .folder-remove { margin-left: auto; }
