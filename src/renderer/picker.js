@@ -15,6 +15,26 @@ const EFFORT_NAMES = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra
 let sharedModels = FALLBACK_MODELS;
 const pickers = [];
 
+// The menu lists the newest model of each family, most capable first:
+// Fable, Opus, Sonnet, Haiku (the older versions and "Default" stay out of
+// it, but a choice saved before still shows its name on the button).
+const FAMILIES = ['fable', 'opus', 'sonnet', 'haiku'];
+function menuModels() {
+  const best = new Map();   // family -> { model, version }
+  for (const m of sharedModels) {
+    const match = /^(fable|opus|sonnet|haiku)\s*([\d.]*)/i.exec(m.displayName || '') || /^(fable|opus|sonnet|haiku)$/i.exec(m.value || '');
+    if (!match) continue;
+    const family = match[1].toLowerCase();
+    const version = (match[2] || '').split('.').map(Number);
+    const newer = (a, b) => { for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0); return false; };
+    const known = best.get(family);
+    // The alias (value "opus") wins a tie: it follows the newest version.
+    if (!known || newer(version, known.version) || (!newer(known.version, version) && m.value === family)) best.set(family, { model: m, version });
+  }
+  const list = FAMILIES.map(f => best.get(f)?.model).filter(Boolean);
+  return list.length ? list : sharedModels;
+}
+
 function shortName(model) {
   return model.displayName.replace(/\s*\(recommended\)/i, '');
 }
@@ -90,7 +110,7 @@ class ModelPicker {
     menu.innerHTML = '';
 
     menu.appendChild(el('div', 'menu-label', 'Model'));
-    for (const m of sharedModels) {
+    for (const m of menuModels()) {
       const row = el('div', 'menu-item' + (m.value === this.value.model ? ' selected' : ''));
       const text = el('div', 'menu-text');
       text.append(el('div', 'menu-name', m.displayName), el('div', 'menu-desc', m.description || ''));

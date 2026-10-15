@@ -1887,11 +1887,16 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 /* The bar under the message box never wraps a button onto two lines: Send
    (and Stop, Undo) keep their size, and when the row is short of room the
    "continues from" note gets shorter first, then the folder and category
-   names, each ending in "…". */
+   names, each ending in "…" (the permission and model buttons never shrink). */
 .composer-bar { gap: 8px; }
 .composer-pickers { flex: 1 1 auto; min-width: 0; }
-.composer-pickers > .model-btn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 0; max-width: 40%; }
+.composer-pickers > .model-btn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 1; max-width: 40%; }
 .composer-pickers > #composer-settings-btn { flex-shrink: 0; }
+/* The permission and model buttons ("Bypass", "Opus 5.5 · Medium") stay on
+   one line at their own size, so they never spill over Send: the folder and
+   category give up room for them. */
+.composer-pickers .model-picker { flex-shrink: 0; }
+.composer-pickers .model-picker > .model-btn { white-space: nowrap; }
 /* The note starts at 260px (or its own width when shorter) and gives up
    room long before the folder and category do. */
 .composer-pickers > .composer-fork { flex: 0 50 260px; max-width: fit-content; min-width: 0; }
