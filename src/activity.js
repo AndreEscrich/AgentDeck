@@ -62,8 +62,10 @@ async function summarizeFile(file) {
 // Everything, merged: { days: [{ date, tokens, output, prompts, sessions }],
 // models, hours, sessions: { id: { tokens, prompts, fromHub, days: { date: tokens },
 // promptDays: { date: messages } } } }.
+// removed: ids of sessions you removed from History; their tokens and
+// messages are left out (also the copies of them in sessions forked from them).
 const CACHE_VERSION = 2;
-async function activity(cacheFile) {
+async function activity(cacheFile, removed = new Set()) {
   let cache = { files: {} };
   try { cache = JSON.parse(fs.readFileSync(cacheFile, 'utf8')); } catch { /* first time */ }
   if (cache.version !== CACHE_VERSION) cache = { files: {} };
@@ -104,6 +106,7 @@ async function activity(cacheFile) {
     for (const [id, date, sid, tokens, output, model, fromHub] of f.calls || []) {
       if (callSeen.has(id)) continue;
       callSeen.add(id);
+      if (sid && removed.has(sid)) continue;
       const d = day(date);
       d.tokens += tokens;
       d.output += output;
@@ -119,6 +122,7 @@ async function activity(cacheFile) {
     for (const [uuid, date, hour, sid] of f.prompts || []) {
       if (promptSeen.has(uuid)) continue;
       promptSeen.add(uuid);
+      if (sid && removed.has(sid)) continue;
       const d = day(date);
       d.prompts++;
       hours[hour]++;

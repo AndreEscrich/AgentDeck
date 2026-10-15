@@ -1946,9 +1946,12 @@ async function sessionMenu(sessionId, hubId = null) {
       ],
     },
     { id: 'remove', label: 'Remove from category', enabled: !!current },
+    { type: 'separator' },
+    { id: 'forget', label: 'Remove from History…', enabled: !runningSession(sessionId) },
   ];
   const picked = await window.deck.popupMenu(items);
   if (!picked) return;
+  if (picked === 'forget') { removeFromHistory([sessionId]); return; }
   if (picked.startsWith('folder:') || picked === 'folder-pick') {
     const folder = picked === 'folder-pick' ? await window.deck.pickFolder() : picked.slice(7);
     if (folder) moveToFolder(hubId, folder);
@@ -1957,6 +1960,78 @@ async function sessionMenu(sessionId, hubId = null) {
   if (picked === 'remove') assignGroup(sessionId, null);
   else if (picked === 'new') assignGroup(sessionId, createGroup().id);
   else assignGroup(sessionId, picked.slice(2));
+}
+
+// ---------- removing agents from History ----------
+
+// Removes saved sessions from History, and from the Hub when they are on it,
+// and leaves them out of Your activity (the token graphs). Claude Code's own
+// session files stay (removedsessions.js keeps the list), so Undo puts
+// everything back. Agents that are running are not removed. With group: the
+// category goes too, unless one of its agents is running.
+function runningSession(sessionId) {
+  return [...state.agents.values()].some(a => a.sessionId === sessionId && !a.removed);
+}
+
+async function removeFromHistory(ids, { group = null } = {}) {
+  ids = ids.filter(id => !runningSession(id));
+  const running = group ? [...state.agents.values()].filter(a => !a.removed && a.groupId === group.id).length : 0;
+  if (!ids.length && !group) return;
+  const titles = ids.map(id => state.sessions.find(s => s.id === id)?.title).filter(Boolean);
+  const one = ids.length === 1;
+  const ok = await confirmCard({
+    title: group ? `Remove ${group.name} from History?` : one ? `Remove "${titles[0] || 'this agent'}" from History?` : `Remove ${ids.length} agents from History?`,
+    text: `${ids.length ? `${one ? 'It leaves' : `Its ${ids.length} agents leave`} History and the Hub, and ${one ? 'its' : 'their'} tokens and messages no longer count in Your activity. ` : ''}`
+      + `${group && !running ? 'The category is deleted too. ' : ''}${running ? `${running} running agent${running === 1 ? ' stays' : 's stay'}, and so does the category. ` : ''}`
+      + 'Claude Code keeps the conversation files, so you can undo this right after.',
+    lines: group ? titles.slice(0, 8).concat(titles.length > 8 ? [`and ${titles.length - 8} more`] : []) : [],
+    confirmLabel: 'Remove',
+    stayLabel: 'Cancel',
+  });
+  if (!ok) return;
+  const before = { parked: ids.map(id => state.parked.get(id)).filter(Boolean), group: group && !running ? { ...group } : null,
+    assignments: Object.fromEntries(ids.map(id => [id, state.groups.assignments[id]]).filter(([, g]) => g)) };
+  for (const id of ids) {
+    state.parked.delete(id);
+    if (state.current?.kind === 'history' && state.current.id === id) show('hub');
+    state.history.delete(id);
+  }
+  if (before.parked.length) rememberAgents(before.parked.map(p => ({ sessionId: p.sessionId, inHub: false })));
+  if (before.group) deleteGroup(group.id);
+  await window.deck.removeFromHistory(ids).catch(() => {});
+  saveHub();
+  refreshHub();
+  await loadSessions();
+  sfx('close');
+  toastAction(group ? `Removed ${group.name} from History` : one ? 'Removed from History' : `Removed ${ids.length} agents from History`, 'Undo', async () => {
+    await window.deck.restoreToHistory(ids).catch(() => {});
+    if (before.group) {
+      state.groups.groups.push(before.group);
+      Object.assign(state.groups.assignments, before.assignments);
+      saveGroups();
+    }
+    for (const p of before.parked) state.parked.set(p.sessionId, p);
+    if (before.parked.length) rememberAgents(before.parked.map(p => ({ sessionId: p.sessionId, inHub: true })));
+    saveHub();
+    refreshHub();
+    await loadSessions();
+  });
+}
+
+// A message at the bottom with one button (Undo), for a few seconds longer
+// than a plain toast.
+function toastAction(text, label, action) {
+  document.querySelector('.toast')?.remove();
+  const node = el('div', 'toast toast-action', text);
+  const btn = el('button', 'toast-btn', label);
+  btn.onclick = () => { node.remove(); action(); };
+  node.appendChild(btn);
+  document.body.appendChild(node);
+  requestAnimationFrame(() => node.classList.add('show'));
+  setTimeout(() => {
+    node.classList.remove('show');
+    setTimeout(() => node.remove(), 300);
+  }, 7000);
 }
 
 // ---------- moving an agent to another folder ----------
@@ -2049,7 +2124,9 @@ async function groupMenu(group) {
     { id: 'rename', label: 'Rename' },
     { type: 'separator' },
     { id: 'delete', label: 'Delete category (its sessions become uncategorized)' },
+    { id: 'forget', label: 'Remove category and its agents from History…' },
   ]);
+  if (picked === 'forget') removeFromHistory(state.sessions.filter(s => groupOf(s.id) === group.id).map(s => s.id), { group });
   if (picked === 'notes') openNotesEditor(group);
   if (picked === 'hub') bringGroupToHub(group);
   if (picked === 'rename') { state.renamingGroup = group.id; renderSidebar(); }
@@ -2127,6 +2204,10 @@ function historyItem(s) {
     back.onclick = e => { e.stopPropagation(); bringBackToHub(s); };
     item.appendChild(back);
   }
+  const forget = el('button', 'item-remove', '×');
+  forget.title = 'Remove from History';
+  forget.onclick = e => { e.stopPropagation(); removeFromHistory([s.id]); };
+  item.appendChild(forget);
   item.onclick = () => { sfx('open'); openHistory(s); };
   item.oncontextmenu = e => { e.preventDefault(); sessionMenu(s.id); };
   item.draggable = true;

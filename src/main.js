@@ -233,7 +233,11 @@ app.whenReady().then(() => {
   ipcMain.handle('github:lookup', (_e, what) => require('./github').lookup(what));
   ipcMain.handle('jira:details', (_e, key) => jira.details(key));
   ipcMain.handle('jira:comment', (_e, key, body) => jira.comment(key, body));
-  ipcMain.handle('activity:get', () => activity(path.join(app.getPath('userData'), 'activity-cache.json')));
+  const removed = require('./removedsessions');
+  removed.setFile(path.join(app.getPath('userData'), 'removed-sessions.json'));
+  ipcMain.handle('activity:get', () => activity(path.join(app.getPath('userData'), 'activity-cache.json'), removed.list()));
+  ipcMain.handle('history:remove', (_e, ids) => removed.remove(ids));
+  ipcMain.handle('history:restore', (_e, ids) => removed.restore(ids));
   ipcMain.handle('session:contextSize', (_e, file) => (typeof file === 'string' ? handoff.contextSize(file) : 0));
   ipcMain.handle('session:handoff', (_e, file, title) => (typeof file === 'string' ? handoff.handoff(getConfig(), file, String(title || '')) : null));
   ipcMain.handle('diff:run', (_e, cwd, command) => runDiff(cwd, command));
@@ -281,7 +285,8 @@ app.whenReady().then(() => {
   ipcMain.handle('update:latest', () => latestUpdate);
   ipcMain.handle('app:changelog', () => updates.changelog(app.getAppPath()));
   ipcMain.handle('update:apply', () => applyUpdate());
-  ipcMain.handle('sessions:list', () => listSessions());
+  // Sessions you removed from History stay out (removedsessions.js).
+  ipcMain.handle('sessions:list', () => { const gone = require('./removedsessions').list(); return listSessions().filter(x => !gone.has(x.id)); });
   ipcMain.handle('git:snapshot', (_e, cwd) => git.snapshot(cwd, path.join(app.getPath('userData'), 'snapshots')));
   ipcMain.handle('git:changes', (_e, cwd, snap) => git.changesSince(cwd, snap));
   const turnDir = path.join(app.getPath('userData'), 'turn-changes');
