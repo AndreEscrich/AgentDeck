@@ -21,6 +21,9 @@ const HUB_STATUS_TEXT = {
   exited: 'Stopped',
 };
 
+// TactileSVN's button: a folder with a branch line.
+const TSVN_ICON = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 4.5v8a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3h-4a1 1 0 0 0-1 1.5z"/><circle cx="6" cy="9.2" r="1.1"/><circle cx="10.5" cy="9.2" r="1.1"/><path d="M7.1 9.2h2.3"/></svg>';
+
 const BUBBLE_COUNT = 7;
 const BURST_COUNT = 14;
 
@@ -752,6 +755,7 @@ class Hub {
       }
     }
     if (this.unityStates) this.setUnity(this.unityStates);
+    if (this.svnStates) this.setTactileSvn(this.svnStates);
 
     this.empty.classList.toggle('hidden', agents.length > 0);
     requestAnimationFrame(() => this.fitToHeight());
@@ -835,15 +839,32 @@ class Hub {
     const unity = el('button', 'section-unity hidden');
     unity.type = 'button';
     unity.onclick = e => { e.stopPropagation(); if (repo.cwd) this.onOpenUnity?.(repo.cwd); };
-    head.append(title, branch, count, unity);
+    // An SVN working copy, with TactileSVN installed: open or focus it there.
+    const tsvn = el('button', 'section-unity repo-tsvn hidden');
+    tsvn.type = 'button';
+    tsvn.onclick = e => { e.stopPropagation(); if (repo.svnCwd) this.onOpenTactileSvn?.(repo.svnCwd); };
+    head.append(title, branch, count, unity, tsvn);
     const body = el('div', 'hub-repo-body');
     box.append(head, body);
     this.grid.appendChild(box);
-    repo = { name, el: box, title, branch, count, unity, body, cwds: [], cwd: null };
+    repo = { name, el: box, title, branch, count, unity, tsvn, body, cwds: [], cwd: null, svnCwd: null };
     // Drag a repository by its title row to put it before or after the others.
     head.addEventListener('pointerdown', e => this.pressGroup(e, repo));
     this.repos.set(name, repo);
     return repo;
+  }
+
+  // The TactileSVN buttons of the repositories: states maps a folder to what
+  // window.deck.tactileSvnStatus says about it ({ available, root }).
+  setTactileSvn(states) {
+    this.svnStates = states;
+    for (const repo of this.repos.values()) {
+      repo.svnCwd = (repo.cwds || []).find(c => states.get(c)?.available) || null;
+      repo.tsvn.classList.toggle('hidden', !repo.svnCwd);
+      if (!repo.svnCwd) continue;
+      repo.tsvn.innerHTML = `${TSVN_ICON}<span>TactileSVN</span>`;
+      repo.tsvn.title = `Show ${states.get(repo.svnCwd).root} in TactileSVN (brings its window to the front when it is open)`;
+    }
   }
 
   // The Unity buttons of the groups: states maps a folder to what

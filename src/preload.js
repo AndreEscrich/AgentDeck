@@ -39,6 +39,8 @@ contextBridge.exposeInMainWorld('deck', {
   writeMcpJson: root => ipcRenderer.invoke('setup:writeMcpJson', root),
   unityStatus: cwd => ipcRenderer.invoke('unity:status', cwd),
   openUnity: cwd => ipcRenderer.invoke('unity:open', cwd),
+  tactileSvnStatus: cwd => ipcRenderer.invoke('tsvn:status', cwd),
+  openTactileSvn: cwd => ipcRenderer.invoke('tsvn:open', cwd),
   gitSnapshot: cwd => ipcRenderer.invoke('git:snapshot', cwd),
   gitChanges: (cwd, snap) => ipcRenderer.invoke('git:changes', cwd, snap),
   undoFile: (cwd, file, snap) => ipcRenderer.invoke('files:undo', cwd, file, snap),

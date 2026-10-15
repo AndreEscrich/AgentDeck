@@ -2458,8 +2458,10 @@ async function refreshUnity() {
   if (curCwd) folders.add(curCwd);
   await Promise.all([...folders].filter(f => f !== state.config?.home).map(async f => {
     unityStates.set(f, await window.deck.unityStatus(f).catch(() => ({ unity: false })));
+    svnStates.set(f, await window.deck.tactileSvnStatus(f).catch(() => ({ available: false })));
   }));
   hub.setUnity(unityStates);
+  hub.setTactileSvn(svnStates);
   renderUnityButton();
 }
 function renderUnityButton() {
@@ -2468,6 +2470,7 @@ function renderUnityButton() {
   const cur = state.current;
   const cwd = cur?.kind === 'agent' ? state.agents.get(cur.id)?.cwd : cur?.kind === 'history' ? (state.history.get(cur.id)?.cwd || state.history.get(cur.id)?.session.cwd) : null;
   const st = cwd ? unityStates.get(cwd) : null;
+  renderTactileSvnButton(cwd);
   const b = $('composer-unity');
   b.classList.toggle('hidden', !st?.unity);
   if (!st?.unity) return;
@@ -2476,6 +2479,25 @@ function renderUnityButton() {
   b.title = st.running ? 'Bring this project\'s Unity Editor to the front' : `Open this project in Unity${st.version ? ' ' + st.version : ''}`;
   b.dataset.cwd = cwd;
 }
+// TactileSVN: the folder's working copy opens there, or its window comes to
+// the front when TactileSVN already has it open (see tactilesvn.js).
+const svnStates = new Map();   // folder -> { available, root }
+function renderTactileSvnButton(cwd) {
+  const st = cwd ? svnStates.get(cwd) : null;
+  const b = $('composer-tsvn');
+  b.classList.toggle('hidden', !st?.available);
+  if (!st?.available) return;
+  b.innerHTML = `${TSVN_ICON}<span>TactileSVN</span>`;
+  b.title = `Show ${st.root} in TactileSVN (brings its window to the front when it is open)`;
+  b.dataset.cwd = cwd;
+}
+async function openTactileSvn(cwd) {
+  if (!cwd) return;
+  sfx('open');
+  const r = await window.deck.openTactileSvn(cwd).catch(err => ({ ok: false, message: String(err?.message || err) }));
+  if (!r.ok) { sfx('refuse'); toast(r.message || 'Could not open TactileSVN.'); }
+}
+
 async function openUnity(cwd) {
   if (!cwd) return;
   sfx('open');
@@ -2485,6 +2507,8 @@ async function openUnity(cwd) {
   setTimeout(refreshUnity, r.action === 'opened' ? 8000 : 1500);
 }
 hub.onOpenUnity = openUnity;
+hub.onOpenTactileSvn = openTactileSvn;
+$('composer-tsvn').onclick = () => openTactileSvn($('composer-tsvn').dataset.cwd);
 hub.onMoveGroup = moveGroup;
 hub.onDropGroup = dropGroupOnRepo;
 hub.branchOf = repoBranch;
