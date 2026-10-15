@@ -625,3 +625,4 @@ html:has(.uml-full, .branch-view:not(.hidden) .uml-svg, .view:not(.hidden) .chan
 .hub-tile[data-task="none"] .tank-scan { display: none; }
 .hub-tile:not([data-task="none"]) .liquid { display: none !important; }
 .hub-tile.state-working:not([data-task="none"]) .tank::before { display: none; }
+.composer-branch { border-radius: 0; font-family: var(--label); letter-spacing: 0.06em; text-transform: uppercase; border-color: color-mix(in srgb, var(--accent) 45%, transparent); }

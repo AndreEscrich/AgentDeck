@@ -149,8 +149,17 @@ function ensureDraft() {
 function renderDraftButtons() {
   const d = ensureDraft();
   const folder = $('composer-folder');
-  folder.textContent = (d.folder ? '📁 ' + shortPath(d.folder) : '📁 Choose folder') + ' ▾';
-  folder.title = d.folder ? `Folder: ${d.folder}` : 'Pick the folder the agent works in';
+  // The folder, then the branch its repository is on (see repoBranch).
+  const branch = d.folder ? repoBranch(d.folder) : null;
+  folder.textContent = d.folder ? '📁 ' + shortPath(d.folder) : '📁 Choose folder';
+  if (branch) {
+    const tag = el('span', 'composer-branch');
+    tag.innerHTML = BRANCH_ICON;
+    tag.appendChild(document.createTextNode(branch.name));
+    folder.append(' ', tag);
+  }
+  folder.append(' ▾');
+  folder.title = d.folder ? `Folder: ${d.folder}${branch ? `\n${branch.vcs === 'svn' ? 'SVN' : 'Git'} branch: ${branch.name}` : ''}` : 'Pick the folder the agent works in';
   folder.classList.toggle('danger-text', !d.folder);
   const group = state.groups.groups.find(g => g.id === d.groupId);
   $('composer-group').textContent = (group ? '# ' + group.name : '# No category') + ' ▾';
@@ -1410,6 +1419,7 @@ function repoRootName(cwd) {
 // Asked again when the answer is over 20 seconds old, so switching branches
 // shows up.
 const repoBranches = new Map();   // folder -> { branch, at, asking }
+const BRANCH_ICON = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2.2"/><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="7" r="2.2"/><path d="M6 7.2v9.6M18 9.2c0 4.5-6 3.8-11 7.6"/></svg>';
 function repoBranch(cwd) {
   if (!cwd || !window.deck.repoBranch) return null;
   const known = repoBranches.get(cwd) || { branch: null, at: 0, asking: false };
@@ -1422,7 +1432,10 @@ function repoBranch(cwd) {
       known.branch = name ? b : null;
       known.at = Date.now();
       known.asking = false;
-      if (changed) refreshHub();
+      if (changed) {
+        refreshHub();
+        renderDraftButtons();
+      }
     }).catch(() => { known.asking = false; known.at = Date.now(); });
   }
   return known.branch;

@@ -2167,3 +2167,9 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 
 /* The Nostromo theme's terrain scan (scanreveal.js); the other themes show the liquid. */
 .tank-scan { display: none; }
+
+/* The branch next to the folder in the message box (renderDraftButtons). */
+.composer-branch { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; padding: 0 7px 0 5px; border: 1px solid var(--border);
+  border-radius: 999px; font-family: var(--mono); font-size: 11px; color: var(--text-dim); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: 1px; }
+.composer-branch svg { flex-shrink: 0; color: var(--accent); }
+.composer-pickers > #composer-folder:has(.composer-branch) { max-width: 60%; }
