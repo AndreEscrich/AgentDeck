@@ -1486,11 +1486,42 @@ async function loadAgentList() {
       groupsChanged = true;
     }
     if (e.inHub && !state.parked.has(e.sessionId)) state.parked.set(e.sessionId, parkedFromList(e));
+    // Removed from the Hub (here or in the other copy of the app, which has
+    // its own saved Hub): it stays off, also when this copy's saved Hub
+    // still has it.
+    if (e.inHub === false && state.parked.has(e.sessionId)) state.parked.delete(e.sessionId);
   }
   hubSynced = new Set(list.filter(e => e.inHub).map(e => e.sessionId));
   agentListReady = true;
   if (groupsChanged) saveGroups();
 }
+
+// When you come back to the window: what the other copy of the app (the
+// dev one, or the stable one) changed on the Hub since. An agent it removed
+// leaves this Hub too, one it added appears; agents running here stay.
+async function reconcileHub() {
+  if (!agentListReady) return;
+  const list = await window.deck.listAgents().catch(() => null);
+  if (!list) return;
+  const running = new Set([...state.agents.values()].filter(a => !a.removed).map(a => a.sessionId).filter(Boolean));
+  let changed = false;
+  for (const e of list) {
+    state.agentList.set(e.sessionId, e);
+    if (running.has(e.sessionId)) continue;
+    if (e.inHub === false && hubSynced.has(e.sessionId)) {
+      hubSynced.delete(e.sessionId);
+      if (state.parked.delete(e.sessionId)) changed = true;
+    } else if (e.inHub && !hubSynced.has(e.sessionId) && !state.parked.has(e.sessionId)) {
+      hubSynced.add(e.sessionId);
+      state.parked.set(e.sessionId, parkedFromList(e));
+      changed = true;
+    }
+  }
+  if (!changed) return;
+  try { localStorage.setItem('hubAgents', JSON.stringify([...state.parked.values()])); } catch { /* not important */ }
+  refreshHub();
+}
+window.addEventListener('focus', () => { reconcileHub(); });
 
 function parkedFromList(e) {
   const { inHub, updatedAt, groupName, ...p } = e;
@@ -1499,16 +1530,19 @@ function parkedFromList(e) {
 
 // After each change of the Hub: the agents on it, with what the list keeps,
 // and the ones that left it.
-function syncAgentList(list) {
+function syncAgentList(list, { now = false } = {}) {
   if (!agentListReady) return;
   clearTimeout(agentListTimer);
-  agentListTimer = setTimeout(() => {
+  const write = () => {
     const on = new Set(list.map(p => p.sessionId));
     const entries = list.map(p => ({ ...p, inHub: true, groupName: findGroup(p.groupId)?.name || null, lastActiveAt: Math.max(p.finishedAt || 0, state.agentList.get(p.sessionId)?.lastActiveAt || 0) || Date.now() }));
     for (const sid of hubSynced) if (!on.has(sid)) entries.push({ sessionId: sid, inHub: false });
     hubSynced = on;
     rememberAgents(entries);
-  }, 400);
+  };
+  // When the app quits it is written right away: the app is gone before 400 ms.
+  if (now) write();
+  else agentListTimer = setTimeout(write, 400);
 }
 
 function rememberAgents(entries) {
@@ -1552,13 +1586,13 @@ function isOnHub(sessionId) {
 
 // Saved in the window's local storage, which survives restarts. Running
 // agents are saved too, so after a restart they come back as completed tiles.
-function saveHub() {
+function saveHub({ now = false } = {}) {
   const list = [];
   for (const a of state.agents.values()) if (!a.removed && a.sessionId) list.push(hubInfo(a));
   const live = new Set(list.map(p => p.sessionId));
   for (const p of state.parked.values()) if (!live.has(p.sessionId)) list.push(p);
   try { localStorage.setItem('hubAgents', JSON.stringify(list)); } catch { /* not important */ }
-  syncAgentList(list);
+  syncAgentList(list, { now });
 }
 
 function loadHub() {
@@ -3053,7 +3087,7 @@ $('app-update').onclick = async () => {
 };
 
 window.deck.onQuitting(() => {
-  saveHub();
+  saveHub({ now: true });
   state.quitting = true;
 });
 
