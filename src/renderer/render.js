@@ -428,6 +428,45 @@ DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
   if (node.nodeName === 'IMG' && data.attrName === 'src' && /^[a-z]:([\\/]|%5c)/i.test(data.attrValue)) data.forceKeepAttr = true;
 });
 
+// A table wider than the chat column grows sideways into the free space
+// beside the chat, centred on it, up to the window's width less a margin;
+// wider than that, it scrolls inside its box. Fitted again when the text's
+// width changes (the window is resized, the chat opens).
+const TABLE_MARGIN = 72;
+function fitTables(root) {
+  for (const wrap of root.querySelectorAll(':scope .table-wrap')) {
+    const table = wrap.firstElementChild;
+    if (!table) continue;
+    wrap.classList.remove('wide');
+    wrap.style.removeProperty('--tw');
+    const column = wrap.clientWidth;
+    if (!column) continue;
+    table.style.width = 'max-content';
+    const natural = table.offsetWidth;
+    table.style.width = '';
+    if (natural <= column + 1) continue;
+    const room = Math.max(column, Math.min(window.innerWidth - TABLE_MARGIN, 1800));
+    wrap.style.setProperty('--tw', `${Math.min(natural + 2, room)}px`);
+    wrap.classList.add('wide');
+  }
+}
+// The room beside the chat changes with the window, not the chat's width.
+let tableResize = null;
+window.addEventListener('resize', () => {
+  clearTimeout(tableResize);
+  tableResize = setTimeout(() => {
+    for (const div of document.querySelectorAll('.msg-text')) if (div.querySelector(':scope .table-wrap')) fitTables(div);
+  }, 120);
+});
+const tableWatch = new ResizeObserver(entries => {
+  for (const e of entries) {
+    const w = Math.round(e.contentRect.width);
+    if (e.target._tableWidth === w) continue;
+    e.target._tableWidth = w;
+    fitTables(e.target);
+  }
+});
+
 function markdown(text, cwd) {
   const div = el('div', 'msg-text');
   // Text boxes drawn with ╔═╗ characters become cards (see boxcard.js).
@@ -453,6 +492,14 @@ function markdown(text, cwd) {
     if (files.length) code.parentElement.replaceWith(changesCard(files, cwd, { title: 'Diff in the answer' }));
   }
   decorateLinks(div);
+  // Tables go in a box that can grow past the chat into the window's free
+  // space, and scrolls sideways when even that is not enough (fitTables).
+  for (const table of div.querySelectorAll('table')) {
+    const wrap = el('div', 'table-wrap');
+    table.replaceWith(wrap);
+    wrap.appendChild(table);
+  }
+  if (div.querySelector('.table-wrap')) tableWatch.observe(div);
   for (const img of div.querySelectorAll('img')) {
     const file = resolveMediaPath(img.getAttribute('src'), cwd);
     if (file) img.replaceWith(mediaElement(file, img.getAttribute('alt')));

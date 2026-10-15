@@ -2256,3 +2256,13 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
    its menu is open, not the branch diff button next to it. */
 .hub-nav .hub-nav-settings { margin-bottom: 18px; }
 .usage-rail.open[data-panel="settings"] .hub-branches-btn:not(:hover) { width: 40px; color: var(--text-dim); background: linear-gradient(180deg, #2c241d, #1d1813); }
+
+/* Tables in answers (fitTables in render.js): one wider than the chat grows
+   into the space beside it, centred on the chat; one wider than the window
+   scrolls inside its box. Long code and paths in a cell may wrap. */
+.msg-text .table-wrap { margin: 0 0 0.9em; overflow-x: auto; max-width: none; }
+.msg-text .table-wrap.wide { width: var(--tw); margin-left: calc((100% - var(--tw)) / 2); position: relative; z-index: 1; }
+.msg-text .table-wrap > table { margin: 0; width: 100%; }
+.msg-text .table-wrap:not(.wide) > table { width: auto; }
+.msg-text td code, .msg-text th code { white-space: normal; overflow-wrap: anywhere; }
+.msg-text .table-wrap.wide > table { background: color-mix(in srgb, var(--bg) 72%, #000); }
