@@ -4649,9 +4649,9 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     if (!document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .uml-full')) checkNext();
   }
-  // Esc leaves an agent (or a saved session, or a new agent) for the Hub.
-  // The Stop button in the top bar stops a running turn.
-  if (e.key === 'Escape' && !e.popupWasOpen && ['agent', 'history', 'new'].includes(state.current?.kind)) {
+  // Esc leaves an agent (or a saved session, a new agent, or the branch
+  // diff view) for the Hub. The Stop button in the top bar stops a running turn.
+  if (e.key === 'Escape' && !e.popupWasOpen && ['agent', 'history', 'new', 'branches'].includes(state.current?.kind)) {
     e.preventDefault();
     backToHub();
   }
@@ -4668,7 +4668,7 @@ document.addEventListener('keydown', e => {
 // panel, the review view). This runs before those close themselves, so the
 // handler above knows not to go back to the Hub as well.
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') e.popupWasOpen = !!document.querySelector('.model-menu:not(.hidden), .group-panel, .uml-full, .uml-detail');
+  if (e.key === 'Escape') e.popupWasOpen = !!document.querySelector('.model-menu:not(.hidden), .group-panel, .uml-full, .uml-detail, .lightbox, .settings-modal, .quit-modal');
 }, true);
 
 // ---------- history drawer ----------
