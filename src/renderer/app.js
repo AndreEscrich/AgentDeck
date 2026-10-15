@@ -2055,11 +2055,22 @@ async function removeFromHistory(ids, { group = null } = {}) {
   saveHub();
   refreshHub();
   await loadSessions();
+  // A category left without agents (none in History, none running) goes too.
+  before.emptied = [];
+  for (const gid of new Set(Object.values(before.assignments))) {
+    const g = findGroup(gid);
+    if (!g || (before.group && before.group.id === gid)) continue;
+    const left = state.sessions.some(s => groupOf(s.id) === gid) || [...state.agents.values()].some(a => !a.removed && a.groupId === gid) || [...state.parked.values()].some(p => (groupOf(p.sessionId) || p.groupId) === gid);
+    if (left) continue;
+    before.emptied.push({ ...g });
+    deleteGroup(gid);
+  }
   sfx('close');
-  toastAction(group ? `Removed ${group.name} from History` : one ? 'Removed from History' : `Removed ${ids.length} agents from History`, 'Undo', async () => {
+  const gone = before.emptied.length ? ` · ${before.emptied.map(g => g.name).join(', ')} had no agents left and is removed too` : '';
+  toastAction((group ? `Removed ${group.name} from History` : one ? 'Removed from History' : `Removed ${ids.length} agents from History`) + gone, 'Undo', async () => {
     await window.deck.restoreToHistory(ids).catch(() => {});
-    if (before.group) {
-      state.groups.groups.push(before.group);
+    if (before.group || before.emptied.length) {
+      for (const g of [before.group, ...before.emptied].filter(Boolean)) if (!findGroup(g.id)) state.groups.groups.push(g);
       Object.assign(state.groups.assignments, before.assignments);
       saveGroups();
     }
