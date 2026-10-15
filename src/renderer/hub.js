@@ -1122,7 +1122,7 @@ class Hub {
     slot.style.order = panel.style.order;
     box.appendChild(slot);
     this.drag = {
-      kind: 'group', panel, slot,
+      kind: 'group', panel, slot, box, isPanel: kind === 'hub-section', target: null,
       siblings: list.filter(p => p !== panel),
       orders: list.map(p => p.style.order),
       index: list.indexOf(panel),
@@ -1147,6 +1147,30 @@ class Hub {
     const sway = Math.max(-0.35, Math.min(0.35, (ev.clientY - d.lastY) * 0.03));
     d.lastY = ev.clientY;
     d.panel.style.setProperty('--sway', `${sway.toFixed(2)}deg`);
+    // A category panel over another repository's container: dropping it
+    // there moves the group to that repository (onDropGroup). The container
+    // lights up and the slot waits at its end.
+    if (d.isPanel) {
+      const over = [...this.repos.values()].find(r => {
+        if (r.el.classList.contains('hidden') || r.body === d.box) return false;
+        const b = r.el.getBoundingClientRect();
+        return ev.clientY >= b.top && ev.clientY <= b.bottom && ev.clientX >= b.left && ev.clientX <= b.right;
+      }) || null;
+      if (over !== d.target) {
+        d.target?.el.classList.remove('drop-target');
+        d.target = over;
+        if (over) {
+          over.el.classList.add('drop-target');
+          d.slot.style.order = '9999';
+          over.body.appendChild(d.slot);
+        } else {
+          d.box.appendChild(d.slot);
+          this.placeGroupSlot();
+        }
+        this.onDragSound?.('shift');
+      }
+      if (over) return;
+    }
     // The slot goes before the first panel whose middle is below the mouse.
     const index = d.siblings.filter(s => d.centers.get(s) < ev.clientY).length;
     if (index !== d.index) {
@@ -1194,12 +1218,25 @@ class Hub {
     ], { duration: 380, easing: 'cubic-bezier(.35,.0,.25,1)' });
     setTimeout(() => this.onDragSound?.('drop'), 260);
     await fall.finished.catch(() => {});
-    d.panel.style.order = d.slot.style.order;
+    const target = d.target;
+    if (!target) d.panel.style.order = d.slot.style.order;
     for (const p of ['position', 'left', 'top', 'width', 'margin', '--sway']) d.panel.style.removeProperty(p);
     d.panel.classList.remove('dropping-group');
     document.body.classList.remove('grabbing');
     d.slot.remove();
     this.drag = null;
+    // Dropped on another repository: its agents move there (moveGroupTo in
+    // app.js); the panel follows them into that container.
+    if (target) {
+      target.el.classList.remove('drop-target');
+      const sec = [...this.sections.values()].find(x => x.el === d.panel);
+      if (sec) {
+        const ids = [...this.tiles].filter(([, t]) => t.el.parentNode === sec.grid && !t.removing).map(([id]) => id);
+        this.onDropGroup?.(ids, sec.cwd, sec.groupKey || null, target.cwds || []);
+      }
+      if (this.latest) this.render(...this.latest);
+      return;
+    }
     // The panels in their repositories' order, then their own.
     const repoOrder = s => Number(s.el.closest('.hub-repo')?.style.order || 0);
     const keys = [...this.sections.values()]

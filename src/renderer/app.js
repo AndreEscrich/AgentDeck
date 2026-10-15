@@ -2126,6 +2126,25 @@ async function moveGroup(ids, from, groupId) {
   if (folder) moveGroupTo(ids, from, groupId, folder);
 }
 
+// A group's panel dropped on another repository's container on the Hub:
+// the group moves to the same folder inside that repository when it has one
+// (MyGame/Unity dropped on MyGame2: MyGame2/Unity), else to the folder the
+// repository's own panels use.
+async function dropGroupOnRepo(ids, from, groupId, targetCwds) {
+  if (!ids.length || !from || !targetCwds.length) return;
+  let folder = targetCwds[0];
+  try {
+    const [src, dst] = await Promise.all([window.deck.repoOf(from), window.deck.repoOf(targetCwds[0])]);
+    const sep = window.deck.platform === 'win32' ? '\\' : '/';
+    const rel = src?.root && from.toLowerCase().startsWith(src.root.toLowerCase()) ? from.slice(src.root.length).replace(/^[\\/]+/, '') : '';
+    if (dst?.root && rel) {
+      const same = dst.root.replace(/[\\/]+$/, '') + sep + rel;
+      if ((await window.deck.existingFiles([same])).length) folder = same;
+    } else if (dst?.root && !rel) folder = dst.root;
+  } catch { /* the target's own folder */ }
+  moveGroupTo(ids, from, groupId, folder);
+}
+
 function moveGroupTo(ids, from, groupId, folder) {
   const group = findGroup(groupId);
   if (!folder || folder.replace(/[\\/]+$/, '').toLowerCase() === (from || '').replace(/[\\/]+$/, '').toLowerCase()) return;
@@ -2467,6 +2486,7 @@ async function openUnity(cwd) {
 }
 hub.onOpenUnity = openUnity;
 hub.onMoveGroup = moveGroup;
+hub.onDropGroup = dropGroupOnRepo;
 hub.branchOf = repoBranch;
 $('composer-unity').onclick = () => openUnity($('composer-unity').dataset.cwd);
 setTimeout(refreshUnity, 3000);

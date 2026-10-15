@@ -651,3 +651,5 @@ html:has(.uml-full, .branch-view:not(.hidden) .uml-svg, .view:not(.hidden) .chan
 .turn-progress { border-radius: 0; background: transparent; border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .progress-title { font-family: var(--title); font-weight: 400; letter-spacing: 0.2em; text-transform: uppercase; text-shadow: var(--glow-strong); }
 .progress-bar, .progress-fill { border-radius: 0; }
+.hub-repo.drop-target { border-color: var(--lamp) !important; box-shadow: 0 0 0 1px var(--lamp), 0 0 26px rgba(255, 170, 60, 0.25) !important; }
+.hub-repo.drop-target .hub-repo-head::after { content: "◀ DROP TO MOVE HERE"; color: var(--lamp); font-family: var(--label); letter-spacing: 0.12em; animation: mu-word-blink 1.2s steps(1) infinite; }

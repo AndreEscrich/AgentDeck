@@ -2246,3 +2246,7 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .folder-panel { width: min(600px, calc(100vw - 48px)); }
 .folder-row .folder-branch { margin-left: auto; max-width: 50%; }
 .folder-row .folder-name + .folder-remove { margin-left: auto; }
+
+/* A category panel dragged over another repository: that container lights up. */
+.hub-repo.drop-target { border-color: var(--accent) !important; box-shadow: 0 0 0 2px var(--accent), 0 14px 30px -14px rgba(0, 0, 0, 0.95) !important; }
+.hub-repo.drop-target .hub-repo-head::after { content: "Drop to move the group here"; margin-left: auto; font-size: 12px; color: var(--accent); }
