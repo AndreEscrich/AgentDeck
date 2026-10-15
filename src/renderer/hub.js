@@ -229,10 +229,10 @@ class Hub {
         const fill = el('div', 'usage-fill');
         fill.style.width = `${pct}%`;
         bar.appendChild(fill);
-        meter.append(top, bar, el('div', 'usage-note', `${note} · resets ${Hub.resetText(w.resetsAt)}`));
+        meter.append(top, bar, el('div', 'usage-note', `${note} · resets ${Hub.resetFull(w.resetsAt)}`));
         box.appendChild(meter);
       }
-      if (u.limits.status === 'rejected') box.appendChild(el('div', 'usage-warn', `Limit reached: it resets ${Hub.resetText(u.limits.resetsAt)}, and waiting agents continue then`));
+      if (u.limits.status === 'rejected') box.appendChild(el('div', 'usage-warn', `Limit reached: it resets ${Hub.resetFull(u.limits.resetsAt)}, and waiting agents continue then`));
       const age = Date.now() - (u.at || 0);
       if (age > 10 * 60 * 1000) box.appendChild(el('div', 'usage-note', `as of ${Hub.ago(age)} ago`));
     } else {
@@ -334,6 +334,22 @@ class Hub {
       return h ? `in ${h}h ${String(m).padStart(2, '0')}m` : m ? `in ${m}m` : 'in under a minute';
     }
     return new Date(seconds * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  }
+
+  // For the usage window: when it resets, also as a date and time.
+  // "in 2h 05m · today 18:30", "in 20h 10m · tomorrow 09:00", "Fri 17 Oct, 18:00".
+  static resetFull(seconds) {
+    if (!seconds) return 'later';
+    const d = new Date(seconds * 1000);
+    const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(now.getDate() + 1);
+    const day = d.toDateString() === now.toDateString() ? 'today'
+      : d.toDateString() === tomorrow.toDateString() ? 'tomorrow' : null;
+    const date = day ? `${day} ${time}` : `${d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}, ${time}`;
+    const ms = d.getTime() - Date.now();
+    return ms > 0 && ms < 24 * 3600 * 1000 ? `${Hub.resetText(seconds)} · ${date}` : ms <= 0 ? 'now' : date;
   }
 
   static ago(ms) {
