@@ -37,13 +37,14 @@ class Hub {
   // New agents start only from the message box under the Hub.
   // onRemove(agentId) removes a tile's agent; onContext(agentId) shows its
   // right-click menu.
-  constructor(container, { onOpen, onRemove, onInterrupt, onRemoveGroup, onContext, onLanded, onReplay, onTab, onReorder, onReorderGroups, onDragSound, onPickGroup }) {
+  constructor(container, { onOpen, onRemove, onInterrupt, onRestart, onRemoveGroup, onContext, onLanded, onReplay, onTab, onReorder, onReorderGroups, onDragSound, onPickGroup }) {
     // Clicking a Group panel (not a tile) points the message box at that Group.
     this.onPickGroup = onPickGroup;
     this.onOpenUnity = null;   // set by the app: open or focus Unity for a folder
     this.selectedKey = null;
     this.onOpen = onOpen;
     this.onInterrupt = onInterrupt;
+    this.onRestart = onRestart;
     this.onReorder = onReorder;
     this.onReorderGroups = onReorderGroups;
     this.onDragSound = onDragSound;
@@ -439,7 +440,11 @@ class Hub {
     const clash = el('div', 'hub-clash hidden');
     info.append(title, step, statusRow, clash);
 
-    tile.append(remove, stop, tank, info);
+    // Stopped before it was done: continue its task (restartAgent in app.js).
+    const restart = el('button', 'tile-restart', '↻');
+    restart.title = 'Restart: continue the task it was doing when it stopped';
+    restart.onclick = e => { e.stopPropagation(); this.onRestart?.(agent.id); };
+    tile.append(remove, stop, restart, tank, info);
     const entry = { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, badge, title, step, statusDot, statusText, timer, clash } };
     this.tiles.set(agent.id, entry);
     return entry;
@@ -575,6 +580,7 @@ class Hub {
       // Thinking (no tool running): slow bubbles that gather at the surface.
       tile.classList.toggle('thinking', agent.status === 'working' && agent.transcript?.liveStep === 'Thinking…');
       tile.classList.toggle('unread', !!agent.unread);
+      tile.classList.toggle('stopped', !!agent.stopped && ['idle', 'error', 'exited'].includes(agent.status));
 
       // A new tank starts empty and fills up, so the browser must draw it
       // empty once before the level changes.
@@ -594,7 +600,8 @@ class Hub {
       // Signed out: waits for you to sign in again, then continues.
       const authWait = !limited && !!agent.authWait;
       tile.classList.toggle('authwait', authWait);
-      parts.icon.textContent = limited ? '⏳' : authWait ? '🔑' : { idle: '✓', error: '✕' }[agent.status] || '';
+      const stoppedNow = !!agent.stopped && ['idle', 'error', 'exited'].includes(agent.status);
+      parts.icon.textContent = limited ? '⏳' : authWait ? '🔑' : stoppedNow ? '■' : { idle: '✓', error: '✕' }[agent.status] || '';
       // After a follow-up message, the tile shows that message (summarized).
       parts.title.textContent = agent.latestTitle || agent.title;
       const busy = ['working', 'starting', 'stuck', 'waiting'].includes(agent.status);
@@ -619,6 +626,7 @@ class Hub {
         : authWait ? 'Signed out · continues after you sign in'
         // Getting ready before Claude Code starts (a Jira ticket, a handoff).
         : agent.status === 'starting' && agent.bootNote ? `Booting up · ${agent.bootNote}`
+        : agent.stopped && ['idle', 'error', 'exited'].includes(agent.status) ? 'Stopped before it was done'
         : HUB_STATUS_TEXT[agent.status] || agent.status;
       // What a waiting agent needs from you: an answer or an approval.
       const needs = agent.status === 'waiting' ? agent.attention || 'approval' : null;

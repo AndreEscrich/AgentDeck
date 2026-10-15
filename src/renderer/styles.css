@@ -2200,3 +2200,17 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .section-move:hover { color: var(--text); border-color: var(--text-faint); }
 .section-notes.hidden + .section-move { margin-left: auto; }
 .hub-section-head .section-move ~ .section-unity, .hub-section-head .section-move ~ .section-remove { margin-left: 0; }
+
+/* A stopped agent (restartAgent): ↻ on its tile, like the stop button, and
+   Restart in the message box next to Send. */
+.tile-restart { position: absolute; top: 6px; right: 36px; z-index: 3; width: 24px; height: 24px; padding: 0; display: none;
+  align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); background: var(--bg-sidebar);
+  color: var(--text-dim); font-size: 14px; line-height: 1; transition: background 0.15s, color 0.15s; }
+.hub-tile.stopped .tile-restart { display: flex; }
+.tile-restart:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.composer-restart { padding: 4px 12px; border-radius: 8px; margin-right: 6px; font-size: 12.5px; border: 1px solid var(--accent); color: var(--accent); background: transparent; }
+.composer-restart:hover { background: var(--accent); color: var(--accent-text); }
+.composer-restart.hidden { display: none; }
+/* A stopped agent looks neither done nor failed: a grey tank with a stop sign. */
+.hub-tile.stopped { --c1: #a3958a; --c2: #6b5f56; --glow: transparent; }
+.tile-restart { right: auto; left: 30px; }

@@ -784,6 +784,7 @@ const hub = new Hub($('hub-view'), {
   },
   onRemove: removeFromHub,
   onInterrupt: id => interruptAgent(id),
+  onRestart: id => restartAgent(id),
   onRemoveGroup: removeGroupFromHub,
   onTab: () => checkNext(),
   onReorder: ids => saveTileOrder(ids),
@@ -1277,6 +1278,8 @@ function hubInfo(a) {
     // Busy when this was saved. If the app quits now, the agent continues
     // the next time the app opens (see resumeInterrupted).
     wasWorking: ['working', 'starting', 'waiting', 'stuck'].includes(a.status),
+    // Stopped before it was done (see restartAgent).
+    stopped: !!a.stopped,
   };
 }
 
@@ -1298,6 +1301,7 @@ function parkedItem(p) {
     sessionId: p.sessionId,
     finishedAt: p.finishedAt || 0,
     unread: !!p.unread,
+    stopped: !!p.stopped,
     transcript: { stepCount: 0, tokens: p.lastTurn?.usage || null, turnStartedAt: null, lastTurn: p.lastTurn },
   };
 }
@@ -1652,6 +1656,7 @@ function setHeader(title, subtitle, agent, category = null) {
   $('composer-stop').classList.toggle('hidden', !agent || !['working', 'stuck'].includes(agent.status));
   renderUndoButton(agent);
   renderUnityButton();
+  renderRestartButton();
   $('btn-close').classList.toggle('hidden', !agent || agent.status === 'exited');
 }
 
@@ -3056,7 +3061,7 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
   if (!resume) summarizeTitle(agent, prompt);
   // What kind of task it is (the Nostromo theme's tank shows it, see tasktype.js).
   if (!resume) taskType.start(agent, prompt);
-  else if (prompt !== RESUME_PROMPT) notePrompt(agent, prompt);
+  else if (prompt !== RESUME_PROMPT && prompt !== RESTART_PROMPT) notePrompt(agent, prompt);
   // In a Unity project: is the Unity bridge set up? (A popup says how, if not.)
   checkUnityBridge(cwd);
   // The chat gets its notes and your message once prepare is done (it can
@@ -3209,6 +3214,7 @@ function userContent(text, images = []) {
 
 async function sendToAgent(agent, text, images = []) {
   clearFollowUps(agent);
+  agent.stopped = false;
   if (agent.moved) {
     try {
       await restartInNewFolder(agent);
@@ -3818,6 +3824,10 @@ window.deck.onEvent((id, msg) => {
       if (!msg.is_error) sounds.done();
       else if (!a.stopping && !limitHit && !a.authWait) sounds.error();
     }
+    // Stopped before it was done: you pressed Stop, or it ended with an
+    // error (not the usage limit or a sign-in, which continue by themselves).
+    // Its tile and message box offer Restart (see restartAgent).
+    a.stopped = !!a.stopping || (!!msg.is_error && !limitHit && !a.authWait);
     // The next queued message goes out now, unless you stopped the task.
     if (a.queue?.length) {
       if (a.stopping) {
@@ -3950,10 +3960,12 @@ window.deck.onExit((id, { code, stderr }) => {
   }
   if (code !== 0 && stderr.trim()) a.transcript.note(stderr.trim().split('\n').slice(-12).join('\n'), true);
   a.transcript.note(`Agent process ended (exit code ${code}).`);
+  a.wasBusy = ['working', 'starting', 'waiting', 'stuck'].includes(a.status) && !a.closing;
   a.status = 'exited';
   // Keep the chat open as a history entry, so you can read it and resume it.
   state.agents.delete(id);
-  if (!a.removed && a.sessionId) state.parked.set(a.sessionId, hubInfo(a));
+  // Its process ended with an error, or in the middle of a task: Restart continues it.
+  if (!a.removed && a.sessionId) state.parked.set(a.sessionId, { ...hubInfo(a), stopped: code !== 0 || !!a.stopped || a.wasBusy });
   const session = { id: a.sessionId || id, title: a.title, cwd: a.cwd, file: null, updatedAt: Date.now() };
   state.history.set(session.id, { session, view: a.view, transcript: a.transcript, cwd: a.cwd, choice: a.choice, mode: a.mode });
   if (state.current?.kind === 'agent' && state.current.id === id) show('history', session.id);
@@ -4434,6 +4446,61 @@ function interruptAgent(id) {
   window.deck.interrupt(id);
 }
 $('btn-interrupt').onclick = () => { if (state.current?.kind === 'agent') interruptAgent(state.current.id); };
+
+// Restart: an agent that stopped before it was done (you pressed Stop, or
+// it ended with an error or its process ended) continues its task. A
+// running agent gets a message that tells it so; one whose process ended
+// starts again on its saved session first (like after closing the app).
+const RESTART_PROMPT = 'Your last task was stopped before it was done. Continue it where you left off.';
+async function restartAgent(id) {
+  const live = state.agents.get(id);
+  if (live) {
+    if (!live.stopped || !['idle', 'error'].includes(live.status)) return;
+    live.stopped = false;
+    sfx('sent');
+    // The tile keeps the title of the task it continues.
+    live.transcript.add({ type: 'user', message: { role: 'user', content: RESTART_PROMPT } });
+    live.status = 'working';
+    hub.wake(live.id);
+    refreshHub();
+    refreshHeaderIfCurrent(live.id);
+    await sendToAgent(live, RESTART_PROMPT);
+    return;
+  }
+  const sessionId = id.startsWith('p:') ? id.slice(2) : id;
+  const p = state.parked.get(sessionId);
+  if (!p?.stopped) return;
+  const session = state.sessions.find(s => s.id === sessionId) || { id: sessionId, title: p.title, cwd: p.cwd, file: null };
+  if (!session.file) await loadSessions();
+  const saved = state.sessions.find(s => s.id === sessionId);
+  if (!saved?.file) { toast('Its saved session was not found, so it cannot restart.'); return; }
+  p.stopped = false;
+  sfx('sent');
+  try {
+    const h = await loadHistory({ ...saved, title: p.title || saved.title });
+    await startAgent({ cwd: h.cwd || saved.cwd || p.cwd, prompt: RESTART_PROMPT, permissionMode: p.mode, choice: p.choice, resume: h });
+    // The tile keeps the title of the task it continues.
+    const a = [...state.agents.values()].find(x => x.sessionId === sessionId || x.view === h.view);
+    if (a && p.latestTitle) { a.latestTitle = p.latestTitle; a.latestPrompt = p.latestPrompt; refreshHub(); }
+  } catch (err) {
+    p.stopped = true;
+    toast(`Could not restart: ${err?.message || err}`);
+  }
+  saveHub();
+}
+
+// The Restart button in the message box, for the agent (or saved session) on screen.
+function renderRestartButton() {
+  const cur = state.current;
+  const b = $('composer-restart');
+  if (!b) return;
+  const live = cur?.kind === 'agent' ? state.agents.get(cur.id) : null;
+  const parked = cur?.kind === 'history' ? state.parked.get(cur.id) : null;
+  const show = live ? !!live.stopped && ['idle', 'error'].includes(live.status) : !!parked?.stopped;
+  b.classList.toggle('hidden', !show);
+  b.dataset.id = live ? live.id : cur?.id || '';
+}
+$('composer-restart').onclick = () => { const id = $('composer-restart').dataset.id; if (id) restartAgent(id); };
 $('composer-stop').onclick = () => { if (state.current?.kind === 'agent') interruptAgent(state.current.id); };
 $('btn-close').onclick = async () => {
   if (state.current?.kind !== 'agent') return;

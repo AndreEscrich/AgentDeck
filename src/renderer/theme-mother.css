@@ -645,3 +645,6 @@ html:has(.uml-full, .branch-view:not(.hidden) .uml-svg, .view:not(.hidden) .chan
   background: repeating-linear-gradient(135deg, transparent 0 10px, color-mix(in srgb, var(--accent) 5%, transparent) 10px 11px) !important; }
 .hub-section.loose .hub-section-name { border-style: dashed !important; color: var(--text-dim) !important; }
 .hub-section.loose .hub-section-hint { color: color-mix(in srgb, var(--accent) 70%, transparent); }
+.tile-restart, .composer-restart { border-radius: 0 !important; font-family: var(--label); }
+.hub-tile.stopped { --c1: #9fb0b8; }
+.hub-tile.stopped .tank::after { content: "STOPPED"; animation: none; }
