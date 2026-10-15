@@ -710,10 +710,28 @@ class Hub {
       if (!repoCwds.has(name)) repoCwds.set(name, []);
       if (sec.cwd) repoCwds.get(name).push(sec.cwd);
     });
+    // Copies of one repository (MyGame, MyGame2, MyGame3: the same name with
+    // a number at the end) stay together, in the order of their numbers, at
+    // the place of the first of them; no number counts as 1.
+    const family = name => {
+      const m = /^(.*?)[-_ ]?(\d+)$/.exec(name);
+      return m && m[1] ? { base: m[1].toLowerCase(), n: Number(m[2]) } : { base: name.toLowerCase(), n: 1 };
+    };
+    const shown = [...repoFirst.keys()].sort((a, b) => repoFirst.get(a) - repoFirst.get(b));
+    const repoPlace = new Map();
+    for (const name of shown) {
+      if (repoPlace.has(name)) continue;
+      const base = family(name).base;
+      const kin = shown.filter(other => family(other).base === base).sort((a, b) => family(a).n - family(b).n || a.localeCompare(b));
+      for (const k of kin) repoPlace.set(k, repoPlace.size);
+    }
+    // The containers slide to their new places (measured before and after).
+    const moving = [...this.repos.values()].filter(r => !r.el.classList.contains('hidden') && repoPlace.has(r.name) && String(repoPlace.get(r.name)) !== r.el.style.order);
+    const before = !this.drag && moving.length ? new Map([...this.repos.values()].map(r => [r, r.el.getBoundingClientRect()])) : null;
     for (const [name, repo] of this.repos) {
       const n = repoCounts.get(name) || 0;
       repo.el.classList.toggle('hidden', !n);
-      repo.el.style.order = String(repoFirst.get(name) ?? 0);
+      repo.el.style.order = String(repoPlace.get(name) ?? 1000);
       repo.count.textContent = `${n} agent${n === 1 ? '' : 's'}`;
       repo.cwds = repoCwds.get(name) || [];
       const b = repo.cwds.map(c => this.branchOf?.(c)).find(Boolean);
@@ -723,6 +741,14 @@ class Hub {
         repo.branch.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2.2"/><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="7" r="2.2"/><path d="M6 7.2v9.6M18 9.2c0 4.5-6 3.8-11 7.6"/></svg>';
         repo.branch.appendChild(document.createTextNode(b.name));
         repo.branch.title = `${b.vcs === 'svn' ? 'SVN' : 'Git'} branch: ${b.name}`;
+      }
+    }
+    if (before) {
+      for (const [repo, r] of before) {
+        if (repo.el.classList.contains('hidden') || !r.height) continue;
+        const dy = r.top - repo.el.getBoundingClientRect().top;
+        if (Math.abs(dy) < 1) continue;
+        repo.el.animate([{ transform: `translateY(${dy}px)` }, { transform: 'translateY(0)' }], { duration: 420, easing: 'cubic-bezier(.2,.9,.25,1.04)' });
       }
     }
     if (this.unityStates) this.setUnity(this.unityStates);
