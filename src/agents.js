@@ -53,7 +53,18 @@ const DIFF_PROMPT = [
   'Never paste a diff or parts of one into your message, also not in a diff code block: Agent Hub cannot show a pasted excerpt as well as the real diff.',
 ].join(' ');
 
-const SYSTEM_PROMPT = `${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}`;
+// Progress for long tasks with several parts: Agent Hub shows these lines
+// in a Progress panel at the top of the task in the chat (milestones in
+// render.js), without a notification.
+const MILESTONE_PROMPT = [
+  'When a task has several parts (for example animating several pieces, building the model of a feature with several types, or changing many screens),',
+  'report your progress while you work: each time you finish a part, write one short line on its own that starts with "Milestone:",',
+  'saying what is done and how far you are, for example "Milestone: 3 of 8 pieces animated (dig, merge and spawn)".',
+  'Agent Hub shows these lines as progress; they do not notify the user, so do not wait for an answer.',
+  'Keep each one to a single line, write them only for tasks with several parts, and not in your final message.',
+].join(' ');
+
+const SYSTEM_PROMPT = `${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}\n\n${MILESTONE_PROMPT}`;
 
 // 'auto', or the size in tokens when it is between 100k and 1M (false otherwise).
 function compactTokens(value) {

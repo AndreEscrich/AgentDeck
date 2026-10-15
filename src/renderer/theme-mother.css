@@ -648,3 +648,6 @@ html:has(.uml-full, .branch-view:not(.hidden) .uml-svg, .view:not(.hidden) .chan
 .tile-restart, .composer-restart { border-radius: 0 !important; font-family: var(--label); }
 .hub-tile.stopped { --c1: #9fb0b8; }
 .hub-tile.stopped .tank::after { content: "STOPPED"; animation: none; }
+.turn-progress { border-radius: 0; background: transparent; border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.progress-title { font-family: var(--title); font-weight: 400; letter-spacing: 0.2em; text-transform: uppercase; text-shadow: var(--glow-strong); }
+.progress-bar, .progress-fill { border-radius: 0; }

@@ -2333,8 +2333,11 @@ async function loadHistory(session) {
     const data = await window.deck.loadTranscript(session.file);
     const transcript = new Transcript(view, data.cwd || session.cwd);
     transcript.onEditPrompt = (index, text, opts) => rewindTo(transcript, index, text, opts);
+    // A saved session is drawn all at once, so its milestones show no times.
+    transcript.replaying = true;
     for (const m of data.messages) transcript.add(m);
     transcript.finishTurn();
+    transcript.replaying = false;
     transcript.note('End of saved session. Send a message to continue it.');
     await restoreTurnChanges(transcript);
     state.history.set(session.id, { session, view, transcript, cwd: data.cwd });

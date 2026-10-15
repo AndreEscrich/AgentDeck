@@ -894,6 +894,8 @@ class Transcript {
       startedAt: Date.now(),
       el: el('div', 'turn'),
       steps: el('details', 'steps hidden'),
+      // Milestones and the agent's plan while it works (see addMilestones).
+      progress: el('details', 'turn-progress hidden'),
       summary: el('summary'),
       body: el('div', 'steps-body'),
       live: el('div', 'turn-live'),
@@ -907,7 +909,8 @@ class Transcript {
     };
     turn.summary.append(el('span', 'steps-spinner'), el('span', 'steps-text', 'Working…'));
     turn.steps.append(turn.summary, turn.body);
-    turn.el.append(turn.steps, turn.live, turn.skills, turn.answer);
+    turn.progress.open = true;
+    turn.el.append(turn.progress, turn.steps, turn.live, turn.skills, turn.answer);
     this.turn = turn;
     this.append(turn.el);
     return turn;
@@ -1005,6 +1008,8 @@ class Transcript {
     if (totalTokens(usage)) parts.push(`${formatTokens(totalTokens(usage))} tokens`);
     turn.summary.querySelector('.steps-text').textContent = parts.join(' · ');
     turn.el.classList.add('done');
+    // The task's progress folds away under its title once it is done.
+    if (turn.progressBody) turn.progress.open = false;
     this.lastFinished = turn;
     this.lastTurn = {
       stepCount: turn.stepCount,
@@ -1234,7 +1239,10 @@ class Transcript {
 
       if (block.type === 'text' && block.text.trim()) {
         this.clearDraft();
-        const node = markdown(block.text, this.cwd);
+        // "Milestone: …" lines go to the Progress panel, not into the answer.
+        const rest = this.addMilestones(turn, block.text);
+        if (!rest.trim()) continue;
+        const node = markdown(rest, this.cwd);
         turn.pendingText.push(node);
         // Everything the agent said during the task (for the group's notes:
         // what failed and what worked is often said along the way).
@@ -1248,6 +1256,7 @@ class Transcript {
         this.liveStep = 'Thinking…';
       } else if (block.type === 'tool_use') {
         if (block.name === 'Skill') this.addSkill(turn, block.input?.skill);
+
         this.noteEvidence(turn, block);
         this.trackTool(turn, block);
         this.clearDraft();
@@ -1256,8 +1265,86 @@ class Transcript {
         turn.stepCount++;
         this.addStep(this.toolCard(block), `${block.name} · ${toolSummary(block.name, block.input)}`);
         this.liveStep = stepPhrase(block.name, block.input);
+        if (block.name === 'TodoWrite' && Array.isArray(block.input?.todos)) this.showPlan(turn, block.input.todos);
       }
     }
+  }
+
+  // ---------- progress of long tasks ----------
+
+  // The Progress panel at the top of a task: the milestones the agent writes
+  // ("Milestone: 3 of 8 pieces animated", see MILESTONE_PROMPT in agents.js),
+  // each with the time since the task started, and its plan (the TodoWrite
+  // list) with how many items are done. No sound and no notification: it is
+  // there for when you open the agent while it works. Returns the text
+  // without its milestone lines.
+  addMilestones(turn, text) {
+    const kept = [];
+    for (const line of text.split('\n')) {
+      const m = /^\s*(?:[-*>]\s*)?(?:\*\*|__)?milestone(?:\*\*|__)?\s*:\s*(?:\*\*|__)?\s*(.+?)\s*$/i.exec(line);
+      if (!m) { kept.push(line); continue; }
+      const what = m[1].replace(/^\*\*|\*\*$/g, '').trim();
+      if (!what) continue;
+      turn.milestones = (turn.milestones || 0) + 1;
+      const row = el('div', 'milestone');
+      const mins = Math.max(0, Math.round((Date.now() - turn.startedAt) / 60000));
+      row.append(el('span', 'milestone-mark', '◆'), el('span', 'milestone-text', what), el('span', 'milestone-time', this.replaying ? '' : mins ? `${mins} min` : 'now'));
+      this.pinned(() => {
+        this.progressList(turn).appendChild(row);
+        this.renderProgressHead(turn);
+      });
+      this.liveStep = `◆ ${what}`.slice(0, 140);
+    }
+    return kept.join('\n');
+  }
+
+  progressList(turn) {
+    if (!turn.progressBody) {
+      turn.progressHead = el('summary', 'progress-head');
+      turn.progressPlan = el('div', 'progress-plan hidden');
+      turn.progressBody = el('div', 'progress-list');
+      turn.progress.append(turn.progressHead, turn.progressPlan, turn.progressBody);
+      turn.progress.classList.remove('hidden');
+    }
+    return turn.progressBody;
+  }
+
+  renderProgressHead(turn) {
+    const head = turn.progressHead;
+    head.textContent = '';
+    const parts = [];
+    if (turn.plan) parts.push(`${turn.plan.done} of ${turn.plan.total} done`);
+    if (turn.milestones) parts.push(`${turn.milestones} milestone${turn.milestones === 1 ? '' : 's'}`);
+    head.append(el('span', 'progress-title', 'Progress'), el('span', 'progress-count', parts.join(' · ')));
+    if (turn.plan) {
+      const bar = el('span', 'progress-bar');
+      const fill = el('span', 'progress-fill');
+      fill.style.width = `${Math.round((turn.plan.done / Math.max(1, turn.plan.total)) * 100)}%`;
+      bar.appendChild(fill);
+      head.appendChild(bar);
+    }
+  }
+
+  // The agent's plan, as it updates it: ✓ done, ▶ in progress, ○ to do.
+  showPlan(turn, todos) {
+    this.progressList(turn);
+    const done = todos.filter(t => t.status === 'completed').length;
+    turn.plan = { done, total: todos.length };
+    // The tile's step line: what it is on now, and how far the plan is.
+    const now = todos.find(t => t.status === 'in_progress');
+    if (todos.length) this.liveStep = `${now ? `▶ ${now.activeForm || now.content} · ` : ''}${done} of ${todos.length} done`.slice(0, 140);
+    this.pinned(() => {
+      const plan = turn.progressPlan;
+      plan.textContent = '';
+      plan.classList.toggle('hidden', !todos.length);
+      for (const t of todos) {
+        const row = el('div', `plan-item ${t.status || 'pending'}`);
+        row.append(el('span', 'plan-mark', t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '▶' : '○'),
+          el('span', null, t.status === 'in_progress' && t.activeForm ? t.activeForm : t.content || ''));
+        plan.appendChild(row);
+      }
+      this.renderProgressHead(turn);
+    });
   }
 
   toolCard(block) {
