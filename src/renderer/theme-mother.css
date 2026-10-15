@@ -626,3 +626,22 @@ html:has(.uml-full, .branch-view:not(.hidden) .uml-svg, .view:not(.hidden) .chan
 .hub-tile:not([data-task="none"]) .liquid { display: none !important; }
 .hub-tile.state-working:not([data-task="none"]) .tank::before { display: none; }
 .composer-branch { border-radius: 0; font-family: var(--label); letter-spacing: 0.06em; text-transform: uppercase; border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+
+/* Each repository is its own console panel: a brighter frame, a lit header
+   strip across its full width with the name, and amber corner marks. */
+.hub-repo { position: relative; border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent) !important;
+  box-shadow: inset 0 0 0 3px var(--bg), inset 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent), 0 0 22px rgba(60, 236, 255, 0.06) !important; }
+.hub-repo-head { margin: -12px -14px 14px; padding: 8px 14px; border-bottom: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  background: repeating-linear-gradient(to bottom, color-mix(in srgb, var(--accent) 12%, transparent) 0 2px, color-mix(in srgb, var(--accent) 6%, transparent) 2px 4px); }
+.hub-board.tight .hub-repo-head { margin: -12px -14px 10px; padding: 6px 14px; }
+.hub-repo::before, .hub-repo::after { content: ""; position: absolute; width: 14px; height: 14px; pointer-events: none; }
+.hub-repo::before { left: -1px; top: -1px; border-left: 2px solid var(--lamp); border-top: 2px solid var(--lamp); box-shadow: -1px -1px 6px -2px var(--lamp); }
+.hub-repo::after { right: -1px; bottom: -1px; border-right: 2px solid var(--lamp); border-bottom: 2px solid var(--lamp); box-shadow: 1px 1px 6px -2px var(--lamp); }
+
+/* No category: a panel of separate tasks, so it looks different from a
+   category: a brighter dashed frame, faint diagonal stripes, and its name in
+   a dashed box. */
+.hub-section.loose:not(.selected) { border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent) !important;
+  background: repeating-linear-gradient(135deg, transparent 0 10px, color-mix(in srgb, var(--accent) 5%, transparent) 10px 11px) !important; }
+.hub-section.loose .hub-section-name { border-style: dashed !important; color: var(--text-dim) !important; }
+.hub-section.loose .hub-section-hint { color: color-mix(in srgb, var(--accent) 70%, transparent); }

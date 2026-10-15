@@ -2182,3 +2182,13 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 /* A message with a button (Undo) */
 .toast-action { display: flex; align-items: center; gap: 12px; pointer-events: auto; }
 .toast-btn { padding: 2px 10px; border-radius: 6px; border: 1px solid currentColor; background: transparent; color: inherit; font: inherit; font-weight: 600; }
+
+/* Repository containers stand further apart and are clearly framed: more
+   space between them, a stronger outline, and a line under the title row
+   that separates the repository from its panels. */
+.hub-board { gap: 30px; }
+.hub-board.tight { gap: 18px; }
+.hub-repo { background: #211913; border: 1.5px solid #3e3228;
+  box-shadow: inset 0 1px 0 rgba(255, 236, 210, 0.06), 0 14px 30px -14px rgba(0, 0, 0, 0.95); }
+.hub-repo-head { padding-bottom: 9px; margin-bottom: 12px; border-bottom: 1px solid #3a2f25; }
+.hub-board.tight .hub-repo-head { padding-bottom: 6px; margin-bottom: 8px; }
