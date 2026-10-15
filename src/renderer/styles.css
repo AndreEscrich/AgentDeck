@@ -1169,6 +1169,7 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
   background: repeating-conic-gradient(#342b22 0% 25%, #2a231c 0% 50%) 0 0 / 16px 16px; }
 img.chat-media { cursor: zoom-in; }
 video.chat-media { background: #000; }
+audio.chat-media { width: 100%; max-width: 420px; height: 40px; background: transparent; }
 .media-missing { font-size: 12px; color: var(--text-faint); font-style: italic; }
 .media-card { border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); overflow: hidden; }
 .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; padding: 10px 12px 12px; }

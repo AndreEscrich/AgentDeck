@@ -227,6 +227,7 @@ function registerForNotifications() {
 app.whenReady().then(() => {
   media.registerProtocol(protocol, net, path.join(app.getPath('userData'), 'media-previews'));
   ipcMain.handle('media:recent', (_e, cwd, sinceMs) => media.recentMedia(cwd, sinceMs));
+  ipcMain.handle('media:find', (_e, cwd, name) => media.findMedia(cwd, name).catch(() => null));
   ipcMain.handle('media:before', (_e, cwd, file, snap) => media.mediaBefore(cwd, file, snap, path.join(app.getPath('userData'), 'media-before')).catch(() => null));
   ipcMain.handle('jira:issue', (_e, key) => jira.issue(key));
   ipcMain.handle('gdoc:title', (_e, url) => require('./gdocs').title(url));

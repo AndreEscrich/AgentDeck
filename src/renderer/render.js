@@ -13,6 +13,7 @@ function el(tag, className, text) {
 // ---------- images and videos ----------
 
 const VIDEO_EXT = /\.(mp4|webm|mov|m4v)$/i;
+const AUDIO_EXT = /\.(wav|mp3|ogg|oga|m4a|aac|flac|opus)$/i;
 
 // The address the window loads a file on disk from (see src/media.js).
 function mediaUrl(file) {
@@ -111,22 +112,41 @@ function openLightbox(file) {
   window.uiSound?.('tick');
 }
 
-function mediaElement(file, caption) {
+// cwd: the agent's folder. A file that is not where the chat says (an agent
+// often names a file it made in a subfolder by its name alone) is looked for
+// there by name (findMedia in media.js); when it is nowhere, the chat says so
+// instead of showing an empty player.
+function mediaElement(file, caption, cwd) {
   let node;
-  if (VIDEO_EXT.test(file)) {
-    node = document.createElement('video');
+  const name = file.split(/[\\/]/).pop();
+  if (VIDEO_EXT.test(file) || AUDIO_EXT.test(file)) {
+    node = document.createElement(AUDIO_EXT.test(file) ? 'audio' : 'video');
     node.controls = true;
     node.preload = 'metadata';
     node.src = mediaUrl(file);
   } else {
     node = document.createElement('img');
     node.src = mediaUrl(file);
-    node.alt = caption || file.split(/[\\/]/).pop();
+    node.alt = caption || name;
     node.title = 'Click to see it at full size';
-    node.onclick = () => openLightbox(file);
-    node.onerror = () => node.replaceWith(el('div', 'media-missing', `Cannot show ${file.split(/[\\/]/).pop()}`));
+    node.onclick = () => openLightbox(node.dataset.path);
   }
+  let searched = false;
+  node.addEventListener('error', async () => {
+    if (!searched && cwd && window.deck?.findMedia) {
+      searched = true;
+      const found = await window.deck.findMedia(cwd, name).catch(() => null);
+      if (found && found !== node.dataset.path) {
+        node.dataset.path = found;
+        node.title = found;
+        node.src = mediaUrl(found);
+        return;
+      }
+    }
+    node.replaceWith(el('div', 'media-missing', `Cannot ${node.tagName === 'IMG' ? 'show' : 'play'} ${name}: it is not in the agent's folder`));
+  });
   node.classList.add('chat-media');
+  if (node.tagName === 'AUDIO') node.classList.add('chat-audio');
   node.dataset.path = file;
   return node;
 }
@@ -502,7 +522,7 @@ function markdown(text, cwd) {
   if (div.querySelector('.table-wrap')) tableWatch.observe(div);
   for (const img of div.querySelectorAll('img')) {
     const file = resolveMediaPath(img.getAttribute('src'), cwd);
-    if (file) img.replaceWith(mediaElement(file, img.getAttribute('alt')));
+    if (file) img.replaceWith(mediaElement(file, img.getAttribute('alt'), cwd));
   }
   return div;
 }
@@ -1662,15 +1682,17 @@ class Transcript {
     if (!files.length) return;
     const card = el('div', 'media-card');
     const videos = files.filter(f => f.kind === 'video').length;
-    const images = files.length - videos;
+    const sounds = files.filter(f => f.kind === 'audio').length;
+    const images = files.length - videos - sounds;
     const parts = [];
     if (images) parts.push(`${images} new or changed image${images === 1 ? '' : 's'}`);
     if (videos) parts.push(`${videos} video${videos === 1 ? '' : 's'}`);
+    if (sounds) parts.push(`${sounds} sound${sounds === 1 ? '' : 's'}`);
     card.appendChild(el('div', 'changes-head', parts.join(' · ')));
     const grid = el('div', 'media-grid');
     for (const f of files) {
       const item = el('figure', 'media-item');
-      const media = mediaElement(f.path);
+      const media = mediaElement(f.path, null, this.cwd);
       item.append(media, el('figcaption', null, this.relativePath(f.path)));
       grid.appendChild(item);
       // A changed image: before and after, with a slider between them.

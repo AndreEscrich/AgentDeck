@@ -83,6 +83,8 @@ contextBridge.exposeInMainWorld('deck', {
   jiraDetails: key => ipcRenderer.invoke('jira:details', key),
   jiraComment: (key, body) => ipcRenderer.invoke('jira:comment', key, body),
   recentMedia: (cwd, sinceMs) => ipcRenderer.invoke('media:recent', cwd, sinceMs),
+  // A media file of this name somewhere in cwd (see findMedia in media.js).
+  findMedia: (cwd, name) => ipcRenderer.invoke('media:find', cwd, name),
   mediaBefore: (cwd, file, snap) => ipcRenderer.invoke('media:before', cwd, file, snap),
   listSessions: () => ipcRenderer.invoke('sessions:list'),
   loadTranscript: file => ipcRenderer.invoke('sessions:load', file),

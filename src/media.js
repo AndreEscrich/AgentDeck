@@ -1,8 +1,8 @@
-// Images and videos in the chat.
+// Images, videos and sounds in the chat.
 //
 // The window cannot read files on disk itself, so it loads them through the
 // "media:" address scheme, for example media://file/?path=%2FUsers%2F…%2FGrass.png.
-// The handler below only serves image and video files.
+// The handler below only serves image, video and sound files.
 //
 // Chromium shows png, jpg, gif, webp, bmp and svg, and plays mp4, webm and
 // most mov files. Unity also uses tga, psd, exr and tif; on macOS those are
@@ -18,7 +18,9 @@ const { pathToFileURL } = require('url');
 const IMAGE = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif', 'ico']);
 const CONVERT = new Set(['tga', 'psd', 'exr', 'tif', 'tiff', 'hdr', 'heic']);
 const VIDEO = new Set(['mp4', 'webm', 'mov', 'm4v']);
-const VIDEO_TYPE = { mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime' };
+const AUDIO = new Set(['wav', 'mp3', 'ogg', 'oga', 'm4a', 'aac', 'flac', 'opus']);
+const VIDEO_TYPE = { mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
+  wav: 'audio/wav', mp3: 'audio/mpeg', ogg: 'audio/ogg', oga: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', opus: 'audio/ogg' };
 
 // Folders that are never searched for new media: Unity's caches and build
 // output, version control and packages.
@@ -31,6 +33,7 @@ function extensionOf(file) {
 function kindOf(file) {
   const ext = extensionOf(file);
   if (VIDEO.has(ext)) return 'video';
+  if (AUDIO.has(ext)) return 'audio';
   if (IMAGE.has(ext) || CONVERT.has(ext)) return 'image';
   return null;
 }
@@ -61,7 +64,7 @@ function registerProtocol(protocol, net, cacheDir) {
       source = await convertedPreview(file, cacheDir);
       if (!source) return new Response('This format cannot be shown here', { status: 415 });
     }
-    if (kind === 'video') return videoResponse(source, request.headers.get('range'));
+    if (kind === 'video' || kind === 'audio') return videoResponse(source, request.headers.get('range'));
     return net.fetch(pathToFileURL(source).toString());
   });
 }
@@ -146,4 +149,32 @@ async function mediaBefore(cwd, file, snap, cacheDir) {
   return out;
 }
 
-module.exports = { registerProtocol, recentMedia, kindOf, mediaBefore };
+// A media file the chat names without saying where it is (an agent wrote
+// "![A](Sound_A.mp4)" while the file is in a subfolder): the newest file of
+// that name in cwd or its subfolders, or null. Stops after limitMs.
+async function findMedia(cwd, name, { limitMs = 4000 } = {}) {
+  const want = String(name || '').toLowerCase();
+  if (!cwd || !want || !kindOf(want)) return null;
+  const started = Date.now();
+  const queue = [cwd];
+  let best = null;
+  while (queue.length && Date.now() - started < limitMs) {
+    const dir = queue.shift();
+    let entries;
+    try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { continue; }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!SKIP_DIRS.has(entry.name) && !entry.name.startsWith('.')) queue.push(full);
+      } else if (entry.isFile() && entry.name.toLowerCase() === want) {
+        try {
+          const stat = await fs.promises.stat(full);
+          if (!best || stat.mtimeMs > best.mtimeMs) best = { path: full, mtimeMs: stat.mtimeMs };
+        } catch { /* deleted in the meantime */ }
+      }
+    }
+  }
+  return best ? best.path : null;
+}
+
+module.exports = { registerProtocol, recentMedia, kindOf, mediaBefore, findMedia };
