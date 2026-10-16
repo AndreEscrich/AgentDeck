@@ -2272,3 +2272,9 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .msg-text .table-wrap:not(.wide) > table { width: auto; }
 .msg-text td code, .msg-text th code { white-space: normal; overflow-wrap: anywhere; }
 .msg-text .table-wrap.wide > table { background: color-mix(in srgb, var(--bg) 72%, #000); }
+
+/* The Hub always keeps room for its scrollbar (on both sides, so it stays
+   centred). Without it, a scrollbar that appears makes the Hub narrower, the
+   tiles shrink to fit (fitToHeight), the scrollbar goes, the tiles grow
+   back, and the whole Hub flips between two positions on every frame. */
+#hub-view { scrollbar-gutter: stable both-edges; }
