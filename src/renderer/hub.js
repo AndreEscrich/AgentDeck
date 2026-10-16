@@ -565,7 +565,10 @@ class Hub {
       if (entry.arrival) {
         const info = entry.arrival;
         entry.arrival = null;
-        requestAnimationFrame(() => this.morph(entry, info));
+        // When repositories slide to new places (a numbered copy appeared,
+        // see the repository order below), the box flies once they stand
+        // still, to where the tile ends up.
+        this.whenStill(entry.el).then(() => this.morph(entry, info));
       }
 
       // Play the one-time animations when the state changes.
@@ -754,6 +757,7 @@ class Hub {
         const dy = r.top - repo.el.getBoundingClientRect().top;
         if (Math.abs(dy) < 1) continue;
         repo.el.animate([{ transform: `translateY(${dy}px)` }, { transform: 'translateY(0)' }], { duration: 420, easing: 'cubic-bezier(.2,.9,.25,1.04)' });
+        this.repoSlideUntil = performance.now() + 440;
       }
     }
     if (this.unityStates) this.setUnity(this.unityStates);
@@ -1341,6 +1345,28 @@ class Hub {
 
   // The message box lifts, shrinks to the size of a tank while the text fades
   // and the liquid starts to fill, then flies to the tile's place in the grid.
+  // Resolves once a new tile stands where it stays: no repository is
+  // sliding, and its place did not change between two looks 80 ms apart.
+  // Its repository's name can arrive a moment after the tile (see repoName
+  // in app.js), which moves the tile to another container. At most 1.5 s.
+  async whenStill(tile) {
+    const until = performance.now() + 1500;
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    await new Promise(r => requestAnimationFrame(r));
+    let last = null;
+    let same = 0;
+    while (performance.now() < until) {
+      const slide = (this.repoSlideUntil || 0) - performance.now();
+      if (slide > 0) { await wait(slide); last = null; same = 0; continue; }
+      const r = tile.getBoundingClientRect();
+      const at = `${Math.round(r.left)},${Math.round(r.top)}`;
+      if (at === last && ++same >= 2) return;
+      if (at !== last) same = 0;
+      last = at;
+      await wait(80);
+    }
+  }
+
   async morph(entry, { rect: from, text }) {
     const tile = entry.el;
     // Without a visible Hub there is nowhere to fly to.
