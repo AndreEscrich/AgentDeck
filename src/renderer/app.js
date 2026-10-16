@@ -1319,6 +1319,7 @@ function hubInfo(a) {
     moved: !!a.moved,
     groupId: a.groupId || groupOf(a.sessionId) || null,
     choice: a.choice,
+    autoLevel: a.autoLevel || undefined,
     mode: a.mode,
     lastTurn: a.transcript?.lastTurn ? { durationMs: a.transcript.lastTurn.durationMs, usage: a.transcript.lastTurn.usage } : a.lastTurn || null,
     // Finished while you were not looking, and not opened since.
@@ -1348,6 +1349,8 @@ function parkedItem(p) {
     cwd: p.cwd,
     groupId: groupOf(p.sessionId) || p.groupId,
     sessionId: p.sessionId,
+    choice: p.choice,
+    autoLevel: p.autoLevel,
     finishedAt: p.finishedAt || 0,
     unread: !!p.unread,
     stopped: !!p.stopped,
@@ -1660,6 +1663,7 @@ async function openParked(sessionId) {
   }
   if (h && p) {
     h.choice = h.choice || p.choice;
+    h.autoLevel = h.autoLevel || p.autoLevel;
     h.mode = h.mode || p.mode;
     composerPicker.setValue(h.choice || defaultChoice());
     composerPicker.setResolved(null);
@@ -2594,6 +2598,21 @@ $('composer-tsvn').onclick = () => openTactileSvn($('composer-tsvn').dataset.cwd
 hub.onMoveGroup = moveGroup;
 hub.onDropGroup = dropGroupOnRepo;
 hub.branchOf = repoBranch;
+// The model on each agent's tile: "Opus 5.5", or with Auto "Auto · Sonnet"
+// (what Auto runs right now). Fable shows apart, as in the model menu.
+hub.modelOf = agent => {
+  // A saved session from before models were recorded: nothing to show.
+  if (!agent.choice?.model) return null;
+  const value = agent.choice.model;
+  if (value === 'auto') {
+    const picked = autoModel.nameOf(cliModel(agent));
+    return { label: `Auto · ${picked}`, auto: true, title: `Auto picked ${picked} for this task (it can change with your next message)` };
+  }
+  if (value === 'default') return { label: 'Default', title: "Claude Code's default model" };
+  const m = modelByValue(value);
+  const name = m ? shortName(m) : value;
+  return { label: name, fable: /^fable/i.test(name), title: `Runs on ${name}` };
+};
 $('composer-unity').onclick = () => openUnity($('composer-unity').dataset.cwd);
 setTimeout(refreshUnity, 3000);
 setInterval(() => { if (!document.hidden) refreshUnity(); }, 5000);

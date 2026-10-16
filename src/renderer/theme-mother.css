@@ -534,6 +534,8 @@ button, .hub-info, .hub-status, .note, .status-pill, .next-hint, #input, .model-
 .hub-tile.state-idle:not(.unread) .tank { background: color-mix(in srgb, var(--c1) 4%, #000) !important; }
 .liquid { opacity: 0.5 !important; }
 .hub-status, .hub-tile .hub-info .hub-status * { color: var(--c1) !important; }
+.hub-tile .hub-info .hub-status .hub-model { border-radius: 0; border-color: color-mix(in srgb, var(--c1) 40%, transparent); text-transform: uppercase; letter-spacing: 0.06em; }
+.hub-tile .hub-info .hub-status .hub-model.fable { color: #c9a8ff !important; border-color: rgba(181, 140, 255, 0.5); }
 .hub-tile .hub-title { color: var(--read-strong); }
 .hub-tile .hub-step { color: var(--text-dim); }
 /* The word in the window: bigger and bolder, and its blink never goes dark. */

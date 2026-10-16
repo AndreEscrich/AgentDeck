@@ -440,7 +440,9 @@ class Hub {
     const statusDot = el('span', 'dot');
     const statusText = el('span');
     const timer = el('span', 'hub-timer');
-    statusRow.append(statusDot, statusText, timer);
+    // The model it runs on (with Auto: the one Auto picked), see modelOf.
+    const model = el('span', 'hub-model hidden');
+    statusRow.append(statusDot, statusText, timer, model);
     // Another working agent changes the same file (see noteClashes in app.js).
     const clash = el('div', 'hub-clash hidden');
     info.append(title, step, statusRow, clash);
@@ -450,7 +452,7 @@ class Hub {
     restart.title = 'Restart: continue the task it was doing when it stopped';
     restart.onclick = e => { e.stopPropagation(); this.onRestart?.(agent.id); };
     tile.append(remove, stop, restart, tank, info);
-    const entry = { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, badge, title, step, statusDot, statusText, timer, clash } };
+    const entry = { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, badge, title, step, statusDot, statusText, timer, model, clash } };
     this.tiles.set(agent.id, entry);
     return entry;
   }
@@ -655,6 +657,14 @@ class Hub {
         parts.statusText.title = agent.status === 'background' && agent.backgroundTasks?.length ? `Waiting for: ${agent.backgroundTasks.join(', ')}` : '';
       }
       this.updateTimer(agent, parts.timer);
+      const model = this.modelOf?.(agent) || null;
+      parts.model.classList.toggle('hidden', !model);
+      if (model) {
+        if (parts.model.textContent !== model.label) parts.model.textContent = model.label;
+        parts.model.title = model.title || '';
+        parts.model.classList.toggle('fable', !!model.fable);
+        parts.model.classList.toggle('auto', !!model.auto);
+      }
       const clashes = agent.clashes ? [...agent.clashes.values()] : [];
       parts.clash.classList.toggle('hidden', !clashes.length);
       if (clashes.length) {
