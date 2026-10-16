@@ -411,6 +411,39 @@ function summarizeTitle(config, text) {
   });
 }
 
+// How hard a task is, for the Auto model (automodel.js in the window): Haiku
+// rates it 1 (quick and simple), 2 (normal work) or 3 (hard). Same kind of
+// call as summarizeTitle. Resolves with the number, or null.
+function rateTask(config, text) {
+  return new Promise(resolve => {
+    const proc = spawnClaude(config.claudePath,
+      ['-p', '--model', 'haiku', '--output-format', 'json', '--strict-mcp-config', '--tools', '', '--no-session-persistence'],
+      { cwd: os.tmpdir(), env: childEnv(config.env), stdio: ['pipe', 'pipe', 'ignore'] });
+    helperProcesses.add(proc);
+    let out = '';
+    const timer = setTimeout(() => { killTree(proc); }, 20000);
+    proc.stdout.on('data', d => { out += d; });
+    proc.on('error', () => resolve(null));
+    proc.on('close', () => {
+      clearTimeout(timer);
+      helperProcesses.delete(proc);
+      try {
+        const result = JSON.parse(out);
+        const n = Number(/[123]/.exec(String(result.result || ''))?.[0]);
+        resolve(result.is_error || !n ? null : n);
+      } catch {
+        resolve(null);
+      }
+    });
+    proc.stdin.end(
+      'Rate how hard this task is for a coding agent working in a code base.\n'
+      + '1 = quick and simple: a question, a small edit, a rename, running a command, a short explanation.\n'
+      + '2 = normal work: a feature or fix in a few files, a review, a moderate investigation.\n'
+      + '3 = hard: deep debugging, design or architecture, many files, subtle reasoning, a long or vague spec.\n'
+      + 'Reply with only the number.\n\nTask: ' + text.slice(0, 3000));
+  });
+}
+
 // The messages you are most likely to send next, after an agent finished a
 // task: up to three short ones, written as you would write them. Resolves
 // with an array (empty when it failed). See loadFollowUps in app.js.
@@ -542,4 +575,4 @@ function fetchUsage(config) {
   });
 }
 
-module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, mergeNotes, suggestFollowUps, fetchUsage };
+module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, rateTask, mergeNotes, suggestFollowUps, fetchUsage };

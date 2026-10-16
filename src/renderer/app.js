@@ -40,6 +40,36 @@ const state = {
 
 // ---------- model menu ----------
 
+// ---------- the Auto model (automodel.js) ----------
+
+// The model Claude Code runs for an agent: its choice, or with Auto the one
+// Auto picked for it (agent.autoLevel, 1 to 3).
+function cliModel(agent) {
+  const m = agent.choice?.model;
+  return m === 'auto' ? autoModel.modelOf(agent.autoLevel || 2) : m;
+}
+function cliChoice(agent) {
+  return { ...(agent.choice || {}), model: cliModel(agent) };
+}
+// The model button says what Auto picked for the agent on screen.
+function showAutoPick(agent) {
+  if (state.current?.kind !== 'agent' || state.current.id !== agent.id) return;
+  composerPicker.setResolved(agent.choice?.model === 'auto' && agent.autoLevel ? autoModel.nameOf(cliModel(agent)) : null);
+}
+// The first message waits for Haiku's rating (at most 5 seconds; Claude Code
+// is starting meanwhile), and the model changes before it if the rules and
+// Haiku together say so.
+async function settleAuto(agent, rating) {
+  const haiku = await Promise.race([rating, new Promise(r => setTimeout(() => r(null), 5000))]);
+  const before = cliModel(agent);
+  agent.autoLevel = autoModel.combine(agent.autoRules, haiku);
+  if (cliModel(agent) !== before) window.deck.setModel(agent.id, cliChoice(agent));
+  const why = haiku ? `Haiku rated it ${haiku} of 3` : 'from your message';
+  agent.transcript.note(`Auto picked ${autoModel.nameOf(cliModel(agent))} (${why}).`);
+  showAutoPick(agent);
+  refreshHub();
+}
+
 function defaultChoice() {
   return {
     model: state.config.defaultModel || 'default',
@@ -56,7 +86,9 @@ const composerPicker = new ModelPicker($('composer-picker'), {
     if (cur?.kind === 'agent') {
       const a = state.agents.get(cur.id);
       a.choice = choice;
-      window.deck.setModel(a.id, choice);
+      if (choice.model === 'auto' && !a.autoLevel) a.autoLevel = autoModel.combine(autoModel.rules(a.latestPrompt || a.title), null);
+      window.deck.setModel(a.id, cliChoice(a));
+      showAutoPick(a);
       a.transcript.note(`Switched to ${composerPicker.button.textContent.replace(' ▾', '')} from the next message on.`);
     } else if (cur?.kind === 'history') {
       state.history.get(cur.id).choice = choice;
@@ -570,6 +602,8 @@ function show(kind, id) {
     a.unread = false;
     setHeader(headerTitle(a), a.cwd, a);
     composerPicker.setValue(a.choice || defaultChoice());
+    composerPicker.setResolved(null);
+    showAutoPick(a);
     composerModePicker.setValue(a.mode || defaultMode());
     $('input').placeholder = DEFAULT_PLACEHOLDER;
     renderFollowUps();
@@ -585,6 +619,7 @@ function show(kind, id) {
     const listed = state.parked.get(id) || state.agentList.get(id);
     setHeader(listed?.latestTitle || h.session.title, h.cwd || h.session.cwd, null, findGroup(groupOf(h.session.id))?.name || null);
     composerPicker.setValue(h.choice || defaultChoice());
+    composerPicker.setResolved(null);
     composerModePicker.setValue(h.mode || defaultMode());
     $('input').placeholder = 'Send a message to continue this session…';
     $('input').focus();
@@ -594,6 +629,7 @@ function show(kind, id) {
     setHeader('Claude HUB', '', null);
     const d = ensureDraft();
     composerPicker.setValue(d.choice);
+    composerPicker.setResolved(null);
     composerModePicker.setValue(d.mode);
     renderDraftButtons();
     $('input').placeholder = HUB_PLACEHOLDER;
@@ -1626,6 +1662,7 @@ async function openParked(sessionId) {
     h.choice = h.choice || p.choice;
     h.mode = h.mode || p.mode;
     composerPicker.setValue(h.choice || defaultChoice());
+    composerPicker.setResolved(null);
     composerModePicker.setValue(h.mode || defaultMode());
   }
   return h?.view;
@@ -2233,7 +2270,7 @@ async function restartInNewFolder(agent) {
     id: agent.id,
     cwd: agent.cwd,
     permissionMode: agent.mode,
-    model: agent.choice?.model,
+    model: cliModel(agent),
     effort: agent.choice?.effort,
     fastMode: agent.choice?.fastMode,
     resumeId: from,
@@ -3163,6 +3200,15 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     // A resumed session stays in its group. A new one goes to the group picked in the form.
     groupId: resume ? groupOf(resume.session.id) : groupId || null };
   state.agents.set(id, agent);
+  // Auto: the rules pick a model now, and Haiku's rating comes while Claude
+  // Code starts (see settleAuto). A resumed session keeps what Auto picked.
+  let autoRating = null;
+  if (choice.model === 'auto') {
+    const real = !!prompt && prompt !== RESUME_PROMPT && prompt !== RESTART_PROMPT;
+    agent.autoRules = real ? autoModel.rules(prompt, { images: images.length }) : 2;
+    agent.autoLevel = resume?.autoLevel || autoModel.combine(agent.autoRules, null);
+    if (real && !resume?.autoLevel) autoRating = window.deck.rateTask(prompt).catch(() => null);
+  }
   if (ticket) agent.ticket = ticket;
   if (!resume) summarizeTitle(agent, prompt);
   // What kind of task it is (the Nostromo theme's tank shows it, see tasktype.js).
@@ -3210,7 +3256,7 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
       id,
       cwd,
       permissionMode,
-      model: choice.model,
+      model: cliModel(agent),
       effort: choice.effort,
       fastMode: choice.fastMode,
       ...(rewindAt === undefined
@@ -3226,6 +3272,7 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
   // A / command must start the message, or Claude Code does not run it: the
   // handoff then goes with your next message.
   if (preamble && isSlashCommand(prompt)) agent.pendingPreamble = preamble;
+  if (autoRating) await settleAuto(agent, autoRating);
   await sendToAgent(agent, isSlashCommand(prompt) ? prompt : preamble + prompt, images);
 }
 
@@ -3320,6 +3367,16 @@ function userContent(text, images = []) {
 
 async function sendToAgent(agent, text, images = []) {
   clearFollowUps(agent);
+  // Auto keeps its model for follow-ups (a switch loses the prompt cache),
+  // but steps up a level when the last turn failed or got stuck, or you say
+  // the work is wrong.
+  if (agent.choice?.model === 'auto' && agent.autoSent && (agent.autoLevel || 2) < 3 && autoModel.stepUp(agent.status, text)) {
+    agent.autoLevel = (agent.autoLevel || 2) + 1;
+    window.deck.setModel(agent.id, cliChoice(agent));
+    agent.transcript.note(`Auto stepped up to ${autoModel.nameOf(cliModel(agent))} for this.`);
+    showAutoPick(agent);
+  }
+  if (agent.choice?.model === 'auto') agent.autoSent = true;
   agent.stopped = false;
   if (agent.moved) {
     try {
@@ -3436,7 +3493,7 @@ async function rewindTo(transcript, index, text, { undoFiles, files = [] } = {})
       id: agent.id,
       cwd,
       permissionMode: agent.mode,
-      model: agent.choice?.model,
+      model: cliModel(agent),
       effort: agent.choice?.effort,
       fastMode: agent.choice?.fastMode,
       resumeId: at?.session,
@@ -4073,7 +4130,7 @@ window.deck.onExit((id, { code, stderr }) => {
   // Its process ended with an error, or in the middle of a task: Restart continues it.
   if (!a.removed && a.sessionId) state.parked.set(a.sessionId, { ...hubInfo(a), stopped: code !== 0 || !!a.stopped || a.wasBusy });
   const session = { id: a.sessionId || id, title: a.title, cwd: a.cwd, file: null, updatedAt: Date.now() };
-  state.history.set(session.id, { session, view: a.view, transcript: a.transcript, cwd: a.cwd, choice: a.choice, mode: a.mode });
+  state.history.set(session.id, { session, view: a.view, transcript: a.transcript, cwd: a.cwd, choice: a.choice, mode: a.mode, autoLevel: a.autoLevel });
   if (state.current?.kind === 'agent' && state.current.id === id) show('history', session.id);
   loadSessions();
 });

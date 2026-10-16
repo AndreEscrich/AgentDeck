@@ -409,6 +409,13 @@ details.thinking pre { font-family: var(--font); color: var(--text-dim); }
 .menu-item.selected .menu-name { color: var(--accent); }
 .menu-text { flex: 1; min-width: 0; }
 .menu-name { font-weight: 500; }
+/* Fable stands apart in the model menu: below a line, in violet, for the
+   exceptional task (it draws your limits fastest). */
+.menu-sep-label { margin: 6px 4px 2px; padding: 8px 4px 2px; border-top: 1px dashed var(--border); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #b58cff; }
+.menu-item.exception { border: 1px solid rgba(181, 140, 255, 0.35); background: rgba(181, 140, 255, 0.06); }
+.menu-item.exception .menu-name { color: #c9a8ff; }
+.menu-item.exception .menu-name::before { content: "✦ "; }
+.menu-item.exception:hover { background: rgba(181, 140, 255, 0.12); }
 .menu-desc { font-size: 12px; color: var(--text-faint); }
 .menu-check { color: var(--accent); width: 14px; }
 .segmented { display: flex; gap: 2px; margin: 0 8px 4px; padding: 2px; background: var(--bg-panel); border-radius: 7px; }

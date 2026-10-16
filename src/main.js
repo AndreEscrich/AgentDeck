@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Notification, Menu, protocol
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
-const { AgentManager, fetchModels, summarizeTitle, mergeNotes, suggestFollowUps, fetchUsage } = require('./agents');
+const { AgentManager, fetchModels, summarizeTitle, rateTask, mergeNotes, suggestFollowUps, fetchUsage } = require('./agents');
 const { listSessions, loadTranscript, PROJECTS_DIR } = require('./sessions');
 const git = require('./git');
 const { repoOf, branchOf } = require('./repos');
@@ -385,6 +385,7 @@ app.whenReady().then(() => {
   ipcMain.handle('agent:followups', (_e, input) => (getConfig().suggestFollowUps ? suggestFollowUps(getConfig(), input || {}) : []));
   ipcMain.handle('notes:merge', (_e, input) => mergeNotes(getConfig(), input || {}));
   ipcMain.handle('agent:title', (_e, text) => (getConfig().summarizeTitles ? summarizeTitle(getConfig(), text) : null));
+  ipcMain.handle('agent:rate', (_e, text) => rateTask(getConfig(), String(text || '')));
   // Clicking a notification opens its agent. The app keeps each notification
   // until it closes, or Windows would forget the click handler.
   const shown = new Set();

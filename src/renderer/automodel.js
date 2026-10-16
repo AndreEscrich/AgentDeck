@@ -1,0 +1,59 @@
+// The Auto model: picks Haiku, Sonnet or Opus for a task, so simple things
+// run fast and cheap and hard ones get the strongest model. Fable is never
+// picked: it is for exceptions, chosen by hand.
+//
+// Two opinions, mixed:
+// - rules: instant, from your message (its length and its words: "rename",
+//   "what is" lean small; "debug", "refactor", "design" lean large);
+// - Haiku's rating, 1 to 3 (rateTask in agents.js), which takes a few
+//   seconds and counts twice as much.
+// The agent starts on the rules' pick at once; its first message waits for
+// Haiku (at most a few seconds) and the model changes before it if the two
+// together say so (see startAgent in app.js).
+//
+// Later messages keep the model (switching loses the prompt cache), except
+// that it steps up one level when the last turn failed or got stuck, or your
+// message says the work is wrong ("still broken", "that's not right").
+
+const autoModel = (() => {
+  const MODELS = ['haiku', 'sonnet', 'opus'];
+  const NAMES = { haiku: 'Haiku', sonnet: 'Sonnet', opus: 'Opus' };
+
+  const HARD = /\b(debug\w*|crash\w*|race condition|deadlock|leak\w*|refactor\w*|architect\w*|design\w*|redesign|migrat\w*|rewrite|investigat\w*|why (does|is|do|did)|root cause|performance|optimi[sz]\w*|concurren\w*|security|algorithm\w*|end.to.end|across (the|all)|whole (project|code ?base|system)|implement\w*|feature)\b/gi;
+  const EASY = /\b(rename|typo|spelling|what is|what does|where is|which file|explain briefly|summari[sz]e|list|show me|print|format|translate|commit|push|promote|restart|reopen|open|run the|bump|update the version|add a comment|comment out|remove the line|change the text|change the colou?r)\b/gi;
+
+  // The rules' level, 1 to 3 (a fraction: how sure they are shows in how
+  // far from the middle it is).
+  function rules(text, { images = 0 } = {}) {
+    const t = String(text || '');
+    let score = 2;
+    score += Math.min(2, (t.match(HARD) || []).length) * 0.5;
+    score -= Math.min(2, (t.match(EASY) || []).length) * 0.5;
+    if (t.length < 60) score -= 0.5;
+    if (t.length > 700) score += 0.5;
+    if (t.length > 1800) score += 0.5;
+    if ((t.match(/```/g) || []).length >= 2) score += 0.25;   // code pasted in
+    if (images) score += 0.25;
+    return Math.max(1, Math.min(3, score));
+  }
+
+  // Rules and Haiku together (Haiku counts twice): the level, 1 to 3.
+  function combine(rulesLevel, haikuLevel) {
+    const level = haikuLevel ? (rulesLevel + 2 * haikuLevel) / 3 : rulesLevel;
+    return Math.max(1, Math.min(3, Math.round(level)));
+  }
+
+  const modelOf = level => MODELS[Math.max(1, Math.min(3, level)) - 1];
+  const nameOf = model => NAMES[model] || model;
+
+  // A follow-up that should step up a level: the last turn failed or got
+  // stuck, or you say the work is wrong.
+  const UNHAPPY = /\b(still (broken|wrong|failing|not|doesn'?t|crash\w*)|not (right|working|what i)|doesn'?t work|didn'?t work|wrong|broken|again|that'?s not|try again|you missed|regress\w*)\b/i;
+  function stepUp(lastStatus, text) {
+    return lastStatus === 'error' || lastStatus === 'stuck' || UNHAPPY.test(String(text || ''));
+  }
+
+  return { rules, combine, modelOf, nameOf, stepUp, MODELS };
+})();
+
+window.autoModel = autoModel;

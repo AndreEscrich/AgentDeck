@@ -15,10 +15,16 @@ const EFFORT_NAMES = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra
 let sharedModels = FALLBACK_MODELS;
 const pickers = [];
 
-// The menu lists the newest model of each family, most capable first:
-// Fable, Opus, Sonnet, Haiku (the older versions and "Default" stay out of
+// The menu: Auto, then the newest Opus, Sonnet and Haiku, and apart from
+// them Fable, for exceptions (the older versions and "Default" stay out of
 // it, but a choice saved before still shows its name on the button).
-const FAMILIES = ['fable', 'opus', 'sonnet', 'haiku'];
+// Auto picks Opus, Sonnet or Haiku for each task (see automodel.js).
+const AUTO = {
+  value: 'auto', displayName: 'Auto', description: 'Picks Opus, Sonnet or Haiku for each task',
+  supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high', 'max'],
+};
+const FAMILIES = ['opus', 'sonnet', 'haiku', 'fable'];
+const modelByValue = value => (value === 'auto' ? AUTO : sharedModels.find(m => m.value === value)) || sharedModels[0];
 function menuModels() {
   const best = new Map();   // family -> { model, version }
   for (const m of sharedModels) {
@@ -32,8 +38,9 @@ function menuModels() {
     if (!known || newer(version, known.version) || (!newer(known.version, version) && m.value === family)) best.set(family, { model: m, version });
   }
   const list = FAMILIES.map(f => best.get(f)?.model).filter(Boolean);
-  return list.length ? list : sharedModels;
+  return list.length ? [AUTO, ...list] : [AUTO, ...sharedModels];
 }
+const isFable = m => /^fable/i.test(m.displayName || '') || m.value === 'fable';
 
 function shortName(model) {
   return model.displayName.replace(/\s*\(recommended\)/i, '');
@@ -65,7 +72,14 @@ class ModelPicker {
   }
 
   get model() {
-    return sharedModels.find(m => m.value === this.value.model) || sharedModels[0];
+    return modelByValue(this.value.model);
+  }
+
+  // With Auto: the model it picked for the agent on screen ("Sonnet"), shown
+  // on the button as "Auto → Sonnet"; null when it has not picked yet.
+  setResolved(name) {
+    this.resolved = name || null;
+    this.renderButton();
   }
 
   setValue(value) {
@@ -76,7 +90,7 @@ class ModelPicker {
   }
 
   renderButton() {
-    const parts = [shortName(this.model)];
+    const parts = [shortName(this.model) + (this.value.model === 'auto' && this.resolved ? ` → ${this.resolved}` : '')];
     if (this.value.effort) parts.push(EFFORT_NAMES[this.value.effort] || this.value.effort);
     this.button.textContent = parts.join(' · ') + (this.value.fastMode ? ' ⚡' : '') + ' ▾';
     this.button.title = this.model.description || '';
@@ -97,7 +111,7 @@ class ModelPicker {
   change(patch) {
     const next = { ...this.value, ...patch };
     // Keep only settings the newly selected model supports.
-    const model = sharedModels.find(m => m.value === next.model) || sharedModels[0];
+    const model = modelByValue(next.model);
     if (!(model.supportedEffortLevels || []).includes(next.effort)) next.effort = '';
     if (!model.supportsFastMode) next.fastMode = false;
     this.setValue(next);
@@ -111,7 +125,9 @@ class ModelPicker {
 
     menu.appendChild(el('div', 'menu-label', 'Model'));
     for (const m of menuModels()) {
-      const row = el('div', 'menu-item' + (m.value === this.value.model ? ' selected' : ''));
+      // Fable stands apart, below a line: the exception, not an everyday pick.
+      if (isFable(m)) menu.appendChild(el('div', 'menu-sep-label', 'For exceptions'));
+      const row = el('div', 'menu-item' + (m.value === this.value.model ? ' selected' : '') + (isFable(m) ? ' exception' : '') + (m.value === 'auto' ? ' auto' : ''));
       const text = el('div', 'menu-text');
       text.append(el('div', 'menu-name', m.displayName), el('div', 'menu-desc', m.description || ''));
       row.append(text, el('span', 'menu-check', m.value === this.value.model ? '✓' : ''));
