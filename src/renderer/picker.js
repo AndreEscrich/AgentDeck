@@ -42,8 +42,12 @@ function menuModels() {
 }
 const isFable = m => /^fable/i.test(m.displayName || '') || m.value === 'fable';
 
+// A model's name without its version ("Opus", not "Opus 5.5") when it is the
+// family's alias, which always runs the newest version; a pinned older
+// version keeps its number ("Opus 4.8").
 function shortName(model) {
-  return model.displayName.replace(/\s*\(recommended\)/i, '');
+  const name = model.displayName.replace(/\s*\(recommended\)/i, '');
+  return /^(fable|opus|sonnet|haiku)$/i.test(model.value || '') ? name.replace(/\s+[\d.]+$/, '') : name;
 }
 
 class ModelPicker {
@@ -129,7 +133,7 @@ class ModelPicker {
       if (isFable(m)) menu.appendChild(el('div', 'menu-sep-label', 'For exceptions'));
       const row = el('div', 'menu-item' + (m.value === this.value.model ? ' selected' : '') + (isFable(m) ? ' exception' : '') + (m.value === 'auto' ? ' auto' : ''));
       const text = el('div', 'menu-text');
-      text.append(el('div', 'menu-name', m.displayName), el('div', 'menu-desc', m.description || ''));
+      text.append(el('div', 'menu-name', shortName(m)), el('div', 'menu-desc', m.description || ''));
       row.append(text, el('span', 'menu-check', m.value === this.value.model ? '✓' : ''));
       row.onclick = () => this.change({ model: m.value });
       menu.appendChild(row);
