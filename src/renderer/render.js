@@ -339,6 +339,44 @@ function githubCard(href, gh, text) {
   return a;
 }
 
+// ---------- Cortex links ----------
+
+// A Cortex page link, read from the link alone:
+//   https://cortex.tactilews.com/<space>/<page id>/<page-name>#<section>
+// Returns { space, page, section } (names made readable from the link), or null.
+const cortexWords = s => decodeURIComponent(s || '').replace(/[-_]+/g, ' ').trim();
+const cortexTitle = s => s.replace(/\b\w/g, c => c.toUpperCase());
+function cortexOf(href) {
+  let url;
+  try { url = new URL(href); } catch { return null; }
+  if (!/^cortex\.tactilews\.com$/i.test(url.hostname)) return null;
+  const [space, id, slug] = url.pathname.split('/').filter(Boolean);
+  if (!space) return null;
+  const isPage = /^[0-9a-f]{24}$/i.test(id || '');
+  return {
+    space: cortexTitle(cortexWords(space)),
+    page: isPage ? (slug ? cortexTitle(cortexWords(slug)) : 'Page') : null,
+    section: url.hash.length > 1 ? cortexWords(url.hash.slice(1)).replace(/^\w/, c => c.toUpperCase()) : null,
+  };
+}
+
+const CORTEX_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2.5h7l3 3v8H3z"/><path d="M10 2.5v3h3"/><path d="M5.5 8h5M5.5 10.5h3.5"/></svg>';
+
+// A Cortex link as a card, like a Jira ticket: the space, the page and the
+// section it opens at; the link's own words when it has them.
+function cortexCard(href, cx, text) {
+  const a = document.createElement('a');
+  a.className = 'cortex-card';
+  a.href = href;
+  const logo = el('span', 'cortex-logo');
+  logo.innerHTML = CORTEX_ICON;
+  const named = text && text.trim() !== href && !/^https?:\/\//i.test(text.trim()) ? text.trim() : '';
+  a.append(logo, el('span', 'cortex-space', cx.space), el('span', 'cortex-page', named || cx.page || 'Space'));
+  if (cx.section) a.append(el('span', 'cortex-section', `§ ${cx.section}`));
+  a.title = `Cortex · ${cx.space}${cx.page ? `\n${named || cx.page}` : ''}${cx.section ? `\nSection: ${cx.section}` : ''}\nOpen in your browser`;
+  return a;
+}
+
 // ---------- Slack links ----------
 
 // What a Slack link points to, from the link alone (the app has no Slack
@@ -413,7 +451,7 @@ function slackCard(href, sl, text) {
 // links become cards with their title and state, and Slack links message cards.
 function decorateLinks(root) {
   for (const a of [...root.querySelectorAll('a[href]')]) {
-    if (a.closest('.jira-card, .gdoc-card, .github-card, .slack-card')) continue;
+    if (a.closest('.jira-card, .gdoc-card, .github-card, .slack-card, .cortex-card')) continue;
     const href = a.getAttribute('href');
     if (!/^https?:/i.test(href)) continue;
     a.target = '_blank';
@@ -424,7 +462,9 @@ function decorateLinks(root) {
     const gh = githubOf(href);
     if (gh) { a.replaceWith(githubCard(href, gh, a.textContent)); continue; }
     const sl = slackOf(href);
-    if (sl) a.replaceWith(slackCard(href, sl, a.textContent));
+    if (sl) { a.replaceWith(slackCard(href, sl, a.textContent)); continue; }
+    const cx = cortexOf(href);
+    if (cx) a.replaceWith(cortexCard(href, cx, a.textContent));
   }
   return root;
 }
@@ -447,6 +487,37 @@ document.addEventListener('click', e => {
 DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
   if (node.nodeName === 'IMG' && data.attrName === 'src' && /^[a-z]:([\\/]|%5c)/i.test(data.attrValue)) data.forceKeepAttr = true;
 });
+
+// A JSON block in an answer gets a Copy button at its top right, so it can
+// be pasted somewhere else as it is: a ```json block, or any block whose
+// text reads as JSON.
+function addJsonCopy(root) {
+  for (const code of root.querySelectorAll('pre > code')) {
+    const text = code.textContent;
+    const tagged = /\blanguage-(json|jsonc|json5)\b/.test(code.className);
+    let json = tagged;
+    if (!json && /^\s*[[{]/.test(text)) { try { JSON.parse(text); json = true; } catch { /* not JSON */ } }
+    if (!json) continue;
+    const pre = code.parentElement;
+    const wrap = el('div', 'code-copy-wrap');
+    pre.replaceWith(wrap);
+    const button = el('button', 'code-copy', 'Copy JSON');
+    button.type = 'button';
+    button.title = 'Copy this JSON to paste it somewhere else';
+    button.onclick = async e => {
+      e.stopPropagation();
+      try {
+        await window.deck.copyText(text.replace(/\n$/, ''));
+        button.textContent = 'Copied';
+        window.uiSound?.('tick');
+      } catch {
+        button.textContent = 'Could not copy';
+      }
+      setTimeout(() => { button.textContent = 'Copy JSON'; }, 1600);
+    };
+    wrap.append(pre, button);
+  }
+}
 
 // A table wider than the chat column grows sideways into the free space
 // beside the chat, centred on it, up to the window's width less a margin;
@@ -512,6 +583,7 @@ function markdown(text, cwd) {
     if (files.length) code.parentElement.replaceWith(changesCard(files, cwd, { title: 'Diff in the answer' }));
   }
   decorateLinks(div);
+  addJsonCopy(div);
   // Tables go in a box that can grow past the chat into the window's free
   // space, and scrolls sideways when even that is not enough (fitTables).
   for (const table of div.querySelectorAll('table')) {

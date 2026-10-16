@@ -169,3 +169,6 @@ details.change-file > summary:hover { background: #f1ebe3; }
 .hub-repo-head { border-bottom-color: #d9cec0; }
 .hub-tile.stopped { --c1: #b3a79c; --c2: #85786d; }
 .usage-rail.open[data-panel="settings"] .hub-branches-btn:not(:hover) { background: linear-gradient(180deg, #ffffff, #f3eee7); }
+.msg-user .cortex-card { background: rgba(255, 255, 255, 0.6); }
+.cortex-space { color: #5b45d6; }
+.cortex-logo { color: #6b55e6; }

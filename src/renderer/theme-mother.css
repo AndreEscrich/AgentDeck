@@ -257,7 +257,7 @@ body::before, body::after, #mu-roll, #mu-noise { border-radius: 34px / 30px !imp
    the default look. */
 .settings-card, .palette-modal, .quit-card, .conn-dialog, .changelog-card, .notes-card,
 .usage-main, .context-pop, .model-menu, .hub-settings-menu, .uml-detail, .question-card, .permission,
-.toast, .box-card, .jira-card, .github-card, .slack-card, .changes, .media-card, .queue, .hub-menu-item, .act-tile, .hub-activity,
+.toast, .box-card, .jira-card, .github-card, .slack-card, .cortex-card, .changes, .media-card, .queue, .hub-menu-item, .act-tile, .hub-activity,
 .prompt-pin, .hub-settings-btn, .usage-tab, .followup, .question-option {
   background: var(--bg) !important; border-color: var(--border) !important;
   box-shadow: 0 0 0 1px var(--border), 0 0 24px rgba(60, 236, 255, 0.08) !important; }
@@ -660,3 +660,4 @@ html:has(.uml-full, .branch-view:not(.hidden) .uml-svg, .view:not(.hidden) .chan
 body.history-open #sidebar.history-drawer { transform: none; }
 .assets-section, .asset-kind { border-radius: 0 !important; }
 .assets-head { font-family: var(--label); letter-spacing: 0.12em; }
+.code-copy { border-radius: 0; font-family: var(--label); text-transform: uppercase; letter-spacing: 0.08em; }
