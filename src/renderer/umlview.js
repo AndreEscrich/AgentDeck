@@ -1496,7 +1496,7 @@ function openDetail(panel, api, model, node, line, { files, comments }) {
       return;
     }
     // Changes, Full file or Side by side (see fileViews in diffview.js).
-    const views = fileViews(file, comments?.cwd, () => (comments ? comments.diff(file, { maxLines: 20000 }) : renderDiff(file, { maxLines: 20000 })));
+    const views = fileViews(file, comments?.cwd, () => (comments ? comments.diff(file, { maxLines: 20000 }) : renderDiff(file, { maxLines: 20000 })), comments);
     const diff = views;
     body.appendChild(diff);
     // The full file and side by side load after this, and switching views

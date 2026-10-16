@@ -2278,3 +2278,5 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
    tiles shrink to fit (fitToHeight), the scrollbar goes, the tiles grow
    back, and the whole Hub flips between two positions on every frame. */
 #hub-view { scrollbar-gutter: stable both-edges; }
+.sbs-cell.commentable { cursor: pointer; }
+.sbs-cell.commentable:hover .ln { color: var(--accent); opacity: 1; }

@@ -267,7 +267,7 @@ function changesCard(files, cwd, { title = null, animate = false } = {}) {
     summary.appendChild(tick);
     // Drawing happens when the file is first opened, so big changes stay fast.
     const draw = () => {
-      if (!row.querySelector('.file-views')) row.appendChild(fileViews(f, cwd, () => comments.diff(f)));
+      if (!row.querySelector('.file-views')) row.appendChild(fileViews(f, cwd, () => comments.diff(f), comments));
     };
     row.addEventListener('toggle', () => { if (row.open) draw(); });
     parent.appendChild(row);
@@ -450,6 +450,9 @@ function addDiagram(card, head, files, cwd, comments) {
 // message to the agent. Returns { diff(f), sendButton(), count(), send(),
 // onChange(fn) }.
 function lineComments(files, cwd) {
+  // A comment is kept by the side and number of its line (new:42, old:17),
+  // so it shows in each view of the file: Changes, Full file, Side by side.
+  const keyOf = c => `${c.side}:${c.line}`;
   const listeners = new Set();
   const count = () => files.reduce((n, f) => n + (f.comments?.size || 0), 0);
   const changed = () => { for (const fn of listeners) fn(count()); };
@@ -458,7 +461,7 @@ function lineComments(files, cwd) {
     const lines = ['Review comments on your changes:', ''];
     let i = 0;
     for (const f of files) {
-      for (const [, c] of [...(f.comments || new Map())].sort((x, y) => x[0] - y[0])) {
+      for (const c of [...(f.comments || new Map()).values()].sort((x, y) => x.line - y.line || (x.side === 'old' ? -1 : 1))) {
         const code = c.code.trim().slice(0, 120);
         const where = `${f.path}, line ${c.line}${c.side === 'old' ? ' (a removed line)' : ''}`;
         lines.push(`${++i}. ${where}${code ? ': `' + code + '`' : ''}`);
@@ -487,13 +490,13 @@ function lineComments(files, cwd) {
     editBtn.onclick = () => edit(f, row, info);
     const del = el('button', null, 'Delete');
     del.onclick = () => {
-      f.comments.delete(info.index);
+      f.comments.delete(keyOf(info));
       box.remove();
       boxes.delete(box);
       changed();
     };
     actions.append(editBtn, del);
-    box.append(el('div', 'review-comment-text', f.comments.get(info.index).text), actions);
+    box.append(el('div', 'review-comment-text', f.comments.get(keyOf(info)).text), actions);
     boxes.add(box);
     return box;
   };
@@ -505,8 +508,8 @@ function lineComments(files, cwd) {
     const editor = el('div', 'review-comment-editor');
     const input = document.createElement('textarea');
     input.rows = 3;
-    input.placeholder = 'Comment for the agent… (Ctrl+↩ to save, Esc to cancel)';
-    input.value = f.comments?.get(info.index)?.text || '';
+    input.placeholder = 'Comment for the agent… (↩ to save, ⇧↩ for a new line, Esc to cancel)';
+    input.value = f.comments?.get(keyOf(info))?.text || '';
     const save = el('button', 'review-comment-save', 'Comment');
     const cancel = el('button', null, 'Cancel');
     const done = keep => {
@@ -514,11 +517,11 @@ function lineComments(files, cwd) {
       editor.remove();
       if (keep && text) {
         f.comments = f.comments || new Map();
-        f.comments.set(info.index, { line: info.line, side: info.side, code: info.code, text });
+        f.comments.set(keyOf(info), { line: info.line, side: info.side, code: info.code, text });
       } else if (keep) {
-        f.comments?.delete(info.index);
+        f.comments?.delete(keyOf(info));
       }
-      if (f.comments?.has(info.index)) row.after(commentBox(f, row, info));
+      if (f.comments?.has(keyOf(info))) row.after(commentBox(f, row, info));
       changed();
     };
     save.onclick = () => done(true);
@@ -526,7 +529,8 @@ function lineComments(files, cwd) {
     input.addEventListener('keydown', e => {
       e.stopPropagation();
       if (e.key === 'Escape') { e.preventDefault(); done(false); }
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); done(true); }
+      // ↩ saves; ⇧↩ starts a new line.
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); done(true); }
     });
     const buttons = el('div', 'review-comment-actions');
     buttons.append(cancel, save);
@@ -535,19 +539,53 @@ function lineComments(files, cwd) {
     input.focus();
   };
 
+  // Where a comment shows in a view: the row of its line, on its side.
+  const rowFor = (view, c) => view.querySelector(c.side === 'old'
+    ? `.diff-line[data-old-line="${c.line}"], .sbs-row:has(> .sbs-cell[data-old-line="${c.line}"])`
+    : `.diff-line[data-new-line="${c.line}"], .sbs-row:has(> .sbs-cell[data-new-line="${c.line}"])`);
+  const showComments = (f, view) => {
+    for (const c of (f.comments || new Map()).values()) {
+      const row = rowFor(view, c);
+      if (row) row.after(commentBox(f, row, c));
+    }
+  };
+
   return {
     cwd,
     count,
     send,
+    // The Full file and Side by side views: a click on a line (in Side by
+    // side, on its old or new half) comments on it, and the file's comments
+    // show under their lines. The same comments as in the Changes view: they
+    // are kept by side and line number.
+    attach: (f, view) => {
+      for (const row of view.querySelectorAll('.diff-line:not(.hunk)')) {
+        const side = row.classList.contains('del') ? 'old' : 'new';
+        const line = Number(side === 'old' ? row.dataset.oldLine : row.dataset.newLine);
+        if (!line) continue;
+        row.classList.add('commentable');
+        row.title = 'Click to comment on this line';
+        row.onclick = () => { if (!window.getSelection()?.toString()) edit(f, row, { line, side, code: row.querySelector('.code')?.textContent || '' }); };
+      }
+      for (const row of view.querySelectorAll('.sbs-row')) {
+        for (const cell of row.querySelectorAll('.sbs-cell:not(.empty)')) {
+          // An unchanged line is the same on both sides: it counts as the new one.
+          const old = cell.classList.contains('del');
+          const line = Number(old ? cell.dataset.oldLine : cell.dataset.newLine);
+          if (!line) continue;
+          cell.classList.add('commentable');
+          cell.title = 'Click to comment on this line';
+          cell.onclick = () => { if (!window.getSelection()?.toString()) edit(f, row, { line, side: old ? 'old' : 'new', code: cell.querySelector('.code')?.textContent || '' }); };
+        }
+      }
+      showComments(f, view);
+    },
     onChange: fn => { listeners.add(fn); return () => listeners.delete(fn); },
     // A file's diff where a click on a line comments on it, with the
     // comments it already has.
     diff: (f, options = {}) => {
       const diff = renderDiff(f, { ...options, onLine: (row, info) => edit(f, row, info) });
-      for (const [index, c] of f.comments || []) {
-        const row = diff.querySelector(`.diff-line[data-index="${index}"]`);
-        if (row) row.after(commentBox(f, row, { index, ...c }));
-      }
+      showComments(f, diff);
       return diff;
     },
     // "Send N comments", shown while there are comments.
@@ -735,11 +773,15 @@ function renderSideBySide(path, merged) {
     }
     c.append(code);
     if (data && side === 'add') c.dataset.newLine = String(data.no);
+    if (data && side === 'del' && kind !== 'ctx') c.dataset.oldLine = String(data.no);
     return c;
   };
   for (const [left, right, kind] of rows) {
     const row = el('div', 'sbs-row');
-    row.append(cell('del', left, kind), cell('add', right, kind));
+    const l = cell('del', left, kind);
+    const r = cell('add', right, kind);
+    if (kind === 'ctx' && right) l.dataset.newLine = String(right.no);
+    row.append(l, r);
     grid.appendChild(row);
   }
   if (!rows.length) grid.appendChild(el('div', 'diff-line hunk', 'The file is empty'));
@@ -888,7 +930,7 @@ function changeNavigation(view, bar) {
 // in place) and Side by side (before and after). The last view you picked is
 // the one the next file opens in.
 let lastFileView = 'changes';
-function fileViews(f, cwd, changesView) {
+function fileViews(f, cwd, changesView, comments = null) {
   const box = el('div', 'file-views');
   const bar = el('div', 'file-views-bar');
   const body = el('div', 'file-views-body');
@@ -935,6 +977,7 @@ function fileViews(f, cwd, changesView) {
       ? renderDiff({ path: f.path, status: f.status, lines: merged }, { maxLines: 50000 })
       : renderSideBySide(f.path, merged);
     body.replaceChildren(view);
+    comments?.attach(f, view);
     dropNav = changeNavigation(view, bar);
   };
   show(f.status === 'bin' ? 'changes' : lastFileView);
