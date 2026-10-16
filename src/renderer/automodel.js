@@ -12,11 +12,12 @@
 // together say so (see startAgent in app.js).
 //
 // Every later message is rated again the same way (Haiku with the task as
-// context), and the model changes when its level does: up for harder work,
-// down for simpler. A short "yes, go ahead" keeps the model, and it steps up
-// at least a level when the last turn failed or got stuck, or your message
-// says the work is wrong ("still broken", "that's not right"). (A change of
-// model starts the prompt cache over, so it only changes when the level does.)
+// context), and the model changes between Haiku and Opus only: up to Opus
+// for harder work, down to Haiku for simpler (Sonnet is for starting normal
+// tasks; see followUp). A short "yes, go ahead" keeps the model, and it
+// steps up when the last turn failed or got stuck, or your message says the
+// work is wrong ("still broken", "that's not right"). (A change of model
+// starts the prompt cache over, so it only changes when it pays.)
 
 const autoModel = (() => {
   const MODELS = ['haiku', 'sonnet', 'opus'];
@@ -65,11 +66,19 @@ const autoModel = (() => {
   // Haiku rates it in the task's context (twice as much). It steps up at
   // least one level when the last turn failed or got stuck, or you say the
   // work is wrong. A short "go on" keeps the level.
+  //
+  // A follow-up never moves into Sonnet: switching model starts the prompt
+  // cache over, and mid-task that costs more than Sonnet saves (its cache
+  // reads cost as much as Opus's). So work that outgrows Haiku goes to Opus,
+  // an Opus task rated "normal" stays on Opus, and only Haiku is worth
+  // dropping to (it is so much cheaper that even without a cache it wins).
+  // Sonnet is for starting normal tasks, where there is no cache to lose.
   function followUp(current, text, haikuLevel, lastStatus) {
     if (GO_ON.test(String(text || ''))) return current;
     const r = (rules(text) + current) / 2;
     let level = combine(r, haikuLevel);
     if (stepUp(lastStatus, text)) level = Math.max(level, Math.min(3, current + 1));
+    if (level === 2 && current !== 2) level = current === 1 ? 3 : current;
     return level;
   }
   const goesOn = text => GO_ON.test(String(text || ''));
