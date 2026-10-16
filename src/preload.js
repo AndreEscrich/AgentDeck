@@ -105,7 +105,7 @@ contextBridge.exposeInMainWorld('deck', {
   contextUsage: id => ipcRenderer.invoke('agent:context', id),
   summarizeTitle: text => ipcRenderer.invoke('agent:title', text),
   // How hard a task is (1-3), rated by Haiku, for the Auto model.
-  rateTask: text => ipcRenderer.invoke('agent:rate', text),
+  rateTask: (text, context) => ipcRenderer.invoke('agent:rate', text, context),
   mergeNotes: input => ipcRenderer.invoke('notes:merge', input),
   followUps: input => ipcRenderer.invoke('agent:followups', input),
   notify: (id, title, body) => ipcRenderer.invoke('notify', id, title, body),

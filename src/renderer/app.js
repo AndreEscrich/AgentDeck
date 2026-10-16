@@ -3367,14 +3367,25 @@ function userContent(text, images = []) {
 
 async function sendToAgent(agent, text, images = []) {
   clearFollowUps(agent);
-  // Auto keeps its model for follow-ups (a switch loses the prompt cache),
-  // but steps up a level when the last turn failed or got stuck, or you say
-  // the work is wrong.
-  if (agent.choice?.model === 'auto' && agent.autoSent && (agent.autoLevel || 2) < 3 && autoModel.stepUp(agent.status, text)) {
-    agent.autoLevel = (agent.autoLevel || 2) + 1;
-    window.deck.setModel(agent.id, cliChoice(agent));
-    agent.transcript.note(`Auto stepped up to ${autoModel.nameOf(cliModel(agent))} for this.`);
-    showAutoPick(agent);
+  // Auto rates every follow-up again (see followUp in automodel.js) and
+  // changes the model when its level changes. The message waits for Haiku's
+  // rating, at most 5 seconds; a short "yes, go ahead" does not wait.
+  if (agent.choice?.model === 'auto' && agent.autoSent && !isSlashCommand(text)) {
+    const current = agent.autoLevel || 2;
+    const lastStatus = agent.status;
+    let haiku = null;
+    if (!autoModel.goesOn(text)) {
+      const context = [agent.summaryTitle || agent.title, agent.latestPrompt && agent.latestPrompt !== text ? agent.latestPrompt : ''].filter(Boolean).join(' / ');
+      haiku = await Promise.race([window.deck.rateTask(text, context).catch(() => null), new Promise(r => setTimeout(() => r(null), 5000))]);
+    }
+    const level = autoModel.followUp(current, text, haiku, lastStatus);
+    if (level !== current) {
+      agent.autoLevel = level;
+      window.deck.setModel(agent.id, cliChoice(agent));
+      const why = haiku ? `Haiku rated this ${haiku} of 3` : autoModel.stepUp(lastStatus, text) ? 'the last try did not work' : 'from your message';
+      agent.transcript.note(`Auto switched to ${autoModel.nameOf(cliModel(agent))} for this (${why}).`);
+      showAutoPick(agent);
+    }
   }
   if (agent.choice?.model === 'auto') agent.autoSent = true;
   agent.stopped = false;

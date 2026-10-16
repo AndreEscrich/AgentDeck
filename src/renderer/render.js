@@ -1220,6 +1220,14 @@ class Transcript {
     // The summary Claude Code writes when it compacts the conversation is
     // for the agent (the chat shows a note at the compact_boundary instead).
     if (/^This session is being continued from a previous conversation/.test(first)) return;
+    // Claude Code's answer to a command the app sent (a model change: "Set
+    // model to opus"): a small note, not a message of yours.
+    const local = /^\s*<local-command-stdout>([\s\S]*?)<\/local-command-stdout>\s*$/.exec(first);
+    if (local) {
+      const said = local[1].replace(/`/g, '').trim();
+      if (said) this.note(said);
+      return;
+    }
     if (/^\s*<task-notification>/.test(first)) {
       this.finishTurn();
       const summary = /<summary>([\s\S]*?)<\/summary>/.exec(first)?.[1]?.trim();

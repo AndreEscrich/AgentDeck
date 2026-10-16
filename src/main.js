@@ -385,7 +385,7 @@ app.whenReady().then(() => {
   ipcMain.handle('agent:followups', (_e, input) => (getConfig().suggestFollowUps ? suggestFollowUps(getConfig(), input || {}) : []));
   ipcMain.handle('notes:merge', (_e, input) => mergeNotes(getConfig(), input || {}));
   ipcMain.handle('agent:title', (_e, text) => (getConfig().summarizeTitles ? summarizeTitle(getConfig(), text) : null));
-  ipcMain.handle('agent:rate', (_e, text) => rateTask(getConfig(), String(text || '')));
+  ipcMain.handle('agent:rate', (_e, text, context) => rateTask(getConfig(), String(text || ''), String(context || '')));
   // Clicking a notification opens its agent. The app keeps each notification
   // until it closes, or Windows would forget the click handler.
   const shown = new Set();

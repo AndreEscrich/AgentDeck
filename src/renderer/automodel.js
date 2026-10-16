@@ -11,9 +11,12 @@
 // Haiku (at most a few seconds) and the model changes before it if the two
 // together say so (see startAgent in app.js).
 //
-// Later messages keep the model (switching loses the prompt cache), except
-// that it steps up one level when the last turn failed or got stuck, or your
-// message says the work is wrong ("still broken", "that's not right").
+// Every later message is rated again the same way (Haiku with the task as
+// context), and the model changes when its level does: up for harder work,
+// down for simpler. A short "yes, go ahead" keeps the model, and it steps up
+// at least a level when the last turn failed or got stuck, or your message
+// says the work is wrong ("still broken", "that's not right"). (A change of
+// model starts the prompt cache over, so it only changes when the level does.)
 
 const autoModel = (() => {
   const MODELS = ['haiku', 'sonnet', 'opus'];
@@ -53,7 +56,25 @@ const autoModel = (() => {
     return lastStatus === 'error' || lastStatus === 'stuck' || UNHAPPY.test(String(text || ''));
   }
 
-  return { rules, combine, modelOf, nameOf, stepUp, MODELS };
+  // A short reply that goes on with the work as it is ("yes", "go ahead",
+  // "continue"): the model stays.
+  const GO_ON = /^\s*(y(es|ep|eah)?|ok(ay)?|sure|go( ahead| on)?|continue|proceed|do it|please do|sounds good|perfect|great|thanks?( you)?|nice|lgtm|approved?|confirm(ed)?)\b[\s.!,]*(please|thanks?|do it|go ahead)?[\s.!]*$/i;
+
+  // A follow-up message: its level, from the agent's current one. The rules
+  // read the message only half (a short follow-up is not a small task), and
+  // Haiku rates it in the task's context (twice as much). It steps up at
+  // least one level when the last turn failed or got stuck, or you say the
+  // work is wrong. A short "go on" keeps the level.
+  function followUp(current, text, haikuLevel, lastStatus) {
+    if (GO_ON.test(String(text || ''))) return current;
+    const r = (rules(text) + current) / 2;
+    let level = combine(r, haikuLevel);
+    if (stepUp(lastStatus, text)) level = Math.max(level, Math.min(3, current + 1));
+    return level;
+  }
+  const goesOn = text => GO_ON.test(String(text || ''));
+
+  return { rules, combine, modelOf, nameOf, stepUp, followUp, goesOn, MODELS };
 })();
 
 window.autoModel = autoModel;

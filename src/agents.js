@@ -413,8 +413,10 @@ function summarizeTitle(config, text) {
 
 // How hard a task is, for the Auto model (automodel.js in the window): Haiku
 // rates it 1 (quick and simple), 2 (normal work) or 3 (hard). Same kind of
-// call as summarizeTitle. Resolves with the number, or null.
-function rateTask(config, text) {
+// call as summarizeTitle. context: for a follow-up message, the task it
+// belongs to (so "yes, do it" is rated as the work it starts). Resolves with
+// the number, or null.
+function rateTask(config, text, context = '') {
   return new Promise(resolve => {
     const proc = spawnClaude(config.claudePath,
       ['-p', '--model', 'haiku', '--output-format', 'json', '--strict-mcp-config', '--tools', '', '--no-session-persistence'],
@@ -436,11 +438,13 @@ function rateTask(config, text) {
       }
     });
     proc.stdin.end(
-      'Rate how hard this task is for a coding agent working in a code base.\n'
+      (context
+        ? 'A coding agent is working on this task: ' + context.slice(0, 1500) + '\n\nRate how hard the work this new message asks for is.\n'
+        : 'Rate how hard this task is for a coding agent working in a code base.\n')
       + '1 = quick and simple: a question, a small edit, a rename, running a command, a short explanation.\n'
       + '2 = normal work: a feature or fix in a few files, a review, a moderate investigation.\n'
       + '3 = hard: deep debugging, design or architecture, many files, subtle reasoning, a long or vague spec.\n'
-      + 'Reply with only the number.\n\nTask: ' + text.slice(0, 3000));
+      + 'Reply with only the number.\n\n' + (context ? 'New message: ' : 'Task: ') + text.slice(0, 3000));
   });
 }
 
