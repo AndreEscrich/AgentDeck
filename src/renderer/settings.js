@@ -71,7 +71,11 @@ function openSettings(config, { onSaved } = {}) {
   const folderRow = el('div', 'settings-inline');
   folderRow.append(folder, pick);
   const mode = settingsSelect(PERMISSION_MODES.map(m => [m.value, m.label]), config.defaultPermissionMode || 'bypassPermissions');
-  const model = settingsSelect(sharedModels.map(m => [m.value, shortName(m)]), config.defaultModel || 'default');
+  // The same choices as the model menu (Auto, Opus, Sonnet, Haiku, Fable); a
+  // saved choice that is no longer in it stays listed so it is not lost.
+  const modelChoices = menuModels().map(m => [m.value, shortName(m)]);
+  if (config.defaultModel && !modelChoices.some(([v]) => v === config.defaultModel)) modelChoices.push([config.defaultModel, shortName(modelByValue(config.defaultModel))]);
+  const model = settingsSelect(modelChoices, config.defaultModel || 'auto');
   const effort = settingsSelect(EFFORT_OPTIONS, config.defaultEffort || '');
   const fast = settingsInput('checkbox', config.defaultFastMode);
   const compact = settingsSelect([['150k', '150k tokens'], ['200k', '200k tokens'], ['300k', '300k tokens'], ['500k', '500k tokens'], ['auto', 'When Claude Code decides']], config.autoCompact || '200k');

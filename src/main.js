@@ -30,7 +30,7 @@ protocol.registerSchemesAsPrivileged([
 const DEFAULT_CONFIG = {
   claudePath: '',                       // empty means: look in the usual install folders
   defaultPermissionMode: 'bypassPermissions', // default | acceptEdits | auto | plan | bypassPermissions
-  defaultModel: 'opus',                 // a value from the model menu; "opus" is always the latest Opus
+  defaultModel: 'auto',                 // a value from the model menu; "auto" picks Opus, Sonnet or Haiku per task (automodel.js)
   defaultEffort: 'medium',              // low | medium | high | xhigh | max; empty means the model's default
   defaultFastMode: false,
   // When an agent's conversation reaches this size, Claude Code summarizes it

@@ -101,7 +101,9 @@ class AgentManager {
       '--allow-dangerously-skip-permissions',
       '--append-system-prompt', SYSTEM_PROMPT,
     ];
-    if (model && model !== 'default') args.push('--model', model);
+    // "auto" is the app's own (automodel.js picks a real model before this);
+    // if one ever slips through, Claude Code uses its default.
+    if (model && model !== 'default' && model !== 'auto') args.push('--model', model);
     if (effort) args.push('--effort', effort);
     if (fastMode) args.push('--settings', JSON.stringify({ fastMode: true }));
     // Compact the conversation at this size (see autoCompact in main.js). A
@@ -293,7 +295,7 @@ class AgentManager {
   // Changes model, effort and fast mode from the next turn on, the same as the
   // /model, /effort and /fast commands in the terminal.
   setModel(id, { model, effort, fastMode }) {
-    this.control(id, { subtype: 'set_model', model: model && model !== 'default' ? model : null });
+    this.control(id, { subtype: 'set_model', model: model && model !== 'default' && model !== 'auto' ? model : null });
     this.control(id, { subtype: 'apply_flag_settings', settings: { effortLevel: effort || null, fastMode: !!fastMode } });
   }
 

@@ -72,7 +72,7 @@ async function settleAuto(agent, rating) {
 
 function defaultChoice() {
   return {
-    model: state.config.defaultModel || 'default',
+    model: state.config.defaultModel || 'auto',
     effort: state.config.defaultEffort || '',
     fastMode: !!state.config.defaultFastMode,
   };
