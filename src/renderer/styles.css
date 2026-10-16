@@ -2280,3 +2280,30 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 #hub-view { scrollbar-gutter: stable both-edges; }
 .sbs-cell.commentable { cursor: pointer; }
 .sbs-cell.commentable:hover .ln { color: var(--accent); opacity: 1; }
+
+/* The assets a task changed, under its code (addAssets in diffview.js). */
+.assets-section { margin-top: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); overflow: hidden; }
+.assets-head { padding: 8px 12px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); border-bottom: 1px solid var(--border); }
+.asset-row + .asset-row { border-top: 1px solid var(--border); }
+.asset-summary { display: flex; align-items: center; gap: 10px; padding: 7px 12px; cursor: pointer; list-style: none; font-size: 13px; }
+.asset-summary::-webkit-details-marker { display: none; }
+.asset-summary::before { content: "▸"; color: var(--text-faint); transition: transform 0.15s; }
+.asset-row[open] > .asset-summary::before { transform: rotate(90deg); }
+.asset-summary:hover { background: var(--bg-hover); }
+.asset-kind { flex-shrink: 0; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 7px; border-radius: 4px;
+  color: var(--text-dim); background: var(--bg-active); }
+.asset-kind.kind-prefab { color: #7fb5ff; background: rgba(90, 141, 224, 0.18); }
+.asset-kind.kind-unity { color: #e7b96a; background: rgba(224, 168, 58, 0.16); }
+.asset-name { font-family: var(--mono); font-weight: 600; color: var(--text); flex-shrink: 0; }
+.asset-folder { font-family: var(--mono); font-size: 11.5px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; }
+.asset-status { flex-shrink: 0; font-size: 11px; color: var(--text-dim); }
+.asset-status.status-new { color: var(--ok); }
+.asset-status.status-del { color: var(--err); }
+.asset-body { padding: 4px 14px 10px 34px; display: flex; flex-direction: column; gap: 8px; }
+.asset-note { font-size: 12.5px; color: var(--text-faint); }
+.asset-object { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+.asset-line { display: flex; gap: 8px; font-size: 12.5px; line-height: 1.5; color: var(--text-output); }
+.asset-mark { flex-shrink: 0; width: 12px; text-align: center; font-weight: 700; }
+.asset-line.add .asset-mark { color: var(--ok); }
+.asset-line.del .asset-mark { color: var(--err); }
+.asset-line.mod .asset-mark { color: var(--accent); }

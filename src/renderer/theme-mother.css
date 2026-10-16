@@ -658,3 +658,5 @@ html:has(.uml-full, .branch-view:not(.hidden) .uml-svg, .view:not(.hidden) .chan
    bezel, which would cover its left edge and corners. */
 #sidebar.history-drawer { left: 30px; top: 22px; bottom: 22px; height: auto; transform: translateX(calc(-100% - 60px)); }
 body.history-open #sidebar.history-drawer { transform: none; }
+.assets-section, .asset-kind { border-radius: 0 !important; }
+.assets-head { font-family: var(--label); letter-spacing: 0.12em; }

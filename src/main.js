@@ -304,6 +304,7 @@ app.whenReady().then(() => {
   // The namespace of C# files, for their titles in the Changes card: the
   // first "namespace X" line in the first 256 KB, or null.
   ipcMain.handle('cs:model', (_e, cwd, files) => csharp.model(cwd, files));
+  ipcMain.handle('assets:describe', (_e, cwd, file) => require('./unityassets').describeAsset(cwd, file).catch(err => ({ error: err.message })));
   ipcMain.handle('slash:list', (_e, cwd) => require('./slashcommands').list(cwd));
   // A file the diagram shows but the task did not change: open it in your editor.
   ipcMain.handle('file:open', (_e, p) => (typeof p === 'string' && fs.existsSync(p) ? shell.openPath(p) : 'Not found'));

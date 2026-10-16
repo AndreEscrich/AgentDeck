@@ -340,6 +340,7 @@ function changesCard(files, cwd, { title = null, animate = false } = {}) {
     }
   });
   addDiagram(card, head, files, cwd, comments);
+  addAssets(card, files, cwd);
   return card;
 }
 
@@ -438,6 +439,72 @@ function addDiagram(card, head, files, cwd, comments) {
     filesBtn.onclick = () => { window.uiSound?.('tick'); setView(false); };
     setView(!choseFiles);
   }).catch(() => { showFiles(); switcher.remove(); });
+}
+
+// ---------- the assets a task changed ----------
+
+// Under the code: the Unity assets the task changed, prefabs first, then
+// scenes, then the others. Clicking one lists in words what changed in it
+// (src/unityassets.js): game objects and components added or removed, and
+// values before → after, grouped by game object.
+const ASSET_KINDS = [
+  ['prefab', 'Prefab'], ['unity', 'Scene'], ['mat', 'Material'], ['anim', 'Animation'], ['controller', 'Animator'],
+  ['overridecontroller', 'Animator override'], ['asset', 'Asset'], ['spriteatlas', 'Sprite atlas'], ['spriteatlasv2', 'Sprite atlas'],
+  ['playable', 'Timeline'], ['mask', 'Avatar mask'], ['preset', 'Preset'], ['rendertexture', 'Render texture'],
+  ['physicmaterial', 'Physics material'], ['physicsmaterial2d', 'Physics material'], ['lighting', 'Lighting'],
+  ['terrainlayer', 'Terrain layer'], ['mixer', 'Audio mixer'], ['signal', 'Signal'], ['brush', 'Brush'], ['guiskin', 'GUI skin'],
+  ['fontsettings', 'Font settings'], ['flare', 'Flare'], ['giparams', 'GI parameters'],
+];
+const ASSET_ORDER = new Map(ASSET_KINDS.map(([ext], i) => [ext, i]));
+const assetKind = p => ASSET_KINDS.find(([ext]) => ext === extensionOf(p).toLowerCase())?.[1] || null;
+
+function addAssets(card, files, cwd) {
+  const assets = files.filter(f => assetKind(f.path))
+    .sort((a, b) => ASSET_ORDER.get(extensionOf(a.path).toLowerCase()) - ASSET_ORDER.get(extensionOf(b.path).toLowerCase()) || a.path.localeCompare(b.path));
+  if (!assets.length) return;
+  const section = el('div', 'assets-section');
+  const prefabs = assets.filter(f => /\.prefab$/i.test(f.path)).length;
+  section.appendChild(el('div', 'assets-head', `Asset changes · ${assets.length}${prefabs ? ` · ${prefabs} prefab${prefabs === 1 ? '' : 's'}` : ''}`));
+  const STATUS = { new: 'New', mod: 'Changed', del: 'Deleted', bin: 'Changed' };
+  for (const f of assets) {
+    const row = el('details', `asset-row status-${f.status}`);
+    const summary = el('summary', 'asset-summary');
+    const parts = f.path.split('/');
+    summary.append(
+      el('span', `asset-kind kind-${extensionOf(f.path).toLowerCase()}`, assetKind(f.path)),
+      el('span', 'asset-name', parts.pop()),
+      el('span', 'asset-folder', parts.slice(-3).join('/')),
+      el('span', `asset-status status-${f.status}`, f.from ? 'Moved' : STATUS[f.status] || 'Changed'),
+    );
+    summary.title = f.from ? `${f.path}\nmoved from ${f.from}` : f.path;
+    row.appendChild(summary);
+    const body = el('div', 'asset-body');
+    row.appendChild(body);
+    row.addEventListener('toggle', async () => {
+      if (!row.open || row.dataset.loaded) return;
+      row.dataset.loaded = '1';
+      body.replaceChildren(el('div', 'asset-note', 'Reading the asset… (the first one in a project takes a few seconds, to name its scripts and assets)'));
+      const r = await (window.deck?.describeAsset?.(cwd, { path: f.path, status: f.status, lines: f.lines, earlier: f.earlier, from: f.from }) || Promise.resolve({ error: 'Not available.' })).catch(err => ({ error: String(err?.message || err) }));
+      body.replaceChildren();
+      if (r.error) { body.appendChild(el('div', 'asset-note', r.error)); return; }
+      if (r.note) body.appendChild(el('div', 'asset-note', r.note));
+      if (!r.groups.length) body.appendChild(el('div', 'asset-note', 'Nothing changed that the list shows (only ids, ordering or editor-only data).'));
+      for (const g of r.groups) {
+        const block = el('div', 'asset-group');
+        block.appendChild(el('div', 'asset-object', g.heading));
+        for (const line of g.lines) {
+          const mark = line[0];
+          const item = el('div', `asset-line ${mark === '+' ? 'add' : mark === '−' ? 'del' : 'mod'}`);
+          item.append(el('span', 'asset-mark', mark === '~' ? '•' : mark), el('span', null, line.slice(2)));
+          block.appendChild(item);
+        }
+        body.appendChild(block);
+      }
+    });
+    section.appendChild(row);
+  }
+  // Right under the code, above the other files and the review bar.
+  card.insertBefore(section, card.querySelector(':scope > .other-files, :scope > .review-bar, :scope > .review-progress') || null);
 }
 
 // ---------- comments on lines ----------
