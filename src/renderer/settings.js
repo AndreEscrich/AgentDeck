@@ -76,6 +76,9 @@ function openSettings(config, { onSaved } = {}) {
   const modelChoices = menuModels().map(m => [m.value, shortName(m)]);
   if (config.defaultModel && !modelChoices.some(([v]) => v === config.defaultModel)) modelChoices.push([config.defaultModel, shortName(modelByValue(config.defaultModel))]);
   const model = settingsSelect(modelChoices, config.defaultModel || 'auto');
+  const reportBtn = el('button', 'settings-btn', 'Open report');
+  reportBtn.type = 'button';
+  reportBtn.onclick = () => autoReport.open();
   const effort = settingsSelect(EFFORT_OPTIONS, config.defaultEffort || '');
   const fast = settingsInput('checkbox', config.defaultFastMode);
   const compact = settingsSelect([['150k', '150k tokens'], ['200k', '200k tokens'], ['300k', '300k tokens'], ['500k', '500k tokens'], ['auto', 'When Claude Code decides']], config.autoCompact || '200k');
@@ -109,7 +112,8 @@ function openSettings(config, { onSaved } = {}) {
     section('New agents',
       settingsField('Folder', 'Where a new agent works until you pick one in the Hub', folderRow),
       settingsField('Permissions', null, mode),
-      settingsField('Model', null, model),
+      settingsField('Model', 'Auto picks Opus, Sonnet or Haiku for each task', model),
+      settingsField('Auto model report', 'What Auto cost against running everything on Opus at medium effort', reportBtn),
       settingsField('Effort', null, effort),
       settingsField('Fast mode', 'Faster answers from the same model', fast),
       settingsField('Compact the conversation at', 'Every step re-reads the whole conversation, so long tasks get expensive. Smaller: less usage, but the agent remembers fewer details from early in the task', compact)),

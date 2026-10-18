@@ -56,6 +56,12 @@ function showAutoPick(agent) {
   if (state.current?.kind !== 'agent' || state.current.id !== agent.id) return;
   composerPicker.setResolved(agent.choice?.model === 'auto' && agent.autoLevel ? autoModel.nameOf(cliModel(agent)) : null);
 }
+// Haiku's rating: its level (or null), and its cost goes into the Auto report.
+function rated(r) {
+  autoReport.noteRating(r?.cost);
+  return r?.level ?? null;
+}
+
 // The first message waits for Haiku's rating (at most 5 seconds; Claude Code
 // is starting meanwhile), and the model changes before it if the rules and
 // Haiku together say so.
@@ -3226,7 +3232,7 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     const real = !!prompt && prompt !== RESUME_PROMPT && prompt !== RESTART_PROMPT;
     agent.autoRules = real ? autoModel.rules(prompt, { images: images.length }) : 2;
     agent.autoLevel = resume?.autoLevel || autoModel.combine(agent.autoRules, null);
-    if (real && !resume?.autoLevel) autoRating = window.deck.rateTask(prompt).catch(() => null);
+    if (real && !resume?.autoLevel) autoRating = window.deck.rateTask(prompt).then(rated).catch(() => null);
   }
   if (ticket) agent.ticket = ticket;
   if (!resume) summarizeTitle(agent, prompt);
@@ -3395,10 +3401,14 @@ async function sendToAgent(agent, text, images = []) {
     let haiku = null;
     if (!autoModel.goesOn(text)) {
       const context = [agent.summaryTitle || agent.title, agent.latestPrompt && agent.latestPrompt !== text ? agent.latestPrompt : ''].filter(Boolean).join(' / ');
-      haiku = await Promise.race([window.deck.rateTask(text, context).catch(() => null), new Promise(r => setTimeout(() => r(null), 5000))]);
+      haiku = await Promise.race([window.deck.rateTask(text, context).then(rated).catch(() => null), new Promise(r => setTimeout(() => r(null), 5000))]);
     }
     const level = autoModel.followUp(current, text, haiku, lastStatus);
     if (level !== current) {
+      // For the Auto report: this turn switched model (its cache starts over),
+      // and whether it stepped up after a failed try.
+      agent.autoSwitched = true;
+      agent.autoFailStep = level > current && autoModel.stepUp(lastStatus, text);
       agent.autoLevel = level;
       window.deck.setModel(agent.id, cliChoice(agent));
       const why = haiku ? `Haiku rated this ${haiku} of 3` : autoModel.stepUp(lastStatus, text) ? 'the last try did not work' : 'from your message';
@@ -3975,6 +3985,13 @@ window.deck.onEvent((id, msg) => {
   if (msg.type === 'assistant') { noteClashes(a, msg.message); taskType.noteMessage(a, msg.message); }
   if (msg.type === 'user' && Array.isArray(msg.message?.content) && msg.message.content.some(b => b?.type === 'tool_result' && b.is_error)) taskType.noteError(a);
   if (msg.type === 'result') clearClashes(a);
+  // A finished turn of an Auto agent goes into the Auto report (autoreport.js).
+  if (msg.type === 'result' && a.choice?.model === 'auto') {
+    autoReport.recordTurn(msg, { family: cliModel(a), title: a.summaryTitle || a.title, switched: !!a.autoSwitched, contextBefore: a.autoContext || 0, failedStepUp: !!a.autoFailStep });
+    a.autoContext = autoReport.contextOf(msg);
+    a.autoSwitched = false;
+    a.autoFailStep = false;
+  }
   // New textures and videos from this task (see showMedia). Your home folder
   // is too big to search.
   if (msg.type === 'result' && a.mediaSince) {

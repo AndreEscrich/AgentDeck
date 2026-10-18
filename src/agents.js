@@ -417,7 +417,7 @@ function summarizeTitle(config, text) {
 // rates it 1 (quick and simple), 2 (normal work) or 3 (hard). Same kind of
 // call as summarizeTitle. context: for a follow-up message, the task it
 // belongs to (so "yes, do it" is rated as the work it starts). Resolves with
-// the number, or null.
+// { level, cost } (level null when it could not tell; cost in dollars).
 function rateTask(config, text, context = '') {
   return new Promise(resolve => {
     const proc = spawnClaude(config.claudePath,
@@ -434,7 +434,8 @@ function rateTask(config, text, context = '') {
       try {
         const result = JSON.parse(out);
         const n = Number(/[123]/.exec(String(result.result || ''))?.[0]);
-        resolve(result.is_error || !n ? null : n);
+        // The rating's own cost goes into the Auto report (autoreport.js).
+        resolve({ level: result.is_error || !n ? null : n, cost: Number(result.total_cost_usd) || 0 });
       } catch {
         resolve(null);
       }
