@@ -14,8 +14,9 @@ const LANGUAGES = {
   css: 'css', html: 'xml', xml: 'xml', sh: 'bash', md: 'markdown', yml: 'yaml', yaml: 'yaml',
 };
 
-// Files you review as code. Everything else (Unity .prefab, .asset, .meta,
-// .unity, images) goes into the collapsed "Other files" group.
+// Files you review as code, in the diff viewer. Everything else (Unity
+// .prefab, .asset, .unity, images, .meta) is listed under the code, in the
+// asset changes (see addAssets).
 const CODE_EXTENSIONS = new Set(['cs', 'shader', 'hlsl', 'cginc', 'compute', 'c', 'h', 'cpp', 'mm', 'm',
   'js', 'mjs', 'cjs', 'ts', 'tsx', 'py', 'java', 'kt', 'swift', 'css', 'html', 'sh', 'asmdef', 'asmref']);
 
@@ -273,16 +274,9 @@ function changesCard(files, cwd, { title = null, animate = false } = {}) {
     parent.appendChild(row);
   };
 
+  // The diff viewer lists the code only; the other files are in the asset
+  // changes under it (addAssets).
   for (const f of code) addFile(card, f);
-  if (other.length) {
-    const group = el('details', 'other-files');
-    const s = el('summary', null, `Other files (${other.length})`);
-    group.appendChild(s);
-    for (const f of other) addFile(group, f);
-    // Without code files, the list of other files is what there is to see.
-    if (!code.length) group.open = true;
-    card.appendChild(group);
-  }
   // Reviewing: a tick per file, "N of M reviewed", and when all are ticked,
   // Commit or Ask for changes (handled by window.reviewAction in app.js).
   const progress = el('span', 'review-progress');
@@ -340,7 +334,7 @@ function changesCard(files, cwd, { title = null, animate = false } = {}) {
     }
   });
   addDiagram(card, head, files, cwd, comments);
-  addAssets(card, files, cwd);
+  addAssets(card, other, cwd, comments);
   return card;
 }
 
@@ -458,20 +452,38 @@ const ASSET_KINDS = [
 const ASSET_ORDER = new Map(ASSET_KINDS.map(([ext], i) => [ext, i]));
 const assetKind = p => ASSET_KINDS.find(([ext]) => ext === extensionOf(p).toLowerCase())?.[1] || null;
 
-function addAssets(card, files, cwd) {
-  const assets = files.filter(f => assetKind(f.path))
-    .sort((a, b) => ASSET_ORDER.get(extensionOf(a.path).toLowerCase()) - ASSET_ORDER.get(extensionOf(b.path).toLowerCase()) || a.path.localeCompare(b.path));
+// The other files that are not code: a kind by their extension. Their rows
+// open to the usual diff (or the picture), not to a description.
+const OTHER_KINDS = [
+  [/^(png|jpe?g|tga|psd|tiff?|exr|hdr|bmp|gif|webp|svg)$/, 'Texture'], [/^(wav|mp3|ogg|aiff?|flac|m4a)$/, 'Audio'],
+  [/^(mp4|mov|webm|m4v)$/, 'Video'], [/^(fbx|obj|blend|dae|3ds)$/, 'Model'], [/^(ttf|otf)$/, 'Font'], [/^meta$/, 'Meta'],
+  [/^(json|ya?ml|xml|txt|md|csv|ini|cfg|toml|plist|uxml|uss)$/, 'Text'],
+];
+const otherKind = p => OTHER_KINDS.find(([re]) => re.test(extensionOf(p)))?.[1] || (extensionOf(p).toUpperCase() || 'File');
+const kindRank = p => (ASSET_ORDER.has(extensionOf(p)) ? ASSET_ORDER.get(extensionOf(p))
+  : ASSET_KINDS.length + 1 + OTHER_KINDS.findIndex(([re]) => re.test(extensionOf(p))));
+
+// files: the task's files that are not code (the diff viewer has the code).
+// comments: the card's line comments (a text file's diff takes them too).
+function addAssets(card, files, cwd, comments) {
+  const assets = [...files].sort((a, b) => kindRank(a.path) - kindRank(b.path) || a.path.localeCompare(b.path));
   if (!assets.length) return;
   const section = el('div', 'assets-section');
   const prefabs = assets.filter(f => /\.prefab$/i.test(f.path)).length;
-  section.appendChild(el('div', 'assets-head', `Asset changes · ${assets.length}${prefabs ? ` · ${prefabs} prefab${prefabs === 1 ? '' : 's'}` : ''}`));
+  // "Asset changes" when Unity assets are among them, else just "Other files".
+  const heading = assets.some(f => assetKind(f.path)) ? 'Asset changes' : 'Other files';
+  section.appendChild(el('div', 'assets-head', `${heading} · ${assets.length}${prefabs ? ` · ${prefabs} prefab${prefabs === 1 ? '' : 's'}` : ''}`));
   const STATUS = { new: 'New', mod: 'Changed', del: 'Deleted', bin: 'Changed' };
-  for (const f of assets) {
+  // A long list (a branch can change hundreds of assets) shows the first ones
+  // and a button for the rest.
+  const SHOWN = 25;
+  let more = null;
+  for (const [i, f] of assets.entries()) {
     const row = el('details', `asset-row status-${f.status}`);
     const summary = el('summary', 'asset-summary');
     const parts = f.path.split('/');
     summary.append(
-      el('span', `asset-kind kind-${extensionOf(f.path).toLowerCase()}`, assetKind(f.path)),
+      el('span', `asset-kind kind-${extensionOf(f.path).toLowerCase()}`, assetKind(f.path) || otherKind(f.path)),
       el('span', 'asset-name', parts.pop()),
       el('span', 'asset-folder', parts.slice(-3).join('/')),
       el('span', `asset-status status-${f.status}`, f.from ? 'Moved' : STATUS[f.status] || 'Changed'),
@@ -483,6 +495,11 @@ function addAssets(card, files, cwd) {
     row.addEventListener('toggle', async () => {
       if (!row.open || row.dataset.loaded) return;
       row.dataset.loaded = '1';
+      // Not a Unity asset (a texture, a text file, a .meta): its diff or picture.
+      if (!assetKind(f.path)) {
+        body.replaceChildren(fileViews(f, cwd, () => comments.diff(f), comments));
+        return;
+      }
       body.replaceChildren(el('div', 'asset-note', 'Reading the asset… (the first one in a project takes a few seconds, to name its scripts and assets)'));
       const r = await (window.deck?.describeAsset?.(cwd, { path: f.path, status: f.status, lines: f.lines, earlier: f.earlier, from: f.from }) || Promise.resolve({ error: 'Not available.' })).catch(err => ({ error: String(err?.message || err) }));
       body.replaceChildren();
@@ -501,10 +518,17 @@ function addAssets(card, files, cwd) {
         body.appendChild(block);
       }
     });
+    if (i >= SHOWN) row.classList.add('hidden');
     section.appendChild(row);
   }
-  // Right under the code, above the other files and the review bar.
-  card.insertBefore(section, card.querySelector(':scope > .other-files, :scope > .review-bar, :scope > .review-progress') || null);
+  if (assets.length > SHOWN) {
+    more = el('button', 'assets-more', `Show ${assets.length - SHOWN} more`);
+    more.type = 'button';
+    more.onclick = () => { for (const r of section.querySelectorAll('.asset-row.hidden')) r.classList.remove('hidden'); more.remove(); };
+    section.appendChild(more);
+  }
+  // Right under the code, above the review bar.
+  card.insertBefore(section, card.querySelector(':scope > .review-bar, :scope > .review-progress') || null);
 }
 
 // ---------- comments on lines ----------

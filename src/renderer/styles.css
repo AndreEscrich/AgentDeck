@@ -2296,6 +2296,10 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .assets-section { margin-top: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); overflow: hidden; }
 .assets-head { padding: 8px 12px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); border-bottom: 1px solid var(--border); }
 .asset-row + .asset-row { border-top: 1px solid var(--border); }
+.asset-row.hidden { display: none; }
+.assets-more { display: block; width: 100%; padding: 7px; border: none; border-top: 1px solid var(--border); background: transparent; color: var(--accent); font-size: 12.5px; cursor: pointer; }
+.assets-more:hover { background: var(--bg-hover); }
+.asset-body .file-views { margin: 0; }
 .asset-summary { display: flex; align-items: center; gap: 10px; padding: 7px 12px; cursor: pointer; list-style: none; font-size: 13px; }
 .asset-summary::-webkit-details-marker { display: none; }
 .asset-summary::before { content: "▸"; color: var(--text-faint); transition: transform 0.15s; }
