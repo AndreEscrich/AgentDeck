@@ -99,7 +99,7 @@ const autoReport = (() => {
     save({ since: Date.now(), turns: [], ratings: 0, ratingCost: 0 });
   }
 
-  const money = n => (n >= 100 ? `${n.toFixed(0)}` : n >= 1 ? `${n.toFixed(2)}` : n > 0 && n < 0.001 ? '<$0.001' : `${n.toFixed(3)}`);
+  const money = n => (n >= 100 ? `$${n.toFixed(0)}` : n >= 1 ? `$${n.toFixed(2)}` : n > 0 && n < 0.001 ? '<$0.001' : `$${n.toFixed(3)}`);
   const count = n => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
   const NAMES = { haiku: 'Haiku', sonnet: 'Sonnet', opus: 'Opus' };
 
