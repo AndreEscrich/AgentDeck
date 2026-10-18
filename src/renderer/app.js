@@ -3854,10 +3854,13 @@ function noteUsage(msg) {
   if (msg.type === 'rate_limit_event' && msg.rate_limit_info) {
     usage.limits = msg.rate_limit_info;
     usage.at = Date.now();
+    // The Auto report learns what 1% of the week is worth (autoreport.js).
+    autoReport.noteUsage(msg.rate_limit_info);
     try { localStorage.setItem('usageLimits', JSON.stringify({ limits: usage.limits, at: usage.at })); } catch { /* not important */ }
   } else if (msg.type === 'result') {
     usage.tokens += totalTokens(msg.usage || {});
     usage.tasks++;
+    autoReport.noteCost(msg.total_cost_usd);
   } else {
     return;
   }
@@ -3987,7 +3990,7 @@ window.deck.onEvent((id, msg) => {
   if (msg.type === 'result') clearClashes(a);
   // A finished turn of an Auto agent goes into the Auto report (autoreport.js).
   if (msg.type === 'result' && a.choice?.model === 'auto') {
-    autoReport.recordTurn(msg, { family: cliModel(a), title: a.summaryTitle || a.title, switched: !!a.autoSwitched, contextBefore: a.autoContext || 0, failedStepUp: !!a.autoFailStep });
+    autoReport.recordTurn(msg, { family: cliModel(a), title: a.latestTitle || a.summaryTitle || a.title, switched: !!a.autoSwitched, contextBefore: a.autoContext || 0, failedStepUp: !!a.autoFailStep });
     a.autoContext = autoReport.contextOf(msg);
     a.autoSwitched = false;
     a.autoFailStep = false;

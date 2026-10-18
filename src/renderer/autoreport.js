@@ -10,12 +10,20 @@
 // would have been there). Haiku's ratings are Auto's own cost and count on
 // its side.
 //
+// The report speaks in your plan's weekly usage ("2.4% of your week") rather
+// than dollars, which a subscription does not bill. Claude Code only says how
+// much of the week is used (a whole percent), so the report learns what 1%
+// is worth: each time the week's percentage goes up, it sets that rise
+// against what this app's agents spent (at list prices) since the last rise.
+// Use outside the app (claude.ai, other Claude Code windows) also moves the
+// percentage, which makes 1% look cheaper than it is; the report says so.
+// Until it has seen a few percent of the week go by, it shows dollars.
+//
 // Assumptions, said in the report too: Opus would have read and written as
 // many tokens as the model Auto picked (it may write fewer, or need fewer
-// steps on hard tasks); quality is not in the money, so the report also
+// steps on hard tasks); quality is not in the numbers, so the report also
 // counts how often Auto had to step up after a failed try (a sign it picked
-// too small). On a subscription the dollars are not billed: they show how
-// much of your limits each side uses, relative to each other.
+// too small).
 //
 // Kept in this window's local storage (the last 3000 turns).
 
@@ -25,24 +33,77 @@ const autoReport = (() => {
   // Claude Opus 5.5 list prices, dollars per million tokens. Cache writes:
   // 1.25x input for the 5-minute cache, 2x for the 1-hour one.
   const OPUS = { input: 4, output: 20, read: 0.2, write5m: 5, write1h: 8 };
+  // How much of the week must have gone by before the percentages are shown.
+  const CALIBRATED = 2;
 
+  function fresh() {
+    return { since: Date.now(), turns: [], ratings: 0, ratingCost: 0, ratingLog: [], cal: { cost: 0, pct: 0, costSince: 0, lastUtil: null, lastResets: null } };
+  }
   function load() {
     try {
       const data = JSON.parse(localStorage.getItem(KEY) || 'null');
-      if (data && Array.isArray(data.turns)) return data;
+      if (data && Array.isArray(data.turns)) {
+        data.ratingLog = data.ratingLog || [];
+        data.cal = data.cal || fresh().cal;
+        return data;
+      }
     } catch { /* start over */ }
-    return { since: Date.now(), turns: [], ratings: 0, ratingCost: 0 };
+    return fresh();
   }
   function save(data) {
     if (data.turns.length > MAX) data.turns = data.turns.slice(-MAX);
+    if (data.ratingLog.length > MAX) data.ratingLog = data.ratingLog.slice(-MAX);
     try { localStorage.setItem(KEY, JSON.stringify(data)); } catch { /* full: not important */ }
   }
+
+  // ---------- what 1% of the week is worth ----------
+
+  // Every finished turn of any agent (and every helper call the app makes):
+  // what it cost at list prices, until the week's percentage next goes up.
+  function noteCost(cost) {
+    const c = Number(cost) || 0;
+    if (!c) return;
+    const data = load();
+    data.cal.costSince += c;
+    save(data);
+  }
+
+  // Claude Code's usage limits (a rate_limit_event's rate_limit_info).
+  function noteUsage(info) {
+    const week = info?.unifiedWindows?.seven_day;
+    if (!week || typeof week.utilization !== 'number') return;
+    const util = week.utilization * 100;
+    const data = load();
+    const cal = data.cal;
+    if (cal.lastResets === week.resetsAt && cal.lastUtil != null && util > cal.lastUtil) {
+      // The week went up: what was spent since the last rise bought that much.
+      cal.cost += cal.costSince;
+      cal.pct += util - cal.lastUtil;
+      cal.costSince = 0;
+      cal.lastUtil = util;
+    } else if (cal.lastResets !== week.resetsAt || cal.lastUtil == null || util < cal.lastUtil) {
+      // A new week (or the first look): start counting from here.
+      cal.lastResets = week.resetsAt;
+      cal.lastUtil = util;
+      cal.costSince = 0;
+    }
+    save(data);
+  }
+
+  // Dollars (list price) per 1% of the week, or null while it is still learning.
+  function perPercent(data = load()) {
+    return data.cal.pct >= CALIBRATED && data.cal.cost > 0 ? data.cal.cost / data.cal.pct : null;
+  }
+
+  // ---------- the turns ----------
 
   // A Haiku rating that Auto asked for, with its cost.
   function noteRating(cost) {
     const data = load();
     data.ratings++;
     data.ratingCost += Number(cost) || 0;
+    data.ratingLog.push({ at: Date.now(), cost: Number(cost) || 0 });
+    data.cal.costSince += Number(cost) || 0;
     save(data);
   }
 
@@ -56,10 +117,10 @@ const autoReport = (() => {
     return (last.input_tokens || 0) + (last.cache_read_input_tokens || 0) + (last.cache_creation_input_tokens || 0);
   }
 
-  // A finished turn of an Auto agent. info: { family ("haiku"), title,
-  // switched (the model changed for this turn), contextBefore (the
-  // conversation's size before it), failedStepUp (it stepped up after a
-  // failed try or "still broken") }.
+  // A finished turn of an Auto agent. info: { family ("haiku"), title (the
+  // summary of the message that started the turn), switched (the model
+  // changed for this turn), contextBefore (the conversation's size before
+  // it), failedStepUp (it stepped up after a failed try or "still broken") }.
   function recordTurn(msg, info) {
     const usage = msg.modelUsage || {};
     const entries = Object.entries(usage);
@@ -96,16 +157,17 @@ const autoReport = (() => {
   }
 
   function reset() {
-    save({ since: Date.now(), turns: [], ratings: 0, ratingCost: 0 });
+    const data = load();
+    const next = fresh();
+    next.cal = data.cal;   // what 1% of the week is worth is still true
+    save(next);
   }
 
-  const money = n => (n >= 100 ? `$${n.toFixed(0)}` : n >= 1 ? `$${n.toFixed(2)}` : n > 0 && n < 0.001 ? '<$0.001' : `$${n.toFixed(3)}`);
-  const count = n => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
-  const NAMES = { haiku: 'Haiku', sonnet: 'Sonnet', opus: 'Opus' };
+  // ---------- numbers ----------
 
   function summary() {
     const data = load();
-    const s = { since: data.since, turns: data.turns.length, actual: 0, opus: 0, ratings: data.ratings, ratingCost: data.ratingCost, switches: 0, failedStepUps: 0, rebuilt: 0, byModel: {} };
+    const s = { since: data.since, turns: data.turns.length, actual: 0, opus: 0, ratings: data.ratings, ratingCost: data.ratingCost, switches: 0, failedStepUps: 0, rebuilt: 0, byModel: {}, perPercent: perPercent(data), cal: data.cal };
     for (const t of data.turns) {
       s.actual += t.actual;
       s.opus += t.opus;
@@ -121,71 +183,250 @@ const autoReport = (() => {
     s.total = s.actual + s.ratingCost;
     s.saved = s.opus - s.total;
     s.percent = s.opus ? (s.saved / s.opus) * 100 : 0;
-    s.recent = data.turns.slice(-12).reverse();
+    s.turnList = data.turns;
+    s.ratingLog = data.ratingLog;
     return s;
   }
 
-  // The report, as a card over the window.
+  const NAMES = { haiku: 'Haiku', sonnet: 'Sonnet', opus: 'Opus' };
+  const count = n => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
+
+  // An amount in the report's unit: % of the week when known, else dollars.
+  function unit(per) {
+    if (per) {
+      return {
+        long: v => { const p = v / per; return Math.abs(p) < 0.005 ? '0%' : `${Math.abs(p) >= 10 ? p.toFixed(0) : Math.abs(p) >= 1 ? p.toFixed(1) : p.toFixed(2)}%`; },
+        name: 'of your week',
+      };
+    }
+    return {
+      long: v => (Math.abs(v) >= 100 ? `$${v.toFixed(0)}` : Math.abs(v) >= 1 ? `$${v.toFixed(2)}` : v > 0 && v < 0.001 ? '<$0.001' : `$${v.toFixed(3)}`),
+      name: 'at API prices',
+    };
+  }
+
+  // ---------- the report ----------
+
+  const SVG = 'http://www.w3.org/2000/svg';
+  const svg = (tag, attrs = {}) => {
+    const node = document.createElementNS(SVG, tag);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+    return node;
+  };
+  const tip = (node, text) => { const t = svg('title'); t.textContent = text; node.appendChild(t); return node; };
+
+  // Cumulative cost over the turns: Auto's line and the all-Opus line; the
+  // space between is green where Auto is cheaper, red where it costs more.
+  function cumulativeChart(s, u) {
+    const W = 560;
+    const H = 150;
+    const P = { l: 44, r: 10, t: 10, b: 20 };
+    const events = [
+      ...s.turnList.map(t => ({ at: t.at, auto: t.actual, opus: t.opus })),
+      ...s.ratingLog.map(r => ({ at: r.at, auto: r.cost, opus: 0 })),
+    ].sort((a, b) => a.at - b.at);
+    const pts = [{ auto: 0, opus: 0 }];
+    for (const e of events) {
+      const last = pts[pts.length - 1];
+      pts.push({ auto: last.auto + e.auto, opus: last.opus + e.opus });
+    }
+    const max = Math.max(1e-9, ...pts.map(p => Math.max(p.auto, p.opus)));
+    const x = i => P.l + (i / Math.max(1, pts.length - 1)) * (W - P.l - P.r);
+    const y = v => H - P.b - (v / max) * (H - P.t - P.b);
+    const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, class: 'ar-chart' });
+    for (const f of [0, 0.5, 1]) {
+      root.appendChild(svg('line', { x1: P.l, x2: W - P.r, y1: y(max * f), y2: y(max * f), class: 'ar-grid' }));
+      const label = svg('text', { x: P.l - 6, y: y(max * f) + 4, class: 'ar-axis', 'text-anchor': 'end' });
+      label.textContent = u.long(max * f);
+      root.appendChild(label);
+    }
+    // The gap between the lines, turn by turn.
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1];
+      const b = pts[i];
+      const good = b.auto <= b.opus;
+      root.appendChild(svg('polygon', {
+        points: `${x(i - 1)},${y(a.auto)} ${x(i)},${y(b.auto)} ${x(i)},${y(b.opus)} ${x(i - 1)},${y(a.opus)}`,
+        class: good ? 'ar-gap good' : 'ar-gap bad',
+      }));
+    }
+    const line = (key, cls) => root.appendChild(svg('polyline', { points: pts.map((p, i) => `${x(i)},${y(p[key])}`).join(' '), class: cls }));
+    line('opus', 'ar-line opus');
+    line('auto', 'ar-line auto');
+    const end = pts[pts.length - 1];
+    const lab = (v, text, cls) => {
+      const t = svg('text', { x: W - P.r - 4, y: Math.max(P.t + 12, y(v) - 6), class: `ar-end ${cls}`, 'text-anchor': 'end' });
+      t.textContent = text;
+      root.appendChild(t);
+    };
+    lab(end.opus, `All on Opus ${u.long(end.opus)}`, 'opus');
+    lab(end.auto, `Auto ${u.long(end.auto)}`, 'auto');
+    return root;
+  }
+
+  // One bar per turn: how much it saved (up, green) or lost (down, red)
+  // against Opus. A dot under it is the model; ↻ a switch, ▲ a step up
+  // after a failed try. Hover a bar for the turn.
+  function perTurnChart(s, u, onPick) {
+    const turns = s.turnList.slice(-60);
+    const W = 560;
+    const H = 140;
+    const P = { l: 8, r: 8, t: 8, b: 26 };
+    const max = Math.max(1e-9, ...turns.map(t => Math.abs(t.opus - t.actual)));
+    const zero = P.t + (H - P.t - P.b) / 2;
+    const half = (H - P.t - P.b) / 2;
+    const bw = (W - P.l - P.r) / Math.max(turns.length, 12);
+    const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, class: 'ar-chart' });
+    root.appendChild(svg('line', { x1: P.l, x2: W - P.r, y1: zero, y2: zero, class: 'ar-grid strong' }));
+    turns.forEach((t, i) => {
+      const d = t.opus - t.actual;
+      const h = Math.max(1.5, (Math.abs(d) / max) * half);
+      const x0 = P.l + i * bw + bw * 0.15;
+      const g = svg('g', { class: 'ar-turn' });
+      g.appendChild(svg('rect', { x: x0, y: d >= 0 ? zero - h : zero, width: bw * 0.7, height: h, class: d >= 0 ? 'ar-bar good' : 'ar-bar bad', rx: 1.5 }));
+      g.appendChild(svg('circle', { cx: x0 + bw * 0.35, cy: H - P.b + 8, r: 3, class: `ar-dot ${t.model}` }));
+      if (t.switched || t.failedStepUp) {
+        const mark = svg('text', { x: x0 + bw * 0.35, y: H - 3, class: 'ar-mark', 'text-anchor': 'middle' });
+        mark.textContent = t.failedStepUp ? '▲' : '↻';
+        g.appendChild(mark);
+      }
+      // A wide invisible target, so thin bars are easy to point at.
+      g.appendChild(svg('rect', { x: P.l + i * bw, y: P.t, width: bw, height: H - P.t, class: 'ar-hit' }));
+      tip(g, `${t.title || '(untitled)'}\n${NAMES[t.model] || t.model}: ${u.long(t.actual)} · on Opus ${u.long(t.opus)}\n${d >= 0 ? 'Saved' : 'Lost'} ${u.long(Math.abs(d))}${t.switched ? ' · switched model' : ''}${t.failedStepUp ? ' · stepped up after a failed try' : ''}\n${new Date(t.at).toLocaleString()}`);
+      g.addEventListener('click', () => onPick?.(t));
+      root.appendChild(g);
+    });
+    return root;
+  }
+
+  // The model mix as one bar: the share of turns, and the share of what was spent.
+  function mixBar(label, parts) {
+    const box = el('div', 'ar-mix');
+    box.appendChild(el('div', 'ar-mix-label', label));
+    const bar = el('div', 'ar-mix-bar');
+    const total = parts.reduce((s, p) => s + p.value, 0) || 1;
+    for (const p of parts) {
+      if (!p.value) continue;
+      const seg = el('div', `ar-mix-seg ${p.cls}`, p.value / total >= 0.12 ? `${p.name} ${Math.round((p.value / total) * 100)}%` : '');
+      seg.style.flexGrow = String(p.value);
+      seg.title = `${p.name}: ${Math.round((p.value / total) * 100)}%`;
+      bar.appendChild(seg);
+    }
+    box.appendChild(bar);
+    return box;
+  }
+
   function open() {
     if (document.querySelector('.auto-report-modal')) return;
     const s = summary();
+    const u = unit(s.perPercent);
     const overlay = el('div', 'quit-modal auto-report-modal');
     const card = el('div', 'quit-card auto-report-card');
-    card.appendChild(el('div', 'quit-title', 'Auto model report'));
-    card.appendChild(el('div', 'auto-report-since', `${s.turns} turn${s.turns === 1 ? '' : 's'} on Auto since ${new Date(s.since).toLocaleDateString()}`));
+    const top = el('div', 'ar-top');
+    top.append(el('div', 'quit-title', 'Auto model report'), el('div', 'auto-report-since', `${s.turns} turn${s.turns === 1 ? '' : 's'} on Auto since ${new Date(s.since).toLocaleDateString()} · amounts ${u.name}`));
+    card.appendChild(top);
+    if (!s.perPercent) {
+      const learned = s.cal.pct ? ` (${s.cal.pct.toFixed(0)}% seen so far)` : '';
+      card.appendChild(el('div', 'ar-calibrating', `Learning what 1% of your week is worth${learned}: until ${CALIBRATED}% of the week has gone by, amounts are in dollars at API prices.`));
+    }
     if (!s.turns) {
       card.appendChild(el('p', 'quit-text', 'No turns on Auto yet. Pick Auto in the model menu (it is the default for new agents); each turn an Auto agent finishes is counted here.'));
     } else {
-      const head = el('div', 'auto-report-head');
-      const stat = (label, value, cls = '') => {
-        const b = el('div', 'auto-report-stat ' + cls);
-        b.append(el('div', 'auto-report-value', value), el('div', 'auto-report-label', label));
-        return b;
-      };
-      head.append(
-        stat('Auto (with Haiku\'s ratings)', money(s.total)),
-        stat('All on Opus, medium (estimate)', money(s.opus)),
-        Math.abs(s.percent) < 1
-          ? stat('Even: about the same as Opus', '±0%')
-          : stat(s.saved > 0 ? 'Saved' : 'Lost', `${money(Math.abs(s.saved))} · ${Math.abs(s.percent).toFixed(0)}%`, s.saved > 0 ? 'good' : 'bad'),
-      );
-      card.appendChild(head);
+      // The verdict, in one line and three numbers.
+      const good = s.saved >= 0;
+      const verdict = el('div', `ar-verdict ${Math.abs(s.percent) < 1 ? '' : good ? 'good' : 'bad'}`);
+      verdict.textContent = Math.abs(s.percent) < 1 ? 'Auto costs about the same as running everything on Opus.'
+        : good ? `Auto saved ${u.long(s.saved)} ${u.name}: ${s.percent.toFixed(0)}% less than all on Opus.`
+        : `Auto cost ${u.long(-s.saved)} ${u.name} more than all on Opus (${(-s.percent).toFixed(0)}% more).`;
+      card.appendChild(verdict);
+      // Auto against Opus as two bars.
+      const versus = el('div', 'ar-versus');
+      const bigger = Math.max(s.total, s.opus) || 1;
+      for (const [name, value, cls] of [['Auto (with Haiku\'s ratings)', s.total, 'auto'], ['All on Opus, medium (estimate)', s.opus, 'opus']]) {
+        const row = el('div', 'ar-vs-row');
+        const bar = el('div', `ar-vs-bar ${cls}`);
+        bar.style.width = `${Math.max(2, (value / bigger) * 100)}%`;
+        const track = el('div', 'ar-vs-track');
+        track.appendChild(bar);
+        row.append(el('span', 'ar-vs-name', name), track, el('span', 'ar-vs-value', u.long(value)));
+        versus.appendChild(row);
+      }
+      card.appendChild(versus);
+
+      card.appendChild(el('div', 'ar-sub', 'Spent over time'));
+      card.appendChild(el('div', 'ar-help', 'Green between the lines is what Auto saved so far; red is where it cost more.'));
+      card.appendChild(cumulativeChart(s, u));
+
+      card.appendChild(el('div', 'ar-sub', 'Saved or lost, turn by turn'));
+      card.appendChild(el('div', 'ar-help', 'Up and green: cheaper than Opus. Down and red: dearer. The dot is the model; ↻ a model switch, ▲ a step up after a failed try. Point at a bar for the turn, click it to find it below.'));
+      const list = el('div', 'auto-report-recent');
+      card.appendChild(perTurnChart(s, u, t => {
+        const row = list.querySelector(`[data-at="${t.at}"]`);
+        if (row) { row.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); row.classList.add('flash'); setTimeout(() => row.classList.remove('flash'), 1200); }
+      }));
+      const legend = el('div', 'ar-legend');
+      for (const m of ['haiku', 'sonnet', 'opus']) {
+        const item = el('span', 'ar-legend-item');
+        item.append(el('span', `ar-legend-dot ${m}`), document.createTextNode(NAMES[m]));
+        legend.appendChild(item);
+      }
+      card.appendChild(legend);
+
+      card.appendChild(el('div', 'ar-sub', 'Model mix'));
+      const models = ['haiku', 'sonnet', 'opus'].map(m => ({ m, d: s.byModel[m] || { turns: 0, actual: 0, opus: 0, tokens: 0 } }));
+      card.appendChild(mixBar('Turns', models.map(({ m, d }) => ({ name: NAMES[m], value: d.turns, cls: m }))));
+      card.appendChild(mixBar('Spent', models.map(({ m, d }) => ({ name: NAMES[m], value: d.actual, cls: m }))));
       const table = el('div', 'auto-report-table');
       const row = (cells, cls = '') => {
         const r = el('div', 'auto-report-row' + (cls ? ' ' + cls : ''));
         for (const c of cells) r.appendChild(el('span', null, c));
         return r;
       };
-      table.appendChild(row(['Model', 'Turns', 'Tokens', 'Cost', 'On Opus'], 'head'));
-      for (const name of ['haiku', 'sonnet', 'opus']) {
-        const m = s.byModel[name];
-        if (!m) continue;
-        table.appendChild(row([NAMES[name], String(m.turns), count(m.tokens), money(m.actual), money(m.opus)]));
+      table.appendChild(row(['Model', 'Turns', 'Tokens', 'Spent', 'On Opus', 'Saved'], 'head'));
+      for (const { m, d } of models) {
+        if (!d.turns) continue;
+        table.appendChild(row([NAMES[m], String(d.turns), count(d.tokens), u.long(d.actual), u.long(d.opus), u.long(d.opus - d.actual)]));
       }
-      table.appendChild(row(['Haiku ratings', String(s.ratings), '', money(s.ratingCost), '—']));
+      table.appendChild(row(['Haiku ratings', String(s.ratings), '', u.long(s.ratingCost), '—', u.long(-s.ratingCost)]));
       card.appendChild(table);
+
       const facts = el('ul', 'auto-report-facts');
       facts.append(
         el('li', null, `Model switches between messages: ${s.switches} (about ${count(s.rebuilt)} tokens of cache built again, counted as cache reads on the Opus side).`),
-        el('li', null, `Stepped up after a failed try or "still broken": ${s.failedStepUps} time${s.failedStepUps === 1 ? '' : 's'}. Often means Auto picked too small; if this grows, Auto costs you time even when it saves money.`),
-        el('li', null, 'The Opus side assumes Opus would have read and written as many tokens as the model Auto picked. API list prices; on a subscription they show how much of your limits each side uses.'),
+        el('li', null, `Stepped up after a failed try or "still broken": ${s.failedStepUps} time${s.failedStepUps === 1 ? '' : 's'}. Often means Auto picked too small; if this grows, Auto costs you time even when it saves usage.`),
+        el('li', null, s.perPercent
+          ? `1% of your week is worth about $${s.perPercent.toFixed(2)} at API prices, learned from ${s.cal.pct.toFixed(0)}% of your weeks. Use outside this app also moves the percentage, so the true share can be smaller.`
+          : 'The Opus side is an estimate at API list prices.'),
+        el('li', null, 'The Opus side assumes Opus would have read and written as many tokens as the model Auto picked.'),
       );
       card.appendChild(facts);
-      const recent = el('div', 'auto-report-recent');
-      recent.appendChild(el('div', 'auto-report-sub', 'Latest turns'));
-      for (const t of s.recent) {
-        const row = el('div', 'auto-report-turn');
-        row.append(
-          el('span', 'auto-report-model ' + t.model, NAMES[t.model] || t.model),
+
+      card.appendChild(el('div', 'ar-sub', 'Turns, latest first'));
+      const maxTurn = Math.max(1e-9, ...s.turnList.map(t => Math.max(t.actual, t.opus)));
+      for (const t of s.turnList.slice(-40).reverse()) {
+        const r = el('div', 'auto-report-turn');
+        r.dataset.at = String(t.at);
+        const bars = el('div', 'ar-turn-bars');
+        const a = el('div', 'ar-turn-bar auto');
+        a.style.width = `${(t.actual / maxTurn) * 100}%`;
+        const o = el('div', 'ar-turn-bar opus');
+        o.style.width = `${(t.opus / maxTurn) * 100}%`;
+        bars.append(o, a);
+        const d = t.opus - t.actual;
+        r.append(
+          el('span', `auto-report-model ${t.model}`, NAMES[t.model] || t.model),
           el('span', 'auto-report-title', t.title || '(untitled)'),
-          el('span', 'auto-report-num', `${money(t.actual)} vs ${money(t.opus)}${t.switched ? ' · switched' : ''}${t.failedStepUp ? ' · stepped up' : ''}`),
+          bars,
+          el('span', `auto-report-num ${d >= 0 ? 'good' : 'bad'}`, `${d >= 0 ? '−' : '+'}${u.long(Math.abs(d))}${t.switched ? ' ↻' : ''}${t.failedStepUp ? ' ▲' : ''}`),
         );
-        recent.appendChild(row);
+        r.title = `${t.title}\n${NAMES[t.model]}: ${u.long(t.actual)} · on Opus ${u.long(t.opus)}\n${new Date(t.at).toLocaleString()}`;
+        list.appendChild(r);
       }
-      card.appendChild(recent);
+      card.appendChild(list);
     }
     const buttons = el('div', 'quit-buttons');
     const resetBtn = el('button', 'quit-stay', 'Start over');
+    resetBtn.title = 'Forget the turns counted so far (what 1% of your week is worth is kept)';
     const close = el('button', 'quit-go', 'Close');
     buttons.append(resetBtn, close);
     card.appendChild(buttons);
@@ -204,7 +445,7 @@ const autoReport = (() => {
     resetBtn.onclick = () => { reset(); shut(); setTimeout(open, 220); };
   }
 
-  return { noteRating, recordTurn, contextOf, summary, open, reset };
+  return { noteRating, noteCost, noteUsage, recordTurn, contextOf, summary, open, reset };
 })();
 
 window.autoReport = autoReport;
