@@ -585,6 +585,8 @@ function restoreInputDraft() {
 }
 
 function show(kind, id) {
+  // A "You asked" card beside the message box belongs to the chat that was on screen.
+  window.homePinBars?.();
   saveInputDraft();
   state.current = { kind, id };
   requestAnimationFrame(updateNextHint);

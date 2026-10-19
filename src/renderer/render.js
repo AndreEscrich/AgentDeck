@@ -519,6 +519,19 @@ function addJsonCopy(root) {
   }
 }
 
+// "You asked" cards standing beside the message box (Transcript.placePin)
+// go back to their chats: when another agent's card takes the place, or the
+// view changes (app.js show()). keep: a card to leave where it is.
+function homePinBars(keep = null) {
+  for (const bar of document.querySelectorAll('#composer .prompt-pin-bar')) {
+    if (bar === keep) continue;
+    bar.classList.remove('pin-beside');
+    for (const p of ['left', 'top', 'width', 'visibility']) bar.style.removeProperty(p);
+    bar._home?.appendChild(bar);
+  }
+}
+window.homePinBars = homePinBars;
+
 // A table wider than the chat column grows sideways into the free space
 // beside the chat, centred on it, up to the window's width less a margin;
 // wider than that, it scrolls inside its box. Fitted again when the text's
@@ -938,6 +951,42 @@ class Transcript {
     // Wide content can appear without a scroll (a class diagram opening).
     window.addEventListener('resize', later);
     new ResizeObserver(later).observe(this.root);
+    // Beside the message box, it follows the box when it grows (see placePin).
+    const box = document.querySelector('#composer .composer-box');
+    if (box) new ResizeObserver(later).observe(box);
+  }
+
+  // With room beside the chat, the card stands to the left of the message
+  // box, its bottom level with the box's, growing upwards. Returns false
+  // when there is not enough room there (it then keeps its place in the
+  // margin at the top).
+  // The card then lives in the message box's footer (the chat's scroll area
+  // ends above the box and would cut it off), and goes back to its chat when
+  // it is not needed there (see homePinBars).
+  placePin() {
+    const bar = this.pinBar;
+    const composer = document.getElementById('composer');
+    const box = composer?.querySelector('.composer-box');
+    const clear = () => {
+      if (bar.parentNode !== this.pin) this.pin.appendChild(bar);
+      bar.classList.remove('pin-beside');
+      for (const p of ['left', 'top', 'width']) bar.style.removeProperty(p);
+      return false;
+    };
+    if (!box || !box.offsetParent || !this.scroller.offsetParent) return clear();
+    const b = box.getBoundingClientRect();
+    const room = b.left - this.scroller.getBoundingClientRect().left - 32;
+    if (room < 170) return clear();
+    homePinBars(bar);
+    const width = Math.min(room, 360);
+    bar._home = this.pin;
+    if (bar.parentNode !== composer) composer.appendChild(bar);
+    bar.classList.add('pin-beside');
+    bar.style.width = `${width}px`;
+    const c = composer.getBoundingClientRect();
+    bar.style.left = `${b.left - 16 - width - c.left}px`;
+    bar.style.top = `${b.bottom - c.top - bar.offsetHeight}px`;
+    return true;
   }
 
   // True when chat content lies under the bar: a few points across it are
@@ -977,6 +1026,7 @@ class Transcript {
     const show = !!current && current.el.getBoundingClientRect().bottom < top
       && !(next && next.el.getBoundingClientRect().top < top + 90);
     this.pin.classList.toggle('show', show);
+    if (!show && this.pinBar.parentNode !== this.pin) homePinBars();
     if (show && this.pinTarget !== current) {
       this.pinTarget = current;
       this.pinText.textContent = current.text;
@@ -989,8 +1039,15 @@ class Transcript {
     // bar over the chat on purpose.
     if (!show) return;
     const inMargin = getComputedStyle(this.pinBar).flexDirection === 'column';
-    if (!inMargin || this.pinBar.matches(':hover')) return;
+    if (!inMargin) { this.pin.classList.remove('tucked', 'hidden-over'); this.placePin(); return; }
+    if (this.pinBar.matches(':hover')) return;
     this.pin.classList.remove('tucked', 'hidden-over');
+    // Beside the message box it hides only when something wide lies under it.
+    if (this.placePin()) {
+      this.pinBar.style.visibility = '';
+      if (this.pinCovers()) this.pinBar.style.visibility = 'hidden';
+      return;
+    }
     if (!this.pinCovers()) return;
     this.pin.classList.add('tucked');
     if (this.pinCovers()) this.pin.classList.add('hidden-over');

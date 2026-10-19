@@ -2422,3 +2422,10 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 
 /* The agent chosen with the keyboard in the selected group (hub.ensureKeyAgent). */
 .hub-section.selected .hub-tile.key-focus { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* "You asked" beside the message box (Transcript.placePin): in the footer,
+   left of the box, its bottom level with the box's. */
+#composer { position: relative; }
+#composer > .prompt-pin-bar.pin-beside { position: absolute; transform: none; opacity: 1; pointer-events: auto; z-index: 6;
+  flex-direction: column; align-items: stretch; gap: 4px; padding: 10px 12px; }
+#composer > .prompt-pin-bar.pin-beside .prompt-pin-text { font-size: 12.5px; -webkit-line-clamp: 10; }
