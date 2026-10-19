@@ -2060,11 +2060,16 @@ async function sessionMenu(sessionId, hubId = null) {
     },
     { id: 'remove', label: 'Remove from category', enabled: !!current },
     { type: 'separator' },
+    // Its Claude Code session id, to name it to an agent (its transcript is
+    // ~/.claude/projects/<folder>/<id>.jsonl).
+    { id: 'copy-id', label: 'Copy agent id' },
+    { type: 'separator' },
     { id: 'forget', label: 'Remove from History…', enabled: !runningSession(sessionId) },
   ];
   const picked = await window.deck.popupMenu(items);
   if (!picked) return;
   if (picked === 'forget') { removeFromHistory([sessionId]); return; }
+  if (picked === 'copy-id') { window.deck.copyText(sessionId); sfx('select'); return; }
   if (picked.startsWith('folder:') || picked === 'folder-pick') {
     const folder = picked === 'folder-pick' ? await window.deck.pickFolder() : picked.slice(7);
     if (folder) moveToFolder(hubId, folder);
