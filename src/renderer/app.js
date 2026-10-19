@@ -3992,7 +3992,7 @@ window.deck.onEvent((id, msg) => {
   if (msg.type === 'assistant' && msg.message?.usage && msg.message.id && !tickedAnswers.has(msg.message.id)) {
     tickedAnswers.add(msg.message.id);
     if (tickedAnswers.size > 5000) tickedAnswers.clear();
-    hub.tokenTick(totalTokens(msg.message.usage));
+    hub.tokenTick(tokenParts(msg.message.usage));
   }
   const a = state.agents.get(id);
   if (!a) return;

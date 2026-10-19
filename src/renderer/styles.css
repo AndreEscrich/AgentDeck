@@ -2436,3 +2436,7 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .asset-status.status-new { --st: var(--ok); }
 .asset-status.status-del { --st: var(--err); }
 .asset-status.status-moved { --st: var(--info); }
+
+/* The tokens of a step can be pointed at: it stops and shows its breakdown. */
+.health-float { pointer-events: auto; cursor: default; }
+.health-float.held { animation-play-state: paused; opacity: 1; }

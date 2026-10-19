@@ -311,21 +311,39 @@ class Hub {
   }
 
   // Tokens an agent just used: a number that floats off the bar's end.
-  tokenTick(tokens) {
-    if (!tokens || !this.healthFloat.isConnected) return;
-    this.pendingTokens = (this.pendingTokens || 0) + tokens;
+  // One answer's tokens float off the health bar, weighted roughly as they
+  // count against your usage: new input, cache writes and output in full,
+  // cache reads (the conversation read again from the prompt cache, most of
+  // a long conversation's tokens) at a tenth, as in the API's prices.
+  // Pointing at the number holds it and shows the breakdown; the health bar's
+  // tooltip keeps the last one. parts: { input, cacheWrite, cacheRead, output }.
+  tokenTick(parts) {
+    if (!parts || !this.healthFloat.isConnected) return;
+    const p = this.pendingParts = this.pendingParts || { input: 0, cacheWrite: 0, cacheRead: 0, output: 0 };
+    for (const k of Object.keys(p)) p[k] += parts[k] || 0;
     if (this.tokenTimer) return;
     this.tokenTimer = setTimeout(() => {
-      const n = this.pendingTokens;
-      this.pendingTokens = 0;
+      const t = this.pendingParts;
+      this.pendingParts = null;
       this.tokenTimer = null;
-      const f = el('span', 'health-float', `−${formatTokens(n)}`);
+      const weighted = Math.round(t.input + t.cacheWrite + t.output + t.cacheRead / 10);
+      if (!weighted) return;
+      const detail = [
+        `${formatTokens(t.input)} new`, `${formatTokens(t.cacheWrite)} written to the cache`,
+        `${formatTokens(t.cacheRead)} read from the cache (counted at a tenth)`, `${formatTokens(t.output)} output`,
+      ].join(' · ');
+      const f = el('span', 'health-float', `−${formatTokens(weighted)}`);
+      f.title = `This step: about ${formatTokens(weighted)} tokens of your usage\n${detail}`;
       f.style.left = `${Math.max(4, Math.min(92, this.healthLeft ?? 50))}%`;
       this.healthFloat.appendChild(f);
+      this.health.title = `Usage: click for details\nLast step: about ${formatTokens(weighted)} tokens (${detail})`;
       this.healthFill.classList.remove('pulse');
       void this.healthFill.offsetWidth;
       this.healthFill.classList.add('pulse');
-      setTimeout(() => f.remove(), 1400);
+      // Pointing at it holds it, so the breakdown can be read.
+      let gone = setTimeout(() => f.remove(), 1400);
+      f.onmouseenter = () => { clearTimeout(gone); f.classList.add('held'); };
+      f.onmouseleave = () => { f.classList.remove('held'); gone = setTimeout(() => f.remove(), 500); };
     }, 350);
   }
 
