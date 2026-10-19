@@ -290,6 +290,7 @@ app.whenReady().then(() => {
   ipcMain.handle('sessions:list', () => { const gone = require('./removedsessions').list(); return listSessions().filter(x => !gone.has(x.id)); });
   ipcMain.handle('git:snapshot', (_e, cwd) => git.snapshot(cwd, path.join(app.getPath('userData'), 'snapshots')));
   ipcMain.handle('git:changes', (_e, cwd, snap) => git.changesSince(cwd, snap));
+  ipcMain.handle('subagents:evidence', (_e, sessionId, since) => require('./subagents').evidence(sessionId, since));
   const turnDir = path.join(app.getPath('userData'), 'turn-changes');
   require('./turnchanges').prune(turnDir);
   ipcMain.handle('turns:save', (_e, id, data) => require('./turnchanges').save(turnDir, id, data));

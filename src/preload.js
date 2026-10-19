@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld('deck', {
   openTactileSvn: cwd => ipcRenderer.invoke('tsvn:open', cwd),
   gitSnapshot: cwd => ipcRenderer.invoke('git:snapshot', cwd),
   gitChanges: (cwd, snap) => ipcRenderer.invoke('git:changes', cwd, snap),
+  subagentEvidence: (sessionId, since) => ipcRenderer.invoke('subagents:evidence', sessionId, since),
   undoFile: (cwd, file, snap) => ipcRenderer.invoke('files:undo', cwd, file, snap),
   fileVersions: (cwd, file) => ipcRenderer.invoke('files:versions', cwd, file),
   restoreFile: (cwd, p, previous, from) => ipcRenderer.invoke('files:restore', cwd, p, previous, from),

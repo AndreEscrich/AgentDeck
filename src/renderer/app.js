@@ -3478,7 +3478,15 @@ async function sendToAgent(agent, text, images = []) {
   // Images and videos changed after this moment count as the task's media.
   // A second of slack covers clocks that round file times.
   if (!agent.mediaSince) agent.mediaSince = Date.now() - 1000;
+  // The snapshot kept from a task whose background agents woke it up (see
+  // the result in onStream): your message starts a new task.
+  if (agent.snapshotHeld) {
+    agent.snapshot = null;
+    agent.snapshotHeld = false;
+    agent.taskTurns = null;
+  }
   if (!agent.snapshot) {
+    agent.snapshotAt = Date.now() - 1000;
     try { agent.snapshot = await window.deck.gitSnapshot(agent.cwd); } catch { agent.snapshot = null; }
   }
   await window.deck.sendMessage(agent.id, text, images);
@@ -4031,10 +4039,29 @@ window.deck.onEvent((id, msg) => {
   if (msg.type === 'result' && a.snapshot) {
     const snap = a.snapshot;
     const turn = a.transcript.lastFinished;
-    a.snapshot = null;
+    // A turn can leave background agents or commands running: they wake the
+    // agent up with a turn of its own when they are done, and what they
+    // changed belongs to your message too. So the snapshot stays until your
+    // next message (sendToAgent), and each turn's card has all of the task
+    // so far.
+    const earlier = (a.taskTurns || []).filter(t => t && t !== turn);
+    a.snapshotHeld = true;
+    a.taskTurns = [...earlier, turn];
     // Kept for "Undo last prompt": binary files come back from it.
     if (turn) turn.snap = snap;
-    window.deck.gitChanges(a.cwd, snap)
+    // The card keeps the files the agent touched: in any turn of the task,
+    // or in its sub-agents (the background ones are not in the stream).
+    const evidence = turn ? window.deck.subagentEvidence(a.sessionId, a.snapshotAt).catch(() => null).then(found => {
+      turn.touched = turn.touched || new Set();
+      turn.evidence = turn.evidence || [];
+      for (const t of earlier) {
+        for (const p of t.touched || []) turn.touched.add(p);
+        turn.evidence.push(...(t.evidence || []));
+      }
+      for (const p of found?.touched || []) turn.touched.add(p);
+      turn.evidence.push(...(found?.evidence || []));
+    }) : Promise.resolve();
+    evidence.then(() => window.deck.gitChanges(a.cwd, snap))
       .then(diff => a.transcript.showGitChanges(turn, diff, snap.kind === 'folder'))
       .then(() => saveTurnChanges(turn))
       .then(() => refreshHeaderIfCurrent(a.id))

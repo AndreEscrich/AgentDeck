@@ -1692,6 +1692,29 @@ class Transcript {
     return (turn.evidence || []).some(text => text.replace(/\\/g, '/').includes(dir));
   }
 
+  // True when a command or tool input named a deleted file by a path of at
+  // least two parts that leads to it: its folder ("rm -r
+  // Animations/TierTransitionView") or a pattern ("rm TierTransition/*.cs").
+  // Those delete files they do not name one by one.
+  folderNamed(turn, rel) {
+    const file = rel.replace(/\\/g, '/');
+    turn.pathWords = turn.pathWords || new Map();   // evidence text -> its path-like words
+    return (turn.evidence || []).some(text => {
+      let words = turn.pathWords.get(text);
+      if (!words) {
+        // Only what deletes or moves files ("grep -r x Assets/Code" names a
+        // folder too, and deletes nothing).
+        const deletes = /\b(rm|rmdir|del|erase|rd|Remove-Item|rmtree|unlink|unlinkSync|rmSync|remove|delete|DeleteAsset|MoveAsset|mv|Move-Item)\b/i.test(text);
+        words = !deletes ? [] : text.replace(/\\/g, '/').split(/[\s'"`;|&()<>,=]+/)
+          .map(w => w.replace(/^\.\//, '').replace(/\/+$/, ''))
+          .filter(w => /[^/]\/[^/]/.test(w) && w.length < 300)
+          .map(w => new RegExp(`(^|/)${w.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*')}(/|$)`, 'i'));
+        turn.pathWords.set(text, words);
+      }
+      return words.some(re => re.test(file));
+    });
+  }
+
   // Like agentTouched, for an image or video found in the folder: the agent
   // named it in a command or a tool's input, or a tool's result named it.
   agentMadeMedia(turn, file) {
@@ -1791,7 +1814,8 @@ class Transcript {
     // The snapshot also catches changes you (or other agents) made in the same
     // folder while this agent worked. Only files the agent touched stay.
     const files = pairMoves(parseUnifiedDiff(diffText)).filter(f => !isTempFile(f.path) && (this.agentTouched(turn, f.path) || (f.from && this.agentTouched(turn, f.from))
-      || (addedOrRemovedBinary(f) && this.folderTouched(turn, f.path))));
+      || (addedOrRemovedBinary(f) && this.folderTouched(turn, f.path))
+      || (f.status === 'del' && this.folderNamed(turn, f.path))));
     if (merge) {
       await this.pruneMissing(turn).catch(() => {});
       // The snapshot's paths use /, the Edit/Write reports the system's own

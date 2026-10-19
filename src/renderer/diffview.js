@@ -713,15 +713,17 @@ function lineComments(files, cwd) {
 
 // ---------- moved and renamed files ----------
 
-// A file that was moved or renamed can reach the card as two files: the old
-// path deleted and the new one added. Git pairs them itself only when the
-// two are at least half the same and both are in its comparison; a move
-// with plain mv in a git repository (the new file is untracked), or a
-// rename with many edits, comes in as two. These are paired here: a deleted
-// and a new file of the same kind are one moved file when enough of their
-// lines are the same (half of them, or a third when the name stayed). The
-// pair becomes one entry at the new path, with `from` the old path and the
-// diff between the two versions, like a file git paired.
+// A file that was moved or renamed reaches the card as two files: the old
+// path deleted and the new one added (the comparisons in git.js leave
+// pairing to this). A deleted and a new file of the same kind are one moved
+// file when enough of their lines are the same (half of them, or a third
+// when the name stayed). In a Unity project the .meta files decide instead:
+// a moved asset keeps its guid, so when both have their .meta in the task,
+// they are a move only if the guids match. Views made from one template are
+// more than half the same, and so are any two .meta files, so a view removed
+// and another one added would look like a move. The pair becomes one entry
+// at the new path, with `from` the old path and the diff between the two
+// versions, like a file git paired.
 function similarity(a, b) {
   const set = lines => new Set(lines.map(l => l.trim()).filter(l => l.length > 2));
   const x = set(a);
@@ -774,11 +776,24 @@ function pairMoves(files) {
   if (!removed.length || !added.length) return files;
   const ext = p => (p.match(/\.[^./\\]+$/) || [''])[0].toLowerCase();
   const base = p => p.split(/[\\/]/).pop();
+  // The guid in a .meta file (its old lines for a deleted file).
+  const guidIn = (f, kind) => content(f, kind).map(t => /^guid:\s*([0-9a-f]{32})/.exec(t)?.[1]).find(Boolean) || null;
+  const byPath = new Map(files.map(f => [f.path, f]));
+  const metaGuid = (f, kind) => {
+    const meta = /\.meta$/i.test(f.path) ? f : byPath.get(f.path + '.meta');
+    return meta ? guidIn(meta, kind) : null;
+  };
   const pairs = [];
   for (const d of removed) {
     for (const a of added) {
       if (ext(d.path) !== ext(a.path)) continue;
       const sameName = base(d.path) === base(a.path);
+      const was = metaGuid(d, 'del');
+      const now = metaGuid(a, 'add');
+      if (was && now) {
+        if (was === now) pairs.push({ d, a, score: 2 });
+        continue;
+      }
       const score = similarity(content(d, 'del'), content(a, 'add'));
       if (score >= (sameName ? 0.33 : 0.5)) pairs.push({ d, a, score: score + (sameName ? 0.25 : 0) });
     }

@@ -74,7 +74,10 @@ async function repoChanges(cwd, snap, prefix = '') {
   const prefixes = prefix ? [`--src-prefix=a/${prefix}/`, `--dst-prefix=b/${prefix}/`] : [];
   // Line endings alone do not count: an agent that rewrites a CRLF file
   // with LF would otherwise show every line as removed and added again.
-  const tracked = await git(['diff', '--no-color', '--no-ext-diff', '--ignore-cr-at-eol', '--relative', ...prefixes, snap.base, '--'], { cwd });
+  // Moves are paired by the window (pairMoves in diffview.js): git pairs any
+  // two files that are half the same, such as a view removed and a new one
+  // made from the same template.
+  const tracked = await git(['diff', '--no-color', '--no-ext-diff', '--ignore-cr-at-eol', '--no-renames', '--relative', ...prefixes, snap.base, '--'], { cwd });
   if (tracked == null) return null;
   const parts = [tracked];
   const before = new Set(snap.untracked);
@@ -187,7 +190,7 @@ async function folderChanges(cwd, snap) {
   if (!tree) return null;
   const parts = [];
   if (tree !== snap.tree) {
-    const diff = await git(['diff', '--no-color', '--no-ext-diff', '--ignore-cr-at-eol', snap.tree, tree], { gitDir: snap.dir });
+    const diff = await git(['diff', '--no-color', '--no-ext-diff', '--ignore-cr-at-eol', '--no-renames', snap.tree, tree], { gitDir: snap.dir });
     if (diff) parts.push(diff);
   }
   for (const n of snap.nested) {
