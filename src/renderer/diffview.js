@@ -472,7 +472,8 @@ function addAssets(card, files, cwd, comments) {
   const section = el('div', 'assets-section');
   const prefabs = assets.filter(f => /\.prefab$/i.test(f.path)).length;
   // "Asset changes" when Unity assets are among them, else just "Other files".
-  const heading = assets.some(f => assetKind(f.path)) ? 'Asset changes' : 'Other files';
+  // Textures, audio, video, models and fonts are assets too.
+  const heading = assets.some(f => assetKind(f.path) || ['Texture', 'Audio', 'Video', 'Model', 'Font'].includes(otherKind(f.path))) ? 'Asset changes' : 'Other files';
   section.appendChild(el('div', 'assets-head', `${heading} · ${assets.length}${prefabs ? ` · ${prefabs} prefab${prefabs === 1 ? '' : 's'}` : ''}`));
   const STATUS = { new: 'New', mod: 'Changed', del: 'Deleted', bin: 'Changed' };
   // A long list (a branch can change hundreds of assets) shows the first ones
@@ -485,9 +486,10 @@ function addAssets(card, files, cwd, comments) {
     const parts = f.path.split('/');
     summary.append(
       el('span', `asset-kind kind-${extensionOf(f.path).toLowerCase()}`, assetKind(f.path) || otherKind(f.path)),
+      // New, Deleted, Changed or Moved, right after the kind.
+      el('span', `asset-status status-${f.from ? 'moved' : f.status}`, f.from ? 'Moved' : STATUS[f.status] || 'Changed'),
       el('span', 'asset-name', parts.pop()),
       el('span', 'asset-folder', parts.slice(-3).join('/')),
-      el('span', `asset-status status-${f.status}`, f.from ? 'Moved' : STATUS[f.status] || 'Changed'),
     );
     summary.title = f.from ? `${f.path}\nmoved from ${f.from}` : f.path;
     row.appendChild(summary);

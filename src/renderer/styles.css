@@ -2429,3 +2429,10 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 #composer > .prompt-pin-bar.pin-beside { position: absolute; transform: none; opacity: 1; pointer-events: auto; z-index: 6;
   flex-direction: column; align-items: stretch; gap: 4px; padding: 10px 12px; }
 #composer > .prompt-pin-bar.pin-beside .prompt-pin-text { font-size: 12.5px; -webkit-line-clamp: 10; }
+
+/* The status right after the kind, a fixed width so the names line up. */
+.asset-status { flex-shrink: 0; width: 62px; text-align: center; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 1px 0; border-radius: 4px; --st: var(--busy); color: var(--st); background: color-mix(in srgb, var(--st) 14%, transparent); }
+.asset-status.status-new { --st: var(--ok); }
+.asset-status.status-del { --st: var(--err); }
+.asset-status.status-moved { --st: var(--info); }
