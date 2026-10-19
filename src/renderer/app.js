@@ -705,6 +705,12 @@ function reviewQueue() {
   return [...waiting, ...unseen, ...unanswered];
 }
 
+// ↩ in the Hub's empty message box with no agent to check: the agent chosen
+// in the selected group (see hub.moveKeyAgent) opens.
+function openKeyAgent() {
+  if (hub.keyAgentId && hub.tiles.has(hub.keyAgentId)) hub.open(hub.keyAgentId);
+}
+
 // A new press of Enter starts a round. Within a round, agents already opened
 // are skipped: an agent that still waits for your answer would otherwise come
 // first again right after you close it.
@@ -4196,7 +4202,7 @@ async function sendFromComposer() {
   const hasFiles = attachments.current().length > 0;
   // Enter in the Hub's empty message box also opens the next agent that needs you.
   if (!typed && !hasFiles && state.current?.kind === 'hub') {
-    reviewNext();
+    if (!reviewNext()) openKeyAgent();
     return;
   }
   if ((!typed && !hasFiles) || !state.current) return;
@@ -4763,12 +4769,26 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey && !isMod(e) && !e.altKey && !typing && state.current?.kind === 'hub'
       && !document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .uml-full, .settings-modal')) {
     e.preventDefault();
-    reviewNext();
+    if (!reviewNext()) openKeyAgent();
   }
-  // Tab never moves the focus around the app; it opens the next agent to check.
+  // Tab never moves the focus around the app; it opens the next agent to
+  // check. In the Hub with none to check, it chooses the next agent of the
+  // selected group instead (⇧Tab the previous one).
   if (e.key === 'Tab' && !isMod(e) && !e.altKey && !e.target.closest?.('.settings-modal')) {
     e.preventDefault();
-    if (!document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .uml-full')) checkNext();
+    if (!document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .uml-full')) {
+      if (state.current?.kind === 'hub' && !reviewQueue().length && hub.moveKeyAgent(e.shiftKey ? -1 : 1)) return;
+      checkNext();
+    }
+  }
+  // In the Hub, with the message box empty: ← → choose an agent of the
+  // selected group, ↑ ↓ another group (see hub.moveKeyAgent).
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) && !isMod(e) && !e.altKey && !e.shiftKey
+      && state.current?.kind === 'hub' && (!typing || (e.target.id === 'input' && !e.target.value))
+      && !document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .uml-full, .settings-modal, .quit-modal, .slash-menu, .usage-rail.open')) {
+    const moved = e.key === 'ArrowLeft' ? hub.moveKeyAgent(-1) : e.key === 'ArrowRight' ? hub.moveKeyAgent(1)
+      : hub.moveKeyGroup(e.key === 'ArrowUp' ? -1 : 1);
+    if (moved) e.preventDefault();
   }
   // Esc leaves an agent (or a saved session, a new agent, or the branch
   // diff view) for the Hub. The Stop button in the top bar stops a running turn.

@@ -772,6 +772,7 @@ class Hub {
     }
     if (this.unityStates) this.setUnity(this.unityStates);
     if (this.svnStates) this.setTactileSvn(this.svnStates);
+    this.ensureKeyAgent();
 
     this.empty.classList.toggle('hidden', agents.length > 0);
     requestAnimationFrame(() => this.fitToHeight());
@@ -905,6 +906,66 @@ class Hub {
   markSelected(key) {
     this.selectedKey = key;
     for (const sec of this.sections.values()) sec.el.classList.toggle('selected', sec.key === key);
+    this.ensureKeyAgent();
+  }
+
+  // ---------- choosing with the keyboard ----------
+
+  // The selected group (where the message box points) always has one agent
+  // chosen, outlined on its tile: the one chosen there last, else its first.
+  // ← → (and Tab when no agent needs you) choose another in the group, ↑ ↓
+  // another group; ↩ in the empty box opens the chosen agent (see app.js).
+  groupTiles(sec) {
+    return [...this.tiles].filter(([, t]) => t.el.parentNode === sec.grid && !t.removing)
+      .sort((a, b) => Number(a[1].el.style.order) - Number(b[1].el.style.order)).map(([id]) => id);
+  }
+
+  selectedSection() {
+    const sec = this.sections.get(this.selectedKey);
+    return sec && !sec.el.classList.contains('hidden') ? sec : null;
+  }
+
+  ensureKeyAgent() {
+    this.keyAgentBy = this.keyAgentBy || new Map();
+    const sec = this.selectedSection();
+    const ids = sec ? this.groupTiles(sec) : [];
+    if (!ids.includes(this.keyAgentId)) {
+      const last = sec && this.keyAgentBy.get(sec.key);
+      this.keyAgentId = ids.includes(last) ? last : ids[0] || null;
+    }
+    if (sec && this.keyAgentId) this.keyAgentBy.set(sec.key, this.keyAgentId);
+    for (const [id, t] of this.tiles) t.el.classList.toggle('key-focus', id === this.keyAgentId);
+  }
+
+  moveKeyAgent(step) {
+    const sec = this.selectedSection();
+    if (!sec) return false;
+    const ids = this.groupTiles(sec);
+    if (!ids.length) return false;
+    const at = Math.max(0, ids.indexOf(this.keyAgentId));
+    this.keyAgentId = ids[(at + step + ids.length) % ids.length];
+    this.ensureKeyAgent();
+    this.tiles.get(this.keyAgentId)?.el.scrollIntoView({ block: 'nearest' });
+    window.uiSound?.('tick');
+    return true;
+  }
+
+  // The groups in the order they stand: by repository, then within it.
+  orderedSections() {
+    const repoOrder = sec => Number(sec.el.closest('.hub-repo')?.style.order || 0);
+    return [...this.sections.values()].filter(sec => !sec.el.classList.contains('hidden') && sec.cwd)
+      .sort((a, b) => repoOrder(a) - repoOrder(b) || Number(a.el.style.order) - Number(b.el.style.order));
+  }
+
+  moveKeyGroup(step) {
+    const list = this.orderedSections();
+    if (!list.length) return false;
+    const at = list.findIndex(sec => sec.key === this.selectedKey);
+    const next = list[at < 0 ? (step > 0 ? 0 : list.length - 1) : Math.max(0, Math.min(list.length - 1, at + step))];
+    if (next.key === this.selectedKey) return false;
+    this.onPickGroup?.(next.groupKey || null, next.cwd);
+    next.el.scrollIntoView({ block: 'nearest' });
+    return true;
   }
 
   // The tank drains, the tile tips over and shrinks with a puff of

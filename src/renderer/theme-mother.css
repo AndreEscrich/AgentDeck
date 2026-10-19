@@ -663,3 +663,4 @@ body.history-open #sidebar.history-drawer { transform: none; }
 .assets-section, .asset-kind { border-radius: 0 !important; }
 .assets-head { font-family: var(--label); letter-spacing: 0.12em; }
 .code-copy { border-radius: 0; font-family: var(--label); text-transform: uppercase; letter-spacing: 0.08em; }
+.hub-section.selected .hub-tile.key-focus { outline: 2px solid var(--lamp); outline-offset: 3px; box-shadow: 0 0 14px -2px var(--lamp) !important; }

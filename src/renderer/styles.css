@@ -2419,3 +2419,6 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .auto-report-num { text-align: right; }
 .auto-report-num.good { color: var(--ok); }
 .auto-report-num.bad { color: var(--err); }
+
+/* The agent chosen with the keyboard in the selected group (hub.ensureKeyAgent). */
+.hub-section.selected .hub-tile.key-focus { outline: 2px solid var(--accent); outline-offset: 3px; }
