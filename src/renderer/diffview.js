@@ -466,7 +466,8 @@ const kindRank = p => (ASSET_ORDER.has(extensionOf(p)) ? ASSET_ORDER.get(extensi
 // files: the task's files that are not code (the diff viewer has the code).
 // comments: the card's line comments (a text file's diff takes them too).
 function addAssets(card, files, cwd, comments) {
-  const assets = [...files].sort((a, b) => kindRank(a.path) - kindRank(b.path) || a.path.localeCompare(b.path));
+  // .meta files (Unity's import settings and ids) are left out.
+  const assets = files.filter(f => !/\.meta$/i.test(f.path)).sort((a, b) => kindRank(a.path) - kindRank(b.path) || a.path.localeCompare(b.path));
   if (!assets.length) return;
   const section = el('div', 'assets-section');
   const prefabs = assets.filter(f => /\.prefab$/i.test(f.path)).length;
