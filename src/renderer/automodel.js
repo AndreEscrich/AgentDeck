@@ -18,6 +18,10 @@
 // steps up when the last turn failed or got stuck, or your message says the
 // work is wrong ("still broken", "that's not right"). (A change of model
 // starts the prompt cache over, so it only changes when it pays.)
+//
+// Visual work always gets Opus, whatever the rating: layout, animations,
+// particles and effects, shaders, UI and the like (see VISUAL), for a new
+// task and for a follow-up.
 
 const autoModel = (() => {
   const MODELS = ['haiku', 'sonnet', 'opus'];
@@ -25,6 +29,10 @@ const autoModel = (() => {
 
   const HARD = /\b(debug\w*|crash\w*|race condition|deadlock|leak\w*|refactor\w*|architect\w*|design\w*|redesign|migrat\w*|rewrite|investigat\w*|why (does|is|do|did)|root cause|performance|optimi[sz]\w*|concurren\w*|security|algorithm\w*|end.to.end|across (the|all)|whole (project|code ?base|system)|implement\w*|feature)\b/gi;
   const EASY = /\b(rename|typo|spelling|what is|what does|where is|which file|explain briefly|summari[sz]e|list|show me|print|format|translate|commit|push|promote|restart|reopen|open|run the|bump|update the version|add a comment|comment out|remove the line|change the text|change the colou?r)\b/gi;
+
+  // Visual work: always Opus. visual(text) returns the word that says so, or null.
+  const VISUAL = /\b(layouts?|re-?layout\w*|animat\w*|particles?|vfx|visual\w*|shaders?|shader ?graph|tween\w*|easing|sprites?|spine|ui|ux|hud|polish\w*|juic\w*|(screen|camera) shake|glow\w*|bloom|lighting|fonts?|colou?rs?|align\w*|spacing|padding|anchor\w*|fade\w*|bounce\w*|pop.?in|(screen|view|scene) transitions?|looks? (nicer|better|good|off|wrong|weird|bad))\b/i;
+  const visual = text => (VISUAL.exec(String(text || '')) || [])[0]?.toLowerCase() || null;
 
   // The rules' level, 1 to 3 (a fraction: how sure they are shows in how
   // far from the middle it is).
@@ -75,6 +83,7 @@ const autoModel = (() => {
   // Sonnet is for starting normal tasks, where there is no cache to lose.
   function followUp(current, text, haikuLevel, lastStatus) {
     if (GO_ON.test(String(text || ''))) return current;
+    if (visual(text)) return 3;
     const r = (rules(text) + current) / 2;
     let level = combine(r, haikuLevel);
     if (stepUp(lastStatus, text)) level = Math.max(level, Math.min(3, current + 1));
@@ -83,7 +92,7 @@ const autoModel = (() => {
   }
   const goesOn = text => GO_ON.test(String(text || ''));
 
-  return { rules, combine, modelOf, nameOf, stepUp, followUp, goesOn, MODELS };
+  return { rules, combine, modelOf, nameOf, stepUp, followUp, goesOn, visual, MODELS };
 })();
 
 window.autoModel = autoModel;

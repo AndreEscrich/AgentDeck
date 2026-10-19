@@ -92,7 +92,7 @@ const composerPicker = new ModelPicker($('composer-picker'), {
     if (cur?.kind === 'agent') {
       const a = state.agents.get(cur.id);
       a.choice = choice;
-      if (choice.model === 'auto' && !a.autoLevel) a.autoLevel = autoModel.combine(autoModel.rules(a.latestPrompt || a.title), null);
+      if (choice.model === 'auto' && !a.autoLevel) a.autoLevel = autoModel.visual(a.latestPrompt || a.title) ? 3 : autoModel.combine(autoModel.rules(a.latestPrompt || a.title), null);
       window.deck.setModel(a.id, cliChoice(a));
       showAutoPick(a);
       a.transcript.note(`Switched to ${composerPicker.button.textContent.replace(' ▾', '')} from the next message on.`);
@@ -3231,8 +3231,11 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
   if (choice.model === 'auto') {
     const real = !!prompt && prompt !== RESUME_PROMPT && prompt !== RESTART_PROMPT;
     agent.autoRules = real ? autoModel.rules(prompt, { images: images.length }) : 2;
-    agent.autoLevel = resume?.autoLevel || autoModel.combine(agent.autoRules, null);
-    if (real && !resume?.autoLevel) autoRating = window.deck.rateTask(prompt).then(rated).catch(() => null);
+    // Visual work starts on Opus at once, without Haiku's rating.
+    agent.autoVisual = real && !resume?.autoLevel ? autoModel.visual(prompt) : null;
+    agent.autoLevel = resume?.autoLevel || (agent.autoVisual ? 3 : autoModel.combine(agent.autoRules, null));
+    if (real && !resume?.autoLevel && !agent.autoVisual) autoRating = window.deck.rateTask(prompt).then(rated).catch(() => null);
+    if (agent.autoVisual) setTimeout(() => { agent.transcript.note(`Auto picked Opus (visual work: ${agent.autoVisual}).`); showAutoPick(agent); }, 0);
   }
   if (ticket) agent.ticket = ticket;
   if (!resume) summarizeTitle(agent, prompt);
@@ -3399,7 +3402,7 @@ async function sendToAgent(agent, text, images = []) {
     const current = agent.autoLevel || 2;
     const lastStatus = agent.status;
     let haiku = null;
-    if (!autoModel.goesOn(text)) {
+    if (!autoModel.goesOn(text) && !autoModel.visual(text)) {
       const context = [agent.summaryTitle || agent.title, agent.latestPrompt && agent.latestPrompt !== text ? agent.latestPrompt : ''].filter(Boolean).join(' / ');
       haiku = await Promise.race([window.deck.rateTask(text, context).then(rated).catch(() => null), new Promise(r => setTimeout(() => r(null), 5000))]);
     }
@@ -3411,7 +3414,7 @@ async function sendToAgent(agent, text, images = []) {
       agent.autoFailStep = level > current && autoModel.stepUp(lastStatus, text);
       agent.autoLevel = level;
       window.deck.setModel(agent.id, cliChoice(agent));
-      const why = haiku ? `Haiku rated this ${haiku} of 3` : autoModel.stepUp(lastStatus, text) ? 'the last try did not work' : 'from your message';
+      const why = autoModel.visual(text) ? `visual work: ${autoModel.visual(text)}` : haiku ? `Haiku rated this ${haiku} of 3` : autoModel.stepUp(lastStatus, text) ? 'the last try did not work' : 'from your message';
       agent.transcript.note(`Auto switched to ${autoModel.nameOf(cliModel(agent))} for this (${why}).`);
       showAutoPick(agent);
     }
