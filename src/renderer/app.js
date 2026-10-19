@@ -1588,7 +1588,11 @@ function syncAgentList(list, { now = false } = {}) {
   clearTimeout(agentListTimer);
   const write = () => {
     const on = new Set(list.map(p => p.sessionId));
-    const entries = list.map(p => ({ ...p, inHub: true, groupName: findGroup(p.groupId)?.name || null, lastActiveAt: Math.max(p.finishedAt || 0, state.agentList.get(p.sessionId)?.lastActiveAt || 0) || Date.now() }));
+    // "On the Hub" is written only for agents this copy put there since its
+    // last write. Another copy of the app (dev and stable keep their own
+    // saved Hub) that still lists an agent you removed here would otherwise
+    // write it back on every change of its own Hub.
+    const entries = list.map(p => ({ ...p, ...(hubSynced.has(p.sessionId) ? {} : { inHub: true }), groupName: findGroup(p.groupId)?.name || null, lastActiveAt: Math.max(p.finishedAt || 0, state.agentList.get(p.sessionId)?.lastActiveAt || 0) || Date.now() }));
     for (const sid of hubSynced) if (!on.has(sid)) entries.push({ sessionId: sid, inHub: false });
     hubSynced = on;
     rememberAgents(entries);
