@@ -186,6 +186,23 @@ function linkify(text) {
   return frag;
 }
 
+// Your message's text with the skills and commands it names (/viewCreation)
+// as chips: the one it starts with always, the others when the app knows
+// the name (window.slashNames, from the message box's list in app.js), so a
+// path like /tmp stays text.
+function withCommandChips(text) {
+  const frag = document.createDocumentFragment();
+  let last = 0;
+  for (const m of text.matchAll(/(^|\s)\/([A-Za-z0-9](?:[\w:.-]*\w)?)(?=[\s.,;:!?)\]]|$)/g)) {
+    const start = m.index + m[1].length;
+    if (start > 0 && !window.slashNames?.has(m[2])) continue;
+    frag.append(linkify(text.slice(last, start)), el('span', 'slash-chip', '/' + m[2]));
+    last = start + 1 + m[2].length;
+  }
+  frag.append(linkify(text.slice(last)));
+  return frag;
+}
+
 // A Jira link as a ticket card: Jira icon, key, title and status. The title
 // and status come from Jira (see src/jira.js); without them the card shows
 // the key alone and still opens the ticket.
@@ -1311,10 +1328,7 @@ class Transcript {
       this.finishTurn();
       const bubbles = texts.map(t => {
         const b = el('div', 'msg-user');
-        // A message that starts a skill or command shows its name as a chip.
-        const command = /^\/[A-Za-z0-9][\w:.-]*(?=\s|$)/.exec(t)?.[0];
-        if (command) b.append(el('span', 'slash-chip', command));
-        b.appendChild(linkify(command ? t.slice(command.length) : t));
+        b.appendChild(withCommandChips(t));
         return decorateLinks(b);
       });
       // Images you attached show as small pictures in your message.

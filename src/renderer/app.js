@@ -581,7 +581,7 @@ function saveInputDraft() {
 function restoreInputDraft() {
   $('input').value = inputDrafts.get(viewKey(state.current)) || '';
   autosize();
-  if ($('input').value.startsWith('/')) learnSlashNames();
+  if ($('input').value.includes('/')) learnSlashNames();
   attachments.render();
 }
 
@@ -4595,23 +4595,31 @@ function rankSlash(list, query) {
     .sort((a, b) => b.s - a.s || a.c.name.localeCompare(b.c.name)).map(x => x.c);
 }
 
-const slashMenu = { el: null, items: [], index: 0, query: null };
+// moved: you chose a row with ↑ ↓ (see the keys below).
+const slashMenu = { el: null, items: [], index: 0, query: null, moved: false };
 function closeSlashMenu() {
   slashMenu.el?.remove();
   slashMenu.el = null;
   slashMenu.items = [];
   slashMenu.query = null;
+  slashMenu.moved = false;
   updateSlashOverlay();
 }
 
-// The name being typed: the box starts with / and the cursor is still in
-// the first word.
-function slashQuery() {
+// The / name being typed: a word that starts with / (at the start of the
+// box, or after a space or a new line) with the cursor at its end. Anywhere
+// in the text: "please use /viewCre" lists the names too.
+// Resolves to { start, end, query } or null.
+function slashToken() {
   const box = $('input');
-  const m = /^\/([\w:.-]*)$/.exec(box.value.slice(0, box.selectionStart));
-  if (!m || box.selectionStart !== box.selectionEnd) return null;
-  const rest = box.value.slice(box.selectionStart);
-  return /^\S/.test(rest) ? null : m[1];
+  if (box.selectionStart !== box.selectionEnd) return null;
+  const at = box.selectionStart;
+  const m = /(^|\s)\/([\w:.-]*)$/.exec(box.value.slice(0, at));
+  if (!m || /^\S/.test(box.value.slice(at))) return null;
+  return { start: at - m[2].length - 1, end: at, query: m[2] };
+}
+function slashQuery() {
+  return slashToken()?.query ?? null;
 }
 
 async function updateSlashMenu() {
@@ -4621,35 +4629,45 @@ async function updateSlashMenu() {
   if (slashQuery() !== query) return;   // you typed on in the meantime
   if (!items.length) return closeSlashMenu();
   const keep = slashMenu.items[slashMenu.index]?.name;
+  if (query !== slashMenu.query) slashMenu.moved = false;
   slashMenu.items = items;
   slashMenu.query = query;
   slashMenu.index = Math.max(0, items.findIndex(c => c.name === keep));
   renderSlashMenu();
 }
 
-// The command in the box, drawn over it: a name you typed in full shows as
-// a chip, and while you type one, the rest of the highlighted match shows
+// The commands in the box, drawn over it: every name you typed in full shows
+// as a chip, and while you type one, the rest of the highlighted match shows
 // faint after the cursor (Tab or → takes it). The box's own text turns
 // transparent meanwhile (its caret and selection stay); the drawing copies
 // the box's font, padding and size so the letters land on the same spots.
-// Without a / command at the start the box is left as it is.
+// Without a / name in the box it is left as it is.
 const MIRRORED = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'wordSpacing', 'textTransform', 'textIndent',
   'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'tabSize'];
+// A name ends before punctuation: "/viewCreation, then …".
+const SLASH_WORD = /(^|\s)\/([A-Za-z0-9](?:[\w:.-]*\w)?)(?=[\s.,;:!?)\]]|$)/g;
 function slashGhost() {
   const c = slashMenu.el && slashMenu.items[slashMenu.index];
-  const box = $('input');
-  if (!c || slashMenu.query == null || box.selectionStart !== box.value.length) return '';
+  const token = slashToken();
+  if (!c || slashMenu.query == null || token?.query !== slashMenu.query) return '';
   return c.name.toLowerCase().startsWith(slashMenu.query.toLowerCase()) ? c.name.slice(slashMenu.query.length) : '';
 }
 
 function updateSlashOverlay() {
   const box = $('input');
   let overlay = document.querySelector('.slash-overlay');
-  const slash = box.value.startsWith('/');
-  const name = slash && /^\/([A-Za-z0-9][\w:.-]*)(?=\s|$)/.exec(box.value)?.[1];
-  const chip = name && overlay?._known?.has(name);
+  const value = box.value;
+  const slash = value.includes('/');
+  const known = overlay?._known;
+  const chips = [];   // [start, end] of each name in full
+  if (slash && known) {
+    for (const m of value.matchAll(SLASH_WORD)) {
+      const start = m.index + m[1].length;
+      if (known.has(m[2])) chips.push([start, start + 1 + m[2].length]);
+    }
+  }
   const ghost = slash ? slashGhost() : '';
-  if (!chip && !ghost) {
+  if (!chips.length && !ghost) {
     overlay?.classList.add('hidden');
     box.classList.remove('slash-mirrored');
     box.spellcheck = true;
@@ -4672,20 +4690,35 @@ function updateSlashOverlay() {
   const bar = box.offsetWidth - box.clientWidth - parseFloat(cs.borderLeftWidth) - parseFloat(cs.borderRightWidth);
   overlay.style.paddingRight = `calc(${cs.paddingRight} + ${Math.max(0, bar)}px)`;
   overlay.textContent = '';
-  const head = chip ? '/' + name : '';
-  if (chip) overlay.append(el('span', 'slash-chip', head));
-  overlay.append(document.createTextNode(box.value.slice(head.length)));
-  if (ghost) overlay.append(el('span', 'slash-ghost', ghost));
+  // The text, with the chips, and the faint rest at the cursor. Text after
+  // the cursor moves over to make room for it, as in a code editor.
+  const ghostAt = ghost ? slashToken().end : -1;
+  let i = 0;
+  const text = end => {
+    if (ghostAt >= i && ghostAt <= end && ghost && !overlay.querySelector('.slash-ghost')) {
+      overlay.append(value.slice(i, ghostAt), el('span', 'slash-ghost', ghost));
+      i = ghostAt;
+    }
+    if (end > i) overlay.append(value.slice(i, end));
+    i = Math.max(i, end);
+  };
+  for (const [start, end] of chips) {
+    text(start);
+    overlay.append(el('span', 'slash-chip', value.slice(start, end)));
+    i = end;
+  }
+  text(value.length);
   // A trailing new line needs something after it to take up its line.
   overlay.append('​');
   overlay.scrollTop = box.scrollTop;
   overlay.classList.remove('hidden');
   box.classList.add('slash-mirrored');
-  // Spelling marks would underline the command's name.
-  box.spellcheck = !chip;
+  // Spelling marks would underline the names.
+  box.spellcheck = !chips.length;
 }
 
 // The names a chip is drawn for; kept up to date as the list is fetched.
+// The chat's messages use them too (window.slashNames, see render.js).
 async function learnSlashNames() {
   const list = await slashCommandList();
   let overlay = document.querySelector('.slash-overlay');
@@ -4695,6 +4728,7 @@ async function learnSlashNames() {
     $('input').after(overlay);
   }
   overlay._known = new Set(list.map(c => c.name));
+  window.slashNames = new Set([...(window.slashNames || []), ...overlay._known]);
   updateSlashOverlay();
 }
 
@@ -4721,12 +4755,14 @@ function renderSlashMenu() {
   updateSlashOverlay();
 }
 
+// Puts the name in place of the word being typed, with a space after it.
 function pickSlash(i) {
   const c = slashMenu.items[i];
-  if (!c) return;
+  const token = slashToken();
+  if (!c || !token) return;
   const box = $('input');
-  const rest = box.value.slice(box.selectionStart).replace(/^\S*/, '');
-  const head = `/${c.name}`;
+  const rest = box.value.slice(token.end).replace(/^\S*/, '');
+  const head = box.value.slice(0, token.start) + `/${c.name}`;
   box.value = head + (rest.startsWith(' ') ? rest : ' ' + rest);
   box.setSelectionRange(head.length + 1, head.length + 1);
   box.dispatchEvent(new Event('input'));
@@ -4736,7 +4772,7 @@ function pickSlash(i) {
 
 $('input').addEventListener('input', () => {
   updateSlashMenu();
-  if ($('input').value.startsWith('/')) learnSlashNames();
+  if ($('input').value.includes('/')) learnSlashNames();
 });
 $('input').addEventListener('scroll', () => {
   const overlay = document.querySelector('.slash-overlay');
@@ -4749,12 +4785,15 @@ $('input').addEventListener('keydown', e => {
   if (!slashMenu.el || e.isComposing) return;
   const n = slashMenu.items.length;
   let handled = true;
-  if (e.key === 'ArrowDown') slashMenu.index = (slashMenu.index + 1) % n;
-  else if (e.key === 'ArrowUp') slashMenu.index = (slashMenu.index - 1 + n) % n;
+  if (e.key === 'ArrowDown') { slashMenu.index = (slashMenu.index + 1) % n; slashMenu.moved = true; }
+  else if (e.key === 'ArrowUp') { slashMenu.index = (slashMenu.index - 1 + n) % n; slashMenu.moved = true; }
   else if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
-    // ↩ on a name you typed in full sends it, like without the list.
+    // ↩ on a name you typed in full sends it, like without the list. Later
+    // in the text (a path like "/c" is a word too), ↩ sends the message
+    // unless you chose a name with ↑ ↓.
     const exact = slashMenu.items[slashMenu.index]?.name === slashMenu.query;
-    if (e.key === 'Enter' && exact) { closeSlashMenu(); return; }
+    const later = (slashToken()?.start || 0) > 0;
+    if (e.key === 'Enter' && (exact || (later && !slashMenu.moved))) { closeSlashMenu(); return; }
     pickSlash(slashMenu.index);
   } else if (e.key === 'ArrowRight' && slashGhost()) pickSlash(slashMenu.index);
   else if (e.key === 'Escape') closeSlashMenu();
