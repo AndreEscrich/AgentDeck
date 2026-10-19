@@ -1311,7 +1311,10 @@ class Transcript {
       this.finishTurn();
       const bubbles = texts.map(t => {
         const b = el('div', 'msg-user');
-        b.appendChild(linkify(t));
+        // A message that starts a skill or command shows its name as a chip.
+        const command = /^\/[A-Za-z0-9][\w:.-]*(?=\s|$)/.exec(t)?.[0];
+        if (command) b.append(el('span', 'slash-chip', command));
+        b.appendChild(linkify(command ? t.slice(command.length) : t));
         return decorateLinks(b);
       });
       // Images you attached show as small pictures in your message.

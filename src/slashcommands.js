@@ -68,7 +68,10 @@ function skillsIn(dir, prefix, source, out) {
     const file = path.join(dir, e.name, 'SKILL.md');
     if (!fs.existsSync(file)) continue;
     const fm = frontMatter(file);
-    out.push({ name: prefix + (fm.name || e.name), description: fm.description || '', hint: fm['argument-hint'] || '', source });
+    // A name you can't type after / ("create view MVC") is only a label:
+    // the skill is then run by its folder's name.
+    const name = /^[\w:.-]+$/.test(fm.name || '') ? fm.name : e.name;
+    out.push({ name: prefix + name, description: fm.description || '', hint: fm['argument-hint'] || '', source });
   }
 }
 

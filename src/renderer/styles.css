@@ -2440,3 +2440,14 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 /* The tokens of a step can be pointed at: it stops and shows its breakdown. */
 .health-float { pointer-events: auto; cursor: default; }
 .health-float.held { animation-play-state: paused; opacity: 1; }
+
+/* The / command in the message box, drawn over the box's own (then
+   transparent) text: a chip for a name typed in full, the rest of the
+   highlighted match faint after the cursor (see updateSlashOverlay). */
+.slash-overlay { position: absolute; z-index: 2; pointer-events: none; overflow: hidden; box-sizing: border-box; margin: 0;
+  white-space: pre-wrap; overflow-wrap: break-word; color: var(--text); background: transparent; }
+#input.slash-mirrored { color: transparent !important; -webkit-text-fill-color: transparent; caret-color: var(--text); text-shadow: none !important; }
+#input.slash-mirrored::selection { color: transparent; }
+.slash-chip { color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); border-radius: 5px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
+.slash-ghost { color: var(--text-faint); }

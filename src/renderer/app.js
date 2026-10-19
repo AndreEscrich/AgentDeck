@@ -581,6 +581,7 @@ function saveInputDraft() {
 function restoreInputDraft() {
   $('input').value = inputDrafts.get(viewKey(state.current)) || '';
   autosize();
+  if ($('input').value.startsWith('/')) learnSlashNames();
   attachments.render();
 }
 
@@ -4352,6 +4353,7 @@ function autosize() {
   // scrollHeight leaves out the border, which the height includes.
   const border = input.offsetHeight - input.clientHeight;
   input.style.height = Math.min(input.scrollHeight + border, 240) + 'px';
+  updateSlashOverlay();
 }
 
 $('input').addEventListener('input', autosize);
@@ -4567,6 +4569,7 @@ function closeSlashMenu() {
   slashMenu.el = null;
   slashMenu.items = [];
   slashMenu.query = null;
+  updateSlashOverlay();
 }
 
 // The name being typed: the box starts with / and the cursor is still in
@@ -4592,6 +4595,77 @@ async function updateSlashMenu() {
   renderSlashMenu();
 }
 
+// The command in the box, drawn over it: a name you typed in full shows as
+// a chip, and while you type one, the rest of the highlighted match shows
+// faint after the cursor (Tab or → takes it). The box's own text turns
+// transparent meanwhile (its caret and selection stay); the drawing copies
+// the box's font, padding and size so the letters land on the same spots.
+// Without a / command at the start the box is left as it is.
+const MIRRORED = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'wordSpacing', 'textTransform', 'textIndent',
+  'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'tabSize'];
+function slashGhost() {
+  const c = slashMenu.el && slashMenu.items[slashMenu.index];
+  const box = $('input');
+  if (!c || slashMenu.query == null || box.selectionStart !== box.value.length) return '';
+  return c.name.toLowerCase().startsWith(slashMenu.query.toLowerCase()) ? c.name.slice(slashMenu.query.length) : '';
+}
+
+function updateSlashOverlay() {
+  const box = $('input');
+  let overlay = document.querySelector('.slash-overlay');
+  const slash = box.value.startsWith('/');
+  const name = slash && /^\/([A-Za-z0-9][\w:.-]*)(?=\s|$)/.exec(box.value)?.[1];
+  const chip = name && overlay?._known?.has(name);
+  const ghost = slash ? slashGhost() : '';
+  if (!chip && !ghost) {
+    overlay?.classList.add('hidden');
+    box.classList.remove('slash-mirrored');
+    box.spellcheck = true;
+    return;
+  }
+  if (!overlay) {
+    overlay = el('div', 'slash-overlay');
+    overlay.setAttribute('aria-hidden', 'true');
+    box.after(overlay);
+  }
+  const cs = getComputedStyle(box);
+  for (const p of MIRRORED) overlay.style[p] = cs[p];
+  overlay.style.borderStyle = 'solid';
+  overlay.style.borderColor = 'transparent';
+  overlay.style.left = box.offsetLeft + 'px';
+  overlay.style.top = box.offsetTop + 'px';
+  overlay.style.width = box.offsetWidth + 'px';
+  overlay.style.height = box.offsetHeight + 'px';
+  // A scrollbar in the box narrows its lines; the drawing's too.
+  const bar = box.offsetWidth - box.clientWidth - parseFloat(cs.borderLeftWidth) - parseFloat(cs.borderRightWidth);
+  overlay.style.paddingRight = `calc(${cs.paddingRight} + ${Math.max(0, bar)}px)`;
+  overlay.textContent = '';
+  const head = chip ? '/' + name : '';
+  if (chip) overlay.append(el('span', 'slash-chip', head));
+  overlay.append(document.createTextNode(box.value.slice(head.length)));
+  if (ghost) overlay.append(el('span', 'slash-ghost', ghost));
+  // A trailing new line needs something after it to take up its line.
+  overlay.append('​');
+  overlay.scrollTop = box.scrollTop;
+  overlay.classList.remove('hidden');
+  box.classList.add('slash-mirrored');
+  // Spelling marks would underline the command's name.
+  box.spellcheck = !chip;
+}
+
+// The names a chip is drawn for; kept up to date as the list is fetched.
+async function learnSlashNames() {
+  const list = await slashCommandList();
+  let overlay = document.querySelector('.slash-overlay');
+  if (!overlay) {
+    overlay = el('div', 'slash-overlay hidden');
+    overlay.setAttribute('aria-hidden', 'true');
+    $('input').after(overlay);
+  }
+  overlay._known = new Set(list.map(c => c.name));
+  updateSlashOverlay();
+}
+
 function renderSlashMenu() {
   if (!slashMenu.el) {
     slashMenu.el = el('div', 'slash-menu');
@@ -4612,6 +4686,7 @@ function renderSlashMenu() {
     menu.appendChild(row);
   });
   menu.querySelector('.slash-row.on')?.scrollIntoView({ block: 'nearest' });
+  updateSlashOverlay();
 }
 
 function pickSlash(i) {
@@ -4627,7 +4702,14 @@ function pickSlash(i) {
   sfx('tick');
 }
 
-$('input').addEventListener('input', () => { updateSlashMenu(); });
+$('input').addEventListener('input', () => {
+  updateSlashMenu();
+  if ($('input').value.startsWith('/')) learnSlashNames();
+});
+$('input').addEventListener('scroll', () => {
+  const overlay = document.querySelector('.slash-overlay');
+  if (overlay) overlay.scrollTop = $('input').scrollTop;
+});
 $('input').addEventListener('click', () => { updateSlashMenu(); });
 $('input').addEventListener('blur', () => setTimeout(closeSlashMenu, 120));
 // Runs before the box's other keys (↩ sends, ↑ recalls your last message).
@@ -4642,7 +4724,8 @@ $('input').addEventListener('keydown', e => {
     const exact = slashMenu.items[slashMenu.index]?.name === slashMenu.query;
     if (e.key === 'Enter' && exact) { closeSlashMenu(); return; }
     pickSlash(slashMenu.index);
-  } else if (e.key === 'Escape') closeSlashMenu();
+  } else if (e.key === 'ArrowRight' && slashGhost()) pickSlash(slashMenu.index);
+  else if (e.key === 'Escape') closeSlashMenu();
   else handled = false;
   if (!handled) return;
   e.preventDefault();
