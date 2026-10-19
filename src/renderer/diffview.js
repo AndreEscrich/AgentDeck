@@ -498,6 +498,18 @@ function addAssets(card, files, cwd, comments) {
       row.dataset.loaded = '1';
       // Not a Unity asset (a texture, a text file, a .meta): its diff or picture.
       if (!assetKind(f.path)) {
+        // An image the task added: a preview of it.
+        if (/\.(png|jpe?g|gif|webp|bmp|tga|psd|exr|hdr|tiff?)$/i.test(f.path) && f.status !== 'del' && window.mediaElement) {
+          const file = window.resolveMediaPath?.(f.path, cwd) || f.path;
+          body.replaceChildren(window.mediaElement(file, f.path.split('/').pop(), cwd));
+          return;
+        }
+        if (f.status === 'new' || f.status === 'del') {
+          if (f.lines.some(([, t]) => /^Binary files /.test(t || ''))) {
+            body.replaceChildren(el('div', 'asset-note', f.status === 'new' ? 'A new file, added during the task.' : 'Deleted during the task.'));
+            return;
+          }
+        }
         body.replaceChildren(fileViews(f, cwd, () => comments.diff(f), comments));
         return;
       }

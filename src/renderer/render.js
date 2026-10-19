@@ -864,6 +864,9 @@ const UNITY_WAIT = /^mcp__unity__\w*(wait_for_ready|status|recompile|refresh|com
 const READ_ONLY = new Set(['Read', 'Grep', 'Glob', 'LS', 'WebFetch', 'WebSearch', 'TodoWrite', 'Skill', 'ToolSearch']);
 
 // Splits the output of `git diff` into one entry per file.
+// A binary file the task added or removed (git's "Binary files … differ").
+const addedOrRemovedBinary = f => (f.status === 'new' || f.status === 'del') && f.lines.some(([, t]) => /^Binary files /.test(t || ''));
+
 function parseUnifiedDiff(text) {
   const files = [];
   let file = null;
@@ -1674,6 +1677,18 @@ class Transcript {
     return (turn.evidence || []).some(text => text.includes(rel) || text.includes(name));
   }
 
+  // True when the agent worked in this file's folder: it named the folder
+  // (a script that writes images into it names the folder, not each image),
+  // or it changed another file there. For images and other binary files
+  // added or removed during the task.
+  folderTouched(turn, rel) {
+    const dir = rel.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
+    if (!dir) return false;
+    const inDir = p => this.relativePath(p).replace(/\\/g, '/').toLowerCase().startsWith(dir.toLowerCase() + '/');
+    if ([...(turn.touched || [])].some(inDir)) return true;
+    return (turn.evidence || []).some(text => text.replace(/\\/g, '/').includes(dir));
+  }
+
   // Like agentTouched, for an image or video found in the folder: the agent
   // named it in a command or a tool's input, or a tool's result named it.
   agentMadeMedia(turn, file) {
@@ -1772,7 +1787,8 @@ class Transcript {
     turn.gitShown = true;
     // The snapshot also catches changes you (or other agents) made in the same
     // folder while this agent worked. Only files the agent touched stay.
-    const files = pairMoves(parseUnifiedDiff(diffText)).filter(f => !isTempFile(f.path) && (this.agentTouched(turn, f.path) || (f.from && this.agentTouched(turn, f.from))));
+    const files = pairMoves(parseUnifiedDiff(diffText)).filter(f => !isTempFile(f.path) && (this.agentTouched(turn, f.path) || (f.from && this.agentTouched(turn, f.from))
+      || (addedOrRemovedBinary(f) && this.folderTouched(turn, f.path))));
     if (merge) {
       await this.pruneMissing(turn).catch(() => {});
       // The snapshot's paths use /, the Edit/Write reports the system's own

@@ -127,18 +127,59 @@ async function nestedRepos(dir, cwd) {
   return out.split('\0').filter(l => l.startsWith('160000 ')).map(l => l.split('\t')[1]).filter(Boolean);
 }
 
+// The other files (images, sounds, models and the like, which the snapshot
+// does not record): their paths only, so files added or removed during the
+// task are known without reading them. Folders git leaves out as a whole
+// (Library/, Temp/) count as one entry and are skipped.
+const OTHER_SKIP = /(^|\/)(\.DS_Store|Thumbs\.db|desktop\.ini)$|\.(tmp|swp|lock)$|~$/i;
+async function otherFiles(dir, cwd) {
+  const out = await git(['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'], { gitDir: dir, workTree: cwd });
+  if (out == null) return null;
+  return new Set(out.split('\0').filter(p => p && !p.endsWith('/') && !OTHER_SKIP.test(p)));
+}
+// Kept here, by snapshot, so the snapshot itself stays small (it goes to
+// the window and into the saved Changes cards).
+const otherLists = new Map();   // snapshot id -> Set of paths
+
 async function folderSnapshot(cwd, root) {
   const dir = await privateRepo(cwd, root);
   return withLock(dir, async () => {
     const tree = await recordTree(dir, cwd);
     if (!tree) return null;
+    const others = await otherFiles(dir, cwd).catch(() => null);
+    const othersId = others ? crypto.randomUUID() : null;
+    if (others) {
+      otherLists.set(othersId, others);
+      // A few hundred tasks at most are kept.
+      if (otherLists.size > 300) otherLists.delete(otherLists.keys().next().value);
+    }
     const nested = [];
     for (const rel of await nestedRepos(dir, cwd)) {
       const snap = await repoSnapshot(path.join(cwd, rel));
       if (snap) nested.push({ path: rel, snap });
     }
-    return { kind: 'folder', dir, tree, nested };
+    return { kind: 'folder', dir, tree, nested, othersId };
   });
+}
+
+// The other files added or removed since the snapshot, as git diff blocks.
+async function otherChanges(cwd, snap) {
+  const before = snap.othersId && otherLists.get(snap.othersId);
+  if (!before) return '';
+  const now = await otherFiles(snap.dir, cwd).catch(() => null);
+  if (!now) return '';
+  const blocks = [];
+  for (const p of now) {
+    if (before.has(p)) continue;
+    blocks.push(`diff --git a/${p} b/${p}\nnew file mode 100644\nBinary files /dev/null and b/${p} differ\n`);
+    if (blocks.length >= 300) break;
+  }
+  for (const p of before) {
+    if (now.has(p)) continue;
+    blocks.push(`diff --git a/${p} b/${p}\ndeleted file mode 100644\nBinary files a/${p} and /dev/null differ\n`);
+    if (blocks.length >= 600) break;
+  }
+  return blocks.join('');
 }
 
 async function folderChanges(cwd, snap) {
@@ -153,6 +194,8 @@ async function folderChanges(cwd, snap) {
     const diff = await repoChanges(path.join(cwd, n.path), n.snap, n.path);
     if (diff) parts.push(diff);
   }
+  const others = await withLock(snap.dir, () => otherChanges(cwd, snap));
+  if (others) parts.push(others);
   // Removes data that no snapshot refers to any more, when there is enough of it.
   git(['gc', '--auto', '--quiet'], { gitDir: snap.dir });
   return parts.join('');
