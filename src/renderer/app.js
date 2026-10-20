@@ -2649,20 +2649,26 @@ $('composer-tsvn').onclick = () => openTactileSvn($('composer-tsvn').dataset.cwd
 hub.onMoveGroup = moveGroup;
 hub.onDropGroup = dropGroupOnRepo;
 hub.branchOf = repoBranch;
-// The model on each agent's tile: "Opus 5.5", or with Auto "Auto · Sonnet"
-// (what Auto runs right now). Fable shows apart, as in the model menu.
+// The model on each agent's tile: "Opus 5.5 · High", or with Auto
+// "Auto · Sonnet · Med" (what Auto runs right now). The effort is left out
+// when it is the model's default. Fable shows apart, as in the model menu.
+const EFFORT_SHORT = { low: 'Low', medium: 'Med', high: 'High', xhigh: 'XHigh', max: 'Max' };
 hub.modelOf = agent => {
   // A saved session from before models were recorded: nothing to show.
   if (!agent.choice?.model) return null;
   const value = agent.choice.model;
+  const effort = cliEffort(agent);
+  const short = effort ? ` · ${EFFORT_SHORT[effort] || effort}` : '';
+  const long = effort ? ` at ${(EFFORT_NAMES[effort] || effort).toLowerCase()} effort` : '';
   if (value === 'auto') {
     const picked = autoModel.nameOf(cliModel(agent));
-    return { label: `Auto · ${picked}`, auto: true, title: `Auto picked ${picked} for this task (it can change with your next message)` };
+    const by = effort && !agent.choice.effort ? 'Auto picked' : 'Auto picked the model';
+    return { label: `Auto · ${picked}${short}`, auto: true, title: `${by}: ${picked}${long} for this task (it can change with your next message)` };
   }
-  if (value === 'default') return { label: 'Default', title: "Claude Code's default model" };
+  if (value === 'default') return { label: `Default${short}`, title: `Claude Code's default model${long}` };
   const m = modelByValue(value);
   const name = m ? shortName(m) : value;
-  return { label: name, fable: /^fable/i.test(name), title: `Runs on ${name}` };
+  return { label: name + short, fable: /^fable/i.test(name), title: `Runs on ${name}${long}` };
 };
 $('composer-unity').onclick = () => openUnity($('composer-unity').dataset.cwd);
 setTimeout(refreshUnity, 3000);
