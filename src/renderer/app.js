@@ -4052,7 +4052,7 @@ window.deck.onEvent((id, msg) => {
   if (msg.type === 'result') clearClashes(a);
   // A finished turn of an Auto agent goes into the Auto report (autoreport.js).
   if (msg.type === 'result' && a.choice?.model === 'auto') {
-    autoReport.recordTurn(msg, { family: cliModel(a), title: a.latestTitle || a.summaryTitle || a.title, switched: !!a.autoSwitched, contextBefore: a.autoContext || 0, failedStepUp: !!a.autoFailStep });
+    autoReport.recordTurn(msg, { family: cliModel(a), title: a.latestTitle || a.summaryTitle || a.title, switched: !!a.autoSwitched, contextBefore: a.autoContext || 0, failedStepUp: !!a.autoFailStep, effort: cliEffort(a) });
     a.autoContext = autoReport.contextOf(msg);
     a.autoSwitched = false;
     a.autoFailStep = false;

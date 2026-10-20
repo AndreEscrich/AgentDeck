@@ -19,8 +19,15 @@
 // percentage, which makes 1% look cheaper than it is; the report says so.
 // Until it has seen a few percent of the week go by, it shows dollars.
 //
+// Effort: each turn keeps the effort it ran at. Higher effort means more
+// thinking, which Claude Code counts as output tokens, so Opus at medium
+// would have written a different amount. The report estimates that from
+// your own turns: per model, how much output a turn writes for each token it
+// reads, at each effort against medium (see effortFactors). The Opus side's
+// output tokens are scaled by that, once there are enough turns to say.
+//
 // Assumptions, said in the report too: Opus would have read and written as
-// many tokens as the model Auto picked (it may write fewer, or need fewer
+// many tokens as the model Auto picked (output scaled for effort) (it may write fewer, or need fewer
 // steps on hard tasks); quality is not in the numbers, so the report also
 // counts how often Auto had to step up after a failed try (a sign it picked
 // too small).
@@ -120,7 +127,8 @@ const autoReport = (() => {
   // A finished turn of an Auto agent. info: { family ("haiku"), title (the
   // summary of the message that started the turn), switched (the model
   // changed for this turn), contextBefore (the conversation's size before
-  // it), failedStepUp (it stepped up after a failed try or "still broken") }.
+  // it), failedStepUp (it stepped up after a failed try or "still broken"),
+  // effort (what it ran at; '' is the model's default) }.
   function recordTurn(msg, info) {
     const usage = msg.modelUsage || {};
     const entries = Object.entries(usage);
@@ -150,7 +158,7 @@ const autoReport = (() => {
     const data = load();
     data.turns.push({
       at: Date.now(), title: String(info.title || '').slice(0, 80), model: info.family,
-      switched: !!info.switched, failedStepUp: !!info.failedStepUp, rebuilt,
+      switched: !!info.switched, failedStepUp: !!info.failedStepUp, rebuilt, effort: info.effort || '',
       tokens, actual, opus: opus + others,
     });
     save(data);
@@ -165,8 +173,44 @@ const autoReport = (() => {
 
   // ---------- numbers ----------
 
+  // How much output a turn writes for each token it reads (new, from cache
+  // and written to cache): it grows with effort and does not depend much on
+  // how long the turn is. Per model and effort, from your own turns.
+  const ENOUGH = 5;   // turns of a model and effort before it is used
+  const readOf = t => t.tokens.input + t.tokens.read + t.tokens.write;
+  function effortFactors(turns) {
+    const sums = {};
+    for (const t of turns) {
+      if (!t.effort || !readOf(t)) continue;
+      const k = `${t.model}:${t.effort}`;
+      const v = sums[k] || (sums[k] = { turns: 0, out: 0, read: 0 });
+      v.turns++;
+      v.out += t.tokens.output;
+      v.read += readOf(t);
+    }
+    // Against the same model at medium: the factor Opus at medium's output
+    // would have had (1 when there are too few turns to say).
+    const factor = {};
+    for (const [k, v] of Object.entries(sums)) {
+      const [model, effort] = k.split(':');
+      const med = sums[`${model}:medium`];
+      if (effort === 'medium' || !med || v.turns < ENOUGH || med.turns < ENOUGH || !v.out) continue;
+      factor[k] = Math.max(0.3, Math.min(3, (med.out / med.read) / (v.out / v.read)));
+    }
+    return factor;
+  }
+
   function summary() {
     const data = load();
+    // The Opus side with its output scaled for effort (see effortFactors).
+    const factors = effortFactors(data.turns);
+    let unadjusted = 0;
+    data.turns = data.turns.map(t => {
+      if (!t.effort || t.effort === 'medium') return t;
+      const f = factors[`${t.model}:${t.effort}`];
+      if (!f) { unadjusted++; return t; }
+      return { ...t, opusRaw: t.opus, effortFactor: f, opus: t.opus + (f - 1) * t.tokens.output * OPUS.output / 1e6 };
+    });
     const s = { since: data.since, turns: data.turns.length, actual: 0, opus: 0, ratings: data.ratings, ratingCost: data.ratingCost, switches: 0, failedStepUps: 0, rebuilt: 0, byModel: {}, perPercent: perPercent(data), cal: data.cal };
     for (const t of data.turns) {
       s.actual += t.actual;
@@ -185,10 +229,23 @@ const autoReport = (() => {
     s.percent = s.opus ? (s.saved / s.opus) * 100 : 0;
     s.turnList = data.turns;
     s.ratingLog = data.ratingLog;
+    s.unadjusted = unadjusted;
+    // Per model and effort: turns, output per turn, spent, and on Opus.
+    s.byEffort = {};
+    for (const t of data.turns) {
+      const k = `${t.model}:${t.effort || ''}`;
+      const e = s.byEffort[k] || (s.byEffort[k] = { model: t.model, effort: t.effort || '', turns: 0, output: 0, actual: 0, opus: 0, factor: t.effortFactor || null });
+      e.turns++;
+      e.output += t.tokens.output;
+      e.actual += t.actual;
+      e.opus += t.opus;
+    }
     return s;
   }
 
   const NAMES = { haiku: 'Haiku', sonnet: 'Sonnet', opus: 'Opus' };
+  const EFFORTS = { '': 'default', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
+  const runName = t => `${NAMES[t.model] || t.model}${t.effort ? ` · ${EFFORTS[t.effort] || t.effort}` : ''}`;
   const count = n => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
 
   // An amount in the report's unit: % of the week when known, else dollars.
@@ -292,7 +349,7 @@ const autoReport = (() => {
       }
       // A wide invisible target, so thin bars are easy to point at.
       g.appendChild(svg('rect', { x: P.l + i * bw, y: P.t, width: bw, height: H - P.t, class: 'ar-hit' }));
-      tip(g, `${t.title || '(untitled)'}\n${NAMES[t.model] || t.model}: ${u.long(t.actual)} · on Opus ${u.long(t.opus)}\n${d >= 0 ? 'Saved' : 'Lost'} ${u.long(Math.abs(d))}${t.switched ? ' · switched model' : ''}${t.failedStepUp ? ' · stepped up after a failed try' : ''}\n${new Date(t.at).toLocaleString()}`);
+      tip(g, `${t.title || '(untitled)'}\n${runName(t)}: ${u.long(t.actual)} · on Opus ${u.long(t.opus)}\n${d >= 0 ? 'Saved' : 'Lost'} ${u.long(Math.abs(d))}${t.switched ? ' · switched model' : ''}${t.failedStepUp ? ' · stepped up after a failed try' : ''}\n${new Date(t.at).toLocaleString()}`);
       g.addEventListener('click', () => onPick?.(t));
       root.appendChild(g);
     });
@@ -390,6 +447,19 @@ const autoReport = (() => {
       table.appendChild(row(['Haiku ratings', String(s.ratings), '', u.long(s.ratingCost), '—', u.long(-s.ratingCost)]));
       card.appendChild(table);
 
+      // The same turns by model and effort.
+      card.appendChild(el('div', 'ar-sub', 'Effort'));
+      card.appendChild(el('div', 'ar-help', 'Higher effort thinks longer, which counts as output. "On Opus" is Opus at medium: for other efforts its output is scaled by how much output your turns write at that effort against medium (× in the last column), once each has 5 turns.'));
+      const efforts = el('div', 'auto-report-table');
+      efforts.appendChild(row(['Run at', 'Turns', 'Output / turn', 'Spent', 'On Opus', 'Output ×'], 'head'));
+      const order = ['', 'low', 'medium', 'high', 'xhigh', 'max'];
+      const runs = Object.values(s.byEffort).sort((a, b) => ['haiku', 'sonnet', 'opus'].indexOf(a.model) - ['haiku', 'sonnet', 'opus'].indexOf(b.model) || order.indexOf(a.effort) - order.indexOf(b.effort));
+      for (const e of runs) {
+        const scaled = e.effort === 'medium' ? '1' : e.factor ? e.factor.toFixed(2) : e.effort ? 'not yet' : '—';
+        efforts.appendChild(row([runName(e), String(e.turns), count(Math.round(e.output / e.turns)), u.long(e.actual), u.long(e.opus), scaled]));
+      }
+      card.appendChild(efforts);
+
       const facts = el('ul', 'auto-report-facts');
       facts.append(
         el('li', null, `Model switches between messages: ${s.switches} (about ${count(s.rebuilt)} tokens of cache built again, counted as cache reads on the Opus side).`),
@@ -397,7 +467,8 @@ const autoReport = (() => {
         el('li', null, s.perPercent
           ? `1% of your week is worth about $${s.perPercent.toFixed(2)} at API prices, learned from ${s.cal.pct.toFixed(0)}% of your weeks. Use outside this app also moves the percentage, so the true share can be smaller.`
           : 'The Opus side is an estimate at API list prices.'),
-        el('li', null, 'The Opus side assumes Opus would have read and written as many tokens as the model Auto picked.'),
+        el('li', null, 'The Opus side assumes Opus would have read and written as many tokens as the model Auto picked, with its output scaled for effort where there are enough turns (see Effort).'),
+        ...(s.unadjusted ? [el('li', null, `${s.unadjusted} turn${s.unadjusted === 1 ? '' : 's'} ran at an effort other than medium without enough turns yet to scale them: on the Opus side they count as if Opus at medium had written as much output.`)] : []),
       );
       card.appendChild(facts);
 
@@ -419,7 +490,7 @@ const autoReport = (() => {
           bars,
           el('span', `auto-report-num ${d >= 0 ? 'good' : 'bad'}`, `${d >= 0 ? '−' : '+'}${u.long(Math.abs(d))}${t.switched ? ' ↻' : ''}${t.failedStepUp ? ' ▲' : ''}`),
         );
-        r.title = `${t.title}\n${NAMES[t.model]}: ${u.long(t.actual)} · on Opus ${u.long(t.opus)}\n${new Date(t.at).toLocaleString()}`;
+        r.title = `${t.title}\n${runName(t)}: ${u.long(t.actual)} · on Opus ${u.long(t.opus)}\n${new Date(t.at).toLocaleString()}`;
         list.appendChild(r);
       }
       card.appendChild(list);
