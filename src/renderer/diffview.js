@@ -455,7 +455,7 @@ const assetKind = p => ASSET_KINDS.find(([ext]) => ext === extensionOf(p).toLowe
 // The other files that are not code: a kind by their extension. Their rows
 // open to the usual diff (or the picture), not to a description.
 const OTHER_KINDS = [
-  [/^(png|jpe?g|tga|psd|tiff?|exr|hdr|bmp|gif|webp|svg)$/, 'Texture'], [/^(wav|mp3|ogg|aiff?|flac|m4a)$/, 'Audio'],
+  [/^(png|jpe?g|tga|psd|psb|tiff?|exr|hdr|bmp|gif|webp|svg)$/, 'Texture'], [/^(wav|mp3|ogg|aiff?|flac|m4a)$/, 'Audio'],
   [/^(mp4|mov|webm|m4v)$/, 'Video'], [/^(fbx|obj|blend|dae|3ds)$/, 'Model'], [/^(ttf|otf)$/, 'Font'], [/^meta$/, 'Meta'],
   [/^(json|ya?ml|xml|txt|md|csv|ini|cfg|toml|plist|uxml|uss)$/, 'Text'],
 ];
@@ -501,7 +501,7 @@ function addAssets(card, files, cwd, comments) {
       // Not a Unity asset (a texture, a text file, a .meta): its diff or picture.
       if (!assetKind(f.path)) {
         // An image the task added: a preview of it.
-        if (/\.(png|jpe?g|gif|webp|bmp|tga|psd|exr|hdr|tiff?)$/i.test(f.path) && f.status !== 'del' && window.mediaElement) {
+        if (/\.(png|jpe?g|gif|webp|bmp|tga|psd|psb|exr|hdr|tiff?)$/i.test(f.path) && f.status !== 'del' && window.mediaElement) {
           const file = window.resolveMediaPath?.(f.path, cwd) || f.path;
           body.replaceChildren(window.mediaElement(file, f.path.split('/').pop(), cwd));
           return;

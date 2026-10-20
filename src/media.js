@@ -5,8 +5,10 @@
 // The handler below only serves image, video and sound files.
 //
 // Chromium shows png, jpg, gif, webp, bmp and svg, and plays mp4, webm and
-// most mov files. Unity also uses tga, psd, exr and tif; on macOS those are
-// converted to a PNG preview with the built-in `sips` tool and cached.
+// most mov files. Unity also uses tga, psd, psb, exr and tif. Photoshop
+// files (psd, psb) get a PNG preview made by the app (photoshop.js) on
+// every system; on macOS the others are converted with the built-in `sips`
+// tool. Previews are cached.
 
 const { execFile } = require('child_process');
 const crypto = require('crypto');
@@ -16,7 +18,8 @@ const { Readable } = require('stream');
 const { pathToFileURL } = require('url');
 
 const IMAGE = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif', 'ico']);
-const CONVERT = new Set(['tga', 'psd', 'exr', 'tif', 'tiff', 'hdr', 'heic']);
+const CONVERT = new Set(['tga', 'psd', 'psb', 'exr', 'tif', 'tiff', 'hdr', 'heic']);
+const PHOTOSHOP = new Set(['psd', 'psb']);
 const VIDEO = new Set(['mp4', 'webm', 'mov', 'm4v']);
 const AUDIO = new Set(['wav', 'mp3', 'ogg', 'oga', 'm4a', 'aac', 'flac', 'opus']);
 const VIDEO_TYPE = { mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
@@ -40,13 +43,24 @@ function kindOf(file) {
 
 // A PNG preview of a format Chromium cannot show, made once per file version.
 function convertedPreview(file, cacheDir) {
-  if (process.platform !== 'darwin') return Promise.resolve(null);
+  const photoshop = PHOTOSHOP.has(extensionOf(file));
+  if (process.platform !== 'darwin' && !photoshop) return Promise.resolve(null);
   let stat;
   try { stat = fs.statSync(file); } catch { return Promise.resolve(null); }
   const key = crypto.createHash('sha1').update(`${file}|${stat.mtimeMs}|${stat.size}`).digest('hex');
   const out = path.join(cacheDir, key + '.png');
   if (fs.existsSync(out)) return Promise.resolve(out);
   fs.mkdirSync(cacheDir, { recursive: true });
+  if (photoshop) {
+    // A file with only its small JPEG preview is cached as .jpg.
+    const jpg = out.replace(/\.png$/, '.jpg');
+    if (fs.existsSync(jpg)) return Promise.resolve(jpg);
+    const picture = require('./photoshop').preview(file);
+    if (!picture) return Promise.resolve(null);
+    const target = picture.type === 'image/jpeg' ? jpg : out;
+    try { fs.writeFileSync(target, picture.data); } catch { return Promise.resolve(null); }
+    return Promise.resolve(target);
+  }
   return new Promise(resolve => {
     execFile('sips', ['-s', 'format', 'png', '--resampleHeightWidthMax', '2048', file, '--out', out], { timeout: 30000 },
       err => resolve(err || !fs.existsSync(out) ? null : out));

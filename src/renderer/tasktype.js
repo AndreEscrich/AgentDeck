@@ -23,7 +23,7 @@ const taskType = (() => {
   // Words in your message, and the kind they hint at.
   const WORDS = [
     ['track', /\b(fix|fixes|fixing|bug|bugs|crash\w*|error|errors|exception|broken|fail\w*|debug\w*|investigat\w*|why (does|is|do|did)|nullref\w*|nre|regression|not working|doesn'?t work)\b/i],
-    ['art', /\b(art|sprite\w*|texture\w*|material\w*|shader\w*|png|psd|image\w*|icon\w*|vfx|particle\w*|colou?r\w*|visual\w*|look and feel|font\w*|atlas\w*|animation\w*)\b/i],
+    ['art', /\b(art|sprite\w*|texture\w*|material\w*|shader\w*|png|psd|psb|image\w*|icon\w*|vfx|particle\w*|colou?r\w*|visual\w*|look and feel|font\w*|atlas\w*|animation\w*)\b/i],
     ['scan', /\b(explain\w*|how (does|do|is)|what (does|is)|review\w*|research\w*|look into|understand\w*|analy[sz]\w*|compare|find out|investigate how|summari[sz]e the code)\b/i],
     ['text', /\b(readme|docs?|document\w*|jira|slack|confluence|message|email|reply|changelog|release notes|write up|ticket|comment on|describe)\b/i],
     ['dock', /\b(build|builds|tests?|testing|commit\w*|push|merge\w*|promote|release|deploy\w*|ci|pipeline|compile\w*)\b/i],
@@ -33,7 +33,7 @@ const taskType = (() => {
 
   // Edited files, by type.
   const FILES = [
-    ['art', /\.(png|jpe?g|tga|psd|svg|gif|webp|mat|shader|shadergraph|hlsl|cginc|anim|controller|spriteatlas|fbx|obj|blend|vfx|uss|ttf|otf)$/i],
+    ['art', /\.(png|jpe?g|tga|psd|psb|svg|gif|webp|mat|shader|shadergraph|hlsl|cginc|anim|controller|spriteatlas|fbx|obj|blend|vfx|uss|ttf|otf)$/i],
     ['text', /\.(md|txt|rst|adoc)$/i],
     ['map', /\.(unity|scene|tmx|ldtk)$/i],
     ['code', /\.(cs|ts|tsx|js|jsx|mjs|cjs|py|cpp|cc|c|h|hpp|java|kt|go|rs|swift|m|mm|lua|rb|php|sh|ps1|sql|css|scss|html)$/i],
@@ -92,7 +92,7 @@ const taskType = (() => {
       // Writing code is also code; a level is mostly data files.
       if (/\.(asset|prefab)$/i.test(file)) add(task, /level|board|map|scene/i.test(file) ? 'map' : 'art', 1);
     } else if (/^(Read|Grep|Glob|LS|WebSearch|WebFetch)$/.test(name)) {
-      if (/\.(png|jpe?g|psd|tga|gif|webp)$/i.test(file)) add(task, 'art', 1);
+      if (/\.(png|jpe?g|psd|psb|tga|gif|webp)$/i.test(file)) add(task, 'art', 1);
       else add(task, 'scan', 1);
     } else if (name === 'Bash' || name === 'PowerShell') {
       const cmd = String(input.command || '');

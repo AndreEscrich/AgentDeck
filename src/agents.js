@@ -16,7 +16,7 @@ const MEDIA_PROMPT = [
   'To show the user an image or a video, write a Markdown image with its file path, for example',
   '![Grass texture](Assets/Textures/Grass.png) or ![Gameplay recording](/Users/name/Movies/clip.mp4).',
   'Paths can be absolute or relative to your working folder.',
-  'Images (png, jpg, gif, webp, tga, psd, exr, tif) show as pictures; videos (mp4, webm, mov) show as players.',
+  'Images (png, jpg, gif, webp, tga, psd, psb, exr, tif) show as pictures; videos (mp4, webm, mov) show as players.',
   'Whenever you create or change a texture, image or video, show it this way.',
 ].join(' ');
 

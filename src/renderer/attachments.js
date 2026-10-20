@@ -6,15 +6,20 @@
 // so a video is sent as six frames spread over the clip, taken with the
 // browser's own video decoder. Claude cannot listen to sounds either: a sound
 // file goes as its path, length, sample rate and channels, and its chip shows
-// the waveform. The message also names each file's path, so the agent can
-// work with the file itself.
+// the waveform. Photoshop files (psd, psb) go as their flattened image, made
+// by the app (src/photoshop.js), and by their path even without one. The
+// message also names each file's path, so the agent can work with the file
+// itself.
 //
 // Each view (the Hub, every agent, every saved session) has its own list,
 // like the text in the message box.
 
 const MAX_SIDE = 1568;
 const FRAME_SIDE = 1024;
-const IMAGE_FILE = /\.(png|jpe?g|gif|webp|bmp|heic|tiff?|tga|psd)$/i;
+const IMAGE_FILE = /\.(png|jpe?g|gif|webp|bmp|heic|tiff?|tga|psd|psb)$/i;
+// Photoshop files: the window cannot decode them, so their picture comes
+// from the app's preview of the file (src/photoshop.js).
+const PHOTOSHOP_FILE = /\.(psd|psb)$/i;
 const VIDEO_FILE = /\.(mp4|mov|m4v|webm|avi|mkv)$/i;
 const AUDIO_FILE = /\.(wav|mp3|ogg|oga|flac|m4a|aac|aiff?|opus)$/i;
 // Larger sound files are attached without reading them (no waveform or length).
@@ -45,9 +50,16 @@ function encode(source, width, height, maxSide, keepAlpha) {
   return { mediaType, data: url.slice(url.indexOf(',') + 1), url };
 }
 
-async function readImage(file) {
-  const bitmap = await createImageBitmap(file);
-  const keepAlpha = /png|webp|gif/i.test(file.type) || /\.(png|webp|gif|tga|psd)$/i.test(file.name);
+async function readImage(file, filePath) {
+  let source = file;
+  if (PHOTOSHOP_FILE.test(file.name)) {
+    if (!filePath) throw new Error('Photoshop files can only be attached from a folder, not pasted.');
+    const p = await window.deck.photoshopPicture(filePath, MAX_SIDE);
+    if (!p) throw new Error('This Photoshop file has no picture the app can read (save it with "Maximize compatibility"). It goes by its path.');
+    source = new Blob([Uint8Array.from(atob(p.data), c => c.charCodeAt(0))], { type: p.type });
+  }
+  const bitmap = await createImageBitmap(source);
+  const keepAlpha = /png|webp|gif/i.test(file.type) || /\.(png|webp|gif|tga|psd|psb)$/i.test(file.name);
   const picture = encode(bitmap, bitmap.width, bitmap.height, MAX_SIDE, keepAlpha);
   bitmap.close?.();
   return { images: [picture], thumb: picture.url };
@@ -144,7 +156,7 @@ class Attachments {
       const kind = kindOfFile(file);
       if (!kind) { skipped.push(file.name); continue; }
       const item = { id: this.nextId++, kind, name: file.name || ({ image: 'Pasted image', video: 'Video', audio: 'Sound' })[kind], path: window.deck.pathForFile?.(file) || null, images: [], thumb: null, ready: null };
-      item.ready = ({ image: readImage, video: readVideo, audio: readAudio })[kind](file)
+      item.ready = ({ image: readImage, video: readVideo, audio: readAudio })[kind](file, item.path)
         .then(r => Object.assign(item, r, { done: true }))
         .catch(err => { item.error = err?.message || 'Could not read this file.'; })
         .finally(() => this.render());
@@ -175,6 +187,15 @@ class Attachments {
     const images = [];
     const lines = [];
     for (const a of list) {
+      // A Photoshop file goes with its picture when the app could make one,
+      // and by its path either way: the agent works with the file itself.
+      if (a.path && PHOTOSHOP_FILE.test(a.name)) {
+        lines.push(a.images.length
+          ? `Attached Photoshop file: ${a.path} (the picture is its flattened image; it has layers you can read from the file)`
+          : `Attached Photoshop file: ${a.path} (the app could not make a picture of it; work with the file itself)`);
+        images.push(...a.images.map(({ mediaType, data }) => ({ mediaType, data })));
+        continue;
+      }
       if (a.error || (a.kind !== 'audio' && !a.images.length)) continue;
       if (a.kind === 'image') {
         lines.push(`Attached image: ${a.path || a.name}`);

@@ -227,6 +227,12 @@ function registerForNotifications() {
 app.whenReady().then(() => {
   media.registerProtocol(protocol, net, path.join(app.getPath('userData'), 'media-previews'));
   ipcMain.handle('media:recent', (_e, cwd, sinceMs) => media.recentMedia(cwd, sinceMs));
+  // A Photoshop file you attach: its picture for Claude (see photoshop.js).
+  ipcMain.handle('media:photoshop', (_e, file, maxSide) => {
+    if (typeof file !== 'string' || !/\.(psd|psb)$/i.test(file)) return null;
+    const p = require('./photoshop').preview(file, Math.min(Number(maxSide) || 2048, 4096));
+    return p && { type: p.type, data: p.data.toString('base64'), width: p.width, height: p.height };
+  });
   ipcMain.handle('media:find', (_e, cwd, name) => media.findMedia(cwd, name).catch(() => null));
   ipcMain.handle('media:before', (_e, cwd, file, snap) => media.mediaBefore(cwd, file, snap, path.join(app.getPath('userData'), 'media-before')).catch(() => null));
   ipcMain.handle('jira:issue', (_e, key) => jira.issue(key));
