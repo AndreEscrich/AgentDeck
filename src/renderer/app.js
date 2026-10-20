@@ -1524,6 +1524,13 @@ let agentListReady = false;
 let hubSynced = new Set();   // sessions the list has as on the Hub
 let agentListTimer = null;
 
+// Whether an agent's last deliberate addition to a Hub came after its last
+// removal. A copy of the app with older code writes "on the Hub" for every
+// agent it still lists, without a time; that never undoes a removal.
+function addedSinceRemoved(e) {
+  return !e.removedAt || (e.addedAt || 0) > e.removedAt;
+}
+
 async function loadAgentList() {
   const list = await window.deck.listAgents().catch(() => []);
   state.agentList = new Map(list.map(e => [e.sessionId, e]));
@@ -1539,11 +1546,11 @@ async function loadAgentList() {
       state.groups.assignments[e.sessionId] = e.groupId;
       groupsChanged = true;
     }
-    if (e.inHub && !state.parked.has(e.sessionId)) state.parked.set(e.sessionId, parkedFromList(e));
+    if (e.inHub && addedSinceRemoved(e) && !state.parked.has(e.sessionId)) state.parked.set(e.sessionId, parkedFromList(e));
     // Removed from the Hub (here or in the other copy of the app, which has
     // its own saved Hub): it stays off, also when this copy's saved Hub
     // still has it.
-    if (e.inHub === false && state.parked.has(e.sessionId)) state.parked.delete(e.sessionId);
+    if ((e.inHub === false || !addedSinceRemoved(e)) && state.parked.has(e.sessionId)) state.parked.delete(e.sessionId);
   }
   hubSynced = new Set(list.filter(e => e.inHub).map(e => e.sessionId));
   agentListReady = true;
@@ -1565,7 +1572,7 @@ async function reconcileHub() {
     if (e.inHub === false && hubSynced.has(e.sessionId)) {
       hubSynced.delete(e.sessionId);
       if (state.parked.delete(e.sessionId)) changed = true;
-    } else if (e.inHub && !hubSynced.has(e.sessionId) && !state.parked.has(e.sessionId)) {
+    } else if (e.inHub && e.addedAt && addedSinceRemoved(e) && !hubSynced.has(e.sessionId) && !state.parked.has(e.sessionId)) {
       hubSynced.add(e.sessionId);
       state.parked.set(e.sessionId, parkedFromList(e));
       changed = true;
@@ -1593,8 +1600,8 @@ function syncAgentList(list, { now = false } = {}) {
     // last write. Another copy of the app (dev and stable keep their own
     // saved Hub) that still lists an agent you removed here would otherwise
     // write it back on every change of its own Hub.
-    const entries = list.map(p => ({ ...p, ...(hubSynced.has(p.sessionId) ? {} : { inHub: true }), groupName: findGroup(p.groupId)?.name || null, lastActiveAt: Math.max(p.finishedAt || 0, state.agentList.get(p.sessionId)?.lastActiveAt || 0) || Date.now() }));
-    for (const sid of hubSynced) if (!on.has(sid)) entries.push({ sessionId: sid, inHub: false });
+    const entries = list.map(p => ({ ...p, ...(hubSynced.has(p.sessionId) ? {} : { inHub: true, addedAt: Date.now() }), groupName: findGroup(p.groupId)?.name || null, lastActiveAt: Math.max(p.finishedAt || 0, state.agentList.get(p.sessionId)?.lastActiveAt || 0) || Date.now() }));
+    for (const sid of hubSynced) if (!on.has(sid)) entries.push({ sessionId: sid, inHub: false, removedAt: Date.now() });
     hubSynced = on;
     rememberAgents(entries);
   };
@@ -2114,7 +2121,7 @@ async function removeFromHistory(ids, { group = null } = {}) {
     if (state.current?.kind === 'history' && state.current.id === id) show('hub');
     state.history.delete(id);
   }
-  if (before.parked.length) rememberAgents(before.parked.map(p => ({ sessionId: p.sessionId, inHub: false })));
+  if (before.parked.length) rememberAgents(before.parked.map(p => ({ sessionId: p.sessionId, inHub: false, removedAt: Date.now() })));
   if (before.group) deleteGroup(group.id);
   await window.deck.removeFromHistory(ids).catch(() => {});
   saveHub();
@@ -2140,7 +2147,7 @@ async function removeFromHistory(ids, { group = null } = {}) {
       saveGroups();
     }
     for (const p of before.parked) state.parked.set(p.sessionId, p);
-    if (before.parked.length) rememberAgents(before.parked.map(p => ({ sessionId: p.sessionId, inHub: true })));
+    if (before.parked.length) rememberAgents(before.parked.map(p => ({ sessionId: p.sessionId, inHub: true, addedAt: Date.now() })));
     saveHub();
     refreshHub();
     await loadSessions();
