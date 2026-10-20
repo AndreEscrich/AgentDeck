@@ -147,7 +147,7 @@ class ModelPicker {
       for (const level of levels) {
         const b = el('button', level === this.value.effort ? 'on' : '', level ? EFFORT_NAMES[level] || level : 'Auto');
         b.type = 'button';
-        b.title = level ? `Use ${EFFORT_NAMES[level] || level} effort` : "Use the model's default effort";
+        b.title = level ? `Use ${EFFORT_NAMES[level] || level} effort` : this.value.model === 'auto' ? 'Auto picks the effort for each task, with the model' : "Use the model's default effort";
         b.onclick = () => this.change({ effort: level });
         seg.appendChild(b);
       }

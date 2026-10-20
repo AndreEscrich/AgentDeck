@@ -22,6 +22,13 @@
 // Visual work always gets Opus, whatever the rating: layout, animations,
 // particles and effects, shaders, UI and the like (see VISUAL), for a new
 // task and for a follow-up.
+//
+// When the agent's Effort is "Auto" too, Auto also picks the effort, from
+// the same rating (see effortFor): Haiku has no effort levels; Sonnet gets
+// low, medium or high; Opus gets medium or high, high for visual work, and
+// extra high when the last try on Opus failed. Effort goes up whenever a
+// message needs more, but it only goes down together with a change of
+// model, so the conversation does not keep changing its settings mid-task.
 
 const autoModel = (() => {
   const MODELS = ['haiku', 'sonnet', 'opus'];
@@ -49,10 +56,20 @@ const autoModel = (() => {
     return Math.max(1, Math.min(3, score));
   }
 
-  // Rules and Haiku together (Haiku counts twice): the level, 1 to 3.
-  function combine(rulesLevel, haikuLevel) {
-    const level = haikuLevel ? (rulesLevel + 2 * haikuLevel) / 3 : rulesLevel;
-    return Math.max(1, Math.min(3, Math.round(level)));
+  // Rules and Haiku together (Haiku counts twice): the score, 1 to 3 with
+  // fractions, and the level, the score rounded.
+  const score = (rulesLevel, haikuLevel) => Math.max(1, Math.min(3, haikuLevel ? (rulesLevel + 2 * haikuLevel) / 3 : rulesLevel));
+  const combine = (rulesLevel, haikuLevel) => Math.round(score(rulesLevel, haikuLevel));
+
+  // The effort for the model Auto picked (level 1 to 3), from how hard the
+  // task scored inside that model's range. '' is the model's default (Haiku
+  // has no effort levels).
+  const EFFORTS = ['', 'low', 'medium', 'high', 'xhigh'];
+  function effortFor(level, taskScore, { visual: isVisual = false, failed = false } = {}) {
+    if (level <= 1) return '';
+    if (level === 2) return failed || taskScore >= 2.25 ? 'high' : taskScore < 1.75 ? 'low' : 'medium';
+    if (failed) return 'xhigh';
+    return isVisual || taskScore >= 2.75 ? 'high' : 'medium';
   }
 
   const modelOf = level => MODELS[Math.max(1, Math.min(3, level)) - 1];
@@ -92,7 +109,18 @@ const autoModel = (() => {
   }
   const goesOn = text => GO_ON.test(String(text || ''));
 
-  return { rules, combine, modelOf, nameOf, stepUp, followUp, goesOn, visual, MODELS };
+  // A follow-up's effort, once followUp picked its level. A short "go on"
+  // keeps it; otherwise it goes up when the message needs more, and down
+  // only when the model changes too.
+  function followUpEffort(level, current, currentEffort, text, haikuLevel, lastStatus) {
+    if (goesOn(text) && level === current) return currentEffort || '';
+    const taskScore = score((rules(text) + current) / 2, haikuLevel);
+    const next = effortFor(level, taskScore, { visual: !!visual(text), failed: stepUp(lastStatus, text) });
+    if (level === current && EFFORTS.indexOf(next) < EFFORTS.indexOf(currentEffort || '')) return currentEffort;
+    return next;
+  }
+
+  return { rules, score, combine, modelOf, nameOf, stepUp, followUp, followUpEffort, effortFor, goesOn, visual, MODELS };
 })();
 
 window.autoModel = autoModel;

@@ -48,13 +48,24 @@ function cliModel(agent) {
   const m = agent.choice?.model;
   return m === 'auto' ? autoModel.modelOf(agent.autoLevel || 2) : m;
 }
+// The effort: its choice, or with Auto and Effort "Auto" the one Auto
+// picked for it (agent.autoEffort; '' is the model's default).
+function cliEffort(agent) {
+  const c = agent.choice || {};
+  return c.effort || (c.model === 'auto' ? agent.autoEffort || '' : '');
+}
 function cliChoice(agent) {
-  return { ...(agent.choice || {}), model: cliModel(agent) };
+  return { ...(agent.choice || {}), model: cliModel(agent), effort: cliEffort(agent) };
+}
+// What Auto picked, for the model button and the chat: "Opus · High".
+function autoPickName(agent) {
+  const effort = !agent.choice?.effort && agent.autoEffort;
+  return autoModel.nameOf(cliModel(agent)) + (effort ? ` · ${EFFORT_NAMES[effort] || effort}` : '');
 }
 // The model button says what Auto picked for the agent on screen.
 function showAutoPick(agent) {
   if (state.current?.kind !== 'agent' || state.current.id !== agent.id) return;
-  composerPicker.setResolved(agent.choice?.model === 'auto' && agent.autoLevel ? autoModel.nameOf(cliModel(agent)) : null);
+  composerPicker.setResolved(agent.choice?.model === 'auto' && agent.autoLevel ? autoPickName(agent) : null);
 }
 // Haiku's rating: its level (or null), and its cost goes into the Auto report.
 function rated(r) {
@@ -67,11 +78,12 @@ function rated(r) {
 // Haiku together say so.
 async function settleAuto(agent, rating) {
   const haiku = await Promise.race([rating, new Promise(r => setTimeout(() => r(null), 5000))]);
-  const before = cliModel(agent);
+  const before = JSON.stringify(cliChoice(agent));
   agent.autoLevel = autoModel.combine(agent.autoRules, haiku);
-  if (cliModel(agent) !== before) window.deck.setModel(agent.id, cliChoice(agent));
+  agent.autoEffort = autoModel.effortFor(agent.autoLevel, autoModel.score(agent.autoRules, haiku));
+  if (JSON.stringify(cliChoice(agent)) !== before) window.deck.setModel(agent.id, cliChoice(agent));
   const why = haiku ? `Haiku rated it ${haiku} of 3` : 'from your message';
-  agent.transcript.note(`Auto picked ${autoModel.nameOf(cliModel(agent))} (${why}).`);
+  agent.transcript.note(`Auto picked ${autoPickName(agent)} (${why}).`);
   showAutoPick(agent);
   refreshHub();
 }
@@ -92,7 +104,12 @@ const composerPicker = new ModelPicker($('composer-picker'), {
     if (cur?.kind === 'agent') {
       const a = state.agents.get(cur.id);
       a.choice = choice;
-      if (choice.model === 'auto' && !a.autoLevel) a.autoLevel = autoModel.visual(a.latestPrompt || a.title) ? 3 : autoModel.combine(autoModel.rules(a.latestPrompt || a.title), null);
+      if (choice.model === 'auto' && !a.autoLevel) {
+        const text = a.latestPrompt || a.title;
+        const isVisual = !!autoModel.visual(text);
+        a.autoLevel = isVisual ? 3 : autoModel.combine(autoModel.rules(text), null);
+        a.autoEffort = autoModel.effortFor(a.autoLevel, autoModel.rules(text), { visual: isVisual });
+      }
       window.deck.setModel(a.id, cliChoice(a));
       showAutoPick(a);
       a.transcript.note(`Switched to ${composerPicker.button.textContent.replace(' ▾', '')} from the next message on.`);
@@ -1335,6 +1352,7 @@ function hubInfo(a) {
     groupId: a.groupId || groupOf(a.sessionId) || null,
     choice: a.choice,
     autoLevel: a.autoLevel || undefined,
+    autoEffort: a.autoEffort || undefined,
     mode: a.mode,
     lastTurn: a.transcript?.lastTurn ? { durationMs: a.transcript.lastTurn.durationMs, usage: a.transcript.lastTurn.usage } : a.lastTurn || null,
     // Finished while you were not looking, and not opened since.
@@ -1366,6 +1384,7 @@ function parkedItem(p) {
     sessionId: p.sessionId,
     choice: p.choice,
     autoLevel: p.autoLevel,
+    autoEffort: p.autoEffort,
     finishedAt: p.finishedAt || 0,
     unread: !!p.unread,
     stopped: !!p.stopped,
@@ -1690,6 +1709,7 @@ async function openParked(sessionId) {
   if (h && p) {
     h.choice = h.choice || p.choice;
     h.autoLevel = h.autoLevel || p.autoLevel;
+    h.autoEffort = h.autoEffort || p.autoEffort;
     h.mode = h.mode || p.mode;
     composerPicker.setValue(h.choice || defaultChoice());
     composerPicker.setResolved(null);
@@ -2306,7 +2326,7 @@ async function restartInNewFolder(agent) {
     cwd: agent.cwd,
     permissionMode: agent.mode,
     model: cliModel(agent),
-    effort: agent.choice?.effort,
+    effort: cliEffort(agent),
     fastMode: agent.choice?.fastMode,
     resumeId: from,
     forkSession: true,
@@ -3259,8 +3279,9 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     // Visual work starts on Opus at once, without Haiku's rating.
     agent.autoVisual = real && !resume?.autoLevel ? autoModel.visual(prompt) : null;
     agent.autoLevel = resume?.autoLevel || (agent.autoVisual ? 3 : autoModel.combine(agent.autoRules, null));
+    agent.autoEffort = resume?.autoLevel ? resume.autoEffort || '' : autoModel.effortFor(agent.autoLevel, agent.autoRules, { visual: !!agent.autoVisual });
     if (real && !resume?.autoLevel && !agent.autoVisual) autoRating = window.deck.rateTask(prompt).then(rated).catch(() => null);
-    if (agent.autoVisual) setTimeout(() => { agent.transcript.note(`Auto picked Opus (visual work: ${agent.autoVisual}).`); showAutoPick(agent); }, 0);
+    if (agent.autoVisual) setTimeout(() => { agent.transcript.note(`Auto picked ${autoPickName(agent)} (visual work: ${agent.autoVisual}).`); showAutoPick(agent); }, 0);
   }
   if (ticket) agent.ticket = ticket;
   if (!resume) summarizeTitle(agent, prompt);
@@ -3310,7 +3331,7 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
       cwd,
       permissionMode,
       model: cliModel(agent),
-      effort: choice.effort,
+      effort: cliEffort(agent),
       fastMode: choice.fastMode,
       ...(rewindAt === undefined
         ? { resumeId: resume?.session.id || forkFrom?.sessionId, forkSession: resume ? !!resume.moved : !!forkFrom }
@@ -3432,15 +3453,20 @@ async function sendToAgent(agent, text, images = []) {
       haiku = await Promise.race([window.deck.rateTask(text, context).then(rated).catch(() => null), new Promise(r => setTimeout(() => r(null), 5000))]);
     }
     const level = autoModel.followUp(current, text, haiku, lastStatus);
+    const effort = autoModel.followUpEffort(level, current, agent.autoEffort, text, haiku, lastStatus);
+    const before = JSON.stringify(cliChoice(agent));
     if (level !== current) {
       // For the Auto report: this turn switched model (its cache starts over),
       // and whether it stepped up after a failed try.
       agent.autoSwitched = true;
       agent.autoFailStep = level > current && autoModel.stepUp(lastStatus, text);
-      agent.autoLevel = level;
+    }
+    agent.autoLevel = level;
+    agent.autoEffort = effort;
+    if (JSON.stringify(cliChoice(agent)) !== before) {
       window.deck.setModel(agent.id, cliChoice(agent));
       const why = autoModel.visual(text) ? `visual work: ${autoModel.visual(text)}` : haiku ? `Haiku rated this ${haiku} of 3` : autoModel.stepUp(lastStatus, text) ? 'the last try did not work' : 'from your message';
-      agent.transcript.note(`Auto switched to ${autoModel.nameOf(cliModel(agent))} for this (${why}).`);
+      agent.transcript.note(`Auto switched to ${autoPickName(agent)} for this (${why}).`);
       showAutoPick(agent);
     }
   }
@@ -3570,7 +3596,7 @@ async function rewindTo(transcript, index, text, { undoFiles, files = [] } = {})
       cwd,
       permissionMode: agent.mode,
       model: cliModel(agent),
-      effort: agent.choice?.effort,
+      effort: cliEffort(agent),
       fastMode: agent.choice?.fastMode,
       resumeId: at?.session,
       forkSession: !!at,
@@ -4235,7 +4261,7 @@ window.deck.onExit((id, { code, stderr }) => {
   // Its process ended with an error, or in the middle of a task: Restart continues it.
   if (!a.removed && a.sessionId) state.parked.set(a.sessionId, { ...hubInfo(a), stopped: code !== 0 || !!a.stopped || a.wasBusy });
   const session = { id: a.sessionId || id, title: a.title, cwd: a.cwd, file: null, updatedAt: Date.now() };
-  state.history.set(session.id, { session, view: a.view, transcript: a.transcript, cwd: a.cwd, choice: a.choice, mode: a.mode, autoLevel: a.autoLevel });
+  state.history.set(session.id, { session, view: a.view, transcript: a.transcript, cwd: a.cwd, choice: a.choice, mode: a.mode, autoLevel: a.autoLevel, autoEffort: a.autoEffort });
   if (state.current?.kind === 'agent' && state.current.id === id) show('history', session.id);
   loadSessions();
 });

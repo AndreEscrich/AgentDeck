@@ -2,7 +2,7 @@
 // config.json (see config:save in main.js) and applies at once; the file
 // stays the place for anything the form does not show.
 
-const EFFORT_OPTIONS = [['', 'Model default'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Extra high'], ['max', 'Max']];
+const EFFORT_OPTIONS = [['', 'Auto'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Extra high'], ['max', 'Max']];
 
 function settingsField(label, hint, control) {
   const row = el('label', 'settings-field');
@@ -114,7 +114,7 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('Permissions', null, mode),
       settingsField('Model', 'Auto picks Opus, Sonnet or Haiku for each task', model),
       settingsField('Auto model report', 'What Auto cost against running everything on Opus at medium effort', reportBtn),
-      settingsField('Effort', null, effort),
+      settingsField('Effort', 'Auto: with the Auto model, it picks the effort for each task too; with another model, the model\'s default', effort),
       settingsField('Fast mode', 'Faster answers from the same model', fast),
       settingsField('Compact the conversation at', 'Every step re-reads the whole conversation, so long tasks get expensive. Smaller: less usage, but the agent remembers fewer details from early in the task', compact)),
     section('The app',
