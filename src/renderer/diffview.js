@@ -113,6 +113,11 @@ const BADGES = { new: 'New', mod: 'Edited', del: 'Deleted', bin: 'Binary' };
 // reads its "namespace" line), or, for a deleted or new file, from the
 // diff, which then holds every line of it.
 const CS_FILE = /\.cs$/i;
+// Unit tests stay out of the class diagram (the same path rule as in
+// csharp.js, which also knows a test by its NUnit attributes).
+const TEST_PATH = /(^|[\\/])(tests?|unittests?|editmodetests?|playmodetests?|integrationtests?|[\w.]+\.tests?)[\\/]/i;
+const TEST_NAME = /Tests\.cs$/;   // BoardTests.cs, not Contests.cs
+const isTestPath = p => TEST_PATH.test(p) || TEST_NAME.test(p);
 const NAMESPACE_LINE = /^[+\- ]?[ \t]*namespace[ \t]+([A-Za-z_][\w.]*)/;
 
 // The namespace the file has now: a removed line only counts for a deleted
@@ -381,9 +386,11 @@ function umlWaiting(csFiles) {
 
 function addDiagram(card, head, files, cwd, comments) {
   // Temporary helpers stay out of the diagram, also the ones that only may
-  // be temporary (TempProbe, AtlasTemp): it shows the structure of the work.
-  const csFiles = files.filter(f => CS_FILE.test(f.path) && f.status !== 'bin'
+  // be temporary (TempProbe, AtlasTemp), and so do unit tests: it shows the
+  // structure of the work. The Files list still has them.
+  const csFiles = files.filter(f => CS_FILE.test(f.path) && f.status !== 'bin' && !isTestPath(f.path)
     && !(window.isTempFile?.(f.path) || window.maybeTempFile?.(f.path)));
+  const testCount = files.filter(f => CS_FILE.test(f.path) && isTestPath(f.path)).length;
   if (!csFiles.length || !window.deck?.csModel || !window.umlPanel) return;
   const switcher = el('div', 'changes-switch');
   const diagramBtn = el('button', 'active', 'Diagram…');
@@ -421,7 +428,9 @@ function addDiagram(card, head, files, cwd, comments) {
     card.classList.add('has-diagram');
     diagramBtn.disabled = false;
     diagramBtn.textContent = changed.length > 1 ? `Diagram · ${changed.length} types` : 'Diagram';
-    diagramBtn.title = 'Class diagram of the C# changes: the changed types and how they depend on each other';
+    const tests = testCount + (model.testsLeftOut || 0);
+    diagramBtn.title = 'Class diagram of the C# changes: the changed types and how they depend on each other'
+      + (tests ? ` (${tests} unit test file${tests === 1 ? '' : 's'} left out; they are under Files)` : '');
     const setView = diagram => {
       card.classList.toggle('show-diagram', diagram);
       diagramBtn.classList.toggle('active', diagram);

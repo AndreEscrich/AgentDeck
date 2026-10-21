@@ -331,7 +331,7 @@ function projectIndex(root) {
         if (e.isDirectory()) {
           const skip = SKIP_DIRS.has(e.name) || e.name.startsWith('.') || /^(Tests?|Samples~|Documentation~)$/.test(e.name) && dir.includes('PackageCache');
           if (!skip) await walk(path.join(dir, e.name));
-        } else if (/\.cs$/i.test(e.name)) {
+        } else if (/\.cs$/i.test(e.name) && !isTestPath(path.join(dir, e.name))) {
           files.push(path.join(dir, e.name));
         }
       }
@@ -396,14 +396,28 @@ const COMMON = new Set([
   'Path', 'File', 'Directory', 'Stream', 'Regex', 'Enumerable', 'Convert', 'Console', 'Environment', 'Assert', 'Test', 'TestCase',
 ]);
 
+// Unit tests stay out of the diagram: it shows the structure of the work,
+// and tests only call into it. A test file is one in a test folder (Tests,
+// UnitTests, EditModeTests, PlayModeTests, Foo.Tests), one whose name ends
+// in Tests.cs, or one that uses NUnit's test attributes ([Test],
+// [TestFixture], [UnityTest], [TestCase]). The same path rule is in
+// diffview.js (isTestPath).
+const TEST_PATH = /(^|[\\/])(tests?|unittests?|editmodetests?|playmodetests?|integrationtests?|[\w.]+\.tests?)[\\/]/i;
+const TEST_NAME = /Tests\.cs$/;   // BoardTests.cs, not Contests.cs
+const isTestPath = p => TEST_PATH.test(p) || TEST_NAME.test(p);
+const TEST_CODE = /\[\s*(TestFixture|Test|UnityTest|TestCase|TestCaseSource)\s*[\](,]/;
+const isTestFile = (file, text) => isTestPath(file) || (/\busing\s+NUnit\b/.test(text || '') && TEST_CODE.test(text || ''));
+
 // files: [{ path, status, lines }] from a Changes card (C# files only).
 // Resolves with { nodes, edges } for the diagram:
 //   node: { id, name, kind, namespace, status: new|mod|del|same|context,
 //           file, line, members: [{ name, kind, type, params, change, line }],
 //           hiddenMembers, generic, bases }
 //   edge: { from, to, kind: inherits|implements|uses, fresh, line }
+//   testsLeftOut: how many test files it left out (see isTestFile)
 async function model(cwd, files) {
   const changed = [];   // { node, type, file, diff }
+  let testsLeftOut = 0;
   // A whole branch (the Branches view) can bring several hundred files.
   for (const f of (Array.isArray(files) ? files : []).slice(0, 500)) {
     if (!f || typeof f.path !== 'string' || !/\.cs$/i.test(f.path)) continue;
@@ -413,6 +427,7 @@ async function model(cwd, files) {
     const v = await versions(cwd, f);
     if (v.error) continue;
     const text = (f.status === 'del' ? v.before : v.after || []).join('\n');
+    if (isTestFile(f.path, text)) { testsLeftOut++; continue; }
     const diff = diffLines(f);
     const changedLines = new Set(diff.added.keys());
     for (const r of diff.removed) changedLines.add(r.at);
@@ -606,7 +621,8 @@ async function model(cwd, files) {
   return {
     nodes: nodes.filter(n => keep.has(n.id)),
     edges: [...pairs.values()].map(({ from, to, kind, fresh, line }) => ({ from, to, kind, fresh, line })),
+    testsLeftOut,
   };
 }
 
-module.exports = { model, parseFile, blank };
+module.exports = { model, parseFile, blank, isTestFile };
