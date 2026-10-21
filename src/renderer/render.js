@@ -983,6 +983,13 @@ class Transcript {
   // The card then lives in the message box's footer (the chat's scroll area
   // ends above the box and would cut it off), and goes back to its chat when
   // it is not needed there (see homePinBars).
+  // The room to the left of the message box, in pixels (0 without a box).
+  roomBeside() {
+    const box = document.querySelector('#composer .composer-box');
+    if (!box || !box.offsetParent || !this.scroller.offsetParent) return 0;
+    return box.getBoundingClientRect().left - this.scroller.getBoundingClientRect().left - 32;
+  }
+
   placePin() {
     const bar = this.pinBar;
     const composer = document.getElementById('composer');
@@ -993,10 +1000,9 @@ class Transcript {
       for (const p of ['left', 'top', 'width']) bar.style.removeProperty(p);
       return false;
     };
-    if (!box || !box.offsetParent || !this.scroller.offsetParent) return clear();
-    const b = box.getBoundingClientRect();
-    const room = b.left - this.scroller.getBoundingClientRect().left - 32;
+    const room = this.roomBeside();
     if (room < 170) return clear();
+    const b = box.getBoundingClientRect();
     homePinBars(bar);
     const width = Math.min(room, 360);
     bar._home = this.pin;
@@ -1031,20 +1037,19 @@ class Transcript {
   }
 
   updatePromptPin() {
-    const top = this.scroller.getBoundingClientRect().top + 4;
-    // The last message that starts above the top edge is the one the output
-    // on screen belongs to.
+    // The card shows the message the output at the bottom of the chat
+    // belongs to: the last one that starts above the bottom edge. Beside the
+    // message box (wide windows) it always shows; as a bar at the top of a
+    // narrow chat, only once that message has scrolled up out of view.
+    const area = this.scroller.getBoundingClientRect();
+    const beside = getComputedStyle(this.pinBar).flexDirection === 'column' && this.roomBeside() >= 170;
     let index = -1;
     for (let i = 0; i < this.prompts.length; i++) {
-      if (this.prompts[i].el.getBoundingClientRect().top < top) index = i;
+      if (this.prompts[i].el.getBoundingClientRect().top < area.bottom - 4) index = i;
       else break;
     }
     const current = this.prompts[index];
-    const next = this.prompts[index + 1];
-    // No bar while that message is still (partly) on screen, or while the
-    // next message is right at the top, where the bar would cover it.
-    const show = !!current && current.el.getBoundingClientRect().bottom < top
-      && !(next && next.el.getBoundingClientRect().top < top + 90);
+    const show = !!current && (beside || current.el.getBoundingClientRect().bottom < area.top + 4);
     this.pin.classList.toggle('show', show);
     if (!show && this.pinBar.parentNode !== this.pin) homePinBars();
     if (show && this.pinTarget !== current) {
