@@ -458,12 +458,15 @@ class Hub {
     const statusDot = el('span', 'dot');
     const statusText = el('span');
     const timer = el('span', 'hub-timer');
-    // The model it runs on (with Auto: the one Auto picked), see modelOf.
+    statusRow.append(statusDot, statusText, timer);
+    // The model it runs on (with Auto: the one Auto picked), see modelOf. On
+    // its own line: in the status row it wrapped or not depending on how long
+    // the timer was, so a working tile kept changing height, and the Hub
+    // resized every tile to fit (see fitToHeight).
     const model = el('span', 'hub-model hidden');
-    statusRow.append(statusDot, statusText, timer, model);
     // Another working agent changes the same file (see noteClashes in app.js).
     const clash = el('div', 'hub-clash hidden');
-    info.append(title, step, statusRow, clash);
+    info.append(title, step, statusRow, model, clash);
 
     // Stopped before it was done: continue its task (restartAgent in app.js).
     const restart = el('button', 'tile-restart', '↻');
