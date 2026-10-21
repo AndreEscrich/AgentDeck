@@ -19,6 +19,14 @@
 // work is wrong ("still broken", "that's not right"). (A change of model
 // starts the prompt cache over, so it only changes when it pays.)
 //
+// Haiku only does small things: a commit or push, a question, showing or
+// listing something (see haikuFits). A message that asks to change, make,
+// test, try or run something never goes to Haiku, however short it is and
+// whatever Haiku rates it, because Haiku then had to do real work with many
+// steps and often got it wrong. So a new task that rates "easy" but asks for
+// work starts on Sonnet, and on Haiku a follow-up like that (also a plain
+// "yes, go ahead", which approves work) moves up to Opus.
+//
 // Visual work always gets Opus, whatever the rating: layout, animations,
 // particles and effects, shaders, UI and the like (see VISUAL), for a new
 // task and for a follow-up.
@@ -38,7 +46,7 @@ const autoModel = (() => {
   const EASY = /\b(rename|typo|spelling|what is|what does|where is|which file|explain briefly|summari[sz]e|list|show me|print|format|translate|commit|push|promote|restart|reopen|open|run the|bump|update the version|add a comment|comment out|remove the line|change the text|change the colou?r)\b/gi;
 
   // Visual work: always Opus. visual(text) returns the word that says so, or null.
-  const VISUAL = /\b(layouts?|re-?layout\w*|animat\w*|particles?|vfx|visual\w*|shaders?|shader ?graph|tween\w*|easing|sprites?|spine|ui|ux|hud|polish\w*|juic\w*|(screen|camera) shake|glow\w*|bloom|lighting|fonts?|colou?rs?|align\w*|spacing|padding|anchor\w*|fade\w*|bounce\w*|pop.?in|(screen|view|scene) transitions?|looks? (nicer|better|good|off|wrong|weird|bad))\b/i;
+  const VISUAL = /\b(blur\w*|squash\w*|stretch\w*|afterimage|layouts?|re-?layout\w*|animat\w*|particles?|vfx|visual\w*|shaders?|shader ?graph|tween\w*|easing|sprites?|spine|ui|ux|hud|polish\w*|juic\w*|(screen|camera) shake|glow\w*|bloom|lighting|fonts?|colou?rs?|align\w*|spacing|padding|anchor\w*|fade\w*|bounce\w*|pop.?in|(screen|view|scene) transitions?|looks? (nicer|better|good|off|wrong|weird|bad))\b/i;
   const visual = text => (VISUAL.exec(String(text || '')) || [])[0]?.toLowerCase() || null;
 
   // The rules' level, 1 to 3 (a fraction: how sure they are shows in how
@@ -72,6 +80,22 @@ const autoModel = (() => {
     return isVisual || taskScore >= 2.75 ? 'high' : 'medium';
   }
 
+  // A message small enough for Haiku: a question, a lookup, or a commit or
+  // push, that asks for no work (see the top of this file).
+  const SMALL = /^\s*((yes|ok(ay)?|sure),?\s*)?(commit|push|show|list|print|what|where|which|who|when|how (many|much|is|are|does|do)|is|are|does|do|did|can you (tell|show|list)|check (for|if|whether)|explain|summari[sz]e|give me)\b|\?\s*$/i;
+  const WORK = /\b(fix\w*|make|mak(es|ing)|change\w*|add\w*|implement\w*|remov\w*|delet\w*|refactor\w*|rewrit\w*|test\w*|try|retry|build\w*|creat\w*|mov(e|es|ing)|replac\w*|updat\w*|upgrad\w*|set ?up|wire|hook\w*|apply|run|rerun|redo|undo|revert\w*|option \d|go ahead|do it|clean\w* up|close|open)\b/i;
+  const VCS = /^\s*((yes|ok(ay)?|sure),?\s*)?(commit|push)\b/i;   // "commit the fix" is a commit
+  const haikuFits = text => {
+    const t = String(text || '').trim();
+    return t.length < 400 && SMALL.test(t) && (VCS.test(t) || (!WORK.test(t) && !t.match(HARD)));
+  };
+  // A new task's level: the rules and Haiku together, but never Haiku for
+  // a message that asks for work.
+  const startLevel = (rulesLevel, haikuLevel, text) => {
+    const level = combine(rulesLevel, haikuLevel);
+    return level === 1 && !haikuFits(text) ? 2 : level;
+  };
+
   const modelOf = level => MODELS[Math.max(1, Math.min(3, level)) - 1];
   const nameOf = model => NAMES[model] || model;
 
@@ -99,11 +123,13 @@ const autoModel = (() => {
   // dropping to (it is so much cheaper that even without a cache it wins).
   // Sonnet is for starting normal tasks, where there is no cache to lose.
   function followUp(current, text, haikuLevel, lastStatus) {
-    if (GO_ON.test(String(text || ''))) return current;
+    // "Yes, go ahead" keeps the model, but on Haiku it approves work.
+    if (GO_ON.test(String(text || ''))) return current === 1 ? 3 : current;
     if (visual(text)) return 3;
     const r = (rules(text) + current) / 2;
     let level = combine(r, haikuLevel);
     if (stepUp(lastStatus, text)) level = Math.max(level, Math.min(3, current + 1));
+    if (level === 1 && !haikuFits(text)) level = current === 1 ? 3 : current;
     if (level === 2 && current !== 2) level = current === 1 ? 3 : current;
     return level;
   }
@@ -120,7 +146,7 @@ const autoModel = (() => {
     return next;
   }
 
-  return { rules, score, combine, modelOf, nameOf, stepUp, followUp, followUpEffort, effortFor, goesOn, visual, MODELS };
+  return { rules, score, combine, startLevel, haikuFits, modelOf, nameOf, stepUp, followUp, followUpEffort, effortFor, goesOn, visual, MODELS };
 })();
 
 window.autoModel = autoModel;

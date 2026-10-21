@@ -79,10 +79,11 @@ function rated(r) {
 async function settleAuto(agent, rating) {
   const haiku = await Promise.race([rating, new Promise(r => setTimeout(() => r(null), 5000))]);
   const before = JSON.stringify(cliChoice(agent));
-  agent.autoLevel = autoModel.combine(agent.autoRules, haiku);
+  agent.autoLevel = autoModel.startLevel(agent.autoRules, haiku, agent.autoText);
   agent.autoEffort = autoModel.effortFor(agent.autoLevel, autoModel.score(agent.autoRules, haiku));
   if (JSON.stringify(cliChoice(agent)) !== before) window.deck.setModel(agent.id, cliChoice(agent));
-  const why = haiku ? `Haiku rated it ${haiku} of 3` : 'from your message';
+  const easy = autoModel.combine(agent.autoRules, haiku) === 1;
+  const why = easy && agent.autoLevel > 1 ? 'it rates easy, but it asks for work, which is too much for Haiku' : haiku ? `Haiku rated it ${haiku} of 3` : 'from your message';
   agent.transcript.note(`Auto picked ${autoPickName(agent)} (${why}).`);
   showAutoPick(agent);
   refreshHub();
@@ -107,7 +108,7 @@ const composerPicker = new ModelPicker($('composer-picker'), {
       if (choice.model === 'auto' && !a.autoLevel) {
         const text = a.latestPrompt || a.title;
         const isVisual = !!autoModel.visual(text);
-        a.autoLevel = isVisual ? 3 : autoModel.combine(autoModel.rules(text), null);
+        a.autoLevel = isVisual ? 3 : autoModel.startLevel(autoModel.rules(text), null, text);
         a.autoEffort = autoModel.effortFor(a.autoLevel, autoModel.rules(text), { visual: isVisual });
       }
       window.deck.setModel(a.id, cliChoice(a));
@@ -3284,7 +3285,8 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     agent.autoRules = real ? autoModel.rules(prompt, { images: images.length }) : 2;
     // Visual work starts on Opus at once, without Haiku's rating.
     agent.autoVisual = real && !resume?.autoLevel ? autoModel.visual(prompt) : null;
-    agent.autoLevel = resume?.autoLevel || (agent.autoVisual ? 3 : autoModel.combine(agent.autoRules, null));
+    agent.autoText = real ? prompt : '';
+    agent.autoLevel = resume?.autoLevel || (agent.autoVisual ? 3 : autoModel.startLevel(agent.autoRules, null, agent.autoText));
     agent.autoEffort = resume?.autoLevel ? resume.autoEffort || '' : autoModel.effortFor(agent.autoLevel, agent.autoRules, { visual: !!agent.autoVisual });
     if (real && !resume?.autoLevel && !agent.autoVisual) autoRating = window.deck.rateTask(prompt).then(rated).catch(() => null);
     if (agent.autoVisual) setTimeout(() => { agent.transcript.note(`Auto picked ${autoPickName(agent)} (visual work: ${agent.autoVisual}).`); showAutoPick(agent); }, 0);
@@ -3449,29 +3451,33 @@ async function sendToAgent(agent, text, images = []) {
   clearFollowUps(agent);
   // Auto rates every follow-up again (see followUp in automodel.js) and
   // changes the model when its level changes. The message waits for Haiku's
-  // rating, at most 5 seconds; a short "yes, go ahead" does not wait.
-  if (agent.choice?.model === 'auto' && agent.autoSent && !isSlashCommand(text)) {
+  // rating, at most 5 seconds; a short "yes, go ahead" does not wait. A /
+  // command is rated by what you wrote after it (a command alone keeps the
+  // model).
+  const rateText = isSlashCommand(text) ? text.trimStart().replace(SLASH_NAME, '').trim() : text;
+  if (agent.choice?.model === 'auto' && agent.autoSent && rateText) {
     const current = agent.autoLevel || 2;
     const lastStatus = agent.status;
     let haiku = null;
-    if (!autoModel.goesOn(text) && !autoModel.visual(text)) {
-      const context = [agent.summaryTitle || agent.title, agent.latestPrompt && agent.latestPrompt !== text ? agent.latestPrompt : ''].filter(Boolean).join(' / ');
-      haiku = await Promise.race([window.deck.rateTask(text, context).then(rated).catch(() => null), new Promise(r => setTimeout(() => r(null), 5000))]);
+    if (!autoModel.goesOn(rateText) && !autoModel.visual(rateText)) {
+      const context = [agent.summaryTitle || agent.title, agent.latestPrompt && agent.latestPrompt !== rateText ? agent.latestPrompt : ''].filter(Boolean).join(' / ');
+      haiku = await Promise.race([window.deck.rateTask(rateText, context).then(rated).catch(() => null), new Promise(r => setTimeout(() => r(null), 5000))]);
     }
-    const level = autoModel.followUp(current, text, haiku, lastStatus);
-    const effort = autoModel.followUpEffort(level, current, agent.autoEffort, text, haiku, lastStatus);
+    const level = autoModel.followUp(current, rateText, haiku, lastStatus);
+    const effort = autoModel.followUpEffort(level, current, agent.autoEffort, rateText, haiku, lastStatus);
     const before = JSON.stringify(cliChoice(agent));
     if (level !== current) {
       // For the Auto report: this turn switched model (its cache starts over),
       // and whether it stepped up after a failed try.
       agent.autoSwitched = true;
-      agent.autoFailStep = level > current && autoModel.stepUp(lastStatus, text);
+      agent.autoFailStep = level > current && autoModel.stepUp(lastStatus, rateText);
     }
     agent.autoLevel = level;
     agent.autoEffort = effort;
     if (JSON.stringify(cliChoice(agent)) !== before) {
       window.deck.setModel(agent.id, cliChoice(agent));
-      const why = autoModel.visual(text) ? `visual work: ${autoModel.visual(text)}` : haiku ? `Haiku rated this ${haiku} of 3` : autoModel.stepUp(lastStatus, text) ? 'the last try did not work' : 'from your message';
+      const why = autoModel.visual(rateText) ? `visual work: ${autoModel.visual(rateText)}`
+        : current === 1 && level > 1 && !autoModel.haikuFits(rateText) ? 'it asks for work, which is too much for Haiku' : haiku ? `Haiku rated this ${haiku} of 3` : autoModel.stepUp(lastStatus, rateText) ? 'the last try did not work' : 'from your message';
       agent.transcript.note(`Auto switched to ${autoPickName(agent)} for this (${why}).`);
       showAutoPick(agent);
     }
