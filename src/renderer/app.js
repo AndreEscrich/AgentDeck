@@ -637,8 +637,9 @@ function show(kind, id) {
     $('input').focus();
   } else if (kind === 'branches') {
     branchesView.view.classList.remove('hidden');
-    setHeader('Branch diff', state.config?.svnProject ? `${(state.config.svnServer || '').replace(/\/+$/, '')}/${state.config.svnProject}/branches` : '', null);
-    branchesView.open(state.config?.svnProject || '');
+    const projects = svnProjectList(state.config || {});
+    setHeader('Branch diff', `${(state.config?.svnServer || '').replace(/\/+$/, '')}/${!projects.length ? '*' : projects.length > 1 ? `{${projects.join(',')}}` : projects[0]}/branches`, null);
+    branchesView.open(JSON.stringify([projects, state.config?.svnBranchFilter || [], !!state.config?.githubBranches]));
   } else if (kind === 'history') {
     const h = state.history.get(id);
     h.view.classList.remove('hidden');

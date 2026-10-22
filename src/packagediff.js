@@ -266,4 +266,4 @@ async function packageDiffs(branchText, { cwd, cacheRoot, progress = () => {} } 
   return { diff, notes, packages };
 }
 
-module.exports = { packageDiffs, manifestChanges, parseGit, clean };
+module.exports = { packageDiffs, manifestChanges, parseGit, clean, git, clone };

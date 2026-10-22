@@ -1959,12 +1959,16 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .branch-filter { flex: 1; min-width: 0; }
 .branch-refresh { font-size: 16px; }
 .branch-source { padding: 0 14px 8px; font-size: 11px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.branch-source.err { color: var(--err); }
 .branch-list { padding: 0 6px 12px; }
 .branch-row { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; text-align: left; border: none; background: none; padding: 7px 10px; border-radius: 7px; }
 .branch-row:hover { background: var(--bg-hover); }
 .branch-row.selected { background: var(--bg-active); box-shadow: inset 2px 0 0 var(--accent); }
 .branch-name { font-weight: 600; color: var(--text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.branch-meta { font-size: 11.5px; color: var(--text-faint); }
+.branch-meta { font-size: 11.5px; color: var(--text-faint); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.branch-kind { display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; line-height: 15px; vertical-align: 1px; }
+.branch-kind.svn { color: var(--info); background: color-mix(in srgb, var(--info) 16%, transparent); }
+.branch-kind.git { color: var(--ok); background: color-mix(in srgb, var(--ok) 16%, transparent); }
 .branch-main { padding: 22px 28px 40px; }
 .branch-result { max-width: 1700px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
 /* The Changes card widens past the chat for its diagram; here it already has the room. */
