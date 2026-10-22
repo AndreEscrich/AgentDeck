@@ -3526,7 +3526,7 @@ async function sendToAgent(agent, text, images = []) {
   }
   if (!agent.snapshot) {
     agent.snapshotAt = Date.now() - 1000;
-    try { agent.snapshot = await window.deck.gitSnapshot(agent.cwd); } catch { agent.snapshot = null; }
+    agent.snapshot = await snapshotInTime(agent.cwd);
   }
   await window.deck.sendMessage(agent.id, text, images);
 }
@@ -3691,11 +3691,19 @@ window.addEventListener('review-comments', e => {
 // ---------- snapshots ahead of time ----------
 
 // Before each message the app records the folder's files (src/git.js), and
-// the message waits for that. After the first time it only reads what
-// changed, but the first time it reads every code file and text asset of
-// the project, which can take a while in a big Unity project. So, a few
-// seconds after the app starts, it records the folders of the agents on
-// the Hub once in the background, one after another.
+// the message waits for that, for SNAPSHOT_WAIT at most. After the first time
+// it only reads what changed, but the first time it reads every code file and
+// text asset of the project, which can take minutes in a big Unity project.
+// So, a few seconds after the app starts, it records the folders of the
+// agents on the Hub once in the background, one after another.
+const SNAPSHOT_WAIT = 5000;
+
+async function snapshotInTime(cwd) {
+  const snap = window.deck.gitSnapshot(cwd).catch(() => null);
+  const late = new Promise(resolve => setTimeout(() => resolve(null), SNAPSHOT_WAIT));
+  return Promise.race([snap, late]);
+}
+
 function warmSnapshots() {
   const folders = [...new Set([...state.agents.values(), ...state.parked.values()].map(a => a.cwd).filter(f => f && f !== state.config.home))];
   setTimeout(async () => {

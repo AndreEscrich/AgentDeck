@@ -36,19 +36,39 @@ const CODE_ONLY = [
   '!*.shadergraph', '!*.shadersubgraph', '!*.vfx', '!*.uss', '!*.uxml', '!*.tss', '!*.inputactions', '!*.guiskin', '!*.fontsettings',
   '!*.renderTexture', '!*.lighting', '!*.terrainlayer', '!*.brush', '!*.flare', '!*.giparams', '!*.mixer',
   '!*.json', '!*.xml', '!*.yaml', '!*.yml', '!*.txt', '!*.csv', '!*.md', '!*.html', '!*.css',
-  '/Library/', '/Temp/', '/Logs/', '/obj/', '/Build/', '/Builds/', '/UserSettings/', '/MemoryCaptures/', '/Recordings/',
   'node_modules/', '.svn/', '.git/',
   // Baked lighting is big, binary and rebuilt by Unity.
   'LightingData.asset', '*.lighting.asset',
 ];
+const GENERATED = ['Library', 'Temp', 'Logs', 'obj', 'Build', 'Builds', 'UserSettings', 'MemoryCaptures', 'Recordings'];
 
-function git(args, { cwd, gitDir, workTree, allowExitCodes = [0] } = {}) {
+function excludes(project) {
+  const anchors = project ? ['', project + '/'] : [''];
+  return [...CODE_ONLY, ...anchors.flatMap(a => GENERATED.map(name => `/${a}${name}/`))];
+}
+
+const NOT_PROJECTS = new Set(['Assets', 'Packages', 'node_modules', ...GENERATED]);
+
+async function unityProjects(cwd, depth = 3, rel = '') {
+  const here = path.join(cwd, rel);
+  if (fs.existsSync(path.join(here, 'ProjectSettings', 'ProjectVersion.txt'))) return [rel];
+  if (depth === 0) return [];
+  const entries = await fs.promises.readdir(here, { withFileTypes: true }).catch(() => []);
+  const found = [];
+  for (const e of entries) {
+    if (!e.isDirectory() || e.name.startsWith('.') || NOT_PROJECTS.has(e.name)) continue;
+    found.push(...await unityProjects(cwd, depth - 1, rel ? `${rel}/${e.name}` : e.name));
+  }
+  return found;
+}
+
+function git(args, { cwd, gitDir, workTree, allowExitCodes = [0], timeout = 60000 } = {}) {
   const prefix = [];
   if (gitDir) prefix.push('--git-dir', gitDir);
   if (workTree) prefix.push('--work-tree', workTree);
   if (cwd) prefix.push('-C', cwd);
   return new Promise(resolve => {
-    execFile('git', [...prefix, ...args], { maxBuffer: 50 * 1024 * 1024, timeout: 60000 }, (err, stdout) => {
+    execFile('git', [...prefix, ...args], { maxBuffer: 50 * 1024 * 1024, timeout }, (err, stdout) => {
       const code = err ? (typeof err.code === 'number' ? err.code : -1) : 0;
       resolve(allowExitCodes.includes(code) ? stdout : null);
     });
@@ -101,7 +121,7 @@ function withLock(key, fn) {
   return run;
 }
 
-async function privateRepo(cwd, root) {
+async function privateRepo(cwd, root, project) {
   const dir = path.join(root, crypto.createHash('sha1').update(cwd).digest('hex').slice(0, 16) + '.git');
   if (!fs.existsSync(path.join(dir, 'HEAD'))) {
     fs.mkdirSync(dir, { recursive: true });
@@ -112,13 +132,13 @@ async function privateRepo(cwd, root) {
     fs.writeFileSync(path.join(dir, 'folder.txt'), cwd + '\n');
   }
   fs.mkdirSync(path.join(dir, 'info'), { recursive: true });
-  fs.writeFileSync(path.join(dir, 'info', 'exclude'), CODE_ONLY.join('\n') + '\n');
+  fs.writeFileSync(path.join(dir, 'info', 'exclude'), excludes(project).join('\n') + '\n');
   return dir;
 }
 
 // Records the code files and returns the hash of that state (a git tree).
 async function recordTree(dir, cwd) {
-  const ok = await git(['add', '-A', '.'], { gitDir: dir, workTree: cwd });
+  const ok = await git(['add', '-A', '.'], { gitDir: dir, workTree: cwd, timeout: 30 * 60000 });
   if (ok == null) return null;
   return (await git(['write-tree'], { gitDir: dir, workTree: cwd }))?.trim() || null;
 }
@@ -144,8 +164,8 @@ async function otherFiles(dir, cwd) {
 // the window and into the saved Changes cards).
 const otherLists = new Map();   // snapshot id -> Set of paths
 
-async function folderSnapshot(cwd, root) {
-  const dir = await privateRepo(cwd, root);
+async function folderSnapshot(cwd, root, project) {
+  const dir = await privateRepo(cwd, root, project);
   return withLock(dir, async () => {
     const tree = await recordTree(dir, cwd);
     if (!tree) return null;
@@ -240,7 +260,9 @@ async function snapshot(cwd, root) {
   if (!root || !fs.existsSync(cwd)) return null;
   // Your home folder (or a folder above it) holds far too many files to record.
   if (os.homedir().startsWith(path.resolve(cwd))) return null;
-  return folderSnapshot(cwd, root);
+  const projects = await unityProjects(cwd);
+  if (projects.length > 1) return null;
+  return folderSnapshot(cwd, root, projects[0] || '');
 }
 
 // Unified diff of everything that changed since the snapshot, with paths
