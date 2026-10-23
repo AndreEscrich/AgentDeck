@@ -539,7 +539,8 @@ function addJsonCopy(root) {
 // A shell command in an answer (```bash, or ```powershell on Windows) gets
 // Copy and Run buttons, like in Claude's desktop app. Run runs it in the
 // agent's folder (commands.js) and shows its output under the block; Stop
-// ends it while it runs.
+// ends it while it runs. When it ends, a command-ran event tells app.js,
+// which passes the result on to the agent.
 const SHELL_LANGS = window.deck.platform === 'win32'
   ? /\blanguage-(powershell|pwsh|ps1)\b/
   : /\blanguage-(bash|sh|zsh|shell)\b/;
@@ -606,6 +607,7 @@ function addShellRun(root, cwd) {
       if (exit === 0 && !text.textContent) status.textContent = 'Done, no output';
       runButton.textContent = '▶ Run again';
       runButton.title = `Run this command again in ${cwd || 'your home folder'}`;
+      wrap.dispatchEvent(new CustomEvent('command-ran', { bubbles: true, detail: { command, exit, output: text.textContent } }));
     };
     actions.append(copy, runButton);
     wrap.append(pre, actions);
@@ -1433,6 +1435,15 @@ class Transcript {
     if (local) {
       const said = local[1].replace(/`/g, '').trim();
       if (said) this.note(said);
+      return;
+    }
+    // A command you ran with a Run button (command-ran in app.js), or with
+    // !command in the terminal: a note that starts the agent's next turn.
+    const ran = /^\s*<bash-input>([\s\S]*?)<\/bash-input>[\s\S]*?<bash-stderr>([\s\S]*?)<\/bash-stderr>/.exec(first);
+    if (ran) {
+      this.finishTurn();
+      const failed = ran[2].trim().split('\n').pop();
+      this.noteIn(this.startTurn(), `You ran ${ran[1].trim().split('\n')[0].slice(0, 120)}${failed ? ` · ${failed}` : ''}`);
       return;
     }
     if (/^\s*<task-notification>/.test(first)) {
