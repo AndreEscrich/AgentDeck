@@ -214,8 +214,11 @@ function renderDraftButtons() {
     tag.appendChild(document.createTextNode(branch.name));
     folder.append(' ', tag);
   }
+  const autoGame = state.config?.autoGameFolder && state.config?.gamesFolder;
+  if (autoGame) folder.append(' · auto game');
   folder.append(' ▾');
-  folder.title = d.folder ? `Folder: ${d.folder}${branch ? `\n${branch.vcs === 'svn' ? 'SVN' : 'Git'} branch: ${branch.name}` : ''}` : 'Pick the folder the agent works in';
+  folder.title = (d.folder ? `Folder: ${d.folder}${branch ? `\n${branch.vcs === 'svn' ? 'SVN' : 'Git'} branch: ${branch.name}` : ''}` : 'Pick the folder the agent works in')
+    + (autoGame ? `\nAuto game folder: a message about one game in ${homePath(state.config.gamesFolder)} works in that game's folder instead` : '');
   folder.classList.toggle('danger-text', !d.folder);
   const group = state.groups.groups.find(g => g.id === d.groupId);
   $('composer-group').textContent = (group ? '# ' + group.name : '# No category') + ' ▾';
@@ -3254,8 +3257,9 @@ async function startFrom(forkFrom, note = flashComposerNote) {
 // exists, so the tile flies to its group and boots up at once instead of
 // waiting; prepare(note) shows its progress on the booting tile with
 // note(text) and resolves with any of { prompt, forkFrom, preamble,
-// handoffFrom } to use instead of the ones passed in.
-async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId, fromRect, forkFrom, preamble = '', handoffFrom = null, images = [], ticket = null, rewindAt, prepare = null }) {
+// handoffFrom, cwd, folderNote } to use instead of the ones passed in.
+// folderNote: why the agent works in cwd (Auto game folder), shown in the chat.
+async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId, fromRect, forkFrom, preamble = '', handoffFrom = null, images = [], ticket = null, rewindAt, prepare = null, folderNote = null }) {
   const title = resume ? resume.session.title : prompt.split('\n')[0].slice(0, 80);
   choice = choice || defaultChoice();
   permissionMode = permissionMode || defaultMode();
@@ -3302,6 +3306,7 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
   // The chat gets its notes and your message once prepare is done (it can
   // change the message), so they only wait while the tile is in the Hub.
   const fillChat = () => {
+    if (folderNote) transcript.note(folderNote);
     if (forkFrom) {
       agent.forkedFrom = forkFrom;
       transcript.note(`Continues from "${forkFrom.title}", so it knows what that agent did.`);
@@ -3329,7 +3334,11 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     agent.bootNote = null;
     // Removed from the Hub while it was getting ready: nothing to start.
     if (!state.agents.has(id) || agent.removed) return;
-    ({ prompt = prompt, forkFrom = forkFrom, preamble = preamble, handoffFrom = handoffFrom } = ready || {});
+    ({ prompt = prompt, forkFrom = forkFrom, preamble = preamble, handoffFrom = handoffFrom, folderNote = folderNote } = ready || {});
+    if (ready?.cwd && ready.cwd !== cwd) {
+      cwd = agent.cwd = transcript.cwd = ready.cwd;
+      checkUnityBridge(cwd);
+    }
     fillChat();
     refreshHub();
   }
@@ -4342,7 +4351,16 @@ async function sendFromComposer() {
     saveGroups();
     // The next new agent starts with the same folder and group, and the default model.
     state.draft = null;
-    const forkFrom = forkSourceFor(d.folder, d.groupId);
+    // Auto game folder: a message about one game works in that game's folder
+    // (gamefolders.js). The instant check runs here; when only Haiku can
+    // tell, it asks while the tile boots up (in prepare).
+    const autoGame = state.config.autoGameFolder && state.config.gamesFolder
+      ? await window.deck.gameFolderQuick(text, d.folder).catch(() => null) : null;
+    const gameFolder = found => found?.folder && !found.same ? found : null;
+    const gameNote = found => `Works in ${homePath(found.folder)}: your message is about ${found.product || found.game}. (Auto game folder; you picked ${homePath(d.folder)}.)`;
+    const quickGame = gameFolder(autoGame);
+    const cwd = quickGame ? quickGame.folder : d.folder;
+    const forkFrom = forkSourceFor(cwd, d.groupId);
     // A message that is (or starts with) a Jira ticket brings the ticket along.
     const ticket = ticketIn(text);
     // Reading the ticket and writing a handoff (a long parent is not copied,
@@ -4356,10 +4374,15 @@ async function sendFromComposer() {
         if (details.error) flashComposerNote(`Could not read ${ticket} (${details.error}). The agent gets your message as it is.`);
         else prompt = ticketPrompt(details, text);
       }
+      if (autoGame?.lookup) {
+        note('Finding the game…');
+        const found = gameFolder(await window.deck.gameFolderLookup(prompt, d.folder).catch(() => null));
+        if (found) return { prompt, cwd: found.folder, folderNote: gameNote(found), ...(await startFrom(forkSourceFor(found.folder, d.groupId), note)) };
+      }
       return { prompt, ...(await startFrom(forkFrom, note)) };
     };
     if (playSounds()) sounds.created();
-    await startAgent({ cwd: d.folder, prompt: text, permissionMode: d.mode, choice: d.choice, groupId: d.groupId, fromRect, images, ticket, prepare });
+    await startAgent({ cwd, prompt: text, permissionMode: d.mode, choice: d.choice, groupId: d.groupId, fromRect, images, ticket, prepare, folderNote: quickGame ? gameNote(quickGame) : null });
   } else if (state.current.kind === 'agent') {
     const a = state.agents.get(state.current.id);
     if (QUEUE_WHILE.includes(a.status)) {

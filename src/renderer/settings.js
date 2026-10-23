@@ -75,6 +75,17 @@ function openSettings(config, { onSaved } = {}) {
   };
   const folderRow = el('div', 'settings-inline');
   folderRow.append(folder, pick);
+  const gamesFolder = settingsInput('text', config.gamesFolder, { placeholder: 'For example ~/svn' });
+  const pickGames = el('button', null, 'Choose…');
+  pickGames.type = 'button';
+  pickGames.onclick = async e => {
+    e.preventDefault();
+    const chosen = await window.deck.pickFolder();
+    if (chosen) gamesFolder.value = chosen;
+  };
+  const gamesRow = el('div', 'settings-inline');
+  gamesRow.append(gamesFolder, pickGames);
+  const autoGame = settingsInput('checkbox', config.autoGameFolder);
   const mode = settingsSelect(PERMISSION_MODES.map(m => [m.value, m.label]), config.defaultPermissionMode || 'bypassPermissions');
   // The same choices as the model menu (Auto, Opus, Sonnet, Haiku, Fable); a
   // saved choice that is no longer in it stays listed so it is not lost.
@@ -118,6 +129,8 @@ function openSettings(config, { onSaved } = {}) {
   body.append(
     section('New agents',
       settingsField('Folder', 'Where a new agent works until you pick one in the Hub', folderRow),
+      settingsField('Games folder', 'The folder with one folder per game', gamesRow),
+      settingsField('Auto game folder', 'A new agent whose message is about one game (by any of its names, or a PM task about it) works in that game\'s folder, for that agent only. About no game or several: the folder you picked', autoGame),
       settingsField('Permissions', null, mode),
       settingsField('Model', 'Auto picks Opus, Sonnet or Haiku for each task', model),
       settingsField('Auto model report', 'What Auto cost against running everything on Opus at medium effort', reportBtn),
@@ -184,6 +197,8 @@ function openSettings(config, { onSaved } = {}) {
     }
     const next = {
       defaultFolder: folder.value.trim(),
+      gamesFolder: gamesFolder.value.trim().replace(/^~(?=$|[\\/])/, config.home || '~'),
+      autoGameFolder: autoGame.checked,
       defaultPermissionMode: mode.value,
       defaultModel: model.value,
       defaultEffort: effort.value,
