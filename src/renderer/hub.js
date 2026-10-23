@@ -1186,7 +1186,13 @@ class Hub {
     else for (let i = 0; i < 12; i++) { const mid = (lo + hi) / 2; if (height(mid) <= avail - 8) lo = mid; else hi = mid; }
     const width = Math.round(lo);
     const tight = this.grid.classList.contains('tight');
-    if ((!tight && width < 170) || (tight && width >= 215)) {
+    // Once it went tight, it stays tight until the window's size or the
+    // number of tiles changes: with some layouts the tight padding fits tiles
+    // of 215px while the loose padding only fits tiles under 170px, and the
+    // padding then flipped every frame.
+    const key = `${view.clientWidth}x${view.clientHeight}:${sections.length}:${this.grid.querySelectorAll('.hub-tile').length}`;
+    if ((!tight && width < 170) || (tight && width >= 215 && this.tightKey !== key)) {
+      if (!tight) this.tightKey = key;
       // The padding changes the measurements: fit again with the new padding.
       this.grid.classList.toggle('tight', !tight);
       requestAnimationFrame(() => this.fitToHeight());
