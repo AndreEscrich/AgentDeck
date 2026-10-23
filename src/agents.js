@@ -54,10 +54,10 @@ const DIFF_PROMPT = [
 ].join(' ');
 
 // A command for the user to run gets a Run button in the chat (commands.js),
-// when it is in a code block of the shell's language.
-const RUN_PROMPT = process.platform === 'win32'
-  ? 'When you give the user a command to run, put it in its own code block tagged powershell, one command per block, without a prompt or output in the block: Agent Hub shows a Run button on it that runs it in your folder and shows the output.'
-  : 'When you give the user a command to run, put it in its own code block tagged bash, one command per block, without a leading $ or output in the block: Agent Hub shows a Run button on it that runs it in your folder and shows the output.';
+// when it is in a code block of the shell's language. Run while the agent
+// sends it the result (command-ran in app.js).
+const RUN_LANG = process.platform === 'win32' ? 'powershell, one command per block, without a prompt' : 'bash, one command per block, without a leading $';
+const RUN_PROMPT = `When you give the user a command to run, put it in its own code block tagged ${RUN_LANG} or output in the block: Agent Hub shows a Run button on it that runs it in your folder and shows the output. When you need its result to go on, end your turn there: when the user runs it with that button, you receive it as a shell command they ran (<bash-input>, <bash-stdout>, and in <bash-stderr> the exit code when it failed), and you continue from it.`;
 
 // Progress for long tasks with several parts: Agent Hub shows these lines
 // in a Progress panel at the top of the task in the chat (milestones in
