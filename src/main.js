@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Notification, Menu, protocol
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
-const { AgentManager, fetchModels, summarizeTitle, rateTask, mergeNotes, suggestFollowUps, fetchUsage } = require('./agents');
+const { AgentManager, fetchModels, summarizeTitle, rateTask, pickGame, mergeNotes, suggestFollowUps, fetchUsage } = require('./agents');
 const { listSessions, loadTranscript, PROJECTS_DIR } = require('./sessions');
 const git = require('./git');
 const { repoOf, branchOf } = require('./repos');
@@ -18,6 +18,7 @@ const { activity } = require('./activity');
 const updates = require('./updates');
 const undo = require('./undo');
 const csharp = require('./csharp');
+const gameFolders = require('./gamefolders');
 
 // The window loads images and videos from disk through media:// (see media.js).
 // "stream" lets video players read a file piece by piece.
@@ -39,6 +40,8 @@ const DEFAULT_CONFIG = {
   autoCompact: '200k',
   stuckAfterSeconds: 30,                // waiting this long for Unity to be ready marks the agent as stuck
   defaultFolder: '',
+  gamesFolder: '',                      // the folder with every game's folder, for Auto game folder (gamefolders.js)
+  autoGameFolder: false,                // a new agent whose message is about one game works in that game's folder
   extraArgs: [],                        // extra command-line flags for every agent
   env: {},                              // extra environment variables for every agent
   notifyWhenDone: true,
@@ -277,6 +280,7 @@ app.whenReady().then(() => {
   configPath = path.join(app.getPath('userData'), 'config.json');
   groupsPath = path.join(app.getPath('userData'), 'groups.json');
   agentList.init(app.getPath('userData'));
+  gameFolders.init(app.getPath('userData'));
   if (!fs.existsSync(configPath)) fs.writeFileSync(configPath, JSON.stringify(DEFAULT_CONFIG, null, 2));
 
   ipcMain.handle('config:get', () => ({ ...getConfig(), home: require('os').homedir() }));
@@ -399,6 +403,8 @@ app.whenReady().then(() => {
   ipcMain.handle('agent:followups', (_e, input) => (getConfig().suggestFollowUps ? suggestFollowUps(getConfig(), input || {}) : []));
   ipcMain.handle('notes:merge', (_e, input) => mergeNotes(getConfig(), input || {}));
   ipcMain.handle('agent:title', (_e, text) => (getConfig().summarizeTitles ? summarizeTitle(getConfig(), text) : null));
+  ipcMain.handle('gamefolder:quick', (_e, text, current) => gameFolders.quick(getConfig().gamesFolder, String(text || ''), current || ''));
+  ipcMain.handle('gamefolder:lookup', (_e, text, current) => gameFolders.lookup(getConfig().gamesFolder, String(text || ''), current || '', (q, o) => pickGame(getConfig(), q, o)));
   ipcMain.handle('agent:rate', (_e, text, context) => rateTask(getConfig(), String(text || ''), String(context || '')));
   // Clicking a notification opens its agent. The app keeps each notification
   // until it closes, or Windows would forget the click handler.

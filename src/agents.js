@@ -582,4 +582,36 @@ function fetchUsage(config) {
   });
 }
 
-module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, rateTask, mergeNotes, suggestFollowUps, fetchUsage };
+// Auto game folder's slow step (gamefolders.js): Haiku answers the question
+// with { game, name }. With a task to read it gets only the Tactile PM
+// connector's pm_get_task, its tools loaded on demand (loading every
+// connector's tools up front costs fifty times more). Resolves with null
+// when it fails or takes too long.
+function pickGame(config, question, { task = null } = {}) {
+  return new Promise(resolve => {
+    const args = ['-p', '--model', 'haiku', '--output-format', 'json', '--no-session-persistence'];
+    if (task) args.push('--tools', 'ToolSearch', '--allowedTools', 'ToolSearch,mcp__claude_ai_Tactile_PM__pm_get_task');
+    else args.push('--strict-mcp-config', '--tools', '');
+    const proc = spawnClaude(config.claudePath, args,
+      { cwd: os.tmpdir(), env: { ...childEnv(config.env), ENABLE_TOOL_SEARCH: 'true' }, stdio: ['pipe', 'pipe', 'ignore'] });
+    helperProcesses.add(proc);
+    let out = '';
+    const timer = setTimeout(() => { killTree(proc); }, task ? 25000 : 12000);
+    proc.stdout.on('data', d => { out += d; });
+    proc.on('error', () => resolve(null));
+    proc.on('close', () => {
+      clearTimeout(timer);
+      helperProcesses.delete(proc);
+      try {
+        const result = JSON.parse(out);
+        if (result.is_error) return resolve(null);
+        resolve(JSON.parse(/\{[\s\S]*\}/.exec(String(result.result || ''))[0]));
+      } catch {
+        resolve(null);
+      }
+    });
+    proc.stdin.end(question);
+  });
+}
+
+module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, rateTask, pickGame, mergeNotes, suggestFollowUps, fetchUsage };
