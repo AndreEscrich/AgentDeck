@@ -54,6 +54,10 @@ contextBridge.exposeInMainWorld('deck', {
   restoreToHistory: ids => ipcRenderer.invoke('history:restore', ids),
   // A diff the agent or you asked for (see branchdiff.js).
   runDiff: (cwd, command) => ipcRenderer.invoke('diff:run', cwd, command),
+  // A shell command from an answer, run by its Run button (see commands.js).
+  runCommand: (id, cwd, command) => ipcRenderer.invoke('command:run', id, cwd, command),
+  stopCommand: id => ipcRenderer.invoke('command:stop', id),
+  onCommandOutput: fn => on('command:output', fn),
   // cached: the list read last with the same settings, or null.
   svnBranches: cached => ipcRenderer.invoke('svn:branches', !!cached),
   svnBranchDiff: (project, branch) => ipcRenderer.invoke('svn:branchDiff', project, branch),
