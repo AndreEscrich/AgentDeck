@@ -536,6 +536,82 @@ function addJsonCopy(root) {
   }
 }
 
+// A shell command in an answer (```bash, or ```powershell on Windows) gets
+// Copy and Run buttons, like in Claude's desktop app. Run runs it in the
+// agent's folder (commands.js) and shows its output under the block; Stop
+// ends it while it runs.
+const SHELL_LANGS = window.deck.platform === 'win32'
+  ? /\blanguage-(powershell|pwsh|ps1)\b/
+  : /\blanguage-(bash|sh|zsh|shell)\b/;
+const commandOutputs = new Map();
+window.deck.onCommandOutput((id, text) => commandOutputs.get(id)?.(text));
+let commandCount = 0;
+
+function addShellRun(root, cwd) {
+  for (const code of root.querySelectorAll('pre > code')) {
+    if (!SHELL_LANGS.test(code.className)) continue;
+    const command = code.textContent.replace(/\n$/, '');
+    if (!command.trim()) continue;
+    const pre = code.parentElement;
+    const wrap = el('div', 'code-copy-wrap code-run-wrap');
+    pre.replaceWith(wrap);
+    const actions = el('div', 'code-actions');
+    const copy = el('button', 'code-copy', 'Copy');
+    copy.type = 'button';
+    copy.title = 'Copy this command';
+    copy.onclick = async e => {
+      e.stopPropagation();
+      try {
+        await window.deck.copyText(command);
+        copy.textContent = 'Copied';
+        window.uiSound?.('tick');
+      } catch {
+        copy.textContent = 'Could not copy';
+      }
+      setTimeout(() => { copy.textContent = 'Copy'; }, 1600);
+    };
+    const runButton = el('button', 'code-copy code-run', '▶ Run');
+    runButton.type = 'button';
+    runButton.title = `Run this command in ${cwd || 'your home folder'}`;
+    let id = null;
+    let output = null;
+    runButton.onclick = async e => {
+      e.stopPropagation();
+      if (id) { window.deck.stopCommand(id); return; }
+      id = `cmd-${Date.now()}-${++commandCount}`;
+      if (!output) {
+        output = el('div', 'code-run-output');
+        output.append(el('div', 'code-run-status'), el('pre', 'code-run-text'));
+        wrap.after(output);
+      }
+      const status = output.firstChild;
+      const text = output.lastChild;
+      text.textContent = '';
+      text.hidden = true;
+      status.className = 'code-run-status running';
+      status.textContent = 'Running…';
+      runButton.textContent = '■ Stop';
+      runButton.title = 'Stop this command';
+      commandOutputs.set(id, chunk => {
+        const atEnd = text.scrollTop + text.clientHeight >= text.scrollHeight - 4;
+        text.hidden = false;
+        text.textContent = (text.textContent + chunk).slice(-200000);
+        if (atEnd) text.scrollTop = text.scrollHeight;
+      });
+      const { code: exit } = await window.deck.runCommand(id, cwd, command);
+      commandOutputs.delete(id);
+      id = null;
+      status.className = `code-run-status ${exit === 0 ? 'ok' : 'failed'}`;
+      status.textContent = exit === 0 ? 'Done' : exit == null ? 'Stopped' : exit === -1 ? 'Could not start' : `Failed (exit code ${exit})`;
+      if (exit === 0 && !text.textContent) status.textContent = 'Done, no output';
+      runButton.textContent = '▶ Run again';
+      runButton.title = `Run this command again in ${cwd || 'your home folder'}`;
+    };
+    actions.append(copy, runButton);
+    wrap.append(pre, actions);
+  }
+}
+
 // "You asked" cards standing beside the message box (Transcript.placePin)
 // go back to their chats: when another agent's card takes the place, or the
 // view changes (app.js show()). keep: a card to leave where it is.
@@ -614,6 +690,7 @@ function markdown(text, cwd) {
   }
   decorateLinks(div);
   addJsonCopy(div);
+  addShellRun(div, cwd);
   // Tables go in a box that can grow past the chat into the window's free
   // space, and scrolls sideways when even that is not enough (fitTables).
   for (const table of div.querySelectorAll('table')) {

@@ -12,6 +12,7 @@ const connectors = require('./connectors');
 const auth = require('./auth');
 const agentList = require('./agentlist');
 const { runDiff } = require('./branchdiff');
+const commands = require('./commands');
 const svnBranches = require('./svnbranches');
 const handoff = require('./handoff');
 const { activity } = require('./activity');
@@ -255,6 +256,8 @@ app.whenReady().then(() => {
   ipcMain.handle('session:contextSize', (_e, file) => (typeof file === 'string' ? handoff.contextSize(file) : 0));
   ipcMain.handle('session:handoff', (_e, file, title) => (typeof file === 'string' ? handoff.handoff(getConfig(), file, String(title || '')) : null));
   ipcMain.handle('diff:run', (_e, cwd, command) => runDiff(cwd, command));
+  ipcMain.handle('command:run', (_e, id, cwd, command) => commands.run(getConfig(), String(id), cwd, command, send));
+  ipcMain.handle('command:stop', (_e, id) => commands.stop(String(id)));
   // The Branches view (renderer/branches.js, src/svnbranches.js).
   ipcMain.handle('svn:branches', (_e, cached) => (cached ? svnBranches.cachedBranches : svnBranches.listBranches)(getConfig(), app.getPath('userData')));
   ipcMain.handle('github:branchDiff', (e, item) => require('./githubbranches').githubDiff(item, path.join(app.getPath('userData'), 'branch-diffs'), progress => {
@@ -510,12 +513,13 @@ function quitNow() {
 }
 
 app.on('before-quit', event => {
-  if (allowStop(event)) agents.closeAll();
+  if (allowStop(event)) { agents.closeAll(); commands.stopAll(); }
 });
 // Quit normally (and stop the agents) also when the app is stopped with
 // Ctrl-C in the terminal that runs `npm start`.
 process.on('SIGINT', () => app.quit());
 app.on('window-all-closed', () => {
   agents.closeAll();
+  commands.stopAll();
   if (process.platform !== 'darwin') app.quit();
 });
