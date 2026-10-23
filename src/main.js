@@ -46,8 +46,10 @@ const DEFAULT_CONFIG = {
   hubAfterSend: true,                   // show the Hub after you send a message
   summarizeTitles: true,                // title new agents with a short summary of your message
   suggestFollowUps: true,               // after a task, suggest the messages you will likely send next
-  svnServer: 'svn+ssh://svn@tactile.build',   // the Branches view reads <svnServer>/<svnProject>/branches
-  svnProject: 'MergeTavern',
+  svnServer: 'svn+ssh://svn@tactile.build',   // the Branches view reads <svnServer>/<project>/branches
+  svnProjects: ['MergeTavern'],         // empty: every project on the server (older settings: svnProject, one project)
+  svnBranchFilter: [],                  // only branches whose names start with one of these (all when empty)
+  githubBranches: false,                // also list your GitHub pull requests and branches (githubbranches.js)
   theme: 'default',                     // default | mother (the retro terminal of Alien)
   curvedScreen: true,                   // the retro theme bends the picture like a tube's glass
 };
@@ -85,7 +87,9 @@ function popupMenu(items) {
 
 function getConfig() {
   try {
-    return { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(configPath, 'utf8')) };
+    const saved = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    if (!Array.isArray(saved.svnProjects) && typeof saved.svnProject === 'string') saved.svnProjects = [saved.svnProject].filter(Boolean);
+    return { ...DEFAULT_CONFIG, ...saved };
   } catch {
     return { ...DEFAULT_CONFIG };
   }
@@ -249,9 +253,12 @@ app.whenReady().then(() => {
   ipcMain.handle('session:handoff', (_e, file, title) => (typeof file === 'string' ? handoff.handoff(getConfig(), file, String(title || '')) : null));
   ipcMain.handle('diff:run', (_e, cwd, command) => runDiff(cwd, command));
   // The Branches view (renderer/branches.js, src/svnbranches.js).
-  ipcMain.handle('svn:branches', () => svnBranches.listBranches(getConfig()));
-  ipcMain.handle('svn:branchDiff', (e, branch) => svnBranches.branchDiff(getConfig(), String(branch || ''), path.join(app.getPath('userData'), 'branch-diffs'), progress => {
-    if (!e.sender.isDestroyed()) e.sender.send('svn:branchProgress', String(branch || ''), progress);
+  ipcMain.handle('svn:branches', (_e, cached) => (cached ? svnBranches.cachedBranches : svnBranches.listBranches)(getConfig(), app.getPath('userData')));
+  ipcMain.handle('github:branchDiff', (e, item) => require('./githubbranches').githubDiff(item, path.join(app.getPath('userData'), 'branch-diffs'), progress => {
+    if (!e.sender.isDestroyed()) e.sender.send('svn:branchProgress', String(item?.project || ''), String(item?.number || item?.branch || ''), progress);
+  }));
+  ipcMain.handle('svn:branchDiff', (e, project, branch) => svnBranches.branchDiff(getConfig(), String(project || ''), String(branch || ''), path.join(app.getPath('userData'), 'branch-diffs'), progress => {
+    if (!e.sender.isDestroyed()) e.sender.send('svn:branchProgress', String(project || ''), String(branch || ''), progress);
   }));
   ipcMain.handle('agents:remember', (_e, entries) => agentList.remember(entries));
   ipcMain.handle('agents:list', () => agentList.list());

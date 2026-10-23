@@ -10,7 +10,6 @@
 
 const { execFile } = require('child_process');
 const fs = require('fs');
-const { net } = require('electron');
 
 const KEEP_MS = 2 * 60 * 1000;
 const cache = new Map();   // api path -> { at, promise }
@@ -34,6 +33,7 @@ async function viaWeb(apiPath) {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
+    const { net } = require('electron');
     const res = await net.fetch(`https://api.github.com/${apiPath}`, { signal: controller.signal, credentials: 'omit', headers: { Accept: 'application/vnd.github+json' } });
     clearTimeout(timer);
     return res.ok ? await res.json() : null;
@@ -105,4 +105,4 @@ async function lookup(what) {
   }
 }
 
-module.exports = { lookup };
+module.exports = { lookup, findGh };
