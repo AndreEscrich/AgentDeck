@@ -3794,12 +3794,37 @@ function fileKey(cwd, file) {
   return IS_MAC ? p : p.toLowerCase();
 }
 
+// Who edited which file and when, for the Changes cards: a file another
+// agent edited while this agent's task ran is not this agent's work unless
+// it edited the file itself (see showGitChanges in render.js). Edits older
+// than a day are forgotten.
+const recentEdits = new Map();   // fileKey -> Map(agent id -> time)
+function noteEdit(agent, key) {
+  const now = Date.now();
+  const who = recentEdits.get(key) || new Map();
+  who.set(agent.id, now);
+  recentEdits.set(key, who);
+  if (recentEdits.size > 2000) {
+    for (const [k, w] of recentEdits) {
+      for (const [id, at] of w) if (now - at > 86400000) w.delete(id);
+      if (!w.size) recentEdits.delete(k);
+    }
+  }
+}
+// True when an agent other than this one edited the file (relative to this
+// agent's folder) since the time given.
+function editedByOther(agent, rel, since) {
+  const who = recentEdits.get(fileKey(agent.cwd, rel));
+  return !!who && [...who].some(([id, at]) => id !== agent.id && at >= (since || 0));
+}
+
 function noteClashes(agent, message) {
   for (const block of message?.content || []) {
     if (block.type !== 'tool_use' || !EDIT_TOOLS.has(block.name)) continue;
     const file = block.input?.file_path || block.input?.notebook_path;
     if (!file) continue;
     const key = fileKey(agent.cwd, file);
+    noteEdit(agent, key);
     agent.editing = agent.editing || new Map();
     agent.editing.set(key, file);
     for (const other of state.agents.values()) {
@@ -4114,8 +4139,9 @@ window.deck.onEvent((id, msg) => {
       for (const p of found?.touched || []) turn.touched.add(p);
       turn.evidence.push(...(found?.evidence || []));
     }) : Promise.resolve();
+    const since = a.snapshotAt;
     evidence.then(() => window.deck.gitChanges(a.cwd, snap))
-      .then(diff => a.transcript.showGitChanges(turn, diff, snap.kind === 'folder'))
+      .then(diff => a.transcript.showGitChanges(turn, diff, snap.kind === 'folder', { otherEdit: rel => editedByOther(a, rel, since) }))
       .then(() => saveTurnChanges(turn))
       .then(() => refreshHeaderIfCurrent(a.id))
       .catch(() => {});

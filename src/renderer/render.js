@@ -880,6 +880,54 @@ const UNITY_WAIT = /^mcp__unity__\w*(wait_for_ready|status|recompile|refresh|com
 
 const READ_ONLY = new Set(['Read', 'Grep', 'Glob', 'LS', 'WebFetch', 'WebSearch', 'TodoWrite', 'Skill', 'ToolSearch']);
 
+// The parts of a turn's evidence that can change files. A shell command is
+// split into its commands (at ; && || | and new lines), and the ones that
+// only read are left out: grep, cat, sed -n, ls, find, svn diff, git log and
+// the like, unless they write their output to a file (> or tee) or edit in
+// place (sed -i). Any other command counts, so a script or a tool nobody
+// knows still names the files it may change. A tool's input (JSON) counts
+// whole.
+const READ_COMMAND = /^(cd|pushd|popd|ls|ll|cat|bat|head|tail|less|more|grep|egrep|fgrep|rg|ag|ack|find|fd|wc|file|stat|du|df|diff|cmp|cut|sort|uniq|tr|column|nl|jq|yq|xxd|hexdump|od|strings|which|where|type|command|echo|printf|true|false|test|\[|\[\[|pwd|date|sleep|basename|dirname|realpath|readlink|tree|sed|awk|gawk|for|while|until|if|elif|else|then|do|done|fi|case|esac|setopt|set|export|local|read|wait|time|svn +(st|stat|status|di|diff|log|info|cat|ls|list|blame|praise|annotate)|git +(status|diff|log|show|blame|ls-files|rev-parse|branch|grep|config +--get))\b/i;
+const WRITES = /(^|[^0-9&<>])>>?\s*(?!&|\/dev\/null)|\btee\b|\b(sed|perl|ruby)\b[^|;&]*\s-[a-z]*i|\bawk\b[^|;&]*-i\s*inplace|\bfind\b[^|;&]*-(delete|exec|execdir)\b/i;
+// A shell command split at ; && || | and new lines that are not inside
+// quotes (grep -E "a|b" stays one part).
+function shellParts(text) {
+  const parts = [];
+  let cur = '';
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '\\' && quote !== "'") { cur += c + (text[i + 1] || ''); i++; continue; }
+    if (quote) { if (c === quote) quote = null; cur += c; continue; }
+    if (c === '"' || c === "'") { quote = c; cur += c; continue; }
+    if (c === '\n' || c === ';' || c === '|' || (c === '&' && text[i + 1] === '&')) {
+      parts.push(cur.trim());
+      cur = '';
+      if ((c === '|' && text[i + 1] === '|') || c === '&') i++;
+      continue;
+    }
+    cur += c;
+  }
+  parts.push(cur.trim());
+  return parts.filter(Boolean);
+}
+
+function writingEvidence(turn) {
+  const all = turn.evidence || [];
+  if (turn.writing && turn.writingFrom === all.length) return turn.writing;
+  turn.writing = all.map(text => {
+    if (/^\s*[{[]/.test(text)) return text;
+    return shellParts(text).map(part => part
+      // Leading words that are not the command: env assignments, "do", "(",
+      // "x=$(" (the command inside counts).
+      .replace(/^(\w+=\$\(|[({!]\s*|\$\(|\w+=("[^"]*"|'[^']*'|[^\s$]*)\s+|\b(do|then|else|time|sudo|command)\s+)+/g, ''))
+      .filter(part => part && (!READ_COMMAND.test(part) || WRITES.test(part)))
+      .join('\n');
+  }).filter(Boolean);
+  turn.writingFrom = all.length;
+  return turn.writing;
+}
+
 // Splits the output of `git diff` into one entry per file.
 // A binary file the task added or removed (git's "Binary files … differ").
 const addedOrRemovedBinary = f => (f.status === 'new' || f.status === 'del') && f.lines.some(([, t]) => /^Binary files /.test(t || ''));
@@ -1688,15 +1736,24 @@ class Transcript {
     return { name: 'waiting for Unity', summary: w.summary, since: w.since, count: w.count > 1 ? w.count : undefined };
   }
 
-  // True when the agent changed this file (path relative to its folder): it
-  // edited or wrote it, or named it in a command, a script or a tool's input.
-  agentTouched(turn, rel) {
+  // True when the agent edited or wrote this file (path relative to its
+  // folder) with its own tools, or one of its sub-agents did.
+  agentEdited(turn, rel) {
     const abs = this.cwd ? `${this.cwd.replace(/[\\/]$/, '')}/${rel}` : rel;
     if (turn.touched?.has(abs) || turn.touched?.has(rel)) return true;
     // The tools report paths with the system's separator (\ on Windows).
-    if ([...(turn.touched || [])].some(p => this.relativePath(p).replace(/\\/g, '/').toLowerCase() === rel.toLowerCase())) return true;
+    return [...(turn.touched || [])].some(p => this.relativePath(p).replace(/\\/g, '/').toLowerCase() === rel.toLowerCase());
+  }
+
+  // True when the agent changed this file (path relative to its folder): it
+  // edited or wrote it, or named it in a command that can write files, a
+  // script or a tool's input. A command that only reads (grep, cat, sed -n,
+  // svn diff) does not count: another agent in the same folder may have
+  // changed the file the agent was only looking at.
+  agentTouched(turn, rel) {
+    if (this.agentEdited(turn, rel)) return true;
     const name = rel.split('/').pop();
-    return (turn.evidence || []).some(text => text.includes(rel) || text.includes(name));
+    return writingEvidence(turn).some(text => text.includes(rel) || text.includes(name));
   }
 
   // True when the agent worked in this file's folder: it named the folder
@@ -1708,7 +1765,7 @@ class Transcript {
     if (!dir) return false;
     const inDir = p => this.relativePath(p).replace(/\\/g, '/').toLowerCase().startsWith(dir.toLowerCase() + '/');
     if ([...(turn.touched || [])].some(inDir)) return true;
-    return (turn.evidence || []).some(text => text.replace(/\\/g, '/').includes(dir));
+    return writingEvidence(turn).some(text => text.replace(/\\/g, '/').includes(dir));
   }
 
   // True when a command or tool input named a deleted file by a path of at
@@ -1827,14 +1884,19 @@ class Transcript {
   // includes files changed by shell commands. A folder snapshot records only
   // code files, so with merge=true the Edit/Write reports for other files
   // (for example a .prefab) are kept.
-  async showGitChanges(turn, diffText, merge) {
+  // otherEdit(path): true when another agent edited that file during this
+  // task (see editedByOther in app.js).
+  async showGitChanges(turn, diffText, merge, { otherEdit = null } = {}) {
     if (!turn || diffText == null) return;
     turn.gitShown = true;
     // The snapshot also catches changes you (or other agents) made in the same
-    // folder while this agent worked. Only files the agent touched stay.
-    const files = pairMoves(parseUnifiedDiff(diffText)).filter(f => !isTempFile(f.path) && (this.agentTouched(turn, f.path) || (f.from && this.agentTouched(turn, f.from))
+    // folder while this agent worked. Only files the agent touched stay, and
+    // a file another agent edited meanwhile only when this agent edited it too.
+    const own = f => this.agentEdited(turn, f.path) || (f.from && this.agentEdited(turn, f.from));
+    const files = pairMoves(parseUnifiedDiff(diffText)).filter(f => !isTempFile(f.path) && (own(f) || (!otherEdit?.(f.path)
+      && (this.agentTouched(turn, f.path) || (f.from && this.agentTouched(turn, f.from))
       || (addedOrRemovedBinary(f) && this.folderTouched(turn, f.path))
-      || (f.status === 'del' && this.folderNamed(turn, f.path))));
+      || (f.status === 'del' && this.folderNamed(turn, f.path))))));
     if (merge) {
       await this.pruneMissing(turn).catch(() => {});
       // The snapshot's paths use /, the Edit/Write reports the system's own
