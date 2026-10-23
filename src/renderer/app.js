@@ -1144,6 +1144,24 @@ function renderBroadcast() {
   bar.appendChild(clear);
 }
 
+// A command run with the Run button under an agent's answer (addShellRun in
+// render.js) goes to the agent the way Claude's desktop app sends it: as
+// Claude Code's own record of a shell command you ran (what !command writes
+// in the terminal), so the agent goes on from its result. The chat shows it
+// as a note, not as your message, and Auto does not rate it. A command you
+// stopped sends nothing.
+const SHELL_RUN = /^<bash-input>/;
+const RAN_OUTPUT_MAX = 4000;
+document.addEventListener('command-ran', e => {
+  const { command, exit, output } = e.detail;
+  if (exit == null) return;
+  const a = [...state.agents.values()].find(x => x.transcript?.root.contains(e.target));
+  if (!a) return;
+  const tail = output.length > RAN_OUTPUT_MAX ? `…${output.slice(-RAN_OUTPUT_MAX)}` : output;
+  const failed = exit === 0 ? '' : exit === -1 ? 'Could not start' : `Exit code ${exit}`;
+  sendToHubItem(a.id, `<bash-input>${command}</bash-input><bash-stdout>${tail.replace(/\n$/, '')}</bash-stdout><bash-stderr>${failed}</bash-stderr>`);
+});
+
 // One agent on the Hub gets your message, the same as from its own chat.
 async function sendToHubItem(id, text, images = []) {
   if (id.startsWith('p:')) {
@@ -3399,7 +3417,7 @@ async function summarizeTitle(agent, prompt) {
 // The full message is in the tile's tooltip.
 function notePrompt(agent, text) {
   text = String(text || '').trim();
-  if (!text) return;
+  if (!text || SHELL_RUN.test(text)) return;
   agent.latestPrompt = text;
   agent.latestTitle = text.split('\n')[0].slice(0, 80);
   taskType.start(agent, text);
@@ -3465,7 +3483,7 @@ async function sendToAgent(agent, text, images = []) {
   // command is rated by what you wrote after it (a command alone keeps the
   // model).
   const rateText = isSlashCommand(text) ? text.trimStart().replace(SLASH_NAME, '').trim() : text;
-  if (agent.choice?.model === 'auto' && agent.autoSent && rateText) {
+  if (agent.choice?.model === 'auto' && agent.autoSent && rateText && !SHELL_RUN.test(text)) {
     const current = agent.autoLevel || 2;
     const lastStatus = agent.status;
     let haiku = null;
@@ -3517,8 +3535,9 @@ async function sendToAgent(agent, text, images = []) {
   // After "Undo last prompt", the agent learns that its files are back as
   // they were before its last task (the chat shows your message as you wrote it).
   // A / command (a skill or a custom command) must start the message, or
-  // Claude Code does not run it: the notes below then wait for your next message.
-  if (!isSlashCommand(text)) {
+  // Claude Code does not run it: the notes below then wait for your next
+  // message, and so do they for a Run button's command (SHELL_RUN).
+  if (!isSlashCommand(text) && !SHELL_RUN.test(text)) {
     if (agent.pendingPreamble) {
       text = agent.pendingPreamble + text;
       agent.pendingPreamble = null;

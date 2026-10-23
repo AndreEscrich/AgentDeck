@@ -2337,6 +2337,17 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
   border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-dim); opacity: 0.85; }
 .code-copy:hover { opacity: 1; color: var(--text); border-color: var(--text-faint); }
 .code-copy-wrap > pre { padding-top: 30px; }
+.code-actions { position: absolute; top: 6px; right: 6px; display: flex; gap: 6px; }
+.code-actions .code-copy { position: static; }
+.code-run { color: var(--ok); }
+.code-run-wrap { margin-bottom: 0.9em; }
+.code-run-wrap:has(+ .code-run-output) { margin-bottom: 6px; }
+.msg-text .code-run-wrap > pre { margin: 0; }
+.code-run-output { margin: 0 0 0.9em; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.code-run-status { padding: 4px 10px; font-size: 11.5px; color: var(--text-dim); background: var(--bg-panel); }
+.code-run-status.ok { color: var(--ok); }
+.code-run-status.failed { color: var(--err); }
+.msg-text pre.code-run-text { margin: 0; border-radius: 0; max-height: 320px; overflow-y: auto; font-size: 12px; }
 
 /* Cortex links: page cards, like Jira tickets (see cortexCard in render.js). */
 .cortex-card { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; vertical-align: middle;

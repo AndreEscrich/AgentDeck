@@ -53,6 +53,12 @@ const DIFF_PROMPT = [
   'Never paste a diff or parts of one into your message, also not in a diff code block: Agent Hub cannot show a pasted excerpt as well as the real diff.',
 ].join(' ');
 
+// A command for the user to run gets a Run button in the chat (commands.js),
+// when it is in a code block of the shell's language. Run while the agent
+// sends it the result (command-ran in app.js).
+const RUN_LANG = process.platform === 'win32' ? 'powershell, one command per block, without a prompt' : 'bash, one command per block, without a leading $';
+const RUN_PROMPT = `When you give the user a command to run, put it in its own code block tagged ${RUN_LANG} or output in the block: Agent Hub shows a Run button on it that runs it in your folder and shows the output. When you need its result to go on, end your turn there: when the user runs it with that button, you receive it as a shell command they ran (<bash-input>, <bash-stdout>, and in <bash-stderr> the exit code when it failed), and you continue from it.`;
+
 // Progress for long tasks with several parts: Agent Hub shows these lines
 // in a Progress panel at the top of the task in the chat (milestones in
 // render.js), without a notification.
@@ -64,7 +70,7 @@ const MILESTONE_PROMPT = [
   'Keep each one to a single line, write them only for tasks with several parts, and not in your final message.',
 ].join(' ');
 
-const SYSTEM_PROMPT = `${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}\n\n${MILESTONE_PROMPT}`;
+const SYSTEM_PROMPT = `${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}\n\n${RUN_PROMPT}\n\n${MILESTONE_PROMPT}`;
 
 // 'auto', or the size in tokens when it is between 100k and 1M (false otherwise).
 function compactTokens(value) {
