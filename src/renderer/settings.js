@@ -50,6 +50,11 @@ function settingsText(value, placeholder) {
   return area;
 }
 
+// Names separated by commas, spaces or lines, each once.
+function settingsList(text) {
+  return [...new Set(String(text || '').split(/[\s,]+/).filter(Boolean))];
+}
+
 // Opens the screen. config: the settings now; onSaved(config) after a save.
 function openSettings(config, { onSaved } = {}) {
   if (document.querySelector('.settings-modal')) return;
@@ -70,6 +75,17 @@ function openSettings(config, { onSaved } = {}) {
   };
   const folderRow = el('div', 'settings-inline');
   folderRow.append(folder, pick);
+  const gamesFolder = settingsInput('text', config.gamesFolder, { placeholder: 'For example ~/svn' });
+  const pickGames = el('button', null, 'Choose…');
+  pickGames.type = 'button';
+  pickGames.onclick = async e => {
+    e.preventDefault();
+    const chosen = await window.deck.pickFolder();
+    if (chosen) gamesFolder.value = chosen;
+  };
+  const gamesRow = el('div', 'settings-inline');
+  gamesRow.append(gamesFolder, pickGames);
+  const autoGame = settingsInput('checkbox', config.autoGameFolder);
   const mode = settingsSelect(PERMISSION_MODES.map(m => [m.value, m.label]), config.defaultPermissionMode || 'bypassPermissions');
   // The same choices as the model menu (Auto, Opus, Sonnet, Haiku, Fable); a
   // saved choice that is no longer in it stays listed so it is not lost.
@@ -93,7 +109,9 @@ function openSettings(config, { onSaved } = {}) {
   const curved = settingsInput('checkbox', config.curvedScreen !== false);
 
   // Branch diff
-  const svnProject = settingsInput('text', config.svnProject || '', { placeholder: 'MergeTavern' });
+  const svnProjects = settingsInput('text', svnProjectList(config).join(', '), { placeholder: 'Every project' });
+  const svnBranchFilter = settingsInput('text', (config.svnBranchFilter || []).join(', '), { placeholder: 'Every branch' });
+  const githubBranches = settingsInput('checkbox', config.githubBranches);
 
   // Stuck agents
   const stuckAfter = settingsInput('number', config.stuckAfterSeconds, { min: 5, step: 5 });
@@ -111,6 +129,8 @@ function openSettings(config, { onSaved } = {}) {
   body.append(
     section('New agents',
       settingsField('Folder', 'Where a new agent works until you pick one in the Hub', folderRow),
+      settingsField('Games folder', 'The folder with one folder per game', gamesRow),
+      settingsField('Auto game folder', 'A new agent whose message is about one game (by any of its names, or a PM task about it) works in that game\'s folder, for that agent only. About no game or several: the folder you picked', autoGame),
       settingsField('Permissions', null, mode),
       settingsField('Model', 'Auto picks Opus, Sonnet or Haiku for each task', model),
       settingsField('Auto model report', 'What Auto cost against running everything on Opus at medium effort', reportBtn),
@@ -126,7 +146,9 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('Notifications', 'When an agent finishes or needs you while the app is in the background', notify),
       settingsField('Sounds', 'For everything you and the agents do', sounds)),
     section('Branch diff',
-      settingsField('Project', `The Branches view lists ${(config.svnServer || 'svn+ssh://svn@tactile.build').replace(/\/+$/, '')}/<project>/branches`, svnProject)),
+      settingsField('Projects', `The Branches view lists ${(config.svnServer || 'svn+ssh://svn@tactile.build').replace(/\/+$/, '')}/<project>/branches for each one. Separate them with commas. Empty: every project someone committed to in the last year`, svnProjects),
+      settingsField('Branch names', 'Only branches whose names start with one of these. Separate them with commas. Empty: every branch', svnBranchFilter),
+      settingsField('GitHub', 'Also list your open pull requests and the branches you pushed in the last 90 days, for the account gh is signed in with', githubBranches)),
     section('Stuck agents',
       settingsField('Waiting for Unity for', 'Seconds. An agent only counts as stuck while it waits for Unity to be ready', stuckAfter)),
     section('Claude Code',
@@ -175,6 +197,8 @@ function openSettings(config, { onSaved } = {}) {
     }
     const next = {
       defaultFolder: folder.value.trim(),
+      gamesFolder: gamesFolder.value.trim().replace(/^~(?=$|[\\/])/, config.home || '~'),
+      autoGameFolder: autoGame.checked,
       defaultPermissionMode: mode.value,
       defaultModel: model.value,
       defaultEffort: effort.value,
@@ -188,7 +212,9 @@ function openSettings(config, { onSaved } = {}) {
       theme: theme.value,
       curvedScreen: curved.checked,
       stuckAfterSeconds: number(stuckAfter, 30),
-      svnProject: svnProject.value.trim().replace(/^\/+|\/+$/g, ''),
+      svnProjects: settingsList(svnProjects.value).map(p => p.replace(/^\/+|\/+$/g, '')).filter(Boolean),
+      svnBranchFilter: settingsList(svnBranchFilter.value),
+      githubBranches: githubBranches.checked,
       claudePath: claudePath.value.trim(),
       extraArgs: extraArgs.value.split('\n').map(l => l.trim()).filter(Boolean),
       env: envVars,

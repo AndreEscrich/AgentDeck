@@ -1,6 +1,7 @@
 // The Branches view (renderer/branches.js): an SVN branch's own changes, as
 // a diff and a class diagram. The branches are those under
-// <svnServer>/<project>/branches (Settings → Branch diff project).
+// <svnServer>/<project>/branches, for each project in Settings → Branch diff,
+// whose names start with one of the names there (all when there are none).
 //
 // "Its own changes" leaves out what came in from trunk, two ways at once:
 // - The diff is taken from trunk at the newest trunk revision merged into the
@@ -18,6 +19,9 @@
 // changed C# files are fetched (svn cat) into a cache folder in the app's
 // settings folder, one per branch revision.
 //
+// With Settings → Branch diff → GitHub on, your GitHub pull requests and
+// branches are listed with them (see githubbranches.js).
+//
 // Only reading commands run (svn ls, log, info, mergeinfo, diff, cat), with
 // --non-interactive, so a missing password fails instead of waiting; for a
 // package it changed, git clone, fetch, diff and show (see packagediff.js).
@@ -34,9 +38,18 @@ const SVN_MISSING = process.platform === 'win32'
   ? 'The svn command was not found. Install TortoiseSVN with "command line client tools" turned on, then restart Agent Hub.'
   : 'The svn command was not found. Install it (brew install subversion), then restart Agent Hub.';
 
+// Each svn+ssh call opens an ssh connection, which takes most of a call's
+// time (about a second). On macOS and Linux they share one connection that
+// stays open for a minute (ssh ControlMaster), unless you set SVN_SSH
+// yourself; Windows' ssh cannot. Read at each call: main.js extends PATH
+// after this file is loaded.
+const svnEnv = () => (process.platform === 'win32' || process.env.SVN_SSH
+  ? process.env
+  : { ...process.env, SVN_SSH: 'ssh -o ControlMaster=auto -o ControlPath=/tmp/agenthub-svn-%C -o ControlPersist=60' });
+
 function svn(args, { timeout = 120000 } = {}) {
   return new Promise(resolve => {
-    execFile('svn', [...args, '--non-interactive'], { maxBuffer: 120 * 1024 * 1024, timeout, windowsHide: true }, (err, stdout, stderr) => {
+    execFile('svn', [...args, '--non-interactive'], { maxBuffer: 120 * 1024 * 1024, timeout, windowsHide: true, env: svnEnv() }, (err, stdout, stderr) => {
       if (err) resolve({ ok: false, error: err.code === 'ENOENT' ? SVN_MISSING : String(stderr || err.message).trim().split('\n').slice(0, 6).join('\n') });
       else resolve({ ok: true, out: stdout });
     });
@@ -46,40 +59,144 @@ function svn(args, { timeout = 120000 } = {}) {
 const unxml = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
 const tag = (xml, name) => { const m = new RegExp(`<${name}[^>]*>([\\s\\S]*?)</${name}>`).exec(xml); return m ? unxml(m[1]) : null; };
 
-function projectUrl(config) {
+// The projects to list. None: every project on the server (see allProjects).
+function projects(config) {
+  const list = Array.isArray(config.svnProjects) ? config.svnProjects : [];
+  return [...new Set(list.map(p => String(p || '').trim().replace(/^\/+|\/+$/g, '')).filter(Boolean))];
+}
+
+// The branch names to list: their starts, lowercase (all when empty).
+function branchFilter(config) {
+  const list = Array.isArray(config.svnBranchFilter) ? config.svnBranchFilter : [];
+  return list.map(f => String(f || '').trim().toLowerCase()).filter(Boolean);
+}
+
+function projectUrl(config, project) {
   const server = String(config.svnServer || DEFAULT_SERVER).replace(/\/+$/, '');
-  const project = String(config.svnProject || '').trim().replace(/^\/+|\/+$/g, '');
-  if (!project) return null;
   return `${server}/${project}`;
 }
+
+// Every project on the server worth reading: its top folders, without those
+// nobody committed to for a year (old games, art and test projects) and
+// those that had no branches folder at the revision they still have (in
+// noBranches: project -> revision). The trailing @ keeps svn from reading
+// the user@host part of the url as a revision.
+const INACTIVE_DAYS = 365;
+async function allProjects(config, noBranches) {
+  const server = String(config.svnServer || DEFAULT_SERVER).replace(/\/+$/, '');
+  const r = await svn(['ls', '--xml', `${server}/@`], { timeout: 60000 });
+  if (!r.ok) return r;
+  const since = Date.now() - INACTIVE_DAYS * 86400000;
+  const projects = [];
+  let inactive = 0, without = 0;
+  for (const m of r.out.matchAll(/<entry\s+kind="dir"\s*>([\s\S]*?)<\/entry>/g)) {
+    const name = tag(m[1], 'name');
+    const revision = Number(/<commit\s+revision="(\d+)"/.exec(m[1])?.[1] || 0);
+    if (!name || name === 'branches') continue;
+    if ((Date.parse(tag(m[1], 'date')) || 0) < since) inactive++;
+    else if (noBranches[name] === revision) without++;
+    else projects.push({ name, revision });
+  }
+  return { ok: true, projects, inactive, without };
+}
+
+// svn's answer for a folder that is not there.
+const NOT_FOUND = /W160013|E200009|E170000|non-existent|not found/i;
 
 // Feature branches are named <person>_<feature> (ariel_GachaCardOffer).
 // Release branches (0.29.x, 0.7.x_MysteryConcept) and other names are left
 // out of the list.
-const RELEASE = /^d+.d+/;
+const RELEASE = /^\d+\.\d+/;
 const FEATURE = /^[A-Za-z][A-Za-z0-9.-]*_[A-Za-z0-9]/;
 const isFeatureBranch = name => !RELEASE.test(name) && FEATURE.test(name);
 
-// The feature branches, newest first: [{ name, revision, author, date }],
-// and how many other branches were left out (hidden).
-async function listBranches(config) {
-  const root = projectUrl(config);
-  if (!root) return { ok: false, error: 'Set the project in Settings → Branch diff project.' };
-  const r = await svn(['ls', '--xml', `${root}/branches`], { timeout: 60000 });
-  if (!r.ok) return { ok: false, error: r.error, url: `${root}/branches` };
-  const branches = [];
-  for (const m of r.out.matchAll(/<entry\s+kind="dir"\s*>([\s\S]*?)<\/entry>/g)) {
-    const e = m[1];
-    branches.push({
-      name: tag(e, 'name'),
-      revision: Number(/<commit\s+revision="(\d+)"/.exec(e)?.[1] || 0),
-      author: tag(e, 'author') || '',
-      date: tag(e, 'date') || '',
-    });
+// The feature branches of every project, newest first:
+// [{ project, name, revision, author, date }], and per project its url, how
+// many other branches were left out (hidden), how many the name filter left
+// out (filtered), or why it could not be read (error). With every project
+// (all), those without a branches folder are left out, and 32 are read at a
+// time; the projects found without one are kept in <cacheDir>/svn-projects.json
+// for allProjects to skip. The list is kept in <cacheDir>/branch-list.json,
+// for cachedBranches.
+async function listBranches(config, cacheDir) {
+  // Your GitHub pull requests and branches, read meanwhile (see githubbranches.js).
+  const github = config.githubBranches ? require('./githubbranches').listGithub() : null;
+  let names = projects(config);
+  const all = !names.length;
+  const projectsFile = path.join(cacheDir, 'svn-projects.json');
+  let noBranches = {};
+  let skipped = null;
+  const revisions = new Map();
+  if (all) {
+    try { noBranches = JSON.parse(fs.readFileSync(projectsFile, 'utf8')).noBranches || {}; } catch { /* reads them all */ }
+    const r = await allProjects(config, noBranches);
+    if (!r.ok) return { ok: false, error: r.error };
+    for (const p of r.projects) revisions.set(p.name, p.revision);
+    names = r.projects.map(p => p.name);
+    skipped = { inactive: r.inactive, inactiveDays: INACTIVE_DAYS, noBranches: r.without };
   }
-  branches.sort((a, b) => b.revision - a.revision);
-  const features = branches.filter(b => isFeatureBranch(b.name));
-  return { ok: true, url: `${root}/branches`, branches: features, hidden: branches.length - features.length };
+  const starts = branchFilter(config);
+  const wanted = name => !starts.length || starts.some(s => name.toLowerCase().startsWith(s));
+  const branches = [];
+  const read = async project => {
+    const url = `${projectUrl(config, project)}/branches`;
+    const r = await svn(['ls', '--xml', url], { timeout: 60000 });
+    if (!r.ok) {
+      if (!all || !NOT_FOUND.test(r.error)) return { project, url, error: r.error };
+      noBranches[project] = revisions.get(project);
+      if (skipped) skipped.noBranches++;
+      return null;
+    }
+    let hidden = 0, filtered = 0, count = 0;
+    for (const m of r.out.matchAll(/<entry\s+kind="dir"\s*>([\s\S]*?)<\/entry>/g)) {
+      const e = m[1];
+      const name = tag(e, 'name');
+      if (!isFeatureBranch(name)) { hidden++; continue; }
+      if (!wanted(name)) { filtered++; continue; }
+      count++;
+      branches.push({
+        project,
+        name,
+        revision: Number(/<commit\s+revision="(\d+)"/.exec(e)?.[1] || 0),
+        author: tag(e, 'author') || '',
+        date: tag(e, 'date') || '',
+      });
+    }
+    return { project, url, count, hidden, filtered };
+  };
+  const found = new Array(names.length);
+  let next = 0;
+  const worker = async () => { while (next < names.length) { const i = next++; found[i] = await read(names[i]); } };
+  await Promise.all(Array.from({ length: Math.min(32, names.length) }, worker));
+  const sources = found.filter(Boolean);
+  if (github) {
+    const g = await github;
+    sources.push({ project: 'GitHub', github: true, url: `https://github.com/${g.login || ''}`, ...(g.ok ? { count: g.items.length, hidden: 0, filtered: 0 } : { error: g.error }) });
+    if (g.ok) branches.push(...g.items);
+  }
+  if (!sources.length) return { ok: false, error: 'No project on the server has a branches folder.' };
+  if (sources.every(s => s.error)) return { ok: false, error: sources.map(s => `${s.project}: ${s.error}`).join('\n') };
+  branches.sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0) || b.revision - a.revision);
+  const result = { ok: true, branches, sources, filter: starts, all, skipped };
+  try {
+    if (all) fs.writeFileSync(projectsFile, JSON.stringify({ noBranches }));
+    fs.writeFileSync(path.join(cacheDir, 'branch-list.json'), JSON.stringify({ key: listKey(config), at: Date.now(), result }));
+  } catch { /* read in full and shown without a cache next time */ }
+  return result;
+}
+
+// The settings a list was read with.
+const listKey = config => JSON.stringify([String(config.svnServer || DEFAULT_SERVER), projects(config), branchFilter(config), !!config.githubBranches]);
+
+// The list listBranches read last with the same settings, with when (at), to
+// show while it reads them again; null when there is none.
+function cachedBranches(config, cacheDir) {
+  try {
+    const saved = JSON.parse(fs.readFileSync(path.join(cacheDir, 'branch-list.json'), 'utf8'));
+    return saved.key === listKey(config) ? { ...saved.result, at: saved.at } : null;
+  } catch {
+    return null;
+  }
 }
 
 // Revisions from svn mergeinfo --show-revs: "r123" lines, "r124*" for partial.
@@ -91,9 +208,10 @@ const revisions = text => [...String(text).matchAll(/^r(\d+)/gm)].map(m => Numbe
 // (commits, merges, parent); { stage: 'diff', files } with the files that
 // came in since the last one; { stage: 'fetch', done, total } while the C#
 // files are fetched.
-async function branchDiff(config, branch, cacheRoot, progress = () => {}) {
-  const root = projectUrl(config);
-  if (!root) return { ok: false, error: 'Set the project in Settings → Branch diff project.' };
+async function branchDiff(config, project, branch, cacheRoot, progress = () => {}) {
+  const listed = projects(config);
+  if (listed.length ? !listed.includes(project) : !/^[^/\\@]+$/.test(project)) return { ok: false, error: `${project || 'No project'} is not in Settings → Branch diff.` };
+  const root = projectUrl(config, project);
   if (!/^[^/\\]+$/.test(String(branch || ''))) return { ok: false, error: 'No branch.' };
   const url = `${root}/branches/${encodeURIComponent(branch).replace(/%2B/g, '+')}`;
 
@@ -185,7 +303,7 @@ async function branchDiff(config, branch, cacheRoot, progress = () => {}) {
   // diagram and the full-file views. A file the branch added is all in the
   // diff, so it is written from there; only edited files are fetched (svn cat).
   // A deleted file has nothing to fetch: the diagram reads it from the diff.
-  const cwd = path.join(cacheRoot, sanitize(config.svnProject), `${sanitize(branch)}@${head}`);
+  const cwd = path.join(cacheRoot, sanitize(project), `${sanitize(branch)}@${head}`);
   const write = (rel, content) => {
     const file = path.join(cwd, ...rel.split('/'));
     fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -247,7 +365,7 @@ async function branchDiff(config, branch, cacheRoot, progress = () => {}) {
 const BIG = 2 * 1024 * 1024;
 function svnDiffStream(args, want, tooBig) {
   return new Promise(resolve => {
-    const child = spawn('svn', [...args, '--non-interactive'], { windowsHide: true });
+    const child = spawn('svn', [...args, '--non-interactive'], { windowsHide: true, env: svnEnv() });
     const blocks = [];
     let name = null, keep = false, size = 0, lines = [];
     let rest = '';
@@ -291,4 +409,4 @@ function sanitize(s) {
   return String(s || '').replace(/[^\w.@-]+/g, '_').slice(0, 80);
 }
 
-module.exports = { listBranches, branchDiff, projectUrl, DEFAULT_SERVER };
+module.exports = { listBranches, cachedBranches, branchDiff, projects, DEFAULT_SERVER };

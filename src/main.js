@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Notification, Menu, protocol
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
-const { AgentManager, fetchModels, summarizeTitle, rateTask, mergeNotes, suggestFollowUps, fetchUsage } = require('./agents');
+const { AgentManager, fetchModels, summarizeTitle, rateTask, pickGame, mergeNotes, suggestFollowUps, fetchUsage } = require('./agents');
 const { listSessions, loadTranscript, PROJECTS_DIR } = require('./sessions');
 const git = require('./git');
 const { repoOf, branchOf } = require('./repos');
@@ -18,6 +18,7 @@ const { activity } = require('./activity');
 const updates = require('./updates');
 const undo = require('./undo');
 const csharp = require('./csharp');
+const gameFolders = require('./gamefolders');
 
 // The window loads images and videos from disk through media:// (see media.js).
 // "stream" lets video players read a file piece by piece.
@@ -39,6 +40,8 @@ const DEFAULT_CONFIG = {
   autoCompact: '200k',
   stuckAfterSeconds: 30,                // waiting this long for Unity to be ready marks the agent as stuck
   defaultFolder: '',
+  gamesFolder: '',                      // the folder with every game's folder, for Auto game folder (gamefolders.js)
+  autoGameFolder: false,                // a new agent whose message is about one game works in that game's folder
   extraArgs: [],                        // extra command-line flags for every agent
   env: {},                              // extra environment variables for every agent
   notifyWhenDone: true,
@@ -46,8 +49,10 @@ const DEFAULT_CONFIG = {
   hubAfterSend: true,                   // show the Hub after you send a message
   summarizeTitles: true,                // title new agents with a short summary of your message
   suggestFollowUps: true,               // after a task, suggest the messages you will likely send next
-  svnServer: 'svn+ssh://svn@tactile.build',   // the Branches view reads <svnServer>/<svnProject>/branches
-  svnProject: 'MergeTavern',
+  svnServer: 'svn+ssh://svn@tactile.build',   // the Branches view reads <svnServer>/<project>/branches
+  svnProjects: ['MergeTavern'],         // empty: every project on the server (older settings: svnProject, one project)
+  svnBranchFilter: [],                  // only branches whose names start with one of these (all when empty)
+  githubBranches: false,                // also list your GitHub pull requests and branches (githubbranches.js)
   theme: 'default',                     // default | mother (the retro terminal of Alien)
   curvedScreen: true,                   // the retro theme bends the picture like a tube's glass
 };
@@ -85,7 +90,9 @@ function popupMenu(items) {
 
 function getConfig() {
   try {
-    return { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(configPath, 'utf8')) };
+    const saved = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    if (!Array.isArray(saved.svnProjects) && typeof saved.svnProject === 'string') saved.svnProjects = [saved.svnProject].filter(Boolean);
+    return { ...DEFAULT_CONFIG, ...saved };
   } catch {
     return { ...DEFAULT_CONFIG };
   }
@@ -249,9 +256,12 @@ app.whenReady().then(() => {
   ipcMain.handle('session:handoff', (_e, file, title) => (typeof file === 'string' ? handoff.handoff(getConfig(), file, String(title || '')) : null));
   ipcMain.handle('diff:run', (_e, cwd, command) => runDiff(cwd, command));
   // The Branches view (renderer/branches.js, src/svnbranches.js).
-  ipcMain.handle('svn:branches', () => svnBranches.listBranches(getConfig()));
-  ipcMain.handle('svn:branchDiff', (e, branch) => svnBranches.branchDiff(getConfig(), String(branch || ''), path.join(app.getPath('userData'), 'branch-diffs'), progress => {
-    if (!e.sender.isDestroyed()) e.sender.send('svn:branchProgress', String(branch || ''), progress);
+  ipcMain.handle('svn:branches', (_e, cached) => (cached ? svnBranches.cachedBranches : svnBranches.listBranches)(getConfig(), app.getPath('userData')));
+  ipcMain.handle('github:branchDiff', (e, item) => require('./githubbranches').githubDiff(item, path.join(app.getPath('userData'), 'branch-diffs'), progress => {
+    if (!e.sender.isDestroyed()) e.sender.send('svn:branchProgress', String(item?.project || ''), String(item?.number || item?.branch || ''), progress);
+  }));
+  ipcMain.handle('svn:branchDiff', (e, project, branch) => svnBranches.branchDiff(getConfig(), String(project || ''), String(branch || ''), path.join(app.getPath('userData'), 'branch-diffs'), progress => {
+    if (!e.sender.isDestroyed()) e.sender.send('svn:branchProgress', String(project || ''), String(branch || ''), progress);
   }));
   ipcMain.handle('agents:remember', (_e, entries) => agentList.remember(entries));
   ipcMain.handle('agents:list', () => agentList.list());
@@ -270,6 +280,7 @@ app.whenReady().then(() => {
   configPath = path.join(app.getPath('userData'), 'config.json');
   groupsPath = path.join(app.getPath('userData'), 'groups.json');
   agentList.init(app.getPath('userData'));
+  gameFolders.init(app.getPath('userData'));
   if (!fs.existsSync(configPath)) fs.writeFileSync(configPath, JSON.stringify(DEFAULT_CONFIG, null, 2));
 
   ipcMain.handle('config:get', () => ({ ...getConfig(), home: require('os').homedir() }));
@@ -392,6 +403,8 @@ app.whenReady().then(() => {
   ipcMain.handle('agent:followups', (_e, input) => (getConfig().suggestFollowUps ? suggestFollowUps(getConfig(), input || {}) : []));
   ipcMain.handle('notes:merge', (_e, input) => mergeNotes(getConfig(), input || {}));
   ipcMain.handle('agent:title', (_e, text) => (getConfig().summarizeTitles ? summarizeTitle(getConfig(), text) : null));
+  ipcMain.handle('gamefolder:quick', (_e, text, current) => gameFolders.quick(getConfig().gamesFolder, String(text || ''), current || ''));
+  ipcMain.handle('gamefolder:lookup', (_e, text, current) => gameFolders.lookup(getConfig().gamesFolder, String(text || ''), current || '', (q, o) => pickGame(getConfig(), q, o)));
   ipcMain.handle('agent:rate', (_e, text, context) => rateTask(getConfig(), String(text || ''), String(context || '')));
   // Clicking a notification opens its agent. The app keeps each notification
   // until it closes, or Windows would forget the click handler.

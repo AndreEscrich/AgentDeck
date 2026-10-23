@@ -54,8 +54,11 @@ contextBridge.exposeInMainWorld('deck', {
   restoreToHistory: ids => ipcRenderer.invoke('history:restore', ids),
   // A diff the agent or you asked for (see branchdiff.js).
   runDiff: (cwd, command) => ipcRenderer.invoke('diff:run', cwd, command),
-  svnBranches: () => ipcRenderer.invoke('svn:branches'),
-  svnBranchDiff: branch => ipcRenderer.invoke('svn:branchDiff', branch),
+  // cached: the list read last with the same settings, or null.
+  svnBranches: cached => ipcRenderer.invoke('svn:branches', !!cached),
+  svnBranchDiff: (project, branch) => ipcRenderer.invoke('svn:branchDiff', project, branch),
+  // A GitHub pull request or branch from the list: { kind, project, number, branch }.
+  githubBranchDiff: item => ipcRenderer.invoke('github:branchDiff', item),
   // How far a branch's diff has come (see branchDiff's progress).
   onSvnBranchProgress: fn => on('svn:branchProgress', fn),
   // A large parent is not forked: a handoff instead (see handoff.js).
@@ -108,6 +111,8 @@ contextBridge.exposeInMainWorld('deck', {
   summarizeTitle: text => ipcRenderer.invoke('agent:title', text),
   // How hard a task is (1-3), rated by Haiku, for the Auto model.
   rateTask: (text, context) => ipcRenderer.invoke('agent:rate', text, context),
+  gameFolderQuick: (text, current) => ipcRenderer.invoke('gamefolder:quick', text, current),
+  gameFolderLookup: (text, current) => ipcRenderer.invoke('gamefolder:lookup', text, current),
   mergeNotes: input => ipcRenderer.invoke('notes:merge', input),
   followUps: input => ipcRenderer.invoke('agent:followups', input),
   notify: (id, title, body) => ipcRenderer.invoke('notify', id, title, body),

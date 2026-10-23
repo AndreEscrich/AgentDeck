@@ -1,11 +1,19 @@
 // The Branches view (the branch button on the Hub's left rail): pick an SVN
-// branch of the project in Settings → Branch diff project, and see what the
-// branch itself changed, as a Changes card with its class diagram. Changes
-// that came in from trunk are left out (see src/svnbranches.js).
+// branch of the projects in Settings → Branch diff, and see what the branch
+// itself changed, as a Changes card with its class diagram. Changes that came
+// in from trunk are left out (see src/svnbranches.js).
 //
-// Branches are listed newest first; the filter box keeps the branches whose
-// name starts with what you type. A branch's diff is kept while the app
-// runs, per revision.
+// Branches of all the projects are listed together, newest first, with your
+// GitHub pull requests and branches when Settings → Branch diff → GitHub is on
+// (see src/githubbranches.js); the filter box keeps the branches whose name
+// starts with what you type. A branch's diff is kept while the app runs, per
+// revision.
+
+// The projects in Settings (none: every project on the server).
+function svnProjectList(config) {
+  const list = Array.isArray(config.svnProjects) ? config.svnProjects : [];
+  return list.map(p => String(p || '').trim()).filter(Boolean);
+}
 
 const BRANCH_FILE_LIMIT = 2000;
 
@@ -142,14 +150,14 @@ class BranchLoading {
       this.commits.replaceChildren(...(s.commits || []).slice(0, 5).map(c => {
         const row = el('div', 'branch-commit');
         row.append(
-          el('span', 'branch-commit-rev', `r${c.revision}`),
+          el('span', 'branch-commit-rev', commitId(c)),
           el('span', 'branch-commit-msg', c.message || '(no message)'),
           el('span', 'branch-commit-meta', [c.author, c.date ? timeAgo(Date.parse(c.date)) : ''].filter(Boolean).join(' · ')),
         );
         return row;
       }));
     } else if (s.stage === 'diff') {
-      if (s.base) this.rows.diff.label.textContent = `Comparing with ${s.parent}@r${s.base}`;
+      if (s.base) this.rows.diff.label.textContent = `Comparing with ${s.parent}@${typeof s.base === 'number' ? `r${s.base}` : s.base}`;
       this.got = (this.got || 0) + (s.files || []).length;
       this.set('diff', 'active', this.expected ? `${Math.min(this.got, this.expected)} of ${this.expected} files` : `${this.got} files so far`);
       if (this.expected) this.progress('diff', this.got / this.expected);
@@ -193,6 +201,14 @@ class BranchLoading {
   }
 }
 
+// A branch in the list, and what its progress steps are sent with (see
+// main.js): an SVN branch's name, a pull request's number or a GitHub
+// branch's name.
+const branchId = b => (b.source === 'github' ? String(b.number || b.branch) : b.name);
+const branchKey = b => `${b.source || 'svn'}:${b.project}/${branchId(b)}`;
+// A commit: its revision (SVN) or short hash (git).
+const commitId = c => (c.sha ? c.sha.slice(0, 7) : `r${c.revision}`);
+
 class BranchesView {
   constructor() {
     this.view = el('div', 'view branch-view hidden');
@@ -224,8 +240,8 @@ class BranchesView {
     this.showIdle();
   }
 
-  // Shows the view; the first time (or after the project changed) it reads
-  // the branches.
+  // Shows the view; the first time (or after the projects or the branch
+  // names in Settings changed) it reads the branches.
   open(project) {
     if (project !== this.project) {
       this.project = project;
@@ -244,20 +260,51 @@ class BranchesView {
   async load(again) {
     if (this.loading) return;
     this.loading = true;
+    const project = this.project;
     if (again) window.uiSound?.('tick');
-    this.source.textContent = 'Reading the branches…';
-    this.list.replaceChildren();
+    // The list read last with the same settings, while it reads them again.
+    const cached = this.branches ? null : await window.deck.svnBranches(true).catch(() => null);
+    if (cached?.ok) this.showList(cached);
+    else if (!this.branches) this.list.replaceChildren();
+    this.source.textContent = this.branches ? `${this.source.textContent} · updating…` : 'Reading the branches…';
+    this.source.classList.remove('err');
     const r = await window.deck.svnBranches().catch(err => ({ ok: false, error: String(err?.message || err) }));
     this.loading = false;
+    // The settings changed meanwhile: read them with the new ones.
+    if (project !== this.project) return this.load(false);
     if (!r?.ok) {
+      if (this.branches) {
+        this.source.textContent = `Could not read them again: ${r?.error || 'unknown error'}`;
+        this.source.classList.add('err');
+        return;
+      }
       this.source.textContent = '';
       this.list.replaceChildren(el('div', 'note err', r?.error || 'Could not read the branches.'));
       return;
     }
+    this.showList(r);
+  }
+
+  // A list of branches (see listBranches in src/svnbranches.js); a cached
+  // one says when it was read (at).
+  showList(r) {
     this.branches = r.branches;
-    this.source.textContent = `${r.branches.length} feature branches · ${r.url}`;
-    this.source.title = `${r.url}${r.hidden ? `
-${r.hidden} release and other branches not listed (only person_feature names are)` : ''}`;
+    this.multi = r.all || r.sources.length > 1;
+    const failed = r.sources.filter(s => s.error);
+    this.source.textContent = [
+      `${r.branches.length} feature branches`,
+      r.filter.length ? `starting with ${r.filter.join(', ')}` : '',
+      r.all ? [`${r.sources.filter(s => !s.github).length} projects`, ...r.sources.filter(s => s.github).map(s => s.project)].join(', ') : r.sources.map(s => s.project).join(', '),
+      failed.length ? `${failed.length} could not be read` : '',
+      r.at ? `read ${timeAgo(r.at) === 'now' ? 'just now' : `${timeAgo(r.at)} ago`}` : '',
+    ].filter(Boolean).join(' · ');
+    this.source.title = [
+      r.skipped ? `Not read: ${r.skipped.inactive} projects nobody committed to for ${r.skipped.inactiveDays} days, ${r.skipped.noBranches} without a branches folder` : '',
+      ...r.sources.map(s => s.error
+        ? `${s.url}\n  could not be read: ${s.error}`
+        : `${s.url}\n  ${s.count} listed${s.filtered ? `, ${s.filtered} with other names left out` : ''}${s.hidden ? `, ${s.hidden} release and other branches not listed (only person_feature names are)` : ''}`),
+    ].filter(Boolean).join('\n');
+    this.source.classList.toggle('err', failed.length > 0);
     this.renderList();
   }
 
@@ -266,13 +313,23 @@ ${r.hidden} release and other branches not listed (only person_feature names are
     const q = this.filter.value.trim().toLowerCase();
     // What you type is the start of the branch's name ("esc": escrich_…).
     const shown = this.branches.filter(b => !q || b.name.toLowerCase().startsWith(q)).slice(0, 300);
+    // With SVN and GitHub branches in the list, each says which it is.
+    const mixed = this.branches.some(b => b.source === 'github') && this.branches.some(b => b.source !== 'github');
     this.list.replaceChildren();
     for (const b of shown) {
-      const row = el('button', 'branch-row' + (this.selected === b.name ? ' selected' : ''));
+      const row = el('button', 'branch-row' + (this.selected === branchKey(b) ? ' selected' : ''));
       row.type = 'button';
-      row.title = `${b.name}\nr${b.revision} by ${b.author}`;
       const when = b.date ? timeAgo(Date.parse(b.date)) : '';
-      row.append(el('span', 'branch-name', b.name), el('span', 'branch-meta', [b.author, when].filter(Boolean).join(' · ')));
+      if (b.source === 'github') {
+        row.title = `${b.url}\n${b.kind === 'pull' ? `${b.title}\n${b.branch}` : b.branch}`;
+        row.append(el('span', 'branch-name', b.name), el('span', 'branch-meta', [
+          b.kind === 'pull' ? `${b.project}#${b.number}${b.draft ? ' (draft)' : ''}` : `${b.project} branch`, when,
+        ].filter(Boolean).join(' · ')));
+      } else {
+        row.title = `${b.project}/${b.name}\nr${b.revision} by ${b.author}`;
+        row.append(el('span', 'branch-name', b.name), el('span', 'branch-meta', [this.multi ? b.project : '', b.author, when].filter(Boolean).join(' · ')));
+      }
+      if (mixed) row.lastChild.prepend(b.source === 'github' ? el('span', 'branch-kind git', 'Git') : el('span', 'branch-kind svn', 'SVN'));
       row.onclick = () => this.pick(b);
       this.list.appendChild(row);
     }
@@ -281,9 +338,9 @@ ${r.hidden} release and other branches not listed (only person_feature names are
 
   async pick(b) {
     window.uiSound?.('select');
-    this.selected = b.name;
+    this.selected = branchKey(b);
     this.renderList();
-    const key = `${b.name}@${b.revision}`;
+    const key = `${branchKey(b)}@${b.sha || b.revision}`;
     const box = el('div', 'branch-result');
     box.append(el('div', 'branch-title', b.name));
     this.main.replaceChildren(box);
@@ -292,15 +349,17 @@ ${r.hidden} release and other branches not listed (only person_feature names are
     if (!this.results.has(key)) {
       const loading = new BranchLoading(b.name);
       this.loadings.set(key, loading);
-      const stop = window.deck.onSvnBranchProgress?.((name, step) => { if (name === b.name) loading.step(step); });
-      const p = window.deck.svnBranchDiff(b.name).catch(err => ({ ok: false, error: String(err?.message || err) }));
+      const stop = window.deck.onSvnBranchProgress?.((project, id, step) => { if (project === b.project && id === branchId(b)) loading.step(step); });
+      const p = (b.source === 'github'
+        ? window.deck.githubBranchDiff({ kind: b.kind, project: b.project, number: b.number, branch: b.branch })
+        : window.deck.svnBranchDiff(b.project, b.name)).catch(err => ({ ok: false, error: String(err?.message || err) }));
       this.results.set(key, p);
       p.then(r => { stop?.(); loading.finish(!!r?.ok); this.loadings.delete(key); if (!r?.ok) this.results.delete(key); });
     }
     const loading = this.loadings.get(key);
     if (loading) box.appendChild(loading.root);
     const r = await this.results.get(key);
-    if (this.selected !== b.name) return;   // another branch was picked meanwhile
+    if (this.selected !== branchKey(b)) return;   // another branch was picked meanwhile
     box.replaceChildren(el('div', 'branch-title', b.name));
     if (!r?.ok) {
       box.appendChild(el('div', 'note err', r?.error || 'Could not get the diff.'));
@@ -315,7 +374,7 @@ ${r.hidden} release and other branches not listed (only person_feature names are
       for (const c of r.commits) {
         const row = el('div', 'branch-commit');
         row.append(
-          el('span', 'branch-commit-rev', `r${c.revision}`),
+          el('span', 'branch-commit-rev', commitId(c)),
           el('span', 'branch-commit-msg', c.message.split('\n')[0] || '(no message)'),
           el('span', 'branch-commit-meta', [c.author, c.date ? timeAgo(Date.parse(c.date)) : '', `${c.files} file${c.files === 1 ? '' : 's'}`].filter(Boolean).join(' · ')),
         );
@@ -369,3 +428,4 @@ ${r.hidden} release and other branches not listed (only person_feature names are
 }
 
 window.BranchesView = BranchesView;
+window.svnProjectList = svnProjectList;
