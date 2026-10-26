@@ -5242,7 +5242,7 @@ function checkStuck() {
       a.status = 'stuck';
       sfx('stuck');
       a.stuck = info;
-      window.deck.notify(a.title, `Seems stuck: ${info.name} · ${info.summary}`.slice(0, 180));
+      window.deck.notify(a.id, a.title, `Seems stuck: ${info.name} · ${info.summary}`.slice(0, 180));
     } else if (info) {
       a.stuck = info;
     } else if (a.status === 'stuck') {
