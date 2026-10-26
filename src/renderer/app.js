@@ -612,6 +612,8 @@ function show(kind, id) {
   saveInputDraft();
   state.current = { kind, id };
   requestAnimationFrame(updateNextHint);
+  // Back on the Hub: an update that waited for it can come now.
+  if (kind === 'hub') setTimeout(offerUpdate, 400);
   $('back-to-hub').classList.toggle('hidden', !['agent', 'history', 'branches'].includes(kind));
   for (const v of $('views').children) v.classList.add('hidden');
 
@@ -3117,9 +3119,10 @@ function showUpdate(info) {
   btn.title = `Click to update and restart (${info.behind} new commit${info.behind === 1 ? '' : 's'}).${what}`;
 }
 
-// A new version gets a card when the window has the focus and no agent is
-// running (working, starting, asking you something, stuck or with work in
-// the background). The app looks on GitHub every time the window gets the
+// A new version gets a card when the window has the focus, you are on the
+// Hub (not in an agent's chat) and no agent is running (working, starting,
+// asking you something, stuck or with work in the background); going back
+// to the Hub checks again. The app looks on GitHub every time the window gets the
 // focus (see watchForUpdates in main.js); while agents run, the card waits
 // and comes as soon as the last one is done (see onStatus). The card has one
 // button, Update and restart, and does not close: Esc and a click outside do
@@ -3135,6 +3138,8 @@ function offerUpdate() {
   const info = latestInfo;
   if (!info || updateCardOpen || !document.hasFocus() || failedUpdates.has(info.version)) return;
   if ([...state.agents.values()].some(a => !a.removed && BUSY.includes(a.status))) return;
+  // Only on the Hub: never over an agent's chat, History or the Branches view.
+  if (state.current?.kind !== 'hub') return;
   // Another card (quitting, stopping agents) first: try again once it is gone.
   if (document.querySelector('.quit-modal')) { setTimeout(offerUpdate, 1500); return; }
   updateCardOpen = true;
