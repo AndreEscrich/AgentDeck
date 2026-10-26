@@ -991,8 +991,34 @@ function shellParts(text) {
   return parts.filter(Boolean);
 }
 
-function writingEvidence(turn) {
+// A shell command with its simple variables filled in: after N=Foo and
+// R=Assets/Res, "cat > $R/$N.asset" reads "cat > Assets/Res/Foo.asset", so
+// the files a command makes through variables count as named. Values made
+// by a command ($(...) or backticks) stay as they are.
+function expandShellVars(text) {
+  if (!text.includes('$')) return text;
+  const vars = new Map();
+  const fill = value => value.replace(/\$\{(\w+)\}|\$(\w+)/g, (m, a, b) => vars.has(a || b) ? vars.get(a || b) : m);
+  const ASSIGN = /(?:^|[\s;&|(])(?:export\s+)?([A-Za-z_]\w*)=("([^"`]*)"|'([^']*)'|([^\s;&|'"`()]*))(?=[\s;&|)]|$)/gm;
+  for (const m of text.matchAll(ASSIGN)) {
+    const value = m[3] ?? m[4] ?? m[5] ?? '';
+    if (value.includes('$(')) continue;
+    vars.set(m[1], m[4] != null ? value : fill(value));
+  }
+  return vars.size ? fill(text) : text;
+}
+
+// The turn's evidence with shell variables filled in (see expandShellVars).
+function expandedEvidence(turn) {
   const all = turn.evidence || [];
+  if (turn.expanded && turn.expandedFrom === all.length) return turn.expanded;
+  turn.expanded = all.map(text => (/^\s*[{[]/.test(text) ? text : expandShellVars(text)));
+  turn.expandedFrom = all.length;
+  return turn.expanded;
+}
+
+function writingEvidence(turn) {
+  const all = expandedEvidence(turn);
   if (turn.writing && turn.writingFrom === all.length) return turn.writing;
   turn.writing = all.map(text => {
     if (/^\s*[{[]/.test(text)) return text;
@@ -1863,7 +1889,7 @@ class Transcript {
   folderNamed(turn, rel) {
     const file = rel.replace(/\\/g, '/');
     turn.pathWords = turn.pathWords || new Map();   // evidence text -> its path-like words
-    return (turn.evidence || []).some(text => {
+    return expandedEvidence(turn).some(text => {
       let words = turn.pathWords.get(text);
       if (!words) {
         // Only what deletes or moves files ("grep -r x Assets/Code" names a
