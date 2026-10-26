@@ -1616,6 +1616,9 @@ details.other-files details.change-file > summary { padding-left: 12px; }
 /* Images, videos and sounds attached to the next message */
 .composer-box { position: relative; }
 .composer-attachments { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 0 8px; }
+/* Cards for the links in the message box (renderComposerLinks in app.js). */
+.composer-links { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0 6px; }
+.composer-links > * { max-width: 100%; }
 .attach-chip { position: relative; width: 64px; height: 64px; border-radius: 10px; overflow: hidden; flex-shrink: 0;
   background: repeating-conic-gradient(#2a2c36 0% 25%, #22242d 0% 50%) 0 0 / 12px 12px; border: 1px solid var(--border); }
 .attach-chip img { width: 100%; height: 100%; object-fit: cover; display: block; }

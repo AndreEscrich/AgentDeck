@@ -4550,6 +4550,48 @@ function autosize() {
 
 $('input').addEventListener('input', autosize);
 window.addEventListener('resize', () => requestAnimationFrame(autosize));
+
+// ---------- link cards in the message box ----------
+
+// A link you type or paste that the chat shows as a card (a Jira ticket,
+// a Cortex page, a GitHub pull request, a Slack message, a Google doc; see
+// decorateLinks in render.js) shows that card above the text right away, as
+// attached pictures do. The text keeps the address: what is sent does not
+// change. A card is made once per address while it is in the box, so its
+// title is not fetched again with every key.
+const composerLinks = { value: null, cards: new Map(), timer: null };
+function linkCardFor(url) {
+  const holder = el('span');
+  const a = document.createElement('a');
+  a.href = url;
+  a.textContent = url;
+  holder.appendChild(a);
+  decorateLinks(holder);
+  // A recognized link was replaced by its card (itself a link, with a class).
+  const card = holder.firstElementChild;
+  return card && card !== a ? card : null;
+}
+function renderComposerLinks() {
+  const value = $('input').value;
+  if (value === composerLinks.value) return;
+  composerLinks.value = value;
+  const urls = [...new Set((value.match(URL_IN_TEXT) || []).map(u => u.replace(/[.,;:!?)\]]+$/, '')))];
+  const cards = new Map();
+  for (const url of urls) cards.set(url, composerLinks.cards.has(url) ? composerLinks.cards.get(url) : linkCardFor(url));
+  composerLinks.cards = cards;
+  const shown = [...cards.values()].filter(Boolean);
+  const box = $('composer-links');
+  box.replaceChildren(...shown);
+  box.classList.toggle('hidden', !shown.length);
+}
+// While you type, a moment after the last key (a half-typed address would
+// make a card per letter); the box is also emptied by code when a message
+// goes, so it is looked at again now and then.
+$('input').addEventListener('input', () => {
+  clearTimeout(composerLinks.timer);
+  composerLinks.timer = setTimeout(renderComposerLinks, 350);
+});
+setInterval(renderComposerLinks, 1000);
 // ↑ in an agent's message box puts your latest message to it back in the
 // box (to change or send again); ↑ again goes further back, ↓ forward, and
 // past the newest you get back what was in the box. Only from the start of
