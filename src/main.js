@@ -326,6 +326,11 @@ app.whenReady().then(() => {
   require('./turnchanges').prune(turnDir);
   ipcMain.handle('turns:save', (_e, id, data) => require('./turnchanges').save(turnDir, id, data));
   ipcMain.handle('turns:load', (_e, ids) => require('./turnchanges').load(turnDir, ids));
+  // An agent's Changes card, all its tasks together (updateSession in app.js).
+  const sessionChangesDir = path.join(app.getPath('userData'), 'session-changes');
+  require('./turnchanges').prune(sessionChangesDir);
+  ipcMain.handle('sessionchanges:save', (_e, id, data) => require('./turnchanges').saveJson(sessionChangesDir, id, data));
+  ipcMain.handle('sessionchanges:load', async (_e, id) => (await require('./turnchanges').load(sessionChangesDir, [id]))[id] || null);
   ipcMain.handle('files:undo', (_e, cwd, file, snap) => undo.undoFile(cwd, file, snap));
   ipcMain.handle('files:versions', (_e, cwd, file) => undo.versions(cwd, file));
   ipcMain.handle('files:restore', (_e, cwd, p, previous, from) => undo.restoreFile(cwd, p, previous, from));

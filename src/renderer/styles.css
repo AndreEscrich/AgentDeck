@@ -2578,7 +2578,11 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
    is; its wide cards keep clear of the card, the same on both sides, so
    they stay centred. */
 :root { --session-w: 320px; }
-.session-panel { position: absolute; top: 12px; right: 16px; width: var(--session-w); max-height: calc(100% - 24px); z-index: 8;
+/* The card's place: at the top of the chat's scrolling view, standing still
+   while the chat scrolls (and growing and shrinking with the chat when it
+   opens or closes, see Hub.open). */
+.session-dock { position: sticky; top: 0; height: 0; z-index: 8; }
+.session-panel { position: absolute; top: 12px; right: 16px; width: var(--session-w); max-height: calc(100vh - 230px); z-index: 8;
   display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-sidebar);
   box-shadow: 0 16px 40px -16px rgba(0, 0, 0, 0.8); overflow: hidden; animation: session-in 0.35s ease-out; }
 @keyframes session-in { from { opacity: 0; translate: 0 -8px; } }
@@ -2618,5 +2622,12 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .session-code-summary .minus { color: #e88; font-size: 11px; }
 .session-none { font-size: 12px; color: var(--text-faint); line-height: 1.5; padding: 2px 2px 4px; }
 /* Open, it keeps the chat's wide cards (and the "Tab to go" edge) clear of it. */
-#views:has(.session-panel:not(.hidden):not(.folded):not(.narrow)) .view.chat .changes { --changes-wide: max(100%, min(calc(100vw - 2 * (var(--session-w) + 40px)), 1700px)); }
-#main:has(.session-panel:not(.hidden)) .next-hint { top: 120px; }
+.view.chat:has(.session-panel:not(.folded):not(.narrow)) .changes { --changes-wide: max(100%, min(calc(100vw - 2 * (var(--session-w) + 40px)), 1700px)); }
+#main:has(.view.chat:not(.hidden) .session-panel) .next-hint { top: 120px; }
+/* Taking in the files that flew in: a swallow and a glow. */
+.session-panel.digest { animation: session-digest 0.65s cubic-bezier(.3,1.5,.5,1); }
+@keyframes session-digest {
+  0% { scale: 1; box-shadow: 0 16px 40px -16px rgba(0, 0, 0, 0.8); }
+  30% { scale: 0.97 1.02; box-shadow: 0 0 0 2px var(--accent), 0 0 30px -4px var(--accent); }
+  65% { scale: 1.015 0.99; }
+  100% { scale: 1; box-shadow: 0 16px 40px -16px rgba(0, 0, 0, 0.8); } }

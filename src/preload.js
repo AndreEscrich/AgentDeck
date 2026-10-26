@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('deck', {
   slashCommands: cwd => ipcRenderer.invoke('slash:list', cwd),
   saveTurnChanges: (id, data) => ipcRenderer.invoke('turns:save', id, data),
   loadTurnChanges: ids => ipcRenderer.invoke('turns:load', ids),
+  saveSessionChanges: (id, data) => ipcRenderer.invoke('sessionchanges:save', id, data),
+  loadSessionChanges: id => ipcRenderer.invoke('sessionchanges:load', id),
   openFile: p => ipcRenderer.invoke('file:open', p),
   getGroups: () => ipcRenderer.invoke('groups:get'),
   saveGroups: data => ipcRenderer.invoke('groups:save', data),

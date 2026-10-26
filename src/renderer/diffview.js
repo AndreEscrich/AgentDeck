@@ -563,13 +563,15 @@ function addAssets(card, files, cwd, comments) {
 // (app.js keeps the snapshot from before its first task, see updateSession):
 // a small card floating at the top right of its chat, like a task's Changes
 // card made small: the class diagram of the C# it changed, then the assets.
-// Its title folds it to one line. Each task's own Changes card stays in the
-// chat; when a task ends, its files fly from that card to here (flyIn).
-// Returns { el, update(files), targetFor(path), setFolded(on) }.
+// Its title folds it to one line. It sits inside the chat (app.js puts it
+// there), so it opens and closes with it. Each task's own Changes card stays
+// in the chat; when a task ends, its files fly from that card to here (flyIn)
+// and, once they are in, the card takes them in (digest). Returns { el,
+// update(files), targetFor(path), digest(paths), setFolded(on) }.
 const SESSION_ROOM = 1540;   // px of window for the chat (820) and the card on each side
 
 function sessionPanel(cwd) {
-  const root = el('aside', 'session-panel hidden');
+  const root = el('aside', 'session-panel');
   const head = el('div', 'session-head');
   const title = el('span', 'session-title', 'Changes');
   title.title = 'Everything this agent changed since its first message, all its tasks together';
@@ -681,21 +683,49 @@ function sessionPanel(cwd) {
     }
     return head;
   };
-  return { el: root, update, targetFor, setFolded };
+  // The files have flown in and the card shows them now: it swallows, and
+  // each of them lights up where it is.
+  const digest = paths => {
+    root.classList.remove('digest');
+    void root.offsetWidth;
+    root.classList.add('digest');
+    setTimeout(() => root.classList.remove('digest'), 700);
+    const seen = new Set();
+    paths.forEach((p, i) => {
+      const target = targetFor(p);
+      if (target === head || seen.has(target)) return;
+      seen.add(target);
+      setTimeout(() => ringAt(target), 250 + i * 70);
+    });
+  };
+  const api = { el: root, update, targetFor, digest, setFolded };
+  root._panel = api;
+  return api;
+}
+
+// A ring that lights up an element and fades.
+function ringAt(target) {
+  const r = target.getBoundingClientRect();
+  if (!r.width) return;
+  const ring = el('div', 'fly-ring');
+  Object.assign(ring.style, { left: `${r.left - 4}px`, top: `${r.top - 4}px`, width: `${r.width + 8}px`, height: `${r.height + 8}px` });
+  document.body.appendChild(ring);
+  setTimeout(() => ring.remove(), 700);
 }
 
 // A task's files fly from its Changes card in the chat to the session panel:
-// a chip with the file's name per row, one after another, each landing with a
-// ring where it goes. rows: [[row element, path]].
+// a chip with the file's name per row, one after another, into where the file
+// is in the card now (or its top). rows: [[row element, path]]. Resolves when
+// the last one is in.
 function flyIn(rows, targetFor) {
-  rows.slice(0, 24).forEach(([row, path], i) => {
+  return Promise.all(rows.slice(0, 24).map(([row, path], i) => new Promise(done => {
     setTimeout(() => {
       const from = row.getBoundingClientRect();
       const target = targetFor(path);
-      if (!target || !from.width) return;
+      if (!target || !from.width) { done(); return; }
       const to = target.getBoundingClientRect();
       const visible = r => r.bottom > 0 && r.top < innerHeight && r.width;
-      if (!visible(from) || !visible(to)) return;
+      if (!visible(from) || !visible(to)) { done(); return; }
       const chip = el('div', `fly-chip ${/\.cs$/i.test(path) ? 'code' : 'asset'}`, path.split('/').pop());
       document.body.appendChild(chip);
       const x0 = from.left + 12, y0 = from.top + from.height / 2 - 11;
@@ -707,16 +737,10 @@ function flyIn(rows, targetFor) {
         const x = x0 + (x1 - x0) * t - (t > 0.6 ? chip.offsetWidth / 2 * (t - 0.6) / 0.4 : 0);
         frames.push({ transform: `translate(${x}px, ${y0 + (y1 - y0) * t - lift * 4 * t * (1 - t)}px) scale(${1 - 0.35 * t * t})`, opacity: t > 0.9 ? 1 - (t - 0.9) * 8 : 1 });
       }
-      chip.animate(frames, { duration: 750, easing: 'cubic-bezier(.5,0,.4,1)' }).finished.then(() => {
-        chip.remove();
-        const r = target.getBoundingClientRect();
-        const ring = el('div', 'fly-ring');
-        Object.assign(ring.style, { left: `${r.left - 4}px`, top: `${r.top - 4}px`, width: `${r.width + 8}px`, height: `${r.height + 8}px` });
-        document.body.appendChild(ring);
-        setTimeout(() => ring.remove(), 700);
-      }, () => chip.remove());
+      chip.animate(frames, { duration: 750, easing: 'cubic-bezier(.5,0,.4,1)' }).finished
+        .catch(() => {}).then(() => { chip.remove(); done(); });
     }, i * 90);
-  });
+  })));
 }
 
 // ---------- comments on lines ----------

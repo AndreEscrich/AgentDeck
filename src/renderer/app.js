@@ -616,8 +616,6 @@ function show(kind, id) {
   if (kind === 'hub') setTimeout(offerUpdate, 400);
   $('back-to-hub').classList.toggle('hidden', !['agent', 'history', 'branches'].includes(kind));
   for (const v of $('views').children) v.classList.add('hidden');
-  // The agent's Changes card (in #views too) shows with its chat.
-  syncSessionPanels();
 
   // The Hub also has the message box: a message there starts a new agent.
   const startsAgent = !['agent', 'history'].includes(kind);
@@ -630,6 +628,8 @@ function show(kind, id) {
   if (kind === 'agent') {
     const a = state.agents.get(id);
     a.view.classList.remove('hidden');
+    // Its Changes card, when the app has one saved from before it restarted.
+    loadSession(a.view, a.sessionId, a.cwd);
     // Finished while you were not looking: show its output from the start.
     if (a.unread && a.status === 'idle') revealLatest(a.view, a.transcript);
     else scrollToBottom(a.view);
@@ -650,6 +650,7 @@ function show(kind, id) {
   } else if (kind === 'history') {
     const h = state.history.get(id);
     h.view.classList.remove('hidden');
+    loadSession(h.view, h.session.id, h.cwd || h.session.cwd);
     scrollToBottom(h.view);
     const listed = state.parked.get(id) || state.agentList.get(id);
     setHeader(listed?.latestTitle || h.session.title, h.cwd || h.session.cwd, null, findGroup(groupOf(h.session.id))?.name || null);
@@ -3619,14 +3620,16 @@ async function sendToAgent(agent, text, images = []) {
   }
   if (!agent.snapshot) {
     agent.snapshotAt = Date.now() - 1000;
-    agent.snapshot = await snapshotInTime(agent.cwd);
+    const [snap] = await Promise.all([snapshotInTime(agent.cwd), loadSession(agent.view, agent.sessionId, agent.cwd)]);
+    agent.snapshot = snap;
     // The project as it was before the agent's first task: its Changes card
     // compares with it (updateSession). Without one then (a big project's
     // first snapshot can take minutes), the card adds up what its edits
     // reported instead, for good: a later snapshot would miss what came before.
-    if (!agent.sessionStarted) {
-      agent.sessionStarted = true;
-      agent.sessionSnap = agent.snapshot || null;
+    const s = sessionState(agent.view);
+    if (!s.started) {
+      s.started = true;
+      s.snap = snap || null;
     }
   }
   await window.deck.sendMessage(agent.id, text, images);
@@ -3818,78 +3821,128 @@ function warmSnapshots() {
 // since its first message, all its tasks together (sessionPanel in
 // diffview.js): the class diagram of its C# changes, then its assets. After
 // each task, the task's files fly from its Changes card in the chat into the
-// panel (flyIn). The files are the ones the agent itself touched in any task
-// (each task's card already leaves out what others changed meanwhile), as
-// they are now compared with the project before its first task.
+// card, which then takes them in (digest). The files are the ones the agent
+// itself touched in any task (each task's card already leaves out what
+// others changed meanwhile), as they are now compared with the project before
+// its first task.
+//
+// What the card knows lives on the chat's view, so it goes along when a
+// saved chat (History) is resumed as an agent, and is saved by session id
+// (sessionchanges in main.js), so it is back after the app restarts. The card
+// sits inside the chat (a sticky dock at its top), so it grows and shrinks
+// with the chat when you open an agent or go back to the Hub.
 const pathKey = p => p.replace(/\\/g, '/').toLowerCase();
 
+function sessionState(view) {
+  if (!view._session) view._session = { started: false, snap: null, paths: new Set(), edits: new Map(), files: [], panel: null, loaded: null };
+  return view._session;
+}
+
+// The card, put into the chat the first time it has something to show.
+function sessionCard(view, cwd) {
+  const s = sessionState(view);
+  if (!s.panel) {
+    s.panel = sessionPanel(cwd);
+    const dock = el('div', 'session-dock');
+    dock.appendChild(s.panel.el);
+    view.prepend(dock);
+  }
+  return s.panel;
+}
+
+// What was saved for this session, once (before the first task on this
+// view decides where the card starts, see sendToAgent).
+function loadSession(view, sessionId, cwd) {
+  const s = sessionState(view);
+  if (s.loaded || !sessionId) return s.loaded || Promise.resolve();
+  s.loaded = window.deck.loadSessionChanges(sessionId).catch(() => null).then(async saved => {
+    if (!saved || s.started) return;
+    s.started = true;
+    s.snap = saved.snap || null;
+    s.paths = new Set(saved.paths || []);
+    s.edits = new Map((saved.edits || []).map(f => [pathKey(f.path), f]));
+    s.files = saved.files || [];
+    if (s.files.length) await sessionCard(view, cwd).update(s.files);
+  });
+  return s.loaded;
+}
+
+function saveSession(sessionId, s) {
+  if (!sessionId) return;
+  const slim = f => ({ path: f.path, status: f.status, lines: f.lines, from: f.from || undefined, binary: f.binary || undefined });
+  window.deck.saveSessionChanges(sessionId, {
+    snap: s.snap, paths: [...s.paths], edits: [...s.edits.values()].map(slim), files: s.files.map(slim),
+  }).catch(() => {});
+}
+
 async function updateSession(a, turn) {
-  if (!a.sessionStarted || a.removed) return;
-  a.sessionPaths = a.sessionPaths || new Set();
+  if (a.removed) return;
+  await loadSession(a.view, a.sessionId, a.cwd);
+  const s = sessionState(a.view);
+  if (!s.started) return;
   for (const f of turn?.files || []) {
-    a.sessionPaths.add(pathKey(f.path));
-    if (f.from) a.sessionPaths.add(pathKey(f.from));
+    s.paths.add(pathKey(f.path));
+    if (f.from) s.paths.add(pathKey(f.from));
   }
-  if (!a.sessionPaths.size) return;
-  const files = a.sessionSnap ? await sessionFromSnapshot(a) : sessionFromEdits(a, turn);
-  if (!files || !state.agents.has(a.id)) return;
-  if (!a.session) {
-    a.session = sessionPanel(a.cwd);
-    $('views').appendChild(a.session.el);
+  if (!s.paths.size) return;
+  const files = s.snap ? await sessionFromSnapshot(a, s) : sessionFromEdits(s, turn);
+  if (!files) return;
+  s.files = files;
+  saveSession(a.sessionId, s);
+  const card = sessionCard(a.view, a.cwd);
+  // When you are looking at it, the task's files fly over from its card in
+  // the chat first, and the card takes them in once they are there.
+  const taskCard = turn?.answer?.querySelector(':scope > .changes');
+  const looking = state.current?.kind === 'agent' && state.current.id === a.id && !document.hidden;
+  if (!taskCard || !looking) {
+    await card.update(files);
+    return;
   }
-  syncSessionPanels();
-  await a.session.update(files);
-  // The task's files fly over from its card, when you are looking at it.
-  const card = turn?.answer?.querySelector(':scope > .changes');
-  if (!card || state.current?.kind !== 'agent' || state.current.id !== a.id) return;
   // Each file starts from its row in the card, or, while the card shows its
   // class diagram, from its type's box.
-  const uml = card.querySelector('.uml-panel');
+  const uml = taskCard.querySelector('.uml-panel');
   const boxOf = path => {
     const id = uml?.umlModel?.nodes?.find(n => n.file === path)?.id;
     return id ? uml.querySelector(`.uml-node[data-id="${CSS.escape(id)}"]`) : null;
   };
-  const rows = [...card.querySelectorAll(':scope > .change-file, .asset-row > summary')];
+  const rows = [...taskCard.querySelectorAll(':scope > .change-file, .asset-row > summary')];
   const sources = (turn.files || []).map(f => {
     const row = rows.find(r => (r.title || '').split('\n')[0] === f.path);
     const from = row?.getClientRects().length ? row : boxOf(f.path);
     return from?.getClientRects().length ? [from, f.path] : null;
   }).filter(Boolean);
-  flyIn(sources, a.session.targetFor);
+  await flyIn(sources, card.targetFor);
+  await card.update(files);
+  card.digest((turn.files || []).map(f => f.path));
 }
 
 // The agent's files as they are now, compared with the project before its
 // first task.
-async function sessionFromSnapshot(a) {
-  const diff = await window.deck.gitChanges(a.cwd, a.sessionSnap).catch(() => null);
+async function sessionFromSnapshot(a, s) {
+  const diff = await window.deck.gitChanges(a.cwd, s.snap).catch(() => null);
   if (diff == null) return null;
   return pairMoves(parseUnifiedDiff(diff)).filter(f => !isTempFile(f.path)
-    && (a.sessionPaths.has(pathKey(f.path)) || (f.from && a.sessionPaths.has(pathKey(f.from)))));
+    && (s.paths.has(pathKey(f.path)) || (f.from && s.paths.has(pathKey(f.from)))));
 }
 
 // Without that snapshot: each task's files as its edits reported them, added
 // up. A file keeps the changes of every task; one the agent made and then
 // deleted again is gone.
-function sessionFromEdits(a, turn) {
-  a.sessionEdits = a.sessionEdits || new Map();
+function sessionFromEdits(s, turn) {
   for (const f of turn?.files || []) {
     const key = pathKey(f.path);
-    const before = a.sessionEdits.get(key);
-    if (before?.status === 'new' && f.status === 'del') { a.sessionEdits.delete(key); continue; }
-    a.sessionEdits.set(key, before
+    const before = s.edits.get(key);
+    if (before?.status === 'new' && f.status === 'del') { s.edits.delete(key); continue; }
+    s.edits.set(key, before
       ? { ...f, status: before.status === 'new' ? 'new' : f.status, lines: [...before.lines, ...f.lines] }
       : { ...f });
   }
-  return [...a.sessionEdits.values()];
+  return [...s.edits.values()];
 }
 
-// Only the panel of the agent on screen shows. Folding one folds them all.
-function syncSessionPanels() {
-  const current = state.current?.kind === 'agent' ? state.current.id : null;
-  for (const a of state.agents.values()) a.session?.el.classList.toggle('hidden', a.id !== current);
-}
+// Folding one card folds them all.
 $('views').addEventListener('session-fold', e => {
-  for (const a of state.agents.values()) a.session?.setFolded(e.detail, false);
+  for (const panel of document.querySelectorAll('.session-panel')) panel._panel?.setFolded(e.detail, false);
 });
 
 // ---------- undo the last prompt ----------
@@ -4499,7 +4552,6 @@ window.deck.onExit((id, { code, stderr }) => {
   a.status = 'exited';
   // Keep the chat open as a history entry, so you can read it and resume it.
   state.agents.delete(id);
-  a.session?.el.remove();
   // Its process ended with an error, or in the middle of a task: Restart continues it.
   if (!a.removed && a.sessionId) state.parked.set(a.sessionId, { ...hubInfo(a), stopped: code !== 0 || !!a.stopped || a.wasBusy });
   const session = { id: a.sessionId || id, title: a.title, cwd: a.cwd, file: null, updatedAt: Date.now() };

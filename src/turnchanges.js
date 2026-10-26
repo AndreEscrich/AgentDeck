@@ -42,6 +42,21 @@ async function load(dir, ids) {
   return out;
 }
 
+// Any other JSON kept the same way (an agent's Changes card, see
+// updateSession in app.js), by session id.
+function saveJson(dir, id, data) {
+  if (!ID.test(String(id)) || !data) return false;
+  const text = JSON.stringify({ ...data, savedAt: Date.now() });
+  if (text.length > MAX_BYTES) return false;
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, id + '.json'), text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Removes the files of tasks older than KEEP_DAYS.
 function prune(dir) {
   const limit = Date.now() - KEEP_DAYS * 24 * 3600 * 1000;
@@ -53,4 +68,4 @@ function prune(dir) {
   }).catch(() => {});
 }
 
-module.exports = { save, load, prune };
+module.exports = { save, saveJson, load, prune };
