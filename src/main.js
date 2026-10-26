@@ -20,6 +20,7 @@ const updates = require('./updates');
 const undo = require('./undo');
 const csharp = require('./csharp');
 const gameFolders = require('./gamefolders');
+const toast = require('./toast');
 
 // The window loads images and videos from disk through media:// (see media.js).
 // "stream" lets video players read a file piece by piece.
@@ -46,6 +47,7 @@ const DEFAULT_CONFIG = {
   extraArgs: [],                        // extra command-line flags for every agent
   env: {},                              // extra environment variables for every agent
   notifyWhenDone: true,
+  notifyStyle: 'tile',                  // tile: the agent's Hub tile in the corner (toast.js) | system: the system's own
   sounds: true,                         // a sound when you start an agent and when one finishes
   hubAfterSend: true,                   // show the Hub after you send a message
   summarizeTitles: true,                // title new agents with a short summary of your message
@@ -157,7 +159,9 @@ function createWindow() {
   // Closing the window with busy agents asks first, then quits the app.
   win.on('close', event => allowStop(event));
   // The taskbar button stops flashing when you come back.
-  win.on('focus', () => { win.flashFrame(false); lookForUpdate(); });
+  win.on('focus', () => { win.flashFrame(false); toast.clear(); lookForUpdate(); });
+  // The notifications' window goes with it, or the app would not quit.
+  win.on('closed', () => toast.destroy());
   // Links in agent replies open in the normal browser, not inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -419,20 +423,26 @@ app.whenReady().then(() => {
   // Clicking a notification opens its agent. The app keeps each notification
   // until it closes, or Windows would forget the click handler.
   const shown = new Set();
-  ipcMain.handle('notify', (_e, id, title, body) => {
-    if (getConfig().notifyWhenDone && !win.isFocused()) {
-      // The app plays its own sounds, so the notification stays silent then.
-      const n = new Notification({ title, body, silent: getConfig().sounds !== false });
-      shown.add(n);
-      n.on('click', () => {
-        if (win.isMinimized()) win.restore();
-        win.show();
-        win.focus();
-        send('notification:open', id);
-      });
-      n.on('close', () => shown.delete(n));
-      n.show();
+  const openFrom = id => {
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+    send('notification:open', id);
+  };
+  toast.init({ onOpen: openFrom });
+  // extra: { tile, theme }, the agent's Hub tile for the app's own notification.
+  ipcMain.handle('notify', (_e, id, title, body, extra) => {
+    if (!getConfig().notifyWhenDone || win.isFocused()) return;
+    if (getConfig().notifyStyle !== 'system' && extra?.tile) {
+      toast.show({ id, title, body, tile: extra.tile, theme: extra.theme });
+      return;
     }
+    // The app plays its own sounds, so the notification stays silent then.
+    const n = new Notification({ title, body, silent: getConfig().sounds !== false });
+    shown.add(n);
+    n.on('click', () => openFrom(id));
+    n.on('close', () => shown.delete(n));
+    n.show();
   });
 
   registerForNotifications();

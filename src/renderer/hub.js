@@ -386,6 +386,21 @@ class Hub {
     // box, stays hidden until the box has morphed into it (see morph()).
     const arrival = this.arrivals.get(agent.id);
     this.arrivals.delete(agent.id);
+    const entry = this.buildTile(agent, arrival);
+    this.tiles.set(agent.id, entry);
+    return entry;
+  }
+
+  // A copy of the agent's tile as the Hub would draw it now, for the
+  // notification in the corner of the screen (toast.html). Made fresh, so
+  // it is up to date even while the Hub's own tiles stand still (freeze()).
+  snapshot(agent) {
+    const entry = this.buildTile(agent, null);
+    this.paint(entry, agent, null);
+    return entry.el;
+  }
+
+  buildTile(agent, arrival) {
     const tile = el('div', arrival ? 'hub-tile arriving' : 'hub-tile spawn');
     // Each tile gets its own starting point (--phase), pace (--tempo, 85-120%)
     // and wave position (--wave-delay) for every looping animation, so tiles
@@ -473,9 +488,7 @@ class Hub {
     restart.title = 'Restart: continue the task it was doing when it stopped';
     restart.onclick = e => { e.stopPropagation(); this.onRestart?.(agent.id); };
     tile.append(remove, stop, restart, tank, info);
-    const entry = { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, badge, title, step, statusDot, statusText, timer, model, clash } };
-    this.tiles.set(agent.id, entry);
-    return entry;
+    return { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, badge, title, step, statusDot, statusText, timer, model, clash } };
   }
 
   // The liquid level: low while starting, climbing with the step count while
@@ -565,6 +578,110 @@ class Hub {
     this.render(...this.latest);
   }
 
+  // Draws the tile in the agent's state: level, icon, title, status, model.
+  paint(entry, agent, currentId) {
+    const { el: tile, parts } = entry;
+    // Play the one-time animations when the state changes.
+    const before = entry.status;
+    if (before !== agent.status) {
+      tile.classList.remove(`state-${before}`);
+      tile.classList.add(`state-${agent.status}`);
+      // Finished: the tank sloshes up to the brim and the check pops in.
+      // Other changes give the tile a small wobble.
+      if (agent.status === 'idle' && ['working', 'waiting', 'starting', 'stuck', 'background'].includes(before)) {
+        this.replay(tile, 'finish', 1300);
+      } else if (agent.status === 'error' && before) this.replay(tile, 'shake', 700);
+      else if (before) this.replay(tile, 'wob', 600);
+      entry.status = agent.status;
+    }
+    tile.classList.toggle('current', agent.id === currentId);
+    // Thinking (no tool running): slow bubbles that gather at the surface.
+    tile.classList.toggle('thinking', agent.status === 'working' && agent.transcript?.liveStep === 'Thinking…');
+    tile.classList.toggle('unread', !!agent.unread);
+    tile.classList.toggle('stopped', !!agent.stopped && ['idle', 'error', 'exited'].includes(agent.status));
+
+    // A new tank starts empty and fills up, so the browser must draw it
+    // empty once before the level changes.
+    if (entry.fresh) {
+      entry.fresh = false;
+      parts.liquid.style.height = '0%';
+      void parts.liquid.offsetHeight;
+    }
+    entry.level = this.levelFor(agent);
+    tile.dataset.level = String(entry.level);
+    // What kind of task (the Nostromo theme's tank draws a screen per kind).
+    tile.dataset.task = window.taskType ? taskType.kindOf(agent) : 'none';
+    parts.liquid.style.height = `${entry.level}%`;
+    // Waiting for the usage limit to reset (limitOf in app.js): a clock, and when it continues.
+    const limited = agent.limited || null;
+    tile.classList.toggle('limited', !!limited);
+    // Signed out: waits for you to sign in again, then continues.
+    const authWait = !limited && !!agent.authWait;
+    tile.classList.toggle('authwait', authWait);
+    const stoppedNow = !!agent.stopped && ['idle', 'error', 'exited'].includes(agent.status);
+    parts.icon.textContent = limited ? '⏳' : authWait ? '🔑' : stoppedNow ? '■' : { idle: '✓', error: '✕' }[agent.status] || '';
+    // After a follow-up message, the tile shows that message (summarized).
+    parts.title.textContent = agent.latestTitle || agent.title;
+    const busy = ['working', 'starting', 'stuck', 'waiting'].includes(agent.status);
+    const stepText = limited ? 'Waiting for the usage limit to reset'
+      : authWait ? 'Waiting for you to sign in to Claude'
+      : agent.status === 'background' && agent.backgroundTasks?.length
+      ? `Waiting for: ${agent.backgroundTasks.join(', ')}`
+      : busy ? agent.transcript.liveStep : null;
+    parts.step.classList.toggle('hidden', !stepText);
+    if (stepText && parts.step.textContent !== stepText) {
+      parts.step.textContent = stepText;
+      parts.step.title = stepText;
+      parts.step.classList.remove('changed');
+      void parts.step.offsetWidth;
+      parts.step.classList.add('changed');
+    }
+    parts.title.title = agent.latestPrompt
+      ? `${agent.latestPrompt}\n\nTask: ${agent.title}\n${agent.cwd}`
+      : `${agent.title}\n${agent.cwd}`;
+    parts.statusDot.className = `dot ${agent.status}`;
+    parts.statusText.textContent = limited ? `Usage limit · continues ${Hub.resetText(limited.resetAt / 1000)}`
+      : authWait ? 'Signed out · continues after you sign in'
+      // Getting ready before Claude Code starts (a Jira ticket, a handoff).
+      : agent.status === 'starting' && agent.bootNote ? `Booting up · ${agent.bootNote}`
+      : agent.stopped && ['idle', 'error', 'exited'].includes(agent.status) ? 'Stopped before it was done'
+      : HUB_STATUS_TEXT[agent.status] || agent.status;
+    // What a waiting agent needs from you: an answer or an approval.
+    const needs = agent.status === 'waiting' ? agent.attention || 'approval' : null;
+    tile.classList.toggle('needs-question', needs === 'question');
+    parts.badge.textContent = needs === 'question' ? '?' : '!';
+    if (needs) parts.statusText.textContent = needs === 'question' ? 'Asks you a question' : 'Needs approval';
+    // What a stuck agent keeps doing, and for how long.
+    if (agent.status === 'stuck' && agent.stuck) {
+      const mins = Math.max(1, Math.round((Date.now() - agent.stuck.since) / 60000));
+      // Connector tools are named mcp__<server>__<tool>; show "server · tool".
+      const [prefix, server, ...rest] = agent.stuck.name.split('__');
+      const tool = prefix === 'mcp' && rest.length ? `${server} · ${rest.join('__')}` : agent.stuck.name;
+      parts.statusText.textContent = `Stuck · ${tool}`;
+      parts.statusText.title = `${agent.stuck.count ? `${agent.stuck.count} times in a row: ` : 'Running for '}${agent.stuck.summary} · ${mins} min`;
+      parts.badge.textContent = '⏳';
+    } else {
+      // Which background jobs a "background" agent waits for.
+      parts.statusText.title = agent.status === 'background' && agent.backgroundTasks?.length ? `Waiting for: ${agent.backgroundTasks.join(', ')}` : '';
+    }
+    this.updateTimer(agent, parts.timer);
+    const model = this.modelOf?.(agent) || null;
+    parts.model.classList.toggle('hidden', !model);
+    if (model) {
+      if (parts.model.textContent !== model.label) parts.model.textContent = model.label;
+      parts.model.title = model.title || '';
+      parts.model.classList.toggle('fable', !!model.fable);
+      parts.model.classList.toggle('auto', !!model.auto);
+    }
+    const clashes = agent.clashes ? [...agent.clashes.values()] : [];
+    parts.clash.classList.toggle('hidden', !clashes.length);
+    if (clashes.length) {
+      const files = [...new Set(clashes.flatMap(c => [...c.files]))];
+      parts.clash.textContent = `⚠ Same file${files.length === 1 ? '' : 's'}`;
+      parts.clash.title = `Also being changed by ${clashes.map(c => `"${c.title}"`).join(', ')}:\n${files.join('\n')}`;
+    }
+  }
+
   render(agents, currentId, groups = []) {
     const seenSections = new Set();   // the first agent of each panel gives the panel its folder
     const seen = new Set();
@@ -575,7 +692,7 @@ class Hub {
       seen.add(agent.id);
       const entry = this.tiles.get(agent.id) || this.createTile(agent);
       if (entry.removing) continue;
-      const { el: tile, parts } = entry;
+      const { el: tile } = entry;
       tile.style.order = String(order++);
       const groupKey = groups.some(g => g.id === agent.groupId) ? agent.groupId : '';
       const key = `${groupKey}\n${agent.repo || ''}`;
@@ -594,105 +711,7 @@ class Hub {
         this.whenStill(entry.el).then(() => this.morph(entry, info));
       }
 
-      // Play the one-time animations when the state changes.
-      const before = entry.status;
-      if (before !== agent.status) {
-        tile.classList.remove(`state-${before}`);
-        tile.classList.add(`state-${agent.status}`);
-        // Finished: the tank sloshes up to the brim and the check pops in.
-        // Other changes give the tile a small wobble.
-        if (agent.status === 'idle' && ['working', 'waiting', 'starting', 'stuck', 'background'].includes(before)) {
-          this.replay(tile, 'finish', 1300);
-        } else if (agent.status === 'error' && before) this.replay(tile, 'shake', 700);
-        else if (before) this.replay(tile, 'wob', 600);
-        entry.status = agent.status;
-      }
-      tile.classList.toggle('current', agent.id === currentId);
-      // Thinking (no tool running): slow bubbles that gather at the surface.
-      tile.classList.toggle('thinking', agent.status === 'working' && agent.transcript?.liveStep === 'Thinking…');
-      tile.classList.toggle('unread', !!agent.unread);
-      tile.classList.toggle('stopped', !!agent.stopped && ['idle', 'error', 'exited'].includes(agent.status));
-
-      // A new tank starts empty and fills up, so the browser must draw it
-      // empty once before the level changes.
-      if (entry.fresh) {
-        entry.fresh = false;
-        parts.liquid.style.height = '0%';
-        void parts.liquid.offsetHeight;
-      }
-      entry.level = this.levelFor(agent);
-      tile.dataset.level = String(entry.level);
-      // What kind of task (the Nostromo theme's tank draws a screen per kind).
-      tile.dataset.task = window.taskType ? taskType.kindOf(agent) : 'none';
-      parts.liquid.style.height = `${entry.level}%`;
-      // Waiting for the usage limit to reset (limitOf in app.js): a clock, and when it continues.
-      const limited = agent.limited || null;
-      tile.classList.toggle('limited', !!limited);
-      // Signed out: waits for you to sign in again, then continues.
-      const authWait = !limited && !!agent.authWait;
-      tile.classList.toggle('authwait', authWait);
-      const stoppedNow = !!agent.stopped && ['idle', 'error', 'exited'].includes(agent.status);
-      parts.icon.textContent = limited ? '⏳' : authWait ? '🔑' : stoppedNow ? '■' : { idle: '✓', error: '✕' }[agent.status] || '';
-      // After a follow-up message, the tile shows that message (summarized).
-      parts.title.textContent = agent.latestTitle || agent.title;
-      const busy = ['working', 'starting', 'stuck', 'waiting'].includes(agent.status);
-      const stepText = limited ? 'Waiting for the usage limit to reset'
-        : authWait ? 'Waiting for you to sign in to Claude'
-        : agent.status === 'background' && agent.backgroundTasks?.length
-        ? `Waiting for: ${agent.backgroundTasks.join(', ')}`
-        : busy ? agent.transcript.liveStep : null;
-      parts.step.classList.toggle('hidden', !stepText);
-      if (stepText && parts.step.textContent !== stepText) {
-        parts.step.textContent = stepText;
-        parts.step.title = stepText;
-        parts.step.classList.remove('changed');
-        void parts.step.offsetWidth;
-        parts.step.classList.add('changed');
-      }
-      parts.title.title = agent.latestPrompt
-        ? `${agent.latestPrompt}\n\nTask: ${agent.title}\n${agent.cwd}`
-        : `${agent.title}\n${agent.cwd}`;
-      parts.statusDot.className = `dot ${agent.status}`;
-      parts.statusText.textContent = limited ? `Usage limit · continues ${Hub.resetText(limited.resetAt / 1000)}`
-        : authWait ? 'Signed out · continues after you sign in'
-        // Getting ready before Claude Code starts (a Jira ticket, a handoff).
-        : agent.status === 'starting' && agent.bootNote ? `Booting up · ${agent.bootNote}`
-        : agent.stopped && ['idle', 'error', 'exited'].includes(agent.status) ? 'Stopped before it was done'
-        : HUB_STATUS_TEXT[agent.status] || agent.status;
-      // What a waiting agent needs from you: an answer or an approval.
-      const needs = agent.status === 'waiting' ? agent.attention || 'approval' : null;
-      tile.classList.toggle('needs-question', needs === 'question');
-      parts.badge.textContent = needs === 'question' ? '?' : '!';
-      if (needs) parts.statusText.textContent = needs === 'question' ? 'Asks you a question' : 'Needs approval';
-      // What a stuck agent keeps doing, and for how long.
-      if (agent.status === 'stuck' && agent.stuck) {
-        const mins = Math.max(1, Math.round((Date.now() - agent.stuck.since) / 60000));
-        // Connector tools are named mcp__<server>__<tool>; show "server · tool".
-        const [prefix, server, ...rest] = agent.stuck.name.split('__');
-        const tool = prefix === 'mcp' && rest.length ? `${server} · ${rest.join('__')}` : agent.stuck.name;
-        parts.statusText.textContent = `Stuck · ${tool}`;
-        parts.statusText.title = `${agent.stuck.count ? `${agent.stuck.count} times in a row: ` : 'Running for '}${agent.stuck.summary} · ${mins} min`;
-        parts.badge.textContent = '⏳';
-      } else {
-        // Which background jobs a "background" agent waits for.
-        parts.statusText.title = agent.status === 'background' && agent.backgroundTasks?.length ? `Waiting for: ${agent.backgroundTasks.join(', ')}` : '';
-      }
-      this.updateTimer(agent, parts.timer);
-      const model = this.modelOf?.(agent) || null;
-      parts.model.classList.toggle('hidden', !model);
-      if (model) {
-        if (parts.model.textContent !== model.label) parts.model.textContent = model.label;
-        parts.model.title = model.title || '';
-        parts.model.classList.toggle('fable', !!model.fable);
-        parts.model.classList.toggle('auto', !!model.auto);
-      }
-      const clashes = agent.clashes ? [...agent.clashes.values()] : [];
-      parts.clash.classList.toggle('hidden', !clashes.length);
-      if (clashes.length) {
-        const files = [...new Set(clashes.flatMap(c => [...c.files]))];
-        parts.clash.textContent = `⚠ Same file${files.length === 1 ? '' : 's'}`;
-        parts.clash.title = `Also being changed by ${clashes.map(c => `"${c.title}"`).join(', ')}:\n${files.join('\n')}`;
-      }
+      this.paint(entry, agent, currentId);
     }
 
     for (const [id, entry] of this.tiles) {

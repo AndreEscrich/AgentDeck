@@ -4224,7 +4224,7 @@ window.deck.onEvent((id, msg) => {
   const limitHit = isLimitHit(msg);
   if (limitHit) noteLimitHit(a, msg);
   if (msg.type === 'result' && a.status !== 'background') {
-    window.deck.notify(a.id, a.title, limitHit ? `Usage limit reached: continues at ${new Date(a.limited.resetAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : a.authWait ? 'Signed out: continues after you sign in' : msg.is_error ? 'Stopped with an error' : 'Finished and waiting for you');
+    notifyAbout(a, msg.is_error ? 'error' : 'idle', limitHit ? `Usage limit reached: continues at ${new Date(a.limited.resetAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : a.authWait ? 'Signed out: continues after you sign in' : msg.is_error ? 'Stopped with an error' : 'Finished and waiting for you');
     if (playSounds()) {
       if (!msg.is_error) sounds.done();
       else if (!a.stopping && !limitHit && !a.authWait) sounds.error();
@@ -4293,11 +4293,11 @@ window.deck.onPermission((id, req) => {
   if (isQuestion) {
     a.attention = 'question';
     a.pendingQuestion = { requestId: req.requestId, card: a.transcript.question(req, answer) };
-    window.deck.notify(a.id, a.title, `Asks: ${req.input.questions[0]?.question || 'a question'}`);
+    notifyAbout(a, 'waiting', `Asks: ${req.input.questions[0]?.question || 'a question'}`);
   } else {
     a.attention = 'approval';
     a.transcript.permission(req, answer);
-    window.deck.notify(a.id, a.title, req.title || `Needs approval to use ${req.display_name || req.tool_name}`);
+    notifyAbout(a, 'waiting', req.title || `Needs approval to use ${req.display_name || req.tool_name}`);
   }
   // A question sounds like one; an approval like a call for attention.
   if (playSounds()) (a.attention === 'question' ? sounds.question : sounds.attention)();
@@ -4319,6 +4319,15 @@ window.deck.onMode((id, mode) => {
   a.mode = mode;
   if (state.current?.kind === 'agent' && state.current.id === id) composerModePicker.setValue(mode);
 });
+
+// Tells you an agent finished or needs you, while the app is in the
+// background. The notification shows the agent's Hub tile (toast.html) in
+// the state given, which may not have reached the agent yet.
+function notifyAbout(a, status, body) {
+  let tile = '';
+  try { tile = hub.snapshot(Object.assign(Object.create(a), { status, unread: true })).outerHTML; } catch { /* the system's notification then */ }
+  window.deck.notify(a.id, a.title, body, { tile, theme: document.documentElement.dataset.theme || 'default' });
+}
 
 // Clicking a notification opens the agent it is about.
 window.deck.onNotificationOpen(id => {
@@ -5242,7 +5251,7 @@ function checkStuck() {
       a.status = 'stuck';
       sfx('stuck');
       a.stuck = info;
-      window.deck.notify(a.id, a.title, `Seems stuck: ${info.name} · ${info.summary}`.slice(0, 180));
+      notifyAbout(a, 'stuck', `Seems stuck: ${info.name} · ${info.summary}`.slice(0, 180));
     } else if (info) {
       a.stuck = info;
     } else if (a.status === 'stuck') {

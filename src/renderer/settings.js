@@ -104,7 +104,10 @@ function openSettings(config, { onSaved } = {}) {
   const hubAfterSend = settingsInput('checkbox', config.hubAfterSend !== false);
   const titles = settingsInput('checkbox', config.summarizeTitles !== false);
   const followUps = settingsInput('checkbox', config.suggestFollowUps !== false);
-  const notify = settingsInput('checkbox', config.notifyWhenDone !== false);
+  // The agent's Hub tile in the corner of the screen (toast.js), the
+  // system's own notifications, or none.
+  const notify = settingsSelect([['tile', 'Agent tile'], ['system', 'System notification'], ['off', 'Off']],
+    config.notifyWhenDone === false ? 'off' : config.notifyStyle === 'system' ? 'system' : 'tile');
   const sounds = settingsInput('checkbox', config.sounds !== false);
   const theme = settingsSelect(THEMES, config.theme || 'default');
   // Updates: look on GitHub now instead of waiting for the next look (the
@@ -174,7 +177,7 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('Show the Hub after sending', 'Off: stay in the chat after you send a message', hubAfterSend),
       settingsField('Short titles', 'Name new agents with a summary of your message, written by Haiku', titles),
       settingsField('Suggest follow-ups', 'After a task, the messages you will likely send next, written by Haiku. → or a click puts one in the box, Alt+1–3 sends it', followUps),
-      settingsField('Notifications', 'When an agent finishes or needs you while the app is in the background', notify),
+      settingsField('Notifications', 'When an agent finishes or needs you while the app is in the background: its tile in the corner of the screen, or the system\'s notification', notify),
       settingsField('Sounds', 'For everything you and the agents do', sounds))]],
     ['branches', 'Branch diff', [section(null,
       settingsField('Projects', `The Branches view lists ${(config.svnServer || 'svn+ssh://svn@tactile.build').replace(/\/+$/, '')}/<project>/branches for each one. Separate them with commas. Empty: every project someone committed to in the last year`, svnProjects),
@@ -293,7 +296,8 @@ function openSettings(config, { onSaved } = {}) {
       hubAfterSend: hubAfterSend.checked,
       summarizeTitles: titles.checked,
       suggestFollowUps: followUps.checked,
-      notifyWhenDone: notify.checked,
+      notifyWhenDone: notify.value !== 'off',
+      notifyStyle: notify.value === 'system' ? 'system' : 'tile',
       sounds: sounds.checked,
       theme: theme.value,
       curvedScreen: curved.checked,

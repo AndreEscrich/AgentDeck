@@ -120,7 +120,7 @@ contextBridge.exposeInMainWorld('deck', {
   gameFolderLookup: (text, current) => ipcRenderer.invoke('gamefolder:lookup', text, current),
   mergeNotes: input => ipcRenderer.invoke('notes:merge', input),
   followUps: input => ipcRenderer.invoke('agent:followups', input),
-  notify: (id, title, body) => ipcRenderer.invoke('notify', id, title, body),
+  notify: (id, title, body, extra) => ipcRenderer.invoke('notify', id, title, body, extra),
   onEvent: fn => on('agent:event', fn),
   onStatus: fn => on('agent:status', fn),
   onSession: fn => on('agent:session', fn),
