@@ -2478,9 +2478,12 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .settings-update-note { flex-basis: 100%; text-align: right; font-size: 11.5px; }
 .settings-update-note:empty { display: none; }
 /* The groups in one list, with a bar on the left that scrolls to them. */
-.settings-card { height: min(640px, calc(100% - 48px)); width: min(800px, calc(100% - 32px)); }
+/* Twice the size it was (800 × 640), as far as the window allows. */
+.settings-card { height: min(1280px, calc(100% - 48px)); width: min(1600px, calc(100% - 32px)); }
+.settings-main .settings-field > select, .settings-main .settings-field > input[type="text"], .settings-main .settings-field > textarea, .settings-main .settings-inline { width: min(460px, 45%); }
+.settings-main .settings-field > input[type="number"] { width: 110px; }
 .settings-main { flex: 1; min-height: 0; display: flex; border-top: 1px solid var(--border); }
-.settings-nav { flex-shrink: 0; width: 150px; padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; border-right: 1px solid var(--border); overflow-y: auto; }
+.settings-nav { flex-shrink: 0; width: 190px; padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; border-right: 1px solid var(--border); overflow-y: auto; }
 .settings-nav-item { text-align: left; background: none; border: none; border-radius: 8px; padding: 7px 10px; font-size: 13px; color: var(--text-dim); cursor: pointer; }
 .settings-nav-item:hover { color: var(--text); background: var(--bg-hover); }
 .settings-nav-item.active { color: var(--text); background: var(--bg-hover); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }

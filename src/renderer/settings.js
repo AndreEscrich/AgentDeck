@@ -210,10 +210,12 @@ function openSettings(config, { onSaved } = {}) {
   };
   const light = id => { for (const b of nav.children) b.classList.toggle('active', b.dataset.group === id); };
   const lightFromScroll = () => {
-    // The group whose title is in the upper third of the list is the one
-    // being read. (The list is the groups' offset parent.)
-    const top = body.scrollTop + Math.max(24, body.clientHeight / 3);
+    // The group whose title is near the top of the list (in its upper
+    // third, at most 160px down) is the one being read; at the very top it
+    // is the first. (The list is the groups' offset parent.)
+    const top = body.scrollTop + Math.min(160, Math.max(24, body.clientHeight / 3));
     let current = tabs[0][0];
+    if (body.scrollTop < 4) return light(current);
     for (const [id, group] of groups) if (group.offsetTop <= top) current = id;
     light(current);
   };
