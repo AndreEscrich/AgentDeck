@@ -112,6 +112,38 @@ function openLightbox(file) {
   window.uiSound?.('tick');
 }
 
+// A video large, filling the window (like an image's lightbox). It goes on
+// from where the small player was, and the small one goes on from where it
+// stopped. Esc or a click beside it closes it.
+function openVideoLightbox(small) {
+  const box = el('div', 'lightbox video-lightbox');
+  const video = document.createElement('video');
+  video.controls = true;
+  video.src = small.currentSrc || small.src;
+  const from = small.currentTime || 0;
+  const wasPlaying = !small.paused;
+  small.pause();
+  video.addEventListener('loadedmetadata', () => {
+    video.currentTime = from;
+    video.play().catch(() => {});
+  }, { once: true });
+  video.onclick = e => e.stopPropagation();
+  box.append(video, el('div', 'lightbox-path', small.dataset.path || ''));
+  const close = () => {
+    window.uiSound?.('tickDown');
+    small.currentTime = video.currentTime || from;
+    if (wasPlaying || !video.paused) small.play().catch(() => {});
+    video.pause();
+    box.remove();
+    document.removeEventListener('keydown', onKey, true);
+  };
+  const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); close(); } };
+  box.onclick = close;
+  document.addEventListener('keydown', onKey, true);
+  document.body.appendChild(box);
+  window.uiSound?.('tick');
+}
+
 // cwd: the agent's folder. A file that is not where the chat says (an agent
 // often names a file it made in a subfolder by its name alone) is looked for
 // there by name (findMedia in media.js); when it is nowhere, the chat says so
@@ -143,12 +175,21 @@ function mediaElement(file, caption, cwd) {
         return;
       }
     }
-    node.replaceWith(el('div', 'media-missing', `Cannot ${node.tagName === 'IMG' ? 'show' : 'play'} ${name}: it is not in the agent's folder`));
+    (node.closest('.video-wrap') || node).replaceWith(el('div', 'media-missing', `Cannot ${node.tagName === 'IMG' ? 'show' : 'play'} ${name}: it is not in the agent's folder`));
   });
   node.classList.add('chat-media');
   if (node.tagName === 'AUDIO') node.classList.add('chat-audio');
   node.dataset.path = file;
-  return node;
+  if (node.tagName !== 'VIDEO') return node;
+  // A video gets a button to see it large (and a double click does the same).
+  const wrap = el('span', 'video-wrap');
+  const big = el('button', 'video-full', '⤢');
+  big.type = 'button';
+  big.title = 'See it large (Esc closes it)';
+  big.onclick = e => { e.preventDefault(); e.stopPropagation(); openVideoLightbox(node); };
+  node.addEventListener('dblclick', e => { e.preventDefault(); openVideoLightbox(node); });
+  wrap.append(node, big);
+  return wrap;
 }
 
 // Markdown images with a file path show the file; a video path becomes a player.
