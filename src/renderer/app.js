@@ -3112,42 +3112,70 @@ function showUpdate(info) {
   if (!info) return;
   btn.disabled = false;
   btn.textContent = info.version ? `v${info.version} available` : 'Update available';
-  // The check runs when the window gets the focus, so its answer counts as
-  // part of that moment when it comes soon after.
-  if (Date.now() - focusedAt < 20000) offerUpdate();
+  offerUpdate();
   const what = info.commits.length ? `\n\nWhat's new:\n${info.commits.map(c => `• ${c}`).join('\n')}` : '';
   btn.title = `Click to update and restart (${info.behind} new commit${info.behind === 1 ? '' : 's'}).${what}`;
 }
 
-// A new version also gets a card once, which offers to update right away.
-// "Later" leaves the button; more new commits on GitHub bring the card back.
-// The card comes only when you come back to the window and no agent needs
-// you: none asks a question or waits for an approval, and you have opened
-// every finished agent (the agents Tab would show, see reviewQueue). Until
-// then the button next to the version is there.
-const offeredUpdates = new Set();
+// A new version gets a card as soon as the window has the focus (the app
+// looks on GitHub every time the window gets the focus, see watchForUpdates
+// in main.js). The card has one button, Update and restart, and does not
+// close: Esc and a click outside do nothing. Agents that are working stop,
+// then continue where they left off after the restart. Only when the update
+// itself fails does the card say why and offer Close; that version then
+// does not force the card again until the app restarts.
 let latestInfo = null;
-let focusedAt = 0;
-window.addEventListener('focus', () => {
-  focusedAt = Date.now();
-  offerUpdate();
-});
-async function offerUpdate() {
+let updateCardOpen = false;
+const failedUpdates = new Set();
+window.addEventListener('focus', () => offerUpdate());
+function offerUpdate() {
   const info = latestInfo;
-  if (!info || !document.hasFocus() || reviewQueue().length) return;
-  const key = `${info.version}:${info.behind}`;
-  if (offeredUpdates.has(key) || document.querySelector('.quit-modal, .settings-modal')) return;
-  offeredUpdates.add(key);
+  if (!info || updateCardOpen || !document.hasFocus() || failedUpdates.has(info.version)) return;
+  // Another card (quitting, stopping agents) first: try again once it is gone.
+  if (document.querySelector('.quit-modal')) { setTimeout(offerUpdate, 1500); return; }
+  updateCardOpen = true;
   sfx('open');
-  const ok = await confirmCard({
-    title: info.version ? `Agent Hub v${info.version} is available` : 'A new version of Agent Hub is available',
-    text: `Updating restarts the app. Agents that are working stop, then continue where they left off after the restart.${info.commits.length ? " What's new:" : ''}`,
-    lines: info.commits.slice(0, 8),
-    confirmLabel: 'Update and restart',
-    stayLabel: 'Later',
-  });
-  // The card needs a moment to close before the update may show its own.
-  if (ok) setTimeout(() => $('app-update').onclick(), 250);
+  const overlay = el('div', 'quit-modal update-modal');
+  const card = el('div', 'quit-card');
+  const working = [...state.agents.values()].filter(a => !a.removed && BUSY.includes(a.status)).length;
+  const text = el('p', 'quit-text', `Update to keep using Agent Hub. It restarts${working ? `, and the ${working === 1 ? 'agent that is working stops, then continues' : `${working} agents that are working stop, then continue`} where ${working === 1 ? 'it' : 'they'} left off` : ''}.`);
+  card.append(el('div', 'quit-title', info.version ? `Agent Hub v${info.version} is available` : 'A new version of Agent Hub is available'), text);
+  const buttons = el('div', 'quit-buttons');
+  const go = el('button', 'quit-go', 'Update and restart');
+  buttons.appendChild(go);
+  card.appendChild(buttons);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('show'));
+  go.focus();
+  const onKey = e => {
+    if (!['Escape', 'Tab', 'Enter'].includes(e.key)) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (e.key === 'Enter' && !go.disabled) go.click();
+  };
+  document.addEventListener('keydown', onKey, true);
+  go.onclick = async () => {
+    go.disabled = true;
+    go.textContent = 'Updating…';
+    const result = await window.deck.applyUpdate().catch(err => ({ ok: false, error: String(err) }));
+    if (result.ok) return;
+    // It could not update: say why, and let the app be used.
+    failedUpdates.add(info.version);
+    text.textContent = `The update failed: ${result.error}`;
+    go.disabled = false;
+    go.textContent = 'Try again';
+    if (!buttons.querySelector('.quit-stay')) {
+      const closeBtn = el('button', 'quit-stay', 'Close');
+      closeBtn.onclick = () => {
+        document.removeEventListener('keydown', onKey, true);
+        overlay.classList.remove('show');
+        setTimeout(() => overlay.remove(), 200);
+        updateCardOpen = false;
+      };
+      buttons.prepend(closeBtn);
+    }
+  };
 }
 
 // The changelog: click the version next to the title. It comes from git

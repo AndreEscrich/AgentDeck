@@ -471,19 +471,17 @@ function allowStop(event) {
   return false;
 }
 
-// The stable copy looks for a new version on GitHub a little after it
-// opens, every time its window gets the focus (at most once a minute), and
-// every 30 minutes, and tells the window when there is one.
+// The stable copy looks for a new version on GitHub 3 seconds after it
+// opens, every time its window gets the focus, and every 30 minutes, and
+// tells the window when there is one.
 let latestUpdate = null;
 let lookForUpdate = () => {};
-let lastLook = 0;
 let looking = null;
 // One look at GitHub (a look already running is shared, so two never fetch
 // at once). Resolves with what updates.check found: the new version, null
 // for none, undefined when GitHub couldn't be reached.
 function lookNow() {
   if (looking) return looking;
-  lastLook = Date.now();
   looking = updates.check(app.getAppPath()).then(found => {
     // undefined: GitHub couldn't be reached, so what was found before stays.
     if (found !== undefined && JSON.stringify(found) !== JSON.stringify(latestUpdate)) {
@@ -496,8 +494,9 @@ function lookNow() {
 }
 function watchForUpdates() {
   const look = () => lookNow().catch(() => {});
-  lookForUpdate = () => { if (Date.now() - lastLook > 60 * 1000) look(); };
-  setTimeout(look, 15 * 1000);
+  // Every time the window gets the focus (a look already running is shared).
+  lookForUpdate = () => look();
+  setTimeout(look, 3 * 1000);
   setInterval(look, 30 * 60 * 1000);
 }
 
