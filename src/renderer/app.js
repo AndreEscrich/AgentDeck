@@ -3619,9 +3619,14 @@ async function sendToAgent(agent, text, images = []) {
   if (!agent.snapshot) {
     agent.snapshotAt = Date.now() - 1000;
     agent.snapshot = await snapshotInTime(agent.cwd);
-    // The project as it was before the agent's first task: the changes
-    // panel beside its chat compares with it (updateSession).
-    if (!agent.sessionSnap && agent.snapshot) agent.sessionSnap = agent.snapshot;
+    // The project as it was before the agent's first task: its Changes card
+    // compares with it (updateSession). Without one then (a big project's
+    // first snapshot can take minutes), the card adds up what its edits
+    // reported instead, for good: a later snapshot would miss what came before.
+    if (!agent.sessionStarted) {
+      agent.sessionStarted = true;
+      agent.sessionSnap = agent.snapshot || null;
+    }
   }
   await window.deck.sendMessage(agent.id, text, images);
 }
@@ -3818,17 +3823,15 @@ function warmSnapshots() {
 const pathKey = p => p.replace(/\\/g, '/').toLowerCase();
 
 async function updateSession(a, turn) {
-  if (!a.sessionSnap || a.removed) return;
+  if (!a.sessionStarted || a.removed) return;
   a.sessionPaths = a.sessionPaths || new Set();
   for (const f of turn?.files || []) {
     a.sessionPaths.add(pathKey(f.path));
     if (f.from) a.sessionPaths.add(pathKey(f.from));
   }
   if (!a.sessionPaths.size) return;
-  const diff = await window.deck.gitChanges(a.cwd, a.sessionSnap).catch(() => null);
-  if (diff == null || !state.agents.has(a.id)) return;
-  const files = pairMoves(parseUnifiedDiff(diff)).filter(f => !isTempFile(f.path)
-    && (a.sessionPaths.has(pathKey(f.path)) || (f.from && a.sessionPaths.has(pathKey(f.from)))));
+  const files = a.sessionSnap ? await sessionFromSnapshot(a) : sessionFromEdits(a, turn);
+  if (!files || !state.agents.has(a.id)) return;
   if (!a.session) {
     a.session = sessionPanel(a.cwd);
     $('views').appendChild(a.session.el);
@@ -3852,6 +3855,31 @@ async function updateSession(a, turn) {
     return from?.getClientRects().length ? [from, f.path] : null;
   }).filter(Boolean);
   flyIn(sources, a.session.targetFor);
+}
+
+// The agent's files as they are now, compared with the project before its
+// first task.
+async function sessionFromSnapshot(a) {
+  const diff = await window.deck.gitChanges(a.cwd, a.sessionSnap).catch(() => null);
+  if (diff == null) return null;
+  return pairMoves(parseUnifiedDiff(diff)).filter(f => !isTempFile(f.path)
+    && (a.sessionPaths.has(pathKey(f.path)) || (f.from && a.sessionPaths.has(pathKey(f.from)))));
+}
+
+// Without that snapshot: each task's files as its edits reported them, added
+// up. A file keeps the changes of every task; one the agent made and then
+// deleted again is gone.
+function sessionFromEdits(a, turn) {
+  a.sessionEdits = a.sessionEdits || new Map();
+  for (const f of turn?.files || []) {
+    const key = pathKey(f.path);
+    const before = a.sessionEdits.get(key);
+    if (before?.status === 'new' && f.status === 'del') { a.sessionEdits.delete(key); continue; }
+    a.sessionEdits.set(key, before
+      ? { ...f, status: before.status === 'new' ? 'new' : f.status, lines: [...before.lines, ...f.lines] }
+      : { ...f });
+  }
+  return [...a.sessionEdits.values()];
 }
 
 // Only the panel of the agent on screen shows. Folding one folds them all.
@@ -4260,6 +4288,9 @@ window.deck.onEvent((id, msg) => {
       window.deck.recentMedia(a.cwd, since).then(files => a.transcript.showMedia(turn, files, snap)).catch(() => {});
     }
   }
+  // Without a snapshot, the task's card lists what its edits reported
+  // (finishTurn); the agent's Changes card adds those up (updateSession).
+  if (msg.type === 'result' && !a.snapshot) updateSession(a, a.transcript.lastFinished);
   if (msg.type === 'result' && a.snapshot) {
     const snap = a.snapshot;
     const turn = a.transcript.lastFinished;
