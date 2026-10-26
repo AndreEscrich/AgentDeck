@@ -244,11 +244,11 @@ class ConnectorsDialog {
     form.className = 'conn-form';
     form.innerHTML = `
       <div class="conn-form-title">Add a custom connector</div>
-      <label>Name <input name="name" placeholder="my-docs" required></label>
-      <label>URL <input name="url" placeholder="https://example.com/mcp" required></label>
+      <label>Name <input type="text" name="name" placeholder="my-docs" required></label>
+      <label>URL <input type="text" name="url" placeholder="https://example.com/mcp" required></label>
       <div class="conn-form-row">
         <label>Type <select name="transport"><option value="http">HTTP (most connectors)</option><option value="sse">SSE (older connectors)</option></select></label>
-        <label>Header (optional) <input name="header" placeholder="Authorization: Bearer …"></label>
+        <label>Header (optional) <input type="text" name="header" placeholder="Authorization: Bearer …"></label>
       </div>
       <div class="conn-form-buttons"><button type="button" class="cancel">Cancel</button><button type="submit" class="primary">Add</button></div>`;
     form.onsubmit = async e => {

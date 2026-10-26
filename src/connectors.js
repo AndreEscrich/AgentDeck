@@ -115,9 +115,10 @@ async function add(config, { name, url, transport = 'http', header }) {
   // Claude Code allows letters, digits, dashes and underscores in names.
   if (!/^[A-Za-z0-9_-]{1,60}$/.test(name || '')) return { ok: false, message: 'Use only letters, digits, dashes (-) and underscores (_) in the name, for example my-docs.' };
   if (!/^https?:\/\//i.test(url || '')) return { ok: false, message: 'The URL must start with http:// or https://.' };
-  const args = ['add', '--transport', transport === 'sse' ? 'sse' : 'http', '--scope', 'user'];
+  // name and url go first: --header takes several values, so it would also
+  // take any name and url that came after it.
+  const args = ['add', name, url, '--transport', transport === 'sse' ? 'sse' : 'http', '--scope', 'user'];
   if (header) args.push('--header', header);
-  args.push(name, url);
   const { code, out } = await run(config, args);
   return { ok: code === 0, message: out.trim() };
 }
