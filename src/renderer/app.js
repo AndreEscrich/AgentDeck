@@ -3115,8 +3115,8 @@ function showUpdate(info) {
   btn.disabled = false;
   btn.textContent = info.version ? `v${info.version} available` : 'Update available';
   offerUpdate();
-  const what = info.commits.length ? `\n\nWhat's new:\n${info.commits.map(c => `• ${c}`).join('\n')}` : '';
-  btn.title = `Click to update and restart (${info.behind} new commit${info.behind === 1 ? '' : 's'}).${what}`;
+  // Just what a click does; what changed is in the changelog (click the version).
+  btn.title = 'Click to update and restart';
 }
 
 // A new version gets a card when the window has the focus, you are on the
