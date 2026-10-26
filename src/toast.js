@@ -3,9 +3,9 @@
 // is in the background (Settings → Notifications). Windows' notifications
 // cannot look like that: Windows draws them itself.
 //
-// One window holds them all (toast.html), sized to fit them: up to four stand
-// side by side, the newest on the right. A click opens the agent; each goes
-// by itself after a while (one that needs you stays longer).
+// One window holds them all (toast.html), sized to fit them: they stack up,
+// the newest at the bottom, as many as fit on the screen. They stay until
+// you come back to the app; a click opens the agent.
 
 const { BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('path');

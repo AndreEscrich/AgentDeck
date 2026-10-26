@@ -1,11 +1,9 @@
 // The notifications in the corner of the screen (toast.html, src/toast.js).
 // Each is the agent's Hub tile as the app sent it (hub.snapshot), with what
 // happened under its title. Its tank fills up when it comes in, and a
-// finished one sloshes like in the Hub.
+// finished one sloshes like in the Hub. They stack up, the newest at the
+// bottom, and stay until you open the app (or dismiss one with its ×).
 
-const MAX = 4;
-const STAY = 10000;        // ms a notification stays
-const STAY_NEEDS = 30000;  // one that needs you (a question, an approval, stuck)
 const box = document.getElementById('toasts');
 
 function applyTheme(theme) {
@@ -24,14 +22,8 @@ function resize() {
 
 function dismiss(toast) {
   if (toast.classList.contains('leaving')) return;
-  clearTimeout(toast.timer);
   toast.classList.add('leaving');
   setTimeout(() => { toast.remove(); resize(); }, 300);
-}
-
-function arm(toast) {
-  clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => dismiss(toast), toast.stay);
 }
 
 window.toastHost.onAdd(({ id, body, tile, theme }) => {
@@ -62,13 +54,10 @@ window.toastHost.onAdd(({ id, body, tile, theme }) => {
     close.title = 'Dismiss';
     close.onclick = e => { e.stopPropagation(); dismiss(toast); };
   }
-  // It stays while the pointer is on it.
-  toast.stay = /state-(waiting|stuck)/.test(el.className) ? STAY_NEEDS : STAY;
-  toast.onmouseenter = () => clearTimeout(toast.timer);
-  toast.onmouseleave = () => arm(toast);
   box.appendChild(toast);
-  const extra = [...box.querySelectorAll('.notice:not(.leaving)')];
-  for (const t of extra.slice(0, Math.max(0, extra.length - MAX))) t.remove();
+  // As many as fit on the screen: the oldest make room.
+  const live = [...box.querySelectorAll('.notice:not(.leaving)')];
+  while (live.length > 1 && box.offsetHeight > screen.availHeight) live.shift().remove();
 
   // The tank fills up from empty to where the agent is.
   const liquid = el.querySelector('.liquid');
@@ -84,7 +73,6 @@ window.toastHost.onAdd(({ id, body, tile, theme }) => {
       setTimeout(() => el.classList.remove('finish'), 1300);
     }, 900);
   }
-  arm(toast);
   resize();
 });
 
