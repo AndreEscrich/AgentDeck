@@ -155,8 +155,7 @@ function openSettings(config, { onSaved } = {}) {
     s.append(...rows);
     return s;
   };
-  // The settings in tabs, so it is not one long list. The tab you looked at
-  // last opens again.
+  // The settings in groups, listed in the bar on the left (see nav below).
   const tabs = [
     ['agents', 'Agents', [section(null,
       settingsField('Folder', 'Where a new agent works until you pick one in the Hub', folderRow),
@@ -189,38 +188,55 @@ function openSettings(config, { onSaved } = {}) {
       section('Stuck agents',
         settingsField('Waiting for Unity for', 'Seconds. An agent only counts as stuck while it waits for Unity to be ready', stuckAfter))]],
   ];
-  const tabBar = el('div', 'settings-tabs');
-  tabBar.setAttribute('role', 'tablist');
-  const panels = new Map();
-  const showTab = id => {
-    for (const [key, panel] of panels) {
-      panel.classList.toggle('hidden', key !== id);
-      tabBar.querySelector(`[data-tab="${key}"]`).classList.toggle('active', key === id);
-      tabBar.querySelector(`[data-tab="${key}"]`).setAttribute('aria-selected', String(key === id));
-    }
-    body.scrollTop = 0;
-    try { localStorage.setItem('settingsTab', id); } catch { /* not important */ }
-  };
+  // A bar on the left with the groups: clicking one scrolls the list to it,
+  // and the group you are reading is lit up as you scroll.
+  const nav = el('div', 'settings-nav');
+  nav.setAttribute('role', 'navigation');
+  const groups = new Map();
   for (const [id, label, sections] of tabs) {
-    const b = el('button', 'settings-tab', label);
+    const b = el('button', 'settings-nav-item', label);
     b.type = 'button';
-    b.dataset.tab = id;
-    b.setAttribute('role', 'tab');
-    b.onclick = () => { window.uiSound?.('tick'); showTab(id); };
-    tabBar.appendChild(b);
-    const panel = el('div', 'settings-panel');
-    panel.append(...sections);
-    panels.set(id, panel);
-    body.appendChild(panel);
+    b.dataset.group = id;
+    nav.appendChild(b);
+    const group = el('div', 'settings-group');
+    group.dataset.group = id;
+    group.append(el('div', 'settings-group-title', label), ...sections);
+    groups.set(id, group);
+    body.appendChild(group);
   }
-  let firstTab = 'agents';
-  try { if (panels.has(localStorage.getItem('settingsTab'))) firstTab = localStorage.getItem('settingsTab'); } catch { /* not important */ }
-  showTab(firstTab);
-  // A setting that cannot be saved: its tab comes to the front.
-  const showSettingOf = input => {
-    for (const [id, panel] of panels) if (panel.contains(input)) showTab(id);
-    input.focus();
+  const scrollToGroup = (id, smooth = true) => {
+    const group = groups.get(id);
+    body.scrollTo({ top: group.offsetTop - 4, behavior: smooth ? 'smooth' : 'auto' });
   };
+  const light = id => { for (const b of nav.children) b.classList.toggle('active', b.dataset.group === id); };
+  const lightFromScroll = () => {
+    // The group whose title is in the upper third of the list is the one
+    // being read. (The list is the groups' offset parent.)
+    const top = body.scrollTop + Math.max(24, body.clientHeight / 3);
+    let current = tabs[0][0];
+    for (const [id, group] of groups) if (group.offsetTop <= top) current = id;
+    light(current);
+  };
+  body.addEventListener('scroll', lightFromScroll, { passive: true });
+  nav.onclick = e => {
+    const b = e.target.closest('.settings-nav-item');
+    if (!b) return;
+    window.uiSound?.('tick');
+    light(b.dataset.group);
+    scrollToGroup(b.dataset.group);
+  };
+  // Room under the last group, so its title can scroll up to the top too.
+  const fitEnd = () => {
+    const last = [...groups.values()].pop();
+    body.style.paddingBottom = `${Math.max(16, body.clientHeight - last.offsetHeight - 8)}px`;
+  };
+  requestAnimationFrame(() => { fitEnd(); lightFromScroll(); });
+  // A setting that cannot be saved: the list scrolls to it.
+  const showSettingOf = input => {
+    input.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    input.focus({ preventScroll: true });
+  };
+
 
   const problem = el('div', 'settings-problem hidden');
   const foot = el('div', 'settings-foot');
@@ -234,7 +250,9 @@ function openSettings(config, { onSaved } = {}) {
   save.type = 'button';
   foot.append(file, problem, cancel, save);
   head.appendChild(updateRow);
-  card.append(head, tabBar, body, foot);
+  const main = el('div', 'settings-main');
+  main.append(nav, body);
+  card.append(head, main, foot);
   overlay.appendChild(card);
   document.body.appendChild(overlay);
   requestAnimationFrame(() => overlay.classList.add('show'));

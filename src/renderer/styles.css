@@ -2477,11 +2477,14 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .settings-update .settings-btn { font-size: 12px; padding: 4px 10px; }
 .settings-update-note { flex-basis: 100%; text-align: right; font-size: 11.5px; }
 .settings-update-note:empty { display: none; }
-/* The tabs, and one height for every tab so the card does not jump. */
-.settings-card { height: min(620px, calc(100% - 48px)); }
-.settings-body { flex: 1; }
-.settings-tabs { display: flex; gap: 2px; padding: 4px 22px 0; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.settings-tab { background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; margin-bottom: -1px; padding: 8px 12px; font-size: 13px; color: var(--text-dim); cursor: pointer; }
-.settings-tab:hover { color: var(--text); background: none; }
-.settings-tab.active { color: var(--text); border-bottom-color: var(--accent, var(--c1)); font-weight: 600; }
-.settings-panel { padding-top: 6px; }
+/* The groups in one list, with a bar on the left that scrolls to them. */
+.settings-card { height: min(640px, calc(100% - 48px)); width: min(800px, calc(100% - 32px)); }
+.settings-main { flex: 1; min-height: 0; display: flex; border-top: 1px solid var(--border); }
+.settings-nav { flex-shrink: 0; width: 150px; padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; border-right: 1px solid var(--border); overflow-y: auto; }
+.settings-nav-item { text-align: left; background: none; border: none; border-radius: 8px; padding: 7px 10px; font-size: 13px; color: var(--text-dim); cursor: pointer; }
+.settings-nav-item:hover { color: var(--text); background: var(--bg-hover); }
+.settings-nav-item.active { color: var(--text); background: var(--bg-hover); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
+.settings-main .settings-body { flex: 1; min-width: 0; position: relative; padding-top: 4px; }
+.settings-group-title { font-size: 15px; font-weight: 700; padding: 14px 0 2px; }
+.settings-group + .settings-group { border-top: 1px solid var(--border); margin-top: 10px; }
+@media (max-width: 620px) { .settings-nav { width: 110px; } }
