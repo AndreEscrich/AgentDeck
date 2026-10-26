@@ -2471,7 +2471,17 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
 .slash-ghost { color: var(--text-faint); }
 
-/* Settings → Updates: the buttons, and what it found on a line under them. */
-.settings-update { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px 8px; max-width: 320px; }
-.settings-update-note { flex-basis: 100%; text-align: right; }
+/* Settings: Check for updates at the top right, what it found under it. */
+.settings-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.settings-update { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 4px 8px; max-width: 360px; }
+.settings-update .settings-btn { font-size: 12px; padding: 4px 10px; }
+.settings-update-note { flex-basis: 100%; text-align: right; font-size: 11.5px; }
 .settings-update-note:empty { display: none; }
+/* The tabs, and one height for every tab so the card does not jump. */
+.settings-card { height: min(620px, calc(100% - 48px)); }
+.settings-body { flex: 1; }
+.settings-tabs { display: flex; gap: 2px; padding: 4px 22px 0; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.settings-tab { background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; margin-bottom: -1px; padding: 8px 12px; font-size: 13px; color: var(--text-dim); cursor: pointer; }
+.settings-tab:hover { color: var(--text); background: none; }
+.settings-tab.active { color: var(--text); border-bottom-color: var(--accent, var(--c1)); font-weight: 600; }
+.settings-panel { padding-top: 6px; }

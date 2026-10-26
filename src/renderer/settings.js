@@ -63,6 +63,7 @@ function openSettings(config, { onSaved } = {}) {
   const head = el('div', 'settings-head');
   head.append(el('div', 'settings-title', 'Settings'));
   const body = el('div', 'settings-body');
+  // At the top: look for a new version now (see updateRow below).
 
   // New agents
   const folder = settingsInput('text', config.defaultFolder, { placeholder: 'The folder of the agent you started last' });
@@ -150,40 +151,76 @@ function openSettings(config, { onSaved } = {}) {
 
   const section = (title, ...rows) => {
     const s = el('div', 'settings-section');
-    s.append(el('div', 'settings-section-title', title), ...rows);
+    if (title) s.appendChild(el('div', 'settings-section-title', title));
+    s.append(...rows);
     return s;
   };
-  body.append(
-    section('New agents',
+  // The settings in tabs, so it is not one long list. The tab you looked at
+  // last opens again.
+  const tabs = [
+    ['agents', 'Agents', [section(null,
       settingsField('Folder', 'Where a new agent works until you pick one in the Hub', folderRow),
       settingsField('Games folder', 'The folder with one folder per game', gamesRow),
       settingsField('Auto game folder', 'A new agent whose message is about one game (by any of its names, or a PM task about it) works in that game\'s folder, for that agent only. About no game or several: the folder you picked', autoGame),
       settingsField('Permissions', null, mode),
+      settingsField('Compact the conversation at', 'Every step re-reads the whole conversation, so long tasks get expensive. Smaller: less usage, but the agent remembers fewer details from early in the task', compact))]],
+    ['model', 'Model', [section(null,
       settingsField('Model', 'Auto picks Opus, Sonnet or Haiku for each task', model),
       settingsField('Auto model report', 'What Auto cost against running everything on Opus at medium effort', reportBtn),
       settingsField('Effort', 'Auto: with the Auto model, it picks the effort for each task too; with another model, the model\'s default', effort),
-      settingsField('Fast mode', 'Faster answers from the same model', fast),
-      settingsField('Compact the conversation at', 'Every step re-reads the whole conversation, so long tasks get expensive. Smaller: less usage, but the agent remembers fewer details from early in the task', compact)),
-    section('The app',
+      settingsField('Fast mode', 'Faster answers from the same model', fast))]],
+    ['app', 'App', [section(null,
       settingsField('Theme', 'Nostromo: the screens of the ship’s computer in Alien, on an old tube', theme),
       settingsField('Curved screen', 'Nostromo only: the screen has the bulging shape of a tube’s glass, with scanlines that bow with it', curved),
       settingsField('Show the Hub after sending', 'Off: stay in the chat after you send a message', hubAfterSend),
       settingsField('Short titles', 'Name new agents with a summary of your message, written by Haiku', titles),
       settingsField('Suggest follow-ups', 'After a task, the messages you will likely send next, written by Haiku. → or a click puts one in the box, Alt+1–3 sends it', followUps),
       settingsField('Notifications', 'When an agent finishes or needs you while the app is in the background', notify),
-      settingsField('Sounds', 'For everything you and the agents do', sounds),
-      settingsField('Updates', 'The app also looks for a new version when you come back to its window, and every 30 minutes', updateRow)),
-    section('Branch diff',
+      settingsField('Sounds', 'For everything you and the agents do', sounds))]],
+    ['branches', 'Branch diff', [section(null,
       settingsField('Projects', `The Branches view lists ${(config.svnServer || 'svn+ssh://svn@tactile.build').replace(/\/+$/, '')}/<project>/branches for each one. Separate them with commas. Empty: every project someone committed to in the last year`, svnProjects),
       settingsField('Branch names', 'Only branches whose names start with one of these. Separate them with commas. Empty: every branch', svnBranchFilter),
-      settingsField('GitHub', 'Also list your open pull requests and the branches you pushed in the last 90 days, for the account gh is signed in with', githubBranches)),
-    section('Stuck agents',
-      settingsField('Waiting for Unity for', 'Seconds. An agent only counts as stuck while it waits for Unity to be ready', stuckAfter)),
-    section('Claude Code',
-      settingsField('Claude Code program', 'Empty: the app finds it', claudePath),
-      settingsField('Extra flags', 'Added to every agent', extraArgs),
-      settingsField('Environment variables', 'For every agent', env)),
-  );
+      settingsField('GitHub', 'Also list your open pull requests and the branches you pushed in the last 90 days, for the account gh is signed in with', githubBranches))]],
+    ['advanced', 'Advanced', [
+      section('Claude Code',
+        settingsField('Claude Code program', 'Empty: the app finds it', claudePath),
+        settingsField('Extra flags', 'Added to every agent', extraArgs),
+        settingsField('Environment variables', 'For every agent', env)),
+      section('Stuck agents',
+        settingsField('Waiting for Unity for', 'Seconds. An agent only counts as stuck while it waits for Unity to be ready', stuckAfter))]],
+  ];
+  const tabBar = el('div', 'settings-tabs');
+  tabBar.setAttribute('role', 'tablist');
+  const panels = new Map();
+  const showTab = id => {
+    for (const [key, panel] of panels) {
+      panel.classList.toggle('hidden', key !== id);
+      tabBar.querySelector(`[data-tab="${key}"]`).classList.toggle('active', key === id);
+      tabBar.querySelector(`[data-tab="${key}"]`).setAttribute('aria-selected', String(key === id));
+    }
+    body.scrollTop = 0;
+    try { localStorage.setItem('settingsTab', id); } catch { /* not important */ }
+  };
+  for (const [id, label, sections] of tabs) {
+    const b = el('button', 'settings-tab', label);
+    b.type = 'button';
+    b.dataset.tab = id;
+    b.setAttribute('role', 'tab');
+    b.onclick = () => { window.uiSound?.('tick'); showTab(id); };
+    tabBar.appendChild(b);
+    const panel = el('div', 'settings-panel');
+    panel.append(...sections);
+    panels.set(id, panel);
+    body.appendChild(panel);
+  }
+  let firstTab = 'agents';
+  try { if (panels.has(localStorage.getItem('settingsTab'))) firstTab = localStorage.getItem('settingsTab'); } catch { /* not important */ }
+  showTab(firstTab);
+  // A setting that cannot be saved: its tab comes to the front.
+  const showSettingOf = input => {
+    for (const [id, panel] of panels) if (panel.contains(input)) showTab(id);
+    input.focus();
+  };
 
   const problem = el('div', 'settings-problem hidden');
   const foot = el('div', 'settings-foot');
@@ -196,7 +233,8 @@ function openSettings(config, { onSaved } = {}) {
   const save = el('button', 'settings-save', 'Save');
   save.type = 'button';
   foot.append(file, problem, cancel, save);
-  card.append(head, body, foot);
+  head.appendChild(updateRow);
+  card.append(head, tabBar, body, foot);
   overlay.appendChild(card);
   document.body.appendChild(overlay);
   requestAnimationFrame(() => overlay.classList.add('show'));
@@ -218,7 +256,7 @@ function openSettings(config, { onSaved } = {}) {
       if (eq < 1) {
         problem.textContent = `"${line}" is not NAME=value.`;
         problem.classList.remove('hidden');
-        env.focus();
+        showSettingOf(env);
         return;
       }
       envVars[line.slice(0, eq).trim()] = line.slice(eq + 1);
