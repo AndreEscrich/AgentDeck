@@ -3117,13 +3117,16 @@ function showUpdate(info) {
   btn.title = `Click to update and restart (${info.behind} new commit${info.behind === 1 ? '' : 's'}).${what}`;
 }
 
-// A new version gets a card as soon as the window has the focus (the app
-// looks on GitHub every time the window gets the focus, see watchForUpdates
-// in main.js). The card has one button, Update and restart, and does not
-// close: Esc and a click outside do nothing. Agents that are working stop,
-// then continue where they left off after the restart. Only when the update
-// itself fails does the card say why and offer Close; that version then
-// does not force the card again until the app restarts.
+// A new version gets a card when the window has the focus and no agent is
+// running (working, starting, asking you something, stuck or with work in
+// the background). The app looks on GitHub every time the window gets the
+// focus (see watchForUpdates in main.js); while agents run, the card waits
+// and comes as soon as the last one is done (see onStatus). The card has one
+// button, Update and restart, and does not close: Esc and a click outside do
+// nothing. Agents that finished and that you have not checked yet stay that
+// way after the restart (the Hub is saved as the app quits). Only when the
+// update itself fails does the card say why and offer Close; that version
+// then does not force the card again until the app restarts.
 let latestInfo = null;
 let updateCardOpen = false;
 const failedUpdates = new Set();
@@ -3131,14 +3134,14 @@ window.addEventListener('focus', () => offerUpdate());
 function offerUpdate() {
   const info = latestInfo;
   if (!info || updateCardOpen || !document.hasFocus() || failedUpdates.has(info.version)) return;
+  if ([...state.agents.values()].some(a => !a.removed && BUSY.includes(a.status))) return;
   // Another card (quitting, stopping agents) first: try again once it is gone.
   if (document.querySelector('.quit-modal')) { setTimeout(offerUpdate, 1500); return; }
   updateCardOpen = true;
   sfx('open');
   const overlay = el('div', 'quit-modal update-modal');
   const card = el('div', 'quit-card');
-  const working = [...state.agents.values()].filter(a => !a.removed && BUSY.includes(a.status)).length;
-  const text = el('p', 'quit-text', `Update to keep using Agent Hub. It restarts${working ? `, and the ${working === 1 ? 'agent that is working stops, then continues' : `${working} agents that are working stop, then continue`} where ${working === 1 ? 'it' : 'they'} left off` : ''}.`);
+  const text = el('p', 'quit-text', 'Update to keep using Agent Hub. It restarts, and your agents are on the Hub as you left them.');
   card.append(el('div', 'quit-title', info.version ? `Agent Hub v${info.version} is available` : 'A new version of Agent Hub is available'), text);
   const buttons = el('div', 'quit-buttons');
   const go = el('button', 'quit-go', 'Update and restart');
@@ -4260,6 +4263,8 @@ window.deck.onStatus((id, status) => {
   updateAttention();
   refreshHeaderIfCurrent(id);
   renderSidebar();
+  // The last running agent is done: a waiting update can come now.
+  if (!BUSY.includes(status)) offerUpdate();
 });
 
 window.deck.onPermission((id, req) => {
