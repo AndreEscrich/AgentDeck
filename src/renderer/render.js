@@ -144,6 +144,61 @@ function openVideoLightbox(small) {
   window.uiSound?.('tick');
 }
 
+// The bar along the bottom of a video in the chat, drawn by the app (the
+// browser's own bar cannot take a button of ours): play or pause, the
+// timeline, the time, sound on or off, and ⤢ to see the video large. It
+// shows while you point at the video and while it is paused. A click on the
+// video plays or pauses it; a double click shows it large.
+const VIDEO_ICONS = {
+  play: '<svg viewBox="0 0 16 16"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg>',
+  pause: '<svg viewBox="0 0 16 16"><path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z" fill="currentColor"/></svg>',
+  sound: '<svg viewBox="0 0 16 16"><path d="M2 6h3l4-3.5v11L5 10H2z" fill="currentColor"/><path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.6a6 6 0 0 1 0 8.8" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>',
+  muted: '<svg viewBox="0 0 16 16"><path d="M2 6h3l4-3.5v11L5 10H2z" fill="currentColor"/><path d="M11 6l4 4M15 6l-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  large: '<svg viewBox="0 0 16 16"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+};
+function videoBar(video) {
+  const bar = el('div', 'video-bar');
+  const button = (cls, icon, title) => {
+    const b = el('button', `video-btn ${cls}`);
+    b.type = 'button';
+    b.title = title;
+    b.innerHTML = VIDEO_ICONS[icon];
+    return b;
+  };
+  const play = button('video-play', 'play', 'Play (click the video too)');
+  const seek = document.createElement('input');
+  seek.type = 'range';
+  seek.className = 'video-seek';
+  seek.min = '0';
+  seek.max = '1000';
+  seek.value = '0';
+  const time = el('span', 'video-time', '0:00');
+  const sound = button('video-sound', 'sound', 'Sound off');
+  const large = button('video-large', 'large', 'See it large (or double-click the video; Esc closes it)');
+  bar.append(play, seek, time, sound, large);
+  const clock = s => (Number.isFinite(s) ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '0:00');
+  const showTime = () => {
+    time.textContent = `${clock(video.currentTime)} / ${clock(video.duration)}`;
+    if (!seeking && video.duration) seek.value = String(Math.round((video.currentTime / video.duration) * 1000));
+  };
+  let seeking = false;
+  const toggle = () => (video.paused ? video.play().catch(() => {}) : video.pause());
+  const stop = e => { e.preventDefault(); e.stopPropagation(); };
+  play.onclick = e => { stop(e); toggle(); };
+  sound.onclick = e => { stop(e); video.muted = !video.muted; };
+  large.onclick = e => { stop(e); openVideoLightbox(video); };
+  seek.oninput = () => { seeking = true; if (video.duration) video.currentTime = (Number(seek.value) / 1000) * video.duration; };
+  seek.onchange = () => { seeking = false; };
+  bar.onclick = e => e.stopPropagation();
+  video.addEventListener('click', e => { e.preventDefault(); toggle(); });
+  video.addEventListener('dblclick', e => { e.preventDefault(); openVideoLightbox(video); });
+  video.addEventListener('play', () => { play.innerHTML = VIDEO_ICONS.pause; play.title = 'Pause'; bar.parentNode?.classList.add('playing'); });
+  video.addEventListener('pause', () => { play.innerHTML = VIDEO_ICONS.play; play.title = 'Play (click the video too)'; bar.parentNode?.classList.remove('playing'); });
+  video.addEventListener('volumechange', () => { sound.innerHTML = VIDEO_ICONS[video.muted ? 'muted' : 'sound']; sound.title = video.muted ? 'Sound on' : 'Sound off'; });
+  for (const ev of ['timeupdate', 'loadedmetadata', 'durationchange', 'seeked']) video.addEventListener(ev, showTime);
+  return bar;
+}
+
 // cwd: the agent's folder. A file that is not where the chat says (an agent
 // often names a file it made in a subfolder by its name alone) is looked for
 // there by name (findMedia in media.js); when it is nowhere, the chat says so
@@ -153,7 +208,8 @@ function mediaElement(file, caption, cwd) {
   const name = file.split(/[\\/]/).pop();
   if (VIDEO_EXT.test(file) || AUDIO_EXT.test(file)) {
     node = document.createElement(AUDIO_EXT.test(file) ? 'audio' : 'video');
-    node.controls = true;
+    // A video gets the app's own bar (videoBar); a sound keeps the browser's.
+    node.controls = AUDIO_EXT.test(file);
     node.preload = 'metadata';
     node.src = mediaUrl(file);
   } else {
@@ -181,14 +237,8 @@ function mediaElement(file, caption, cwd) {
   if (node.tagName === 'AUDIO') node.classList.add('chat-audio');
   node.dataset.path = file;
   if (node.tagName !== 'VIDEO') return node;
-  // A video gets a button to see it large (and a double click does the same).
   const wrap = el('span', 'video-wrap');
-  const big = el('button', 'video-full', '⤢');
-  big.type = 'button';
-  big.title = 'See it large (Esc closes it)';
-  big.onclick = e => { e.preventDefault(); e.stopPropagation(); openVideoLightbox(node); };
-  node.addEventListener('dblclick', e => { e.preventDefault(); openVideoLightbox(node); });
-  wrap.append(node, big);
+  wrap.append(node, videoBar(node));
   return wrap;
 }
 
