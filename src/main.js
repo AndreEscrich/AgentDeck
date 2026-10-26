@@ -477,7 +477,7 @@ function allowStop(event) {
 // The commit this app started from: when the folder moves on after that
 // (promote moves the stable copy forward), a restart is an update too.
 let startHead = null;
-try { startHead = require('child_process').execFileSync('git', ['-C', app.getAppPath(), 'rev-parse', 'HEAD'], { encoding: 'utf8', timeout: 5000 }).trim() || null; } catch { /* not a git folder */ }
+try { startHead = require('child_process').execFileSync('git', ['-C', app.getAppPath(), 'rev-parse', 'HEAD'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null; } catch { /* not a git folder */ }
 let latestUpdate = null;
 let lookForUpdate = () => {};
 let looking = null;
