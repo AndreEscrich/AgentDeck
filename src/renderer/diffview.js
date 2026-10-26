@@ -424,6 +424,8 @@ function addDiagram(card, head, files, cwd, comments) {
     const title = `Class diagram · ${changed.length} changed type${changed.length === 1 ? '' : 's'}`;
     const options = { files, comments };
     const panel = umlPanel(model, { ...options, onFull: () => openUmlFull(model, { ...options, title }) });
+    // Which box is which file (flyIn starts a file's flight at its box).
+    panel.umlModel = model;
     card.insertBefore(panel, head.nextSibling);
     card.classList.add('has-diagram');
     diagramBtn.disabled = false;
@@ -553,6 +555,158 @@ function addAssets(card, files, cwd, comments) {
   }
   // Right under the code, above the review bar.
   card.insertBefore(section, card.querySelector(':scope > .review-bar, :scope > .review-progress') || null);
+}
+
+// ---------- the session's changes, beside the chat ----------
+
+// What an agent changed since its first message, all its tasks together
+// (app.js keeps the snapshot from before its first task, see updateSession):
+// on the right of its chat, the class diagram of the C# it changed, then the
+// assets. Each task's own Changes card stays in the chat; when a task ends,
+// its files fly from that card to here (flyIn). Returns { el, update(files),
+// targetFor(path) }.
+function sessionPanel(cwd) {
+  const root = el('aside', 'session-panel hidden');
+  const head = el('div', 'session-head');
+  const title = el('span', 'session-title', 'This agent\'s changes');
+  const stats = el('span', 'session-stats');
+  const fold = el('button', 'session-fold', '›');
+  fold.type = 'button';
+  fold.title = 'Hide the changes panel';
+  head.append(title, stats, fold);
+  const body = el('div', 'session-body');
+  root.append(head, body);
+  // Folded to a strip at the edge, for every agent, until you open it again.
+  const setFolded = (on, announce = true) => {
+    root.classList.toggle('folded', on);
+    fold.textContent = on ? '‹' : '›';
+    fold.title = on ? 'Show the changes this agent made' : 'Hide the changes panel';
+    try { localStorage.setItem('sessionPanelFolded', on ? '1' : ''); } catch { /* it still folds */ }
+    if (announce) root.dispatchEvent(new CustomEvent('session-fold', { bubbles: true, detail: on }));
+  };
+  fold.onclick = () => setFolded(!root.classList.contains('folded'));
+  try { if (localStorage.getItem('sessionPanelFolded')) setFolded(true, false); } catch { /* unfolded */ }
+
+  let model = null;
+  let assetsBox = null;
+  let diagramBox = null;
+  let version = 0;
+  const update = async files => {
+    const mine = ++version;
+    files = sortFiles(files);
+    let add = 0;
+    let del = 0;
+    for (const f of files) { const s = fileStats(f); add += s.add; del += s.del; }
+    stats.replaceChildren(el('span', null, `${files.length} file${files.length === 1 ? '' : 's'}`), el('span', 'plus', ` +${add}`), el('span', 'minus', ` −${del}`));
+    root.classList.toggle('empty', !files.length);
+    const comments = lineComments(files, cwd);
+    const csFiles = files.filter(f => CS_FILE.test(f.path) && f.status !== 'bin' && !isTestPath(f.path)
+      && !(window.isTempFile?.(f.path) || window.maybeTempFile?.(f.path)));
+    const code = files.filter(f => isCodeFile(f.path));
+    const other = files.filter(f => !isCodeFile(f.path));
+
+    // The diagram (or, while it is worked out, its boxes from the diff).
+    // The diagram drawn before stays until the new one is ready.
+    if (!diagramBox) {
+      diagramBox = el('div', 'session-diagram');
+      body.prepend(diagramBox);
+    }
+    if (!csFiles.length) diagramBox.replaceChildren();
+    else if (!diagramBox.querySelector('.uml-panel')) diagramBox.replaceChildren(umlWaiting(csFiles));
+
+    // The code files that are not in the diagram (other languages, tests).
+    const inDiagram = new Set(csFiles.map(f => f.path));
+    const rest = code.filter(f => !inDiagram.has(f.path));
+    body.querySelector(':scope > .session-code')?.remove();
+    if (rest.length) {
+      const list = el('div', 'session-code');
+      list.appendChild(el('div', 'assets-head', `Other code · ${rest.length}`));
+      for (const f of rest) {
+        const row = el('details', `session-code-row status-${f.status}`);
+        const summary = el('summary', 'session-code-summary');
+        const s = fileStats(f);
+        summary.title = f.path;
+        summary.append(el('span', 'asset-name', f.path.split('/').pop()), el('span', 'plus', ` +${s.add}`), el('span', 'minus', ` −${s.del}`));
+        row.appendChild(summary);
+        row.addEventListener('toggle', () => {
+          if (row.open && !row.querySelector('.file-views')) row.appendChild(fileViews(f, cwd, () => comments.diff(f), comments));
+        });
+        list.appendChild(row);
+      }
+      body.insertBefore(list, diagramBox.nextSibling);
+    }
+
+    // The assets, under the code.
+    assetsBox?.remove();
+    assetsBox = el('div', 'session-assets');
+    addAssets(assetsBox, other, cwd, comments);
+    body.appendChild(assetsBox);
+    if (!files.length) body.querySelector(':scope > .session-none') || body.appendChild(el('div', 'session-none', 'No changes yet. What this agent changes in the project shows here, all its tasks together.'));
+    else body.querySelector(':scope > .session-none')?.remove();
+
+    if (!csFiles.length || !window.deck?.csModel || !window.umlPanel) { model = null; return; }
+    const m = await window.deck.csModel(cwd, csFiles.map(({ path, status, lines, earlier }) => ({ path, status, lines, earlier }))).catch(() => null);
+    if (mine !== version) return;
+    const changed = m?.nodes?.filter(n => ['new', 'mod', 'del'].includes(n.status)) || [];
+    if (!changed.length) { model = null; diagramBox.replaceChildren(); return; }
+    model = m;
+    const options = { files, comments };
+    const full = `Class diagram · this agent's changes · ${changed.length} type${changed.length === 1 ? '' : 's'}`;
+    const panel = umlPanel(m, { ...options, onFull: () => openUmlFull(m, { ...options, title: full }) });
+    diagramBox.replaceChildren(el('div', 'session-sub', `Class diagram · ${changed.length} type${changed.length === 1 ? '' : 's'}`), panel);
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  };
+
+  // Where a file lands when it flies in: its type's box in the diagram, its
+  // asset's row, else the top of the panel.
+  const targetFor = path => {
+    if (root.classList.contains('folded')) return fold;
+    const ids = (model?.nodes || []).filter(n => n.file === path).map(n => n.id);
+    for (const id of ids) {
+      const node = root.querySelector(`.uml-node[data-id="${CSS.escape(id)}"]`);
+      if (node?.getClientRects().length) return node;
+    }
+    for (const row of root.querySelectorAll('.asset-row > summary, .session-code-summary')) {
+      if ((row.title || '').split('\n')[0] === path && row.getClientRects().length) return row;
+    }
+    return head;
+  };
+  return { el: root, update, targetFor, setFolded };
+}
+
+// A task's files fly from its Changes card in the chat to the session panel:
+// a chip with the file's name per row, one after another, each landing with a
+// ring where it goes. rows: [[row element, path]].
+function flyIn(rows, targetFor) {
+  rows.slice(0, 24).forEach(([row, path], i) => {
+    setTimeout(() => {
+      const from = row.getBoundingClientRect();
+      const target = targetFor(path);
+      if (!target || !from.width) return;
+      const to = target.getBoundingClientRect();
+      const visible = r => r.bottom > 0 && r.top < innerHeight && r.width;
+      if (!visible(from) || !visible(to)) return;
+      const chip = el('div', `fly-chip ${/\.cs$/i.test(path) ? 'code' : 'asset'}`, path.split('/').pop());
+      document.body.appendChild(chip);
+      const x0 = from.left + 12, y0 = from.top + from.height / 2 - 11;
+      const x1 = to.left + to.width / 2, y1 = to.top + to.height / 2 - 11;
+      const lift = Math.min(90, 30 + Math.abs(x1 - x0) * 0.12);
+      const frames = [];
+      for (let k = 0; k <= 14; k++) {
+        const t = k / 14;
+        const x = x0 + (x1 - x0) * t - (t > 0.6 ? chip.offsetWidth / 2 * (t - 0.6) / 0.4 : 0);
+        frames.push({ transform: `translate(${x}px, ${y0 + (y1 - y0) * t - lift * 4 * t * (1 - t)}px) scale(${1 - 0.35 * t * t})`, opacity: t > 0.9 ? 1 - (t - 0.9) * 8 : 1 });
+      }
+      chip.animate(frames, { duration: 750, easing: 'cubic-bezier(.5,0,.4,1)' }).finished.then(() => {
+        chip.remove();
+        const r = target.getBoundingClientRect();
+        const ring = el('div', 'fly-ring');
+        Object.assign(ring.style, { left: `${r.left - 4}px`, top: `${r.top - 4}px`, width: `${r.width + 8}px`, height: `${r.height + 8}px` });
+        document.body.appendChild(ring);
+        setTimeout(() => ring.remove(), 700);
+      }, () => chip.remove());
+    }, i * 90);
+  });
 }
 
 // ---------- comments on lines ----------

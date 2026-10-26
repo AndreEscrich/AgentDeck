@@ -611,6 +611,7 @@ function show(kind, id) {
   window.homePinBars?.();
   saveInputDraft();
   state.current = { kind, id };
+  syncSessionPanels();
   requestAnimationFrame(updateNextHint);
   // Back on the Hub: an update that waited for it can come now.
   if (kind === 'hub') setTimeout(offerUpdate, 400);
@@ -3618,6 +3619,9 @@ async function sendToAgent(agent, text, images = []) {
   if (!agent.snapshot) {
     agent.snapshotAt = Date.now() - 1000;
     agent.snapshot = await snapshotInTime(agent.cwd);
+    // The project as it was before the agent's first task: the changes
+    // panel beside its chat compares with it (updateSession).
+    if (!agent.sessionSnap && agent.snapshot) agent.sessionSnap = agent.snapshot;
   }
   await window.deck.sendMessage(agent.id, text, images);
 }
@@ -3801,6 +3805,68 @@ function warmSnapshots() {
     for (const folder of folders) await window.deck.gitSnapshot(folder).catch(() => null);
   }, 8000);
 }
+
+// ---------- the agent's changes beside its chat ----------
+
+// On the right of an agent's chat: everything it changed in the project
+// since its first message, all its tasks together (sessionPanel in
+// diffview.js): the class diagram of its C# changes, then its assets. After
+// each task, the task's files fly from its Changes card in the chat into the
+// panel (flyIn). The files are the ones the agent itself touched in any task
+// (each task's card already leaves out what others changed meanwhile), as
+// they are now compared with the project before its first task.
+const pathKey = p => p.replace(/\\/g, '/').toLowerCase();
+
+async function updateSession(a, turn) {
+  if (!a.sessionSnap || a.removed) return;
+  a.sessionPaths = a.sessionPaths || new Set();
+  for (const f of turn?.files || []) {
+    a.sessionPaths.add(pathKey(f.path));
+    if (f.from) a.sessionPaths.add(pathKey(f.from));
+  }
+  if (!a.sessionPaths.size) return;
+  const diff = await window.deck.gitChanges(a.cwd, a.sessionSnap).catch(() => null);
+  if (diff == null || !state.agents.has(a.id)) return;
+  const files = pairMoves(parseUnifiedDiff(diff)).filter(f => !isTempFile(f.path)
+    && (a.sessionPaths.has(pathKey(f.path)) || (f.from && a.sessionPaths.has(pathKey(f.from)))));
+  if (!a.session) {
+    a.session = sessionPanel(a.cwd);
+    $('views').appendChild(a.session.el);
+    a.view.classList.add('with-session');
+    a.view.classList.toggle('session-folded', a.session.el.classList.contains('folded'));
+  }
+  syncSessionPanels();
+  await a.session.update(files);
+  // The task's files fly over from its card, when you are looking at it.
+  const card = turn?.answer?.querySelector(':scope > .changes');
+  if (!card || state.current?.kind !== 'agent' || state.current.id !== a.id) return;
+  // Each file starts from its row in the card, or, while the card shows its
+  // class diagram, from its type's box.
+  const uml = card.querySelector('.uml-panel');
+  const boxOf = path => {
+    const id = uml?.umlModel?.nodes?.find(n => n.file === path)?.id;
+    return id ? uml.querySelector(`.uml-node[data-id="${CSS.escape(id)}"]`) : null;
+  };
+  const rows = [...card.querySelectorAll(':scope > .change-file, .asset-row > summary')];
+  const sources = (turn.files || []).map(f => {
+    const row = rows.find(r => (r.title || '').split('\n')[0] === f.path);
+    const from = row?.getClientRects().length ? row : boxOf(f.path);
+    return from?.getClientRects().length ? [from, f.path] : null;
+  }).filter(Boolean);
+  flyIn(sources, a.session.targetFor);
+}
+
+// Only the panel of the agent on screen shows. Folding one folds them all.
+function syncSessionPanels() {
+  const current = state.current?.kind === 'agent' ? state.current.id : null;
+  for (const a of state.agents.values()) a.session?.el.classList.toggle('hidden', a.id !== current);
+}
+$('views').addEventListener('session-fold', e => {
+  for (const a of state.agents.values()) {
+    a.session?.setFolded(e.detail, false);
+    a.view.classList.toggle('session-folded', e.detail);
+  }
+});
 
 // ---------- undo the last prompt ----------
 
@@ -4228,6 +4294,7 @@ window.deck.onEvent((id, msg) => {
     evidence.then(() => window.deck.gitChanges(a.cwd, snap))
       .then(diff => a.transcript.showGitChanges(turn, diff, snap.kind === 'folder', { otherEdit: rel => editedByOther(a, rel, since) }))
       .then(() => saveTurnChanges(turn))
+      .then(() => updateSession(a, turn))
       .then(() => refreshHeaderIfCurrent(a.id))
       .catch(() => {});
   }
@@ -4405,6 +4472,8 @@ window.deck.onExit((id, { code, stderr }) => {
   a.status = 'exited';
   // Keep the chat open as a history entry, so you can read it and resume it.
   state.agents.delete(id);
+  a.session?.el.remove();
+  a.view.classList.remove('with-session');
   // Its process ended with an error, or in the middle of a task: Restart continues it.
   if (!a.removed && a.sessionId) state.parked.set(a.sessionId, { ...hubInfo(a), stopped: code !== 0 || !!a.stopped || a.wasBusy });
   const session = { id: a.sessionId || id, title: a.title, cwd: a.cwd, file: null, updatedAt: Date.now() };

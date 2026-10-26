@@ -2562,3 +2562,61 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .hub-tile.filling .liquid { animation: pour-swell 1s ease-in-out; transform-origin: 50% 100%; }
 .hub-tile.filling { animation: tile-wob 0.6s 0.2s cubic-bezier(.3,1.6,.5,1); }
 @keyframes pour-swell { 0% { filter: none; } 35% { transform: scaleY(1.18) skewY(4deg); filter: brightness(1.35); } 70% { transform: scaleY(1.05) skewY(-2deg); } 100% { transform: none; filter: none; } }
+
+/* The agent's changes beside its chat (sessionPanel in diffview.js): the chat
+   makes room on the right; folded, the panel is a strip at the edge. Too
+   narrow a window has no room for it. */
+:root { --session-w: 400px; }
+.view.chat.with-session { right: var(--session-w); transition: right 0.3s ease; }
+.view.chat.with-session.session-folded { right: 34px; }
+.session-panel { position: absolute; top: 0; right: 0; bottom: 0; width: var(--session-w); z-index: 3; display: flex; flex-direction: column;
+  border-left: 1px solid var(--border); background: var(--bg-sidebar); transition: width 0.3s ease; animation: session-in 0.4s ease-out; }
+@keyframes session-in { from { opacity: 0; translate: 30px 0; } }
+.session-panel.folded { width: 34px; }
+.session-panel.folded .session-title, .session-panel.folded .session-stats, .session-panel.folded .session-body { display: none; }
+.session-head { display: flex; align-items: center; gap: 8px; padding: 12px 12px 10px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.session-panel.folded .session-head { padding: 12px 4px; justify-content: center; border-bottom: 0; }
+.session-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); }
+.session-stats { margin-left: auto; font-size: 12px; color: var(--text-faint); white-space: nowrap; }
+.session-stats .plus { color: #7fd18b; }
+.session-stats .minus { color: #e88; }
+.session-fold { width: 24px; height: 24px; padding: 0; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); font-size: 15px; line-height: 1; cursor: pointer; flex-shrink: 0; }
+.session-fold:hover { color: var(--text); border-color: var(--text-faint); }
+.session-body { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.session-sub { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); margin: 0 2px 6px; }
+.session-diagram:empty { display: none; }
+.session-diagram .uml-panel { margin: 0; }
+.session-diagram .uml-hint { display: none; }
+.session-assets .assets-section { margin-top: 0; }
+.session-assets:empty { display: none; }
+.session-code { border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); overflow: hidden; }
+.session-code-summary { display: flex; gap: 6px; align-items: baseline; padding: 6px 12px; cursor: pointer; font-size: 13px; list-style: none; }
+.session-code-summary::-webkit-details-marker { display: none; }
+.session-code-summary:hover { background: var(--bg-hover); }
+.session-code-summary .asset-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-code-summary .plus { color: #7fd18b; font-size: 12px; }
+.session-code-summary .minus { color: #e88; font-size: 12px; }
+.session-none { font-size: 13px; color: var(--text-faint); line-height: 1.5; padding: 8px 4px; }
+@media (max-width: 1150px) {
+  .session-panel { display: none; }
+  .view.chat.with-session, .view.chat.with-session.session-folded { right: 0; }
+}
+
+/* A task's files flying from its card in the chat into the panel (flyIn). */
+.fly-chip { position: fixed; left: 0; top: 0; z-index: 500; pointer-events: none; height: 22px; padding: 0 9px; border-radius: 11px;
+  display: flex; align-items: center; font-size: 11px; font-weight: 700; white-space: nowrap; color: #fff;
+  background: #3d7fd6; box-shadow: 0 6px 16px -4px rgba(0, 0, 0, 0.6); }
+.fly-chip.asset { background: #b0782a; }
+.fly-ring { position: fixed; z-index: 500; pointer-events: none; border-radius: 8px; border: 2px solid var(--accent);
+  animation: fly-ring 0.7s ease-out forwards; }
+@keyframes fly-ring { from { opacity: 1; scale: 0.9; } to { opacity: 0; scale: 1.15; } }
+/* Beside the panel: the chat's wide cards and the "Tab to go" edge keep to
+   the chat's side. */
+.view.chat.with-session .changes { --changes-wide: min(calc(100vw - var(--session-w) - 72px), 1700px); }
+.view.chat.with-session.session-folded .changes { --changes-wide: min(calc(100vw - 34px - 72px), 1700px); }
+#main:has(.view.chat.with-session:not(.hidden):not(.session-folded)) .next-hint { right: var(--session-w); }
+#main:has(.view.chat.with-session.session-folded:not(.hidden)) .next-hint { right: 34px; }
+@media (max-width: 1150px) {
+  .view.chat.with-session .changes, .view.chat.with-session.session-folded .changes { --changes-wide: min(calc(100vw - 72px), 1700px); }
+  #main:has(.view.chat.with-session:not(.hidden)) .next-hint { right: 0; }
+}
