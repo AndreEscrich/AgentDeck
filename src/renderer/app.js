@@ -611,12 +611,13 @@ function show(kind, id) {
   window.homePinBars?.();
   saveInputDraft();
   state.current = { kind, id };
-  syncSessionPanels();
   requestAnimationFrame(updateNextHint);
   // Back on the Hub: an update that waited for it can come now.
   if (kind === 'hub') setTimeout(offerUpdate, 400);
   $('back-to-hub').classList.toggle('hidden', !['agent', 'history', 'branches'].includes(kind));
   for (const v of $('views').children) v.classList.add('hidden');
+  // The agent's Changes card (in #views too) shows with its chat.
+  syncSessionPanels();
 
   // The Hub also has the message box: a message there starts a new agent.
   const startsAgent = !['agent', 'history'].includes(kind);
