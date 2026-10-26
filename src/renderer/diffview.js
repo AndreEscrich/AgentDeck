@@ -571,7 +571,10 @@ function addAssets(card, files, cwd, comments) {
 const SESSION_ROOM = 1540;   // px of window for the chat (820) and the card on each side
 
 function sessionPanel(cwd) {
-  const root = el('aside', 'session-panel');
+  // It fades in once, when it first appears; the class goes after, or the
+  // fade would play again whenever another animation (digest) ends.
+  const root = el('aside', 'session-panel fresh');
+  root.addEventListener('animationend', e => { if (e.target === root && e.animationName === 'session-in') root.classList.remove('fresh'); });
   const head = el('div', 'session-head');
   const title = el('span', 'session-title', 'Changes');
   title.title = 'Everything this agent changed since its first message, all its tasks together';
