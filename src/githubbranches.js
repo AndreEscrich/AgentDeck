@@ -1,8 +1,11 @@
 // Your GitHub work in the Branches view (renderer/branches.js), when
 // Settings → Branch diff → GitHub is on: your open pull requests, and the
 // branches you pushed in the last 90 days (GitHub keeps your events that
-// long) that have no pull request, are not deleted and have commits their
-// base does not. gh's login says who you are.
+// long) that have no open pull request, are not deleted, have no merged
+// pull request and have commits their base does not. (A pull request merged
+// by squash or rebase leaves its branch with commits the base does not have,
+// so that check alone keeps merged work in the list.) gh's login says who
+// you are.
 //
 // A branch's base is its repository's default branch, or for a fork its
 // parent's (where its pull requests go). A pull request or branch is
@@ -78,6 +81,9 @@ async function listGithub() {
     const base = await baseOf(b.repo);
     if (!base || (base.repo === b.repo && base.branch === b.branch)) return;
     const head = base.repo === b.repo ? b.branch : `${b.repo.split('/')[0]}:${b.branch}`;
+    // Its work is merged: a pull request from it was merged into the base.
+    const merged = await gh(['api', `repos/${base.repo}/pulls?head=${encodeURIComponent(`${b.repo.split('/')[0]}:${b.branch}`)}&state=closed&per_page=20`, '--jq', '[.[] | select(.merged_at != null)] | length']);
+    if (merged.ok && merged.out > 0) return;
     const cmp = await gh(['api', `repos/${base.repo}/compare/${encodeURIComponent(base.branch)}...${encodeURIComponent(head)}`, '--jq', '{ahead: .ahead_by, sha: .commits[-1].sha, date: .commits[-1].commit.committer.date}']);
     if (!cmp.ok || !cmp.out.ahead) return;   // deleted, or all in the default branch
     items.push({
