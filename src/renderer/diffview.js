@@ -723,12 +723,14 @@ function ringAt(target) {
 function flyIn(rows, targetFor) {
   return Promise.all(rows.slice(0, 24).map(([row, path], i) => new Promise(done => {
     setTimeout(() => {
-      const from = row.getBoundingClientRect();
+      let from = row.getBoundingClientRect();
       const target = targetFor(path);
       if (!target || !from.width) { done(); return; }
       const to = target.getBoundingClientRect();
       const visible = r => r.bottom > 0 && r.top < innerHeight && r.width;
-      if (!visible(from) || !visible(to)) { done(); return; }
+      if (!visible(to)) { done(); return; }
+      // A row scrolled out of sight starts from the edge of the chat nearest to it.
+      if (!visible(from)) from = { left: from.left, top: Math.max(70, Math.min(innerHeight - 140, from.top)), width: from.width, height: from.height };
       const chip = el('div', `fly-chip ${/\.cs$/i.test(path) ? 'code' : 'asset'}`, path.split('/').pop());
       document.body.appendChild(chip);
       const x0 = from.left + 12, y0 = from.top + from.height / 2 - 11;

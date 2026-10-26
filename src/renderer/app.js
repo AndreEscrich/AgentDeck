@@ -628,8 +628,10 @@ function show(kind, id) {
   if (kind === 'agent') {
     const a = state.agents.get(id);
     a.view.classList.remove('hidden');
-    // Its Changes card, when the app has one saved from before it restarted.
+    // Its Changes card, when the app has one saved from before it restarted;
+    // what its tasks changed since you last looked flies in.
     loadSession(a.view, a.sessionId, a.cwd);
+    playSessionWhenOpen(a);
     // Finished while you were not looking: show its output from the start.
     if (a.unread && a.status === 'idle') revealLatest(a.view, a.transcript);
     else scrollToBottom(a.view);
@@ -3834,7 +3836,7 @@ function warmSnapshots() {
 const pathKey = p => p.replace(/\\/g, '/').toLowerCase();
 
 function sessionState(view) {
-  if (!view._session) view._session = { started: false, snap: null, paths: new Set(), edits: new Map(), files: [], panel: null, loaded: null };
+  if (!view._session) view._session = { started: false, snap: null, paths: new Set(), edits: new Map(), files: [], panel: null, loaded: null, pending: [], playing: false };
   return view._session;
 }
 
@@ -3889,31 +3891,55 @@ async function updateSession(a, turn) {
   if (!files) return;
   s.files = files;
   saveSession(a.sessionId, s);
-  const card = sessionCard(a.view, a.cwd);
-  // When you are looking at it, the task's files fly over from its card in
-  // the chat first, and the card takes them in once they are there.
+  sessionCard(a.view, a.cwd);
+  // The card shows the new files once they have flown in from the task's
+  // card: now, when you are looking at the agent, else when you open it.
+  if (turn) s.pending.push(turn);
+  if (state.current?.kind === 'agent' && state.current.id === a.id && !document.hidden) await playSession(a);
+}
+
+// The tasks that ended since you last looked: their files fly from their
+// cards in the chat into the agent's card, which then takes them in.
+async function playSession(a) {
+  const s = sessionState(a.view);
+  if (s.playing || !s.pending.length || !s.panel) return;
+  s.playing = true;
+  const turns = s.pending.splice(0);
+  await flyIn(turns.flatMap(flightsFrom), s.panel.targetFor);
+  await s.panel.update(s.files);
+  s.panel.digest([...new Set(turns.flatMap(t => (t.files || []).map(f => f.path)))]);
+  s.playing = false;
+  if (s.pending.length) playSession(a);
+}
+
+// Opening an agent: once its chat has finished growing out of its tile (and
+// you are still there), what its tasks changed meanwhile flies in.
+function playSessionWhenOpen(a) {
+  const here = () => state.current?.kind === 'agent' && state.current.id === a.id;
+  const check = () => {
+    if (!here()) return;
+    if (hub.opening || a.view.getAnimations().some(x => x.playState === 'running')) { setTimeout(check, 60); return; }
+    setTimeout(() => { if (here()) playSession(a); }, 150);
+  };
+  setTimeout(check, 60);
+}
+
+// Where each of a task's files starts its flight: its row in the task's card,
+// or, while the card shows its class diagram, its type's box.
+function flightsFrom(turn) {
   const taskCard = turn?.answer?.querySelector(':scope > .changes');
-  const looking = state.current?.kind === 'agent' && state.current.id === a.id && !document.hidden;
-  if (!taskCard || !looking) {
-    await card.update(files);
-    return;
-  }
-  // Each file starts from its row in the card, or, while the card shows its
-  // class diagram, from its type's box.
+  if (!taskCard) return [];
   const uml = taskCard.querySelector('.uml-panel');
   const boxOf = path => {
     const id = uml?.umlModel?.nodes?.find(n => n.file === path)?.id;
     return id ? uml.querySelector(`.uml-node[data-id="${CSS.escape(id)}"]`) : null;
   };
   const rows = [...taskCard.querySelectorAll(':scope > .change-file, .asset-row > summary')];
-  const sources = (turn.files || []).map(f => {
+  return (turn.files || []).map(f => {
     const row = rows.find(r => (r.title || '').split('\n')[0] === f.path);
     const from = row?.getClientRects().length ? row : boxOf(f.path);
     return from?.getClientRects().length ? [from, f.path] : null;
   }).filter(Boolean);
-  await flyIn(sources, card.targetFor);
-  await card.update(files);
-  card.digest((turn.files || []).map(f => f.path));
 }
 
 // The agent's files as they are now, compared with the project before its
