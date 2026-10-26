@@ -3806,9 +3806,9 @@ function warmSnapshots() {
   }, 8000);
 }
 
-// ---------- the agent's changes beside its chat ----------
+// ---------- the agent's changes, floating over its chat ----------
 
-// On the right of an agent's chat: everything it changed in the project
+// At the top right of an agent's chat: everything it changed in the project
 // since its first message, all its tasks together (sessionPanel in
 // diffview.js): the class diagram of its C# changes, then its assets. After
 // each task, the task's files fly from its Changes card in the chat into the
@@ -3832,8 +3832,6 @@ async function updateSession(a, turn) {
   if (!a.session) {
     a.session = sessionPanel(a.cwd);
     $('views').appendChild(a.session.el);
-    a.view.classList.add('with-session');
-    a.view.classList.toggle('session-folded', a.session.el.classList.contains('folded'));
   }
   syncSessionPanels();
   await a.session.update(files);
@@ -3862,10 +3860,7 @@ function syncSessionPanels() {
   for (const a of state.agents.values()) a.session?.el.classList.toggle('hidden', a.id !== current);
 }
 $('views').addEventListener('session-fold', e => {
-  for (const a of state.agents.values()) {
-    a.session?.setFolded(e.detail, false);
-    a.view.classList.toggle('session-folded', e.detail);
-  }
+  for (const a of state.agents.values()) a.session?.setFolded(e.detail, false);
 });
 
 // ---------- undo the last prompt ----------
@@ -4473,7 +4468,6 @@ window.deck.onExit((id, { code, stderr }) => {
   // Keep the chat open as a history entry, so you can read it and resume it.
   state.agents.delete(id);
   a.session?.el.remove();
-  a.view.classList.remove('with-session');
   // Its process ended with an error, or in the middle of a task: Restart continues it.
   if (!a.removed && a.sessionId) state.parked.set(a.sessionId, { ...hubInfo(a), stopped: code !== 0 || !!a.stopped || a.wasBusy });
   const session = { id: a.sessionId || id, title: a.title, cwd: a.cwd, file: null, updatedAt: Date.now() };

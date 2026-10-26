@@ -557,34 +557,44 @@ function addAssets(card, files, cwd, comments) {
   card.insertBefore(section, card.querySelector(':scope > .review-bar, :scope > .review-progress') || null);
 }
 
-// ---------- the session's changes, beside the chat ----------
+// ---------- the session's changes, floating over the chat ----------
 
 // What an agent changed since its first message, all its tasks together
 // (app.js keeps the snapshot from before its first task, see updateSession):
-// on the right of its chat, the class diagram of the C# it changed, then the
-// assets. Each task's own Changes card stays in the chat; when a task ends,
-// its files fly from that card to here (flyIn). Returns { el, update(files),
-// targetFor(path) }.
+// a small card floating at the top right of its chat, like a task's Changes
+// card made small: the class diagram of the C# it changed, then the assets.
+// Its title folds it to one line. Each task's own Changes card stays in the
+// chat; when a task ends, its files fly from that card to here (flyIn).
+// Returns { el, update(files), targetFor(path), setFolded(on) }.
+const SESSION_ROOM = 1540;   // px of window for the chat (820) and the card on each side
+
 function sessionPanel(cwd) {
   const root = el('aside', 'session-panel hidden');
   const head = el('div', 'session-head');
-  const title = el('span', 'session-title', 'This agent\'s changes');
+  const title = el('span', 'session-title', 'Changes');
+  title.title = 'Everything this agent changed since its first message, all its tasks together';
   const stats = el('span', 'session-stats');
-  const fold = el('button', 'session-fold', '›');
-  fold.type = 'button';
-  fold.title = 'Hide the changes panel';
-  head.append(title, stats, fold);
+  head.append(el('span', 'session-caret', '▼'), title, stats);
   const body = el('div', 'session-body');
   root.append(head, body);
-  // Folded to a strip at the edge, for every agent, until you open it again.
+  // Folded to its title, for every agent, until you open it again.
   const setFolded = (on, announce = true) => {
     root.classList.toggle('folded', on);
-    fold.textContent = on ? '‹' : '›';
-    fold.title = on ? 'Show the changes this agent made' : 'Hide the changes panel';
+    head.title = on ? 'Show everything this agent changed' : 'Fold';
     try { localStorage.setItem('sessionPanelFolded', on ? '1' : ''); } catch { /* it still folds */ }
     if (announce) root.dispatchEvent(new CustomEvent('session-fold', { bubbles: true, detail: on }));
   };
-  fold.onclick = () => setFolded(!root.classList.contains('folded'));
+  // A window too narrow for the chat and the card side by side shows it
+  // folded, until you open it there.
+  let openNarrow = false;
+  const fit = () => root.classList.toggle('narrow', innerWidth < SESSION_ROOM && !openNarrow);
+  head.onclick = () => {
+    if (root.classList.contains('narrow')) { openNarrow = true; if (root.classList.contains('folded')) setFolded(false); fit(); return; }
+    if (innerWidth < SESSION_ROOM && !root.classList.contains('folded')) { openNarrow = false; fit(); return; }
+    setFolded(!root.classList.contains('folded'));
+  };
+  addEventListener('resize', () => { if (innerWidth >= SESSION_ROOM) openNarrow = false; fit(); });
+  fit();
   try { if (localStorage.getItem('sessionPanelFolded')) setFolded(true, false); } catch { /* unfolded */ }
 
   let model = null;
@@ -660,7 +670,7 @@ function sessionPanel(cwd) {
   // Where a file lands when it flies in: its type's box in the diagram, its
   // asset's row, else the top of the panel.
   const targetFor = path => {
-    if (root.classList.contains('folded')) return fold;
+    if (root.classList.contains('folded')) return head;
     const ids = (model?.nodes || []).filter(n => n.file === path).map(n => n.id);
     for (const id of ids) {
       const node = root.querySelector(`.uml-node[data-id="${CSS.escape(id)}"]`);
