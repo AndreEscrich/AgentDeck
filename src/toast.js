@@ -36,6 +36,8 @@ function ensure() {
       preload: path.join(__dirname, 'toast-preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // Hidden between notifications; its timers must still run when one comes.
+      backgroundThrottling: false,
     },
   });
   win.setAlwaysOnTop(true, 'screen-saver');

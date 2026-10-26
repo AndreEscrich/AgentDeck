@@ -430,9 +430,12 @@ app.whenReady().then(() => {
     send('notification:open', id);
   };
   toast.init({ onOpen: openFrom });
-  // extra: { tile, theme }, the agent's Hub tile for the app's own notification.
+  // extra: { tile, theme }, the agent's Hub tile for the app's own notification,
+  // and focused: whether the page has the focus. After a notification brought
+  // the window forward (openFrom), the window could miss losing the focus again
+  // and win.isFocused() stayed true, so no notification came; the page knows.
   ipcMain.handle('notify', (_e, id, title, body, extra) => {
-    if (!getConfig().notifyWhenDone || win.isFocused()) return;
+    if (!getConfig().notifyWhenDone || (extra ? extra.focused : win.isFocused())) return;
     if (getConfig().notifyStyle !== 'system' && extra?.tile) {
       toast.show({ id, title, body, tile: extra.tile, theme: extra.theme });
       return;

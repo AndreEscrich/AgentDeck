@@ -4326,7 +4326,11 @@ window.deck.onMode((id, mode) => {
 function notifyAbout(a, status, body) {
   let tile = '';
   try { tile = hub.snapshot(Object.assign(Object.create(a), { status, unread: true })).outerHTML; } catch { /* the system's notification then */ }
-  window.deck.notify(a.id, a.title, body, { tile, theme: document.documentElement.dataset.theme || 'default' });
+  window.deck.notify(a.id, a.title, body, {
+    tile,
+    theme: document.documentElement.dataset.theme || 'default',
+    focused: document.hasFocus() && document.visibilityState === 'visible',
+  });
 }
 
 // Clicking a notification opens the agent it is about.

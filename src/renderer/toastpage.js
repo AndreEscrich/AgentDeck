@@ -12,12 +12,11 @@ function applyTheme(theme) {
   document.getElementById('theme-light').disabled = theme !== 'light';
 }
 
-// The window takes the room the tiles need (none: it hides).
+// The window takes the room the tiles need (none: it hides). Measured at
+// once: while the window is hidden, its page gets no animation frames.
 function resize() {
-  requestAnimationFrame(() => {
-    const live = box.querySelectorAll('.notice:not(.leaving)').length;
-    window.toastHost.size(live ? box.offsetWidth : 0, live ? box.offsetHeight : 0);
-  });
+  const live = box.querySelectorAll('.notice:not(.leaving)').length;
+  window.toastHost.size(live ? box.offsetWidth : 0, live ? box.offsetHeight : 0);
 }
 
 function dismiss(toast) {
@@ -65,7 +64,7 @@ window.toastHost.onAdd(({ id, body, tile, theme }) => {
     const level = liquid.style.height;
     liquid.style.height = '0%';
     void liquid.offsetHeight;
-    requestAnimationFrame(() => { liquid.style.height = level; });
+    setTimeout(() => { liquid.style.height = level; }, 30);
   }
   if (el.classList.contains('state-idle')) {
     setTimeout(() => {
