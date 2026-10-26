@@ -487,8 +487,10 @@ class Hub {
     const restart = el('button', 'tile-restart', '↻');
     restart.title = 'Restart: continue the task it was doing when it stopped';
     restart.onclick = e => { e.stopPropagation(); this.onRestart?.(agent.id); };
-    tile.append(remove, stop, restart, tank, info);
-    return { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, badge, title, step, statusDot, statusText, timer, model, clash } };
+    // The background jobs it waits for circle the tank (paintOrbit).
+    const orbit = el('div', 'tank-orbit');
+    tile.append(remove, stop, restart, tank, orbit, info);
+    return { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, badge, title, step, statusDot, statusText, timer, model, clash, orbit } };
   }
 
   // The liquid level: low while starting, climbing with the step count while
@@ -673,6 +675,7 @@ class Hub {
       parts.model.classList.toggle('fable', !!model.fable);
       parts.model.classList.toggle('auto', !!model.auto);
     }
+    this.paintOrbit(parts.orbit, agent.status === 'background' ? agent.backgroundTasks || [] : []);
     const clashes = agent.clashes ? [...agent.clashes.values()] : [];
     parts.clash.classList.toggle('hidden', !clashes.length);
     if (clashes.length) {
@@ -680,6 +683,94 @@ class Hub {
       parts.clash.textContent = `⚠ Same file${files.length === 1 ? '' : 's'}`;
       parts.clash.title = `Also being changed by ${clashes.map(c => `"${c.title}"`).join(', ')}:\n${files.join('\n')}`;
     }
+  }
+
+  // A moon per background job, circling the tank on a tilted ring, spread
+  // evenly round it. A job that ends pops its moon; a new one rises in.
+  paintOrbit(orbit, jobs) {
+    const left = [...jobs];
+    for (const moon of orbit.querySelectorAll('.moon:not(.popping)')) {
+      const i = left.indexOf(moon.dataset.job);
+      if (i >= 0) { left.splice(i, 1); continue; }
+      moon.classList.add('popping');
+      setTimeout(() => moon.remove(), 600);
+    }
+    for (const job of left) {
+      const moon = el('span', 'moon');
+      moon.dataset.job = job;
+      const y = el('span');
+      y.appendChild(el('i'));
+      moon.appendChild(y);
+      orbit.appendChild(moon);
+    }
+    const live = [...orbit.querySelectorAll('.moon:not(.popping)')];
+    live.forEach((moon, i) => { moon.style.setProperty('--i', String(i)); moon.style.setProperty('--n', String(live.length)); });
+    orbit.classList.toggle('has-moons', live.length > 0);
+  }
+
+  // The agent added to its category's notes: a drop leaves the surface of
+  // its liquid and falls into its panel's Notes button, which gulps it.
+  noteDrop(agentId) {
+    const tile = this.tiles.get(agentId)?.el;
+    const chip = tile?.closest('.hub-section')?.querySelector('.section-notes');
+    if (!tile || !chip || !tile.getClientRects().length || !chip.getClientRects().length) return;
+    const from = tile.querySelector('.liquid')?.getBoundingClientRect() || tile.getBoundingClientRect();
+    const to = chip.getBoundingClientRect();
+    const drop = el('div', 'note-drop');
+    drop.style.setProperty('--c1', getComputedStyle(tile).getPropertyValue('--c1').trim() || '#8df4ff');
+    document.body.appendChild(drop);
+    const x0 = from.left + from.width / 2, y0 = from.top;
+    const x1 = to.left + to.width / 2, y1 = to.top + to.height / 2;
+    drop.animate(Hub.arc(x0, y0, x1, y1, Math.min(70, Math.max(30, Math.abs(x1 - x0) * 0.15)), t => (t < 0.1 ? 0.4 + t * 6 : 1 - t * 0.35)),
+      { duration: 900, easing: 'cubic-bezier(.4,0,.6,1)' }).finished.then(() => {
+      drop.remove();
+      this.replay(chip, 'gulp', 600);
+    }, () => drop.remove());
+  }
+
+  // Keyframes along a parabola from (x0, y0) up by lift and over to (x1, y1).
+  static arc(x0, y0, x1, y1, lift, scale = () => 1) {
+    const frames = [];
+    for (let k = 0; k <= 12; k++) {
+      const t = k / 12;
+      frames.push({ transform: `translate(${x0 + (x1 - x0) * t}px, ${y0 + (y1 - y0) * t - lift * 4 * t * (1 - t)}px) scale(${scale(t)})` });
+    }
+    return frames;
+  }
+
+  // A tile held over another agent's tank and let go there (see moveDrag):
+  // it tips over and its liquid pours across into the other tank, which
+  // fills up; then onPour hands the agent's result over.
+  async pour(fromId, toId) {
+    const src = this.tiles.get(fromId)?.el;
+    const dst = this.tiles.get(toId)?.el;
+    if (!src || !dst) return;
+    const a = src.querySelector('.tank').getBoundingClientRect();
+    const b = dst.querySelector('.tank').getBoundingClientRect();
+    const right = b.left > a.left;
+    src.style.setProperty('--tip', right ? '14deg' : '-14deg');
+    src.classList.add('tipping');
+    this.onDragSound?.('pick');
+    const color = getComputedStyle(src).getPropertyValue('--c1').trim() || '#8df4ff';
+    const x0 = right ? a.right - 8 : a.left + 8, y0 = a.top + 6;
+    const x1 = b.left + b.width / 2, y1 = b.top + b.height * 0.3;
+    const lift = Math.min(80, Math.max(36, Math.abs(x1 - x0) * 0.25));
+    const drops = [];
+    for (let n = 0; n < 18; n++) {
+      const d = el('div', 'pour-drop');
+      d.style.setProperty('--c1', color);
+      document.body.appendChild(d);
+      const size = 0.6 + Math.random() * 0.7;
+      drops.push(d.animate(Hub.arc(x0, y0, x1, y1, lift, () => size),
+        { duration: 600, delay: 200 + n * 40, easing: 'cubic-bezier(.45,0,.7,1)', fill: 'backwards' })
+        .finished.then(() => d.remove(), () => d.remove()));
+    }
+    setTimeout(() => this.replay(dst, 'filling', 1000), 700);
+    await Promise.all(drops);
+    setTimeout(() => this.onDragSound?.('drop'), 0);
+    src.classList.remove('tipping');
+    await new Promise(r => setTimeout(r, 350));
+    this.onPour?.(fromId, toId);
   }
 
   render(agents, currentId, groups = []) {
@@ -1032,7 +1123,7 @@ class Hub {
     const move = ev => {
       if (!this.drag) {
         if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
-        this.startDrag(entry, sx, sy);
+        this.startDrag(entry, sx, sy, agentId);
       }
       this.moveDrag(ev);
     };
@@ -1049,7 +1140,7 @@ class Hub {
 
   // Picks the tile up: it leaves the row and follows the mouse, a little
   // bigger and tilted, while a slot keeps its place in the row.
-  startDrag(entry, sx, sy) {
+  startDrag(entry, sx, sy, id) {
     const tile = entry.el;
     const grid = tile.parentNode;
     const r = tile.getBoundingClientRect();
@@ -1064,7 +1155,8 @@ class Hub {
     slot.style.setProperty('--slot', getComputedStyle(tile).getPropertyValue('--c1').trim() || '#6b708c');
     grid.appendChild(slot);
     this.drag = {
-      tile, grid, slot,
+      id, tile, grid, slot,
+      start: row.indexOf(tile),
       siblings: row.filter(t => t !== tile),
       orders: row.map(t => t.style.order),
       index: row.indexOf(tile),
@@ -1091,6 +1183,27 @@ class Hub {
     const sway = Math.max(-7, Math.min(7, (ev.clientX - d.lastX) * 0.6));
     d.lastX = ev.clientX;
     d.tile.style.setProperty('--sway', `${(sway - 1.5).toFixed(1)}deg`);
+    // Held a moment over another agent's tank: letting go there pours this
+    // agent's result into it (pour()); the tile goes back to its place.
+    const under = document.elementFromPoint(ev.clientX, ev.clientY);
+    const over = under?.closest('.tank') ? under.closest('.hub-tile') : null;
+    const target = over && over !== d.tile && !over.classList.contains('removing') ? over : null;
+    if (target !== d.hover) {
+      clearTimeout(d.dwell);
+      d.hover?.classList.remove('pour-target');
+      d.tile.classList.remove('pouring');
+      d.hover = target;
+      d.pour = null;
+      const toId = target && [...this.tiles].find(([, t]) => t.el === target)?.[0];
+      if (toId && this.canPour?.(d.id, toId)) {
+        d.dwell = setTimeout(() => {
+          d.pour = toId;
+          target.classList.add('pour-target');
+          d.tile.classList.add('pouring');
+          this.onDragSound?.('shift');
+        }, 350);
+      }
+    }
     // The slot goes before the first tile whose middle is right of the mouse.
     const index = d.siblings.filter(s => d.centers.get(s) < ev.clientX).length;
     if (index !== d.index) {
@@ -1124,6 +1237,14 @@ class Hub {
   // and settles. Then the new order is saved.
   async endDrag() {
     const d = this.drag;
+    clearTimeout(d.dwell);
+    d.hover?.classList.remove('pour-target');
+    d.tile.classList.remove('pouring');
+    // Pouring: the tile goes back where it was first, then pours.
+    if (d.pour && d.index !== d.start) {
+      d.index = d.start;
+      this.placeSlot();
+    }
     this.justDragged = true;
     setTimeout(() => { this.justDragged = false; }, 60);
     for (const a of d.slot.getAnimations()) a.cancel();
@@ -1149,7 +1270,8 @@ class Hub {
       .sort((a, b) => Number(a.style.order) - Number(b.style.order))
       .map(t => [...this.tiles].find(([, entry]) => entry.el === t)?.[0])
       .filter(Boolean);
-    this.onReorder?.(ids);
+    if (d.pour) this.pour(d.id, d.pour);
+    else this.onReorder?.(ids);
     if (this.latest) this.render(...this.latest);
   }
 

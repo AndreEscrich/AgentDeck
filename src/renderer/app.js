@@ -903,6 +903,25 @@ const branchesView = new BranchesView();
 hub.onOpenBranches = () => { sfx('open'); show('branches'); };
 hub.onOpenSettings = () => showSettings();
 hub.onOpenNotes = groupId => openNotesEditor(findGroup(groupId));
+
+// Dragging a tile onto another agent's tank pours its result into that agent
+// (pour in hub.js): the other agent opens with the result in its message box,
+// so you can say what to do with it before you press ↩. Only from an agent
+// that has a result, into one that runs in the app (not a parked one).
+function resultOf(a) {
+  return a?.lastResult || a?.transcript?.lastFinished?.texts?.at(-1) || '';
+}
+hub.canPour = (fromId, toId) => fromId !== toId && !!resultOf(state.agents.get(fromId)).trim() && state.agents.has(toId);
+hub.onPour = (fromId, toId) => {
+  const from = state.agents.get(fromId);
+  if (!from || !state.agents.has(toId)) return;
+  const text = resultOf(from).trim();
+  const cut = text.length > 12000 ? `${text.slice(0, 12000)}\n…` : text;
+  const key = viewKey({ kind: 'agent', id: toId });
+  const block = `Context from the agent "${from.latestTitle || from.title}":\n\n${cut}\n\n`;
+  inputDrafts.set(key, [inputDrafts.get(key)?.trim(), block].filter(Boolean).join('\n\n'));
+  hub.open(toId);
+};
 hub.onSelect = () => renderBroadcast();
 
 // ---------- command palette (Ctrl+K) ----------
@@ -1997,6 +2016,7 @@ function learnFrom(agent, turn, answer) {
     if (!merged || !findGroup(group.id)) return;
     const change = setGroupNotes(group, merged, agent.title);
     if (change) showNotesChange(agent, turn, group, change);
+    if (change) hub.noteDrop(agent.id);
   };
   const next = (notesMerges.get(group.id) || Promise.resolve()).then(run, run);
   notesMerges.set(group.id, next);
@@ -4211,6 +4231,7 @@ window.deck.onEvent((id, msg) => {
       .then(() => refreshHeaderIfCurrent(a.id))
       .catch(() => {});
   }
+  if (msg.type === 'result' && !msg.is_error) a.lastResult = msg.result;
   if (msg.type === 'result' && !msg.is_error) learnFrom(a, a.transcript.lastFinished, msg.result);
   if (msg.type === 'result' && !msg.is_error && a.status === 'idle') loadFollowUps(a, a.transcript.lastFinished, msg.result);
   if (msg.type === 'result' && !msg.is_error && a.ticket) addTicketPost(a, a.transcript.lastFinished, msg.result);

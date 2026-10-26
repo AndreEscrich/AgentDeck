@@ -2518,3 +2518,47 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .video-time { flex-shrink: 0; font: 11px var(--mono); color: rgba(255, 255, 255, 0.85); padding: 0 4px; white-space: nowrap; }
 @container (max-width: 240px) { .video-time { display: none; } }
 .video-lightbox video { max-width: 94vw; max-height: 86vh; background: #000; border-radius: 8px; cursor: default; }
+
+/* Background jobs: a moon per job circles the tank on a tilted ring (paintOrbit
+   in hub.js). Each moon moves across (outer span) and up and down (inner span)
+   a quarter turn apart, which makes the ellipse; --i/--n spread them out. */
+.tank-orbit { position: absolute; left: 10px; right: 10px; top: 10px; aspect-ratio: 4 / 3; pointer-events: none; z-index: 2; }
+.tank-orbit::before { content: ""; position: absolute; left: 50%; top: 58%; width: 94cqw; height: 23cqw; translate: -50% -50%;
+  border-radius: 50%; border: 1px dashed color-mix(in srgb, var(--c1) 45%, transparent); opacity: 0; transition: opacity 0.4s; }
+.tank-orbit.has-moons::before { opacity: 1; }
+.tank-orbit .moon { --T: 5.6s; position: absolute; left: 50%; top: 58%;
+  animation: orbit-x calc(var(--T) / 2) ease-in-out infinite alternate;
+  animation-delay: calc(var(--T) * var(--i, 0) / var(--n, 1) * -1); }
+.tank-orbit .moon > span { display: block;
+  animation: orbit-y calc(var(--T) / 2) ease-in-out infinite alternate;
+  animation-delay: calc(var(--T) * var(--i, 0) / var(--n, 1) * -1 - var(--T) / 4); }
+.tank-orbit .moon i { display: block; width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fff 0 18%, var(--c1) 55%, var(--c2));
+  box-shadow: 0 0 8px 1px color-mix(in srgb, var(--c1) 70%, transparent); animation: moon-in 0.5s cubic-bezier(.3,1.6,.5,1) both; }
+.tank-orbit .moon.popping i { animation: moon-pop 0.55s ease-out forwards; }
+@keyframes orbit-x { from { translate: -52cqw 0; } to { translate: 52cqw 0; } }
+@keyframes orbit-y { from { translate: 0 -13cqw; } to { translate: 0 13cqw; } }
+@keyframes moon-in { from { scale: 0; } }
+@keyframes moon-pop { 30% { scale: 1.9; opacity: 1; box-shadow: 0 0 0 4px color-mix(in srgb, var(--c1) 50%, transparent); } 100% { scale: 2.6; opacity: 0; box-shadow: 0 0 0 10px transparent; } }
+
+/* A note learned: a drop falls from the tank into the panel's Notes button
+   (noteDrop in hub.js), which gulps it. */
+.note-drop, .pour-drop { position: fixed; left: 0; top: 0; z-index: 400; pointer-events: none; width: 10px; height: 12px; margin: -6px 0 0 -5px;
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; background: radial-gradient(circle at 35% 30%, #fff8 0 20%, var(--c1) 60%);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--c1) 60%, transparent); }
+.pour-drop { width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; }
+.section-notes.gulp { animation: notes-gulp 0.6s cubic-bezier(.3,1.6,.5,1); }
+@keyframes notes-gulp { 25% { scale: 1.25 0.85; box-shadow: 0 0 14px var(--accent); } 60% { scale: 0.95 1.08; } 100% { scale: 1; } }
+
+/* Pouring one agent's result into another: held over a tank, the target
+   opens up and the held tile tilts toward it; let go, it tips and pours,
+   and the target's liquid swells (pour in hub.js). */
+.hub-tile.pour-target { box-shadow: 0 0 0 2px var(--c1), 0 0 26px -2px var(--c1) !important; }
+.hub-tile.pour-target .tank::after { content: "Pour in"; position: absolute; inset: auto 0 8px; text-align: center; z-index: 3;
+  font-size: 11px; font-weight: 800; letter-spacing: 0.04em; color: #fff; text-shadow: 0 1px 3px #000a; animation: pour-hint 0.25s ease-out; }
+@keyframes pour-hint { from { opacity: 0; translate: 0 6px; } }
+.hub-tile.dragging.pouring { transform: scale(0.92) rotate(10deg); }
+.hub-tile.tipping { rotate: var(--tip, 14deg); transition: rotate 0.25s cubic-bezier(.3,1.4,.5,1); }
+.hub-tile.filling .liquid { animation: pour-swell 1s ease-in-out; transform-origin: 50% 100%; }
+.hub-tile.filling { animation: tile-wob 0.6s 0.2s cubic-bezier(.3,1.6,.5,1); }
+@keyframes pour-swell { 0% { filter: none; } 35% { transform: scaleY(1.18) skewY(4deg); filter: brightness(1.35); } 70% { transform: scaleY(1.05) skewY(-2deg); } 100% { transform: none; filter: none; } }
