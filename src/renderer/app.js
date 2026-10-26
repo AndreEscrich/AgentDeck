@@ -1620,7 +1620,10 @@ async function loadAgentList() {
     // still has it.
     if ((e.inHub === false || !addedSinceRemoved(e)) && state.parked.has(e.sessionId)) state.parked.delete(e.sessionId);
   }
-  hubSynced = new Set(list.filter(e => e.inHub).map(e => e.sessionId));
+  // Only the agents the Hub shows: an entry that says "on the Hub" but was
+  // removed after it was last added is not, and counting it here kept a new
+  // "added" time from being written when it came back (see syncAgentList).
+  hubSynced = new Set(list.filter(e => e.inHub && addedSinceRemoved(e)).map(e => e.sessionId));
   agentListReady = true;
   if (groupsChanged) saveGroups();
 }
@@ -1653,7 +1656,7 @@ async function reconcileHub() {
 window.addEventListener('focus', () => { reconcileHub(); });
 
 function parkedFromList(e) {
-  const { inHub, updatedAt, groupName, ...p } = e;
+  const { inHub, updatedAt, groupName, addedAt, removedAt, ...p } = e;
   return { ...p, wasWorking: false };
 }
 
@@ -1668,7 +1671,14 @@ function syncAgentList(list, { now = false } = {}) {
     // last write. Another copy of the app (dev and stable keep their own
     // saved Hub) that still lists an agent you removed here would otherwise
     // write it back on every change of its own Hub.
-    const entries = list.map(p => ({ ...p, ...(hubSynced.has(p.sessionId) ? {} : { inHub: true, addedAt: Date.now() }), groupName: findGroup(p.groupId)?.name || null, lastActiveAt: Math.max(p.finishedAt || 0, state.agentList.get(p.sessionId)?.lastActiveAt || 0) || Date.now() }));
+    // An agent the saved list counts as removed (removed after it was last
+    // added) gets a new "added" time too when it is on this Hub, or the next
+    // start takes it off again.
+    const added = sid => hubSynced.has(sid) && addedSinceRemoved(state.agentList.get(sid) || {});
+    // The added and removed times are written only here, never copied from a
+    // saved entry (a parked agent carries the ones it was loaded with, and
+    // writing those back undid a newer "added" time).
+    const entries = list.map(({ addedAt, removedAt, ...p }) => ({ ...p, ...(added(p.sessionId) ? {} : { inHub: true, addedAt: Date.now() }), groupName: findGroup(p.groupId)?.name || null, lastActiveAt: Math.max(p.finishedAt || 0, state.agentList.get(p.sessionId)?.lastActiveAt || 0) || Date.now() }));
     for (const sid of hubSynced) if (!on.has(sid)) entries.push({ sessionId: sid, inHub: false, removedAt: Date.now() });
     hubSynced = on;
     rememberAgents(entries);
