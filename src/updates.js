@@ -28,18 +28,38 @@ async function packagesAt(dir, rev) {
 // of this copy, null when there is nothing to update, or undefined when it
 // can't tell (GitHub can't be reached, for example right after waking up
 // without a network): then the app keeps what it knew before.
-async function check(dir) {
+//
+// startHead: the commit the running app started from. When the folder has
+// moved on since (promote on this computer moves the stable copy forward
+// itself, so GitHub is never ahead of it), that is a new version too: the
+// files on disk are newer than the code that runs, and a restart takes them.
+async function check(dir, startHead = null) {
   if (await run(dir, ['rev-parse', '--abbrev-ref', 'HEAD']) !== 'master') return null;
-  if (await run(dir, ['fetch', '-q', 'origin', 'master'], 60000) == null) return undefined;
+  const local = await sinceStart(dir, startHead);
+  if (await run(dir, ['fetch', '-q', 'origin', 'master'], 60000) == null) return local || undefined;
   // Only a plain step forward: a copy with commits of its own is left alone.
-  if (await run(dir, ['merge-base', '--is-ancestor', 'HEAD', 'origin/master']) == null) return null;
+  if (await run(dir, ['merge-base', '--is-ancestor', 'HEAD', 'origin/master']) == null) return local;
   const behind = Number(await run(dir, ['rev-list', '--count', 'HEAD..origin/master']));
-  if (!behind) return null;
+  if (!behind) return local;
   let version = null;
   try { version = JSON.parse(await run(dir, ['show', 'origin/master:package.json'])).version; } catch {}
-  const log = await run(dir, ['log', '--format=%s', '-n', '15', 'HEAD..origin/master']);
-  const commits = (log || '').split(/\r?\n/).filter(s => s && !/^Release v/.test(s) && !/^Merge /.test(s));
-  return { version, behind, commits };
+  return { version, behind: behind + (local?.behind || 0), commits: [...await subjectsOf(dir, 'HEAD..origin/master'), ...(local?.commits || [])] };
+}
+
+const subjectsOf = async (dir, range) => ((await run(dir, ['log', '--format=%s', '-n', '15', range])) || '')
+  .split(/\r?\n/).filter(s => s && !/^Release v/.test(s) && !/^Merge /.test(s));
+
+// The folder's commits since the running app started, as an update that
+// only needs a restart, or null.
+async function sinceStart(dir, startHead) {
+  if (!startHead) return null;
+  const head = await run(dir, ['rev-parse', 'HEAD']);
+  if (!head || head === startHead) return null;
+  const behind = Number(await run(dir, ['rev-list', '--count', `${startHead}..HEAD`])) || 0;
+  if (!behind) return null;
+  let version = null;
+  try { version = JSON.parse(await run(dir, ['show', 'HEAD:package.json'])).version; } catch {}
+  return { version, behind, commits: await subjectsOf(dir, `${startHead}..HEAD`), local: true };
 }
 
 // Moves the stable copy forward to GitHub's master. Resolves with

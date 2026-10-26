@@ -474,6 +474,10 @@ function allowStop(event) {
 // The stable copy looks for a new version on GitHub 3 seconds after it
 // opens, every time its window gets the focus, and every 30 minutes, and
 // tells the window when there is one.
+// The commit this app started from: when the folder moves on after that
+// (promote moves the stable copy forward), a restart is an update too.
+let startHead = null;
+try { startHead = require('child_process').execFileSync('git', ['-C', app.getAppPath(), 'rev-parse', 'HEAD'], { encoding: 'utf8', timeout: 5000 }).trim() || null; } catch { /* not a git folder */ }
 let latestUpdate = null;
 let lookForUpdate = () => {};
 let looking = null;
@@ -482,7 +486,7 @@ let looking = null;
 // for none, undefined when GitHub couldn't be reached.
 function lookNow() {
   if (looking) return looking;
-  looking = updates.check(app.getAppPath()).then(found => {
+  looking = updates.check(app.getAppPath(), startHead).then(found => {
     // undefined: GitHub couldn't be reached, so what was found before stays.
     if (found !== undefined && JSON.stringify(found) !== JSON.stringify(latestUpdate)) {
       latestUpdate = found;
@@ -527,8 +531,11 @@ app.on('before-quit', event => {
 // Quit normally (and stop the agents) also when the app is stopped with
 // Ctrl-C in the terminal that runs `npm start`.
 process.on('SIGINT', () => app.quit());
+// Closing the window quits the app, also on macOS: the agents stop with it
+// anyway, and an app left running would keep the code it started with while
+// a reopened window loads the newer files (after promote or an update).
 app.on('window-all-closed', () => {
   agents.closeAll();
   commands.stopAll();
-  if (process.platform !== 'darwin') app.quit();
+  app.quit();
 });
