@@ -304,6 +304,13 @@ app.whenReady().then(() => {
   ipcMain.handle('usage:fetch', () => fetchUsage(getConfig()));
   ipcMain.handle('app:version', () => appVersion());
   ipcMain.handle('update:latest', () => latestUpdate);
+  // Settings → Check for updates: a look right now. The dev copy does not
+  // update itself (it is on the dev branch), so it only says so.
+  ipcMain.handle('update:check', async () => {
+    if ((await appVersion()).dev) return { dev: true };
+    const found = await lookNow().catch(() => undefined);
+    return found === undefined ? { offline: true } : { found: found || null };
+  });
   ipcMain.handle('app:changelog', () => updates.changelog(app.getAppPath()));
   ipcMain.handle('update:apply', () => applyUpdate());
   // Sessions you removed from History stay out (removedsessions.js).
@@ -469,23 +476,26 @@ function allowStop(event) {
 // every 30 minutes, and tells the window when there is one.
 let latestUpdate = null;
 let lookForUpdate = () => {};
-function watchForUpdates() {
-  let running = false;
-  let lastLook = 0;
-  const look = async () => {
-    if (running) return;
-    running = true;
-    lastLook = Date.now();
-    try {
-      const found = await updates.check(app.getAppPath());
-      // undefined: GitHub couldn't be reached, so what was found before stays.
-      if (found === undefined || JSON.stringify(found) === JSON.stringify(latestUpdate)) return;
+let lastLook = 0;
+let looking = null;
+// One look at GitHub (a look already running is shared, so two never fetch
+// at once). Resolves with what updates.check found: the new version, null
+// for none, undefined when GitHub couldn't be reached.
+function lookNow() {
+  if (looking) return looking;
+  lastLook = Date.now();
+  looking = updates.check(app.getAppPath()).then(found => {
+    // undefined: GitHub couldn't be reached, so what was found before stays.
+    if (found !== undefined && JSON.stringify(found) !== JSON.stringify(latestUpdate)) {
       latestUpdate = found;
       send('update:available', found);
-    } finally {
-      running = false;
     }
-  };
+    return found;
+  }).finally(() => { looking = null; });
+  return looking;
+}
+function watchForUpdates() {
+  const look = () => lookNow().catch(() => {});
   lookForUpdate = () => { if (Date.now() - lastLook > 60 * 1000) look(); };
   setTimeout(look, 15 * 1000);
   setInterval(look, 30 * 60 * 1000);

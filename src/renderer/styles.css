@@ -2470,3 +2470,8 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .slash-chip { color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); border-radius: 5px;
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
 .slash-ghost { color: var(--text-faint); }
+
+/* Settings → Updates: the buttons, and what it found on a line under them. */
+.settings-update { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px 8px; max-width: 320px; }
+.settings-update-note { flex-basis: 100%; text-align: right; }
+.settings-update-note:empty { display: none; }

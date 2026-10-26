@@ -106,6 +106,33 @@ function openSettings(config, { onSaved } = {}) {
   const notify = settingsInput('checkbox', config.notifyWhenDone !== false);
   const sounds = settingsInput('checkbox', config.sounds !== false);
   const theme = settingsSelect(THEMES, config.theme || 'default');
+  // Updates: look on GitHub now instead of waiting for the next look (the
+  // app looks when its window gets the focus and every 30 minutes).
+  const updateRow = el('div', 'settings-update');
+  const updateBtn = el('button', 'settings-btn', 'Check for updates');
+  updateBtn.type = 'button';
+  const updateNote = el('span', 'settings-hint settings-update-note');
+  updateRow.append(updateBtn, updateNote);
+  updateBtn.onclick = async () => {
+    updateBtn.disabled = true;
+    updateNote.textContent = 'Checking GitHub…';
+    updateRow.querySelector('.settings-update-go')?.remove();
+    const r = await window.deck.checkUpdate().catch(() => ({ offline: true }));
+    updateBtn.disabled = false;
+    if (r.dev) updateNote.textContent = 'This is the dev copy: it does not update itself. Promote from the dev folder instead.';
+    else if (r.offline) updateNote.textContent = 'GitHub could not be reached. Try again in a moment.';
+    else if (!r.found) updateNote.textContent = `You have the latest version (${$('app-version').textContent}).`;
+    else {
+      const n = r.found.behind;
+      updateNote.textContent = `${r.found.version ? `v${r.found.version}` : 'A new version'} is available (${n} new commit${n === 1 ? '' : 's'}).`;
+      const go = el('button', 'settings-btn settings-update-go', 'Update and restart');
+      go.type = 'button';
+      // The same as the button next to the version: agents that are working
+      // get the card that says they continue after the restart.
+      go.onclick = () => $('app-update').onclick();
+      updateRow.insertBefore(go, updateNote);
+    }
+  };
   const curved = settingsInput('checkbox', config.curvedScreen !== false);
 
   // Branch diff
@@ -144,7 +171,8 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('Short titles', 'Name new agents with a summary of your message, written by Haiku', titles),
       settingsField('Suggest follow-ups', 'After a task, the messages you will likely send next, written by Haiku. → or a click puts one in the box, Alt+1–3 sends it', followUps),
       settingsField('Notifications', 'When an agent finishes or needs you while the app is in the background', notify),
-      settingsField('Sounds', 'For everything you and the agents do', sounds)),
+      settingsField('Sounds', 'For everything you and the agents do', sounds),
+      settingsField('Updates', 'The app also looks for a new version when you come back to its window, and every 30 minutes', updateRow)),
     section('Branch diff',
       settingsField('Projects', `The Branches view lists ${(config.svnServer || 'svn+ssh://svn@tactile.build').replace(/\/+$/, '')}/<project>/branches for each one. Separate them with commas. Empty: every project someone committed to in the last year`, svnProjects),
       settingsField('Branch names', 'Only branches whose names start with one of these. Separate them with commas. Empty: every branch', svnBranchFilter),
