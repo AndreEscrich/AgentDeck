@@ -2469,7 +2469,9 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .slash-overlay { position: absolute; z-index: 2; pointer-events: none; overflow: hidden; box-sizing: border-box; margin: 0;
   white-space: pre-wrap; overflow-wrap: break-word; color: var(--text); background: transparent; }
 #input.slash-mirrored { color: transparent !important; -webkit-text-fill-color: transparent; caret-color: var(--text); text-shadow: none !important; }
-#input.slash-mirrored::selection { color: transparent; }
+/* A ::selection rule drops the browser's own selection background, so it
+   names one again: without it a selection in the box is not shown at all. */
+#input.slash-mirrored::selection { color: transparent; background: Highlight; }
 .slash-chip { color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); border-radius: 5px;
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
 .slash-ghost { color: var(--text-faint); }

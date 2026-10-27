@@ -38,6 +38,7 @@
 
 body { text-shadow: var(--glow); letter-spacing: 0.01em; }
 ::selection { background: var(--accent); color: var(--accent-text); text-shadow: none; }
+#input.slash-mirrored::selection { background: var(--accent); }
 * { border-radius: 0 !important; }
 textarea, input { caret-color: var(--accent); caret-shape: block; }
 
