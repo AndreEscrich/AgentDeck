@@ -472,6 +472,61 @@ const otherKind = p => OTHER_KINDS.find(([re]) => re.test(extensionOf(p)))?.[1] 
 const kindRank = p => (ASSET_ORDER.has(extensionOf(p)) ? ASSET_ORDER.get(extensionOf(p))
   : ASSET_KINDS.length + 1 + OTHER_KINDS.findIndex(([re]) => re.test(extensionOf(p))));
 
+// The kind, status, name and folder of an asset, for its row (and for the
+// list in the whole-window view).
+const ASSET_STATUS = { new: 'New', mod: 'Changed', del: 'Deleted', bin: 'Changed' };
+function assetLabel(f) {
+  const parts = f.path.split('/');
+  return [
+    el('span', `asset-kind kind-${extensionOf(f.path).toLowerCase()}`, assetKind(f.path) || otherKind(f.path)),
+    // New, Deleted, Changed or Moved, right after the kind.
+    el('span', `asset-status status-${f.from ? 'moved' : f.status}`, f.from ? 'Moved' : ASSET_STATUS[f.status] || 'Changed'),
+    el('span', 'asset-name', parts.pop()),
+    el('span', 'asset-folder', parts.slice(-3).join('/')),
+  ];
+}
+
+// Fills body with what changed in one asset: for a Unity asset, a list in
+// words (src/unityassets.js) of game objects and components added or
+// removed and values before → after, grouped by game object; for other
+// files, their diff (or the picture).
+async function loadAsset(f, body, cwd, comments) {
+  // Not a Unity asset (a texture, a text file, a .meta): its diff or picture.
+  if (!assetKind(f.path)) {
+    // An image the task added: a preview of it.
+    if (/\.(png|jpe?g|gif|webp|bmp|tga|psd|psb|exr|hdr|tiff?)$/i.test(f.path) && f.status !== 'del' && window.mediaElement) {
+      const file = window.resolveMediaPath?.(f.path, cwd) || f.path;
+      body.replaceChildren(window.mediaElement(file, f.path.split('/').pop(), cwd));
+      return;
+    }
+    if (f.status === 'new' || f.status === 'del') {
+      if (f.lines.some(([, t]) => /^Binary files /.test(t || ''))) {
+        body.replaceChildren(el('div', 'asset-note', f.status === 'new' ? 'A new file, added during the task.' : 'Deleted during the task.'));
+        return;
+      }
+    }
+    body.replaceChildren(fileViews(f, cwd, () => comments.diff(f), comments));
+    return;
+  }
+  body.replaceChildren(el('div', 'asset-note', 'Reading the asset… (the first one in a project takes a few seconds, to name its scripts and assets)'));
+  const r = await (window.deck?.describeAsset?.(cwd, { path: f.path, status: f.status, lines: f.lines, earlier: f.earlier, from: f.from }) || Promise.resolve({ error: 'Not available.' })).catch(err => ({ error: String(err?.message || err) }));
+  body.replaceChildren();
+  if (r.error) { body.appendChild(el('div', 'asset-note', r.error)); return; }
+  if (r.note) body.appendChild(el('div', 'asset-note', r.note));
+  if (!r.groups.length) body.appendChild(el('div', 'asset-note', 'Nothing changed that the list shows (only ids, ordering or editor-only data).'));
+  for (const g of r.groups) {
+    const block = el('div', 'asset-group');
+    block.appendChild(el('div', 'asset-object', g.heading));
+    for (const line of g.lines) {
+      const mark = line[0];
+      const item = el('div', `asset-line ${mark === '+' ? 'add' : mark === '−' ? 'del' : 'mod'}`);
+      item.append(el('span', 'asset-mark', mark === '~' ? '•' : mark), el('span', null, line.slice(2)));
+      block.appendChild(item);
+    }
+    body.appendChild(block);
+  }
+}
+
 // files: the task's files that are not code (the diff viewer has the code).
 // comments: the card's line comments (a text file's diff takes them too).
 function addAssets(card, files, cwd, comments) {
@@ -480,71 +535,41 @@ function addAssets(card, files, cwd, comments) {
   if (!assets.length) return;
   const section = el('div', 'assets-section');
   const prefabs = assets.filter(f => /\.prefab$/i.test(f.path)).length;
-  // "Asset changes" when Unity assets are among them, else just "Other files".
-  // Textures, audio, video, models and fonts are assets too.
-  const heading = assets.some(f => assetKind(f.path) || ['Texture', 'Audio', 'Video', 'Model', 'Font'].includes(otherKind(f.path))) ? 'Asset changes' : 'Other files';
-  section.appendChild(el('div', 'assets-head', `${heading} · ${assets.length}${prefabs ? ` · ${prefabs} prefab${prefabs === 1 ? '' : 's'}` : ''}`));
-  const STATUS = { new: 'New', mod: 'Changed', del: 'Deleted', bin: 'Changed' };
+  // Everything that is not code is under "Asset changes", text files too.
+  const head = el('div', 'assets-head');
+  const title = `Asset changes · ${assets.length}${prefabs ? ` · ${prefabs} prefab${prefabs === 1 ? '' : 's'}` : ''}`;
+  const full = el('button', 'assets-full-btn', '⤢');
+  full.type = 'button';
+  full.title = 'Review them in the whole window';
+  head.append(el('span', null, title), full);
+  section.appendChild(head);
   // A long list (a branch can change hundreds of assets) shows the first ones
   // and a button for the rest.
   const SHOWN = 25;
   let more = null;
+  const rows = [];
   for (const [i, f] of assets.entries()) {
     const row = el('details', `asset-row status-${f.status}`);
     const summary = el('summary', 'asset-summary');
-    const parts = f.path.split('/');
-    summary.append(
-      el('span', `asset-kind kind-${extensionOf(f.path).toLowerCase()}`, assetKind(f.path) || otherKind(f.path)),
-      // New, Deleted, Changed or Moved, right after the kind.
-      el('span', `asset-status status-${f.from ? 'moved' : f.status}`, f.from ? 'Moved' : STATUS[f.status] || 'Changed'),
-      el('span', 'asset-name', parts.pop()),
-      el('span', 'asset-folder', parts.slice(-3).join('/')),
-    );
+    summary.append(...assetLabel(f));
     summary.title = f.from ? `${f.path}\nmoved from ${f.from}` : f.path;
     row.appendChild(summary);
     const body = el('div', 'asset-body');
     row.appendChild(body);
-    row.addEventListener('toggle', async () => {
+    row.addEventListener('toggle', () => {
       if (!row.open || row.dataset.loaded) return;
       row.dataset.loaded = '1';
-      // Not a Unity asset (a texture, a text file, a .meta): its diff or picture.
-      if (!assetKind(f.path)) {
-        // An image the task added: a preview of it.
-        if (/\.(png|jpe?g|gif|webp|bmp|tga|psd|psb|exr|hdr|tiff?)$/i.test(f.path) && f.status !== 'del' && window.mediaElement) {
-          const file = window.resolveMediaPath?.(f.path, cwd) || f.path;
-          body.replaceChildren(window.mediaElement(file, f.path.split('/').pop(), cwd));
-          return;
-        }
-        if (f.status === 'new' || f.status === 'del') {
-          if (f.lines.some(([, t]) => /^Binary files /.test(t || ''))) {
-            body.replaceChildren(el('div', 'asset-note', f.status === 'new' ? 'A new file, added during the task.' : 'Deleted during the task.'));
-            return;
-          }
-        }
-        body.replaceChildren(fileViews(f, cwd, () => comments.diff(f), comments));
-        return;
-      }
-      body.replaceChildren(el('div', 'asset-note', 'Reading the asset… (the first one in a project takes a few seconds, to name its scripts and assets)'));
-      const r = await (window.deck?.describeAsset?.(cwd, { path: f.path, status: f.status, lines: f.lines, earlier: f.earlier, from: f.from }) || Promise.resolve({ error: 'Not available.' })).catch(err => ({ error: String(err?.message || err) }));
-      body.replaceChildren();
-      if (r.error) { body.appendChild(el('div', 'asset-note', r.error)); return; }
-      if (r.note) body.appendChild(el('div', 'asset-note', r.note));
-      if (!r.groups.length) body.appendChild(el('div', 'asset-note', 'Nothing changed that the list shows (only ids, ordering or editor-only data).'));
-      for (const g of r.groups) {
-        const block = el('div', 'asset-group');
-        block.appendChild(el('div', 'asset-object', g.heading));
-        for (const line of g.lines) {
-          const mark = line[0];
-          const item = el('div', `asset-line ${mark === '+' ? 'add' : mark === '−' ? 'del' : 'mod'}`);
-          item.append(el('span', 'asset-mark', mark === '~' ? '•' : mark), el('span', null, line.slice(2)));
-          block.appendChild(item);
-        }
-        body.appendChild(block);
-      }
+      loadAsset(f, body, cwd, comments);
     });
     if (i >= SHOWN) row.classList.add('hidden');
     section.appendChild(row);
+    rows.push(row);
   }
+  // The whole-window view starts at the asset that is open, if one is.
+  full.onclick = () => {
+    window.uiSound?.('tick');
+    openAssetsFull(assets, cwd, comments, title, Math.max(0, rows.findIndex(r => r.open)));
+  };
   if (assets.length > SHOWN) {
     more = el('button', 'assets-more', `Show ${assets.length - SHOWN} more`);
     more.type = 'button';
@@ -554,6 +579,71 @@ function addAssets(card, files, cwd, comments) {
   // Right under the code, above the review bar.
   card.insertBefore(section, card.querySelector(':scope > .review-bar, :scope > .review-progress') || null);
 }
+
+// The assets in the whole window, over the chat (⤢ in their title): the
+// list on the left and the picked one large on the right. ↑ ↓ step through
+// them, Esc closes.
+let assetsFullEl = null;
+function closeAssetsFull() {
+  assetsFullEl?.remove();
+  assetsFullEl = null;
+}
+
+function openAssetsFull(assets, cwd, comments, title, start = 0) {
+  closeAssetsFull();
+  const root = el('div', 'uml-full assets-full');
+  root.tabIndex = -1;
+  const bar = el('div', 'review-bar');
+  const close = el('button', null, 'Close (Esc)');
+  close.onclick = closeAssetsFull;
+  bar.append(el('span', 'review-title', title), el('span', 'hint', '↑ ↓ to go through them · Esc to close'), close);
+  const list = el('div', 'assets-full-list');
+  const view = el('div', 'assets-full-view');
+  const main = el('div', 'assets-full-main');
+  main.append(list, view);
+  root.append(bar, main);
+  let current = -1;
+  const items = assets.map((f, i) => {
+    const item = el('button', 'assets-full-item');
+    item.type = 'button';
+    item.title = f.from ? `${f.path}\nmoved from ${f.from}` : f.path;
+    item.append(...assetLabel(f));
+    item.onclick = () => pick(i);
+    list.appendChild(item);
+    return item;
+  });
+  const pick = i => {
+    if (i < 0 || i >= assets.length || i === current) return;
+    current = i;
+    items.forEach((item, j) => item.classList.toggle('active', j === i));
+    items[i].scrollIntoView({ block: 'nearest' });
+    const f = assets[i];
+    const head = el('div', 'assets-full-title');
+    head.append(...assetLabel(f));
+    head.appendChild(el('span', 'assets-full-path', f.from ? `${f.path} (moved from ${f.from})` : f.path));
+    const body = el('div', 'asset-body');
+    view.replaceChildren(head, body);
+    view.scrollTop = 0;
+    loadAsset(f, body, cwd, comments);
+  };
+  root.step = d => pick(Math.min(assets.length - 1, Math.max(0, current + d)));
+  document.getElementById('main').appendChild(root);
+  assetsFullEl = root;
+  pick(start);
+  root.focus();
+}
+
+document.addEventListener('keydown', e => {
+  if (!assetsFullEl) return;
+  // Keys in a comment box stay there (Esc cancels the comment).
+  if (e.target.closest?.('input, textarea, [contenteditable="true"]')) return;
+  const stop = () => { e.preventDefault(); e.stopImmediatePropagation(); };
+  if (e.key === 'Escape') { stop(); closeAssetsFull(); return; }
+  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !e.altKey && !e.ctrlKey && !e.metaKey) {
+    stop();
+    assetsFullEl.step(e.key === 'ArrowDown' ? 1 : -1);
+  }
+}, true);
 
 // ---------- the session's changes, floating over the chat ----------
 
