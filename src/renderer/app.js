@@ -655,7 +655,7 @@ function show(kind, id) {
     loadSession(h.view, h.session.id, h.cwd || h.session.cwd);
     scrollToBottom(h.view);
     const listed = state.parked.get(id) || state.agentList.get(id);
-    setHeader(listed?.latestTitle || h.session.title, h.cwd || h.session.cwd, null, findGroup(groupOf(h.session.id))?.name || null);
+    setHeader(agentName({ sessionId: h.session.id, latestTitle: listed?.latestTitle, title: h.session.title }), h.cwd || h.session.cwd, null, findGroup(groupOf(h.session.id))?.name || null);
     composerPicker.setValue(h.choice || defaultChoice());
     composerPicker.setResolved(null);
     composerModePicker.setValue(h.mode || defaultMode());
@@ -923,7 +923,7 @@ hub.onPour = (fromId, toId) => {
   const text = resultOf(from).trim();
   const cut = text.length > 12000 ? `${text.slice(0, 12000)}\n…` : text;
   const key = viewKey({ kind: 'agent', id: toId });
-  const block = `Context from the agent "${from.latestTitle || from.title}":\n\n${cut}\n\n`;
+  const block = `Context from the agent "${agentName(from)}":\n\n${cut}\n\n`;
   inputDrafts.set(key, [inputDrafts.get(key)?.trim(), block].filter(Boolean).join('\n\n'));
   hub.open(toId);
 };
@@ -949,7 +949,7 @@ function paletteItems() {
     items.push({
       icon: item.parked ? '○' : '●',
       boost: 40,   // agents on the Hub come before saved sessions
-      label: item.latestTitle || item.title,
+      label: agentName(item),
       hint: [group?.name, item.repo, HUB_STATUS_TEXT[item.status] || item.status].filter(Boolean).join(' · '),
       run: () => hub.onOpen(item.id),
     });
@@ -1160,7 +1160,7 @@ function renderBroadcast() {
   }
   if (!show) return;
   const items = hubItems();
-  const names = ids.map(id => items.find(i => i.id === id)).filter(Boolean).map(i => i.latestTitle || i.title);
+  const names = ids.map(id => items.find(i => i.id === id)).filter(Boolean).map(i => agentName(i));
   bar.replaceChildren();
   bar.append(el('span', 'broadcast-count', `To ${ids.length} agent${ids.length === 1 ? '' : 's'}`), el('span', 'broadcast-names', names.join(' · ')));
   const clear = el('button', 'broadcast-clear', 'Clear');
@@ -1359,7 +1359,7 @@ function updateNextHint() {
   const next = queue[0];
   const colorOf = i => NEXT_COLORS[i.status === 'waiting' && i.attention === 'question' ? 'question' : i.status] || NEXT_COLORS.idle;
   // In the Hub, the header says that Tab starts going through them.
-  hub.setTabHint(cur?.kind === 'hub' && next ? { count: queue.length, name: next.latestTitle || next.title, color: colorOf(next) } : null);
+  hub.setTabHint(cur?.kind === 'hub' && next ? { count: queue.length, name: agentName(next), color: colorOf(next) } : null);
   const inAgent = ['agent', 'history'].includes(cur?.kind);
   const showing = inAgent && !!next;
   // Each time the hint appears, or you move to another agent, the bubbles
@@ -1377,7 +1377,7 @@ function updateNextHint() {
   hint.classList.toggle('show', showing);
   if (!showing) return;
   hint.style.setProperty('--next', colorOf(next));
-  hint.querySelector('.next-hint-name').textContent = next.latestTitle || next.title;
+  hint.querySelector('.next-hint-name').textContent = agentName(next);
   hint.title = `Tab: open "${next.title}"`;
 }
 
@@ -1822,7 +1822,7 @@ async function removeGroupFromHub(ids) {
 // The top bar names an agent the way its Hub tile does: the summary of your
 // latest message, with the task (its first message) in the tooltip.
 function headerTitle(a) {
-  return a.latestTitle || a.title;
+  return agentName(a);
 }
 
 // category: the name of the category (for a saved session; an agent's
@@ -2129,6 +2129,23 @@ function openNotesEditor(group) {
   };
 }
 
+// A name you give an agent, by its session (null clears it: the agent shows
+// the summary of its latest message again). See agentName in hub.js.
+function setAgentName(sessionId, name) {
+  if (!sessionId) return;
+  const names = agentNames();
+  if (name) names[sessionId] = name.slice(0, 80);
+  else delete names[sessionId];
+  try { localStorage.setItem('agentNames', JSON.stringify(names)); } catch { /* not important */ }
+  for (const a of state.agents.values()) if (a.sessionId === sessionId) a.customName = name || null;
+  sfx('select');
+  refreshHub();
+  saveHub();
+  renderSidebar();
+  const cur = state.current;
+  if (cur?.kind === 'agent') refreshHeaderIfCurrent(cur.id);
+}
+
 // The menu shown when you right-click a session in History or Running.
 // hubId: the Hub tile the menu is for (its agent can move to another folder).
 async function sessionMenu(sessionId, hubId = null) {
@@ -2147,6 +2164,13 @@ async function sessionMenu(sessionId, hubId = null) {
     },
     { id: 'remove', label: 'Remove from category', enabled: !!current },
     { type: 'separator' },
+    // A name of your own for its tile (and wherever it shows), instead of
+    // the summary of its latest message; Clear name goes back to that.
+    ...(hubId ? [
+      { id: 'rename', label: 'Rename…' },
+      { id: 'clear-name', label: 'Clear name', enabled: !!agentNames()[sessionId] },
+      { type: 'separator' },
+    ] : []),
     // Its Claude Code session id, to name it to an agent (its transcript is
     // ~/.claude/projects/<folder>/<id>.jsonl).
     { id: 'copy-id', label: 'Copy agent id' },
@@ -2157,6 +2181,15 @@ async function sessionMenu(sessionId, hubId = null) {
   if (!picked) return;
   if (picked === 'forget') { removeFromHistory([sessionId]); return; }
   if (picked === 'copy-id') { window.deck.copyText(sessionId); sfx('select'); return; }
+  if (picked === 'rename') {
+    const item = hubItems().find(i => i.id === hubId);
+    hub.renameTile(hubId, item ? agentName(item) : '', name => {
+      if (name != null && name !== agentName(item || {})) setAgentName(sessionId, name || null);
+      else refreshHub();
+    });
+    return;
+  }
+  if (picked === 'clear-name') { setAgentName(sessionId, null); return; }
   if (picked.startsWith('folder:') || picked === 'folder-pick') {
     const folder = picked === 'folder-pick' ? await window.deck.pickFolder() : picked.slice(7);
     if (folder) moveToFolder(hubId, folder);
@@ -2474,8 +2507,9 @@ function groupHeader(group, count, collapsed) {
 function historyItem(s) {
   const item = el('div', 'item');
   if (state.current?.kind === 'history' && state.current.id === s.id) item.classList.add('active');
-  item.title = `${s.title}\n${s.cwd || ''}`;
-  item.append(el('span', 'label', s.title), el('span', 'meta', timeAgo(s.updatedAt)));
+  const label = agentNames()[s.id] || s.title;
+  item.title = `${label}\n${s.cwd || ''}`;
+  item.append(el('span', 'label', label), el('span', 'meta', timeAgo(s.updatedAt)));
   // Not on the Hub (any more): one click puts it back there.
   if (!isOnHub(s.id)) {
     const back = el('button', 'item-to-hub', 'Back to Hub');
@@ -3062,7 +3096,7 @@ function confirmCard({ title, text, agents = [], lines = [], confirmLabel, stayL
       const list = el('div', 'quit-list');
       for (const a of agents.slice(0, 6)) {
         const row = el('div', 'quit-agent');
-        row.append(el('span', `dot ${a.status}`), el('span', null, a.latestTitle || a.title));
+        row.append(el('span', `dot ${a.status}`), el('span', null, agentName(a)));
         list.appendChild(row);
       }
       if (agents.length > 6) list.appendChild(el('div', 'quit-more', `and ${agents.length - 6} more`));
@@ -3130,7 +3164,7 @@ async function confirmStop(agents, { action, label }) {
   if (!working.length) return true;
   const one = working.length === 1;
   return confirmCard({
-    title: one ? `"${working[0].latestTitle || working[0].title}" is still working` : `${working.length} agents are still working`,
+    title: one ? `"${agentName(working[0])}" is still working` : `${working.length} agents are still working`,
     text: `${action} stops ${one ? 'its task' : 'their tasks'} now. ${one ? 'Its session stays' : 'Their sessions stay'} in History, so you can open ${one ? 'it' : 'them'} and continue later.`,
     agents: working,
     confirmLabel: label,
@@ -4093,7 +4127,7 @@ function noteClashes(agent, message) {
 
 function addClash(agent, other, key, file) {
   agent.clashes = agent.clashes || new Map();
-  const clash = agent.clashes.get(other.id) || { title: other.latestTitle || other.title, files: new Set() };
+  const clash = agent.clashes.get(other.id) || { title: agentName(other), files: new Set() };
   agent.clashes.set(other.id, clash);
   if (clash.files.has(key)) return;
   clash.files.add(key);
@@ -4544,7 +4578,11 @@ window.deck.onPermissionCancel((id, requestId) => {
 window.deck.onSession((id, sessionId) => {
   const a = state.agents.get(id);
   if (!a) return;
+  // A name you gave it follows it into a new session (a fork when it moved
+  // to another folder, for example).
+  const named = customNameOf(a);
   a.sessionId = sessionId;
+  if (named && !agentNames()[sessionId]) setAgentName(sessionId, named);
   rememberTitle(a);
   rememberNotesSeen(a);
   // The CLI reports the session id once the session exists. That is when we

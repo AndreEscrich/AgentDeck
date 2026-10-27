@@ -10,6 +10,21 @@
 // Tiles are kept between updates and only their fields change, so running
 // animations do not restart every time an event comes in.
 
+// The name an agent shows: the one you gave it (Rename… in its tile's menu),
+// else the summary of its latest message, else its title. Names you give
+// are kept by session (localStorage agentNames), so they stay after a
+// restart and when the agent continues in a new session (see setAgentName
+// in app.js).
+function agentNames() {
+  try { return JSON.parse(localStorage.getItem('agentNames') || '{}'); } catch { return {}; }
+}
+function customNameOf(x) {
+  return x?.customName || (x?.sessionId && agentNames()[x.sessionId]) || null;
+}
+function agentName(x) {
+  return customNameOf(x) || x?.latestTitle || x?.title || '';
+}
+
 const HUB_STATUS_TEXT = {
   starting: 'Booting up…',
   working: 'Working',
@@ -623,7 +638,8 @@ class Hub {
     const stoppedNow = !!agent.stopped && ['idle', 'error', 'exited'].includes(agent.status);
     parts.icon.textContent = limited ? '⏳' : authWait ? '🔑' : stoppedNow ? '■' : { idle: '✓', error: '✕' }[agent.status] || '';
     // After a follow-up message, the tile shows that message (summarized).
-    parts.title.textContent = agent.latestTitle || agent.title;
+    if (!entry.renaming) parts.title.textContent = agentName(agent);
+    tile.classList.toggle('named', !!customNameOf(agent));
     const busy = ['working', 'starting', 'stuck', 'waiting'].includes(agent.status);
     const stepText = limited ? 'Waiting for the usage limit to reset'
       : authWait ? 'Waiting for you to sign in to Claude'
@@ -1540,6 +1556,37 @@ class Hub {
   }
 
   // hint: { count, name, color } for the Tab button in the header, or null.
+  // Renames a tile in place: its title becomes a text field. Enter or a click
+  // elsewhere keeps the name, Esc keeps the old one. done(name or null).
+  renameTile(agentId, current, done) {
+    const entry = this.tiles.get(agentId);
+    if (!entry || entry.renaming) return;
+    entry.renaming = true;
+    const input = document.createElement('input');
+    input.className = 'hub-rename';
+    input.value = current;
+    input.maxLength = 80;
+    input.placeholder = 'Name this agent';
+    entry.parts.title.replaceChildren(input);
+    input.focus();
+    input.select();
+    let finished = false;
+    const finish = keep => {
+      if (finished) return;
+      finished = true;
+      entry.renaming = false;
+      done(keep ? input.value.trim() : null);
+    };
+    input.addEventListener('keydown', e => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+      if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    });
+    input.addEventListener('blur', () => finish(true));
+    // A click in the field stays in it (a click on the tile opens the agent).
+    for (const ev of ['mousedown', 'click', 'dblclick', 'pointerdown']) input.addEventListener(ev, e => e.stopPropagation());
+  }
+
   setTabHint(hint) {
     this.tabHint.classList.toggle('hidden', !hint);
     if (!hint) return;
