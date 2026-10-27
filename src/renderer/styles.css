@@ -2565,14 +2565,12 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .hub-tile.filling { animation: tile-wob 0.6s 0.2s cubic-bezier(.3,1.6,.5,1); }
 @keyframes pour-swell { 0% { filter: none; } 35% { transform: scaleY(1.18) skewY(4deg); filter: brightness(1.35); } 70% { transform: scaleY(1.05) skewY(-2deg); } 100% { transform: none; filter: none; } }
 
-/* A task's files flying from its card in the chat into the panel (flyIn). */
-.fly-chip { position: fixed; left: 0; top: 0; z-index: 500; pointer-events: none; height: 22px; padding: 0 9px; border-radius: 11px;
-  display: flex; align-items: center; font-size: 11px; font-weight: 700; white-space: nowrap; color: #fff;
-  background: #3d7fd6; box-shadow: 0 6px 16px -4px rgba(0, 0, 0, 0.6); }
-.fly-chip.asset { background: #b0782a; }
-.fly-ring { position: fixed; z-index: 500; pointer-events: none; border-radius: 8px; border: 2px solid var(--accent);
-  animation: fly-ring 0.7s ease-out forwards; }
-@keyframes fly-ring { from { opacity: 1; scale: 0.9; } to { opacity: 0; scale: 1.15; } }
+/* A task's changes flying from its card in the chat into the agent's
+   Changes card, as one shape (flyCard). */
+.fly-card { position: fixed; left: 0; top: 0; z-index: 500; pointer-events: none; box-sizing: border-box; border-radius: 10px;
+  border: 1.5px solid var(--accent); background: color-mix(in srgb, var(--bg-panel) 85%, var(--accent));
+  box-shadow: 0 14px 34px -10px rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.fly-card-label { font-size: 12px; font-weight: 700; color: var(--text); white-space: nowrap; }
 
 /* The agent's changes, floating at the top right of its chat (sessionPanel
    in diffview.js): a small version of a task's Changes card, for all its
@@ -2601,9 +2599,10 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .session-panel.folded .session-body, .session-panel.narrow .session-body { display: none; }
 .session-sub { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); margin: 0 2px 5px; }
 .session-diagram:empty { display: none; }
-/* The diagram, small: the whole of it fitted into a short box; the full
-   window (⤢) for reading it. */
-.session-diagram .uml-panel { margin: 0; height: 220px !important; border-radius: 10px; }
+/* The diagram is as tall as its shape needs at the card's width (it is
+   usually tall: dependencies run down), up to most of the window, and the
+   whole diagram is fitted into it. */
+.session-diagram .uml-panel { margin: 0; min-height: 200px; max-height: max(260px, calc(100vh - 330px)); border-radius: 10px; }
 .session-diagram .uml-hint, .session-diagram .uml-legend { display: none; }
 .session-diagram .uml-tools button:not(:last-child) { display: none; }
 .session-diagram .uml-waiting { padding: 8px; }

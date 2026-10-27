@@ -1628,6 +1628,8 @@ function umlPanel(fullModel, { files = [], comments = null, onFull = null, full 
   const observer = new ResizeObserver(() => { if (!draw()) return; });
   observer.observe(stage);
   panel.redraw = () => { stage.innerHTML = ''; api = null; draw(); };
+  // The whole diagram in the panel as it is now (after its size changed).
+  panel.fit = () => api?.fit();
   return panel;
 }
 

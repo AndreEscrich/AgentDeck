@@ -424,8 +424,6 @@ function addDiagram(card, head, files, cwd, comments) {
     const title = `Class diagram · ${changed.length} changed type${changed.length === 1 ? '' : 's'}`;
     const options = { files, comments };
     const panel = umlPanel(model, { ...options, onFull: () => openUmlFull(model, { ...options, title }) });
-    // Which box is which file (flyIn starts a file's flight at its box).
-    panel.umlModel = model;
     card.insertBefore(panel, head.nextSibling);
     card.classList.add('has-diagram');
     diagramBtn.disabled = false;
@@ -565,9 +563,10 @@ function addAssets(card, files, cwd, comments) {
 // card made small: the class diagram of the C# it changed, then the assets.
 // Its title folds it to one line. It sits inside the chat (app.js puts it
 // there), so it opens and closes with it. Each task's own Changes card stays
-// in the chat; when a task ends, its files fly from that card to here (flyIn)
-// and, once they are in, the card takes them in (digest). Returns { el,
-// update(files), targetFor(path), digest(paths), setFolded(on) }.
+// in the chat; when a task ends, its changes fly from that card to here as
+// one shape (flyCard) and, once they are in, the card takes them in (digest).
+// Returns { el, update(files), targetFor(path), digest(), landing(),
+// setFolded(on) }.
 const SESSION_ROOM = 1540;   // px of window for the chat (820) and the card on each side
 
 function sessionPanel(cwd) {
@@ -601,6 +600,12 @@ function sessionPanel(cwd) {
   addEventListener('resize', () => { if (innerWidth >= SESSION_ROOM) openNarrow = false; fit(); });
   fit();
   try { if (localStorage.getItem('sessionPanelFolded')) setFolded(true, false); } catch { /* unfolded */ }
+
+  // The whole diagram in its canvas: after it is drawn, when the card opens
+  // and when the window changes size.
+  const fitDiagram = () => requestAnimationFrame(() => root.querySelector('.session-diagram .uml-panel')?.fit?.());
+  addEventListener('resize', fitDiagram);
+  root.addEventListener('session-fold', e => { if (!e.detail) fitDiagram(); });
 
   let model = null;
   let assetsBox = null;
@@ -670,6 +675,7 @@ function sessionPanel(cwd) {
     const panel = umlPanel(m, { ...options, onFull: () => openUmlFull(m, { ...options, title: full }) });
     diagramBox.replaceChildren(el('div', 'session-sub', `Class diagram · ${changed.length} type${changed.length === 1 ? '' : 's'}`), panel);
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    fitDiagram();
   };
 
   // Where a file lands when it flies in: its type's box in the diagram, its
@@ -686,66 +692,47 @@ function sessionPanel(cwd) {
     }
     return head;
   };
-  // The files have flown in and the card shows them now: it swallows, and
-  // each of them lights up where it is.
-  const digest = paths => {
+  // The task's changes have flown in and the card shows them now: it
+  // swallows, once.
+  const digest = () => {
     root.classList.remove('digest');
     void root.offsetWidth;
     root.classList.add('digest');
     setTimeout(() => root.classList.remove('digest'), 700);
-    const seen = new Set();
-    paths.forEach((p, i) => {
-      const target = targetFor(p);
-      if (target === head || seen.has(target)) return;
-      seen.add(target);
-      setTimeout(() => ringAt(target), 250 + i * 70);
-    });
   };
-  const api = { el: root, update, targetFor, digest, setFolded };
+  // Where the flight lands: the card, or its title when it is folded.
+  const landing = () => (root.classList.contains('folded') || root.classList.contains('narrow') ? head : root);
+  const api = { el: root, update, targetFor, digest, landing, setFolded };
   root._panel = api;
   return api;
 }
 
-// A ring that lights up an element and fades.
-function ringAt(target) {
-  const r = target.getBoundingClientRect();
-  if (!r.width) return;
-  const ring = el('div', 'fly-ring');
-  Object.assign(ring.style, { left: `${r.left - 4}px`, top: `${r.top - 4}px`, width: `${r.width + 8}px`, height: `${r.height + 8}px` });
-  document.body.appendChild(ring);
-  setTimeout(() => ring.remove(), 700);
-}
-
-// A task's files fly from its Changes card in the chat to the session panel:
-// a chip with the file's name per row, one after another, into where the file
-// is in the card now (or its top). rows: [[row element, path]]. Resolves when
-// the last one is in.
-function flyIn(rows, targetFor) {
-  return Promise.all(rows.slice(0, 24).map(([row, path], i) => new Promise(done => {
-    setTimeout(() => {
-      let from = row.getBoundingClientRect();
-      const target = targetFor(path);
-      if (!target || !from.width) { done(); return; }
-      const to = target.getBoundingClientRect();
-      const visible = r => r.bottom > 0 && r.top < innerHeight && r.width;
-      if (!visible(to)) { done(); return; }
-      // A row scrolled out of sight starts from the edge of the chat nearest to it.
-      if (!visible(from)) from = { left: from.left, top: Math.max(70, Math.min(innerHeight - 140, from.top)), width: from.width, height: from.height };
-      const chip = el('div', `fly-chip ${/\.cs$/i.test(path) ? 'code' : 'asset'}`, path.split('/').pop());
-      document.body.appendChild(chip);
-      const x0 = from.left + 12, y0 = from.top + from.height / 2 - 11;
-      const x1 = to.left + to.width / 2, y1 = to.top + to.height / 2 - 11;
-      const lift = Math.min(90, 30 + Math.abs(x1 - x0) * 0.12);
-      const frames = [];
-      for (let k = 0; k <= 14; k++) {
-        const t = k / 14;
-        const x = x0 + (x1 - x0) * t - (t > 0.6 ? chip.offsetWidth / 2 * (t - 0.6) / 0.4 : 0);
-        frames.push({ transform: `translate(${x}px, ${y0 + (y1 - y0) * t - lift * 4 * t * (1 - t)}px) scale(${1 - 0.35 * t * t})`, opacity: t > 0.9 ? 1 - (t - 0.9) * 8 : 1 });
-      }
-      chip.animate(frames, { duration: 750, easing: 'cubic-bezier(.5,0,.4,1)' }).finished
-        .catch(() => {}).then(() => { chip.remove(); done(); });
-    }, i * 90);
-  })));
+// A task's changes fly into the session card as one shape: it starts the
+// size and place of the task's class diagram (or its assets, or its whole
+// Changes card), says how many files it carries, and shrinks into the card
+// (or its title, when folded). Resolves when it is in.
+function flyCard(from, target, label) {
+  return new Promise(done => {
+    if (!from || !target) { done(); return; }
+    const a = from.getBoundingClientRect();
+    const b = target.getBoundingClientRect();
+    if (!a.width || !b.width || b.bottom < 0 || b.top > innerHeight) { done(); return; }
+    // A card scrolled out of sight starts from the edge of the chat nearest
+    // to it, and a tall one starts no taller than a third of the window.
+    const height = Math.max(48, Math.min(a.height, innerHeight / 3));
+    const top = Math.max(60, Math.min(innerHeight - height - 20, a.top));
+    const ghost = el('div', 'fly-card');
+    ghost.appendChild(el('span', 'fly-card-label', label));
+    document.body.appendChild(ghost);
+    const at = (r, h = r.height, t = r.top) => ({ left: `${r.left}px`, top: `${t}px`, width: `${r.width}px`, height: `${h}px` });
+    ghost.animate([
+      { ...at(a, height, top), opacity: 0 },
+      { ...at(a, height, top), opacity: 0.95, offset: 0.15 },
+      { ...at(b), opacity: 0.9, offset: 0.85 },
+      { ...at(b), opacity: 0 },
+    ], { duration: 800, easing: 'cubic-bezier(.6,0,.3,1)', fill: 'forwards' }).finished
+      .catch(() => {}).then(() => { ghost.remove(); done(); });
+  });
 }
 
 // ---------- comments on lines ----------

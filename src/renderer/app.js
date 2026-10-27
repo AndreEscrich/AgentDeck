@@ -3915,9 +3915,10 @@ async function playSession(a) {
   if (s.playing || !s.pending.length || !s.panel) return;
   s.playing = true;
   const turns = s.pending.splice(0);
-  await flyIn(turns.flatMap(flightsFrom), s.panel.targetFor);
+  const count = new Set(turns.flatMap(t => (t.files || []).map(f => f.path))).size;
+  if (count) await flyCard(flightFrom(turns), s.panel.landing(), `${count} file${count === 1 ? '' : 's'}`);
   await s.panel.update(s.files);
-  s.panel.digest([...new Set(turns.flatMap(t => (t.files || []).map(f => f.path)))]);
+  s.panel.digest();
   s.playing = false;
   if (s.pending.length) playSession(a);
 }
@@ -3934,22 +3935,13 @@ function playSessionWhenOpen(a) {
   setTimeout(check, 60);
 }
 
-// Where each of a task's files starts its flight: its row in the task's card,
-// or, while the card shows its class diagram, its type's box.
-function flightsFrom(turn) {
-  const taskCard = turn?.answer?.querySelector(':scope > .changes');
-  if (!taskCard) return [];
-  const uml = taskCard.querySelector('.uml-panel');
-  const boxOf = path => {
-    const id = uml?.umlModel?.nodes?.find(n => n.file === path)?.id;
-    return id ? uml.querySelector(`.uml-node[data-id="${CSS.escape(id)}"]`) : null;
-  };
-  const rows = [...taskCard.querySelectorAll(':scope > .change-file, .asset-row > summary')];
-  return (turn.files || []).map(f => {
-    const row = rows.find(r => (r.title || '').split('\n')[0] === f.path);
-    const from = row?.getClientRects().length ? row : boxOf(f.path);
-    return from?.getClientRects().length ? [from, f.path] : null;
-  }).filter(Boolean);
+// Where the flight starts: the newest task's Changes card in the chat; its
+// class diagram when it shows one, else its assets, else the whole card.
+function flightFrom(turns) {
+  const card = [...turns].reverse().map(t => t?.answer?.querySelector(':scope > .changes')).find(Boolean);
+  if (!card) return null;
+  const shown = node => (node?.getClientRects().length && node.offsetHeight > 20 ? node : null);
+  return shown(card.querySelector('.uml-panel')) || shown(card.querySelector('.assets-section')) || card;
 }
 
 // The agent's files as they are now, compared with the project before its
