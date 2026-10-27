@@ -598,14 +598,30 @@ function decorateLinks(root) {
   return root;
 }
 
+// A link to a file (an HTML report, a source file at a line) opens it with
+// its usual app: an HTML page in your browser, code in your editor.
+function markFileLinks(root, cwd) {
+  for (const a of root.querySelectorAll('a[href]')) {
+    const href = a.getAttribute('href');
+    if (/^(https?:|mailto:|#)/i.test(href)) continue;
+    const file = resolveMediaPath(href.replace(/#.*$/, ''), cwd);
+    if (file) a.dataset.file = file.replace(/:\d+(:\d+)?$/, '');
+  }
+}
+
 // One handler for the whole window: a click on a web link opens it in your
-// normal browser (the main process turns window.open into shell.openExternal).
+// normal browser (the main process turns window.open into shell.openExternal),
+// a file link opens the file, and no link ever takes the window to another page.
 document.addEventListener('click', e => {
   const a = e.target.closest?.('a[href]');
-  if (!a || !/^https?:/i.test(a.getAttribute('href'))) return;
+  if (!a) return;
+  const href = a.getAttribute('href');
+  if (href.startsWith('#') || /^javascript:/i.test(href)) return;
   e.preventDefault();
   e.stopPropagation();
-  window.open(a.href, '_blank');
+  if (/^https?:/i.test(href)) window.open(a.href, '_blank');
+  else if (a.dataset.file) window.deck.openFile(a.dataset.file);
+  else if (/^mailto:/i.test(href)) window.open(href, '_blank');
 }, true);
 
 // DOMPurify drops a link it cannot place, and it reads the drive in a
@@ -803,6 +819,7 @@ function markdown(text, cwd) {
     if (files.length) code.parentElement.replaceWith(changesCard(files, cwd, { title: 'Diff in the answer' }));
   }
   decorateLinks(div);
+  markFileLinks(div, cwd);
   addJsonCopy(div);
   addShellRun(div, cwd);
   // Tables go in a box that can grow past the chat into the window's free
