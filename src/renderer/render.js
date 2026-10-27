@@ -1040,17 +1040,6 @@ function isTempFile(p) {
 // TempClick, TempAtlasProbe/, AtlasTemp, ClaudeTemp (not Template, Attempt,
 // Temperature). Real code can be named like this too, so such a file is only
 // left out once it is gone (see hideGoneTemp).
-// Places for throwaway files: the system's temporary folders, scratchpads and
-// Claude Code's own folder. An edit there is an agent's helper, not its work.
-function isScratchPath(p) {
-  const s = String(p).replace(/\\/g, '/');
-  return /^\/(private\/)?(tmp|var\/folders)\//.test(s)
-    || /\/AppData\/Local\/Temp\//i.test(s)
-    || /\/scratchpad(\/|$)/i.test(s)
-    || /\/\.claude\//.test(s)
-    || isTempFile(s);
-}
-
 function maybeTempFile(p) {
   const words = String(p).replace(/\\/g, '/').split('/').map(n => n.replace(/\.meta$/i, '').replace(/\.[^.]+$/, ''));
   return words.some(n => /(^|[_.\-\s])(Temp|Tmp|TEMP|TMP)[A-Z]/.test(n) || /[a-z](Temp|Tmp)$/.test(n) || /claude[_\-]?temp/i.test(n));
@@ -1906,11 +1895,9 @@ class Transcript {
     const hunks = Array.isArray(result.structuredPatch) ? result.structuredPatch : [];
     if (!isNew && !hunks.length) return;
     const path = result.filePath || tool.input.file_path;
-    // Outside the agent's folder, only real project files count: an agent can
-    // decide the work belongs in another working copy (for example a second
-    // checkout of the same game) and edit it there. Helpers in temporary
-    // folders are left out.
-    if (!path || (!this.isInside(path) && isScratchPath(path))) return;
+    // Files outside the agent's folder are its own helpers (scripts in /tmp
+    // or a scratch folder), not part of the work.
+    if (!path || !this.isInside(path)) return;
     const entry = this.turn.changes.get(path) || { path, created: false, content: null, hunks: [] };
     if (isNew) {
       entry.created = true;
@@ -2143,10 +2130,6 @@ class Transcript {
       const key = p => p.replace(/\\/g, '/').toLowerCase();
       const seen = new Set(files.map(f => key(f.path)));
       for (const f of this.toolChanges(turn.changes)) if (!seen.has(key(f.path)) && !isTempFile(f.path)) files.push(f);
-    } else {
-      // A git snapshot covers the agent's folder only; edits in another
-      // folder come from the Edit/Write reports.
-      for (const f of this.toolChanges(turn.changes)) if (!this.isInside(f.path)) files.push(f);
     }
     turn.files = files;
     this.pinned(() => {
@@ -2163,14 +2146,7 @@ class Transcript {
   // Puts back a task's Changes card as the snapshot comparison made it
   // (saved in src/turnchanges.js), when a saved session is opened again.
   restoreChanges(turn, files) {
-    if (!turn || !Array.isArray(files)) return;
-    // The saved list comes from the snapshot of the agent's folder, so edits
-    // in another folder come from the Edit/Write reports of the transcript.
-    const seen = new Set(files.map(f => f.path.replace(/\\/g, '/').toLowerCase()));
-    const outside = this.toolChanges(turn.changes)
-      .filter(f => !this.isInside(f.path) && !seen.has(f.path.replace(/\\/g, '/').toLowerCase()));
-    files = [...files, ...outside];
-    if (!files.length) return;
+    if (!turn || !Array.isArray(files) || !files.length) return;
     turn.gitShown = true;
     turn.files = files;
     this.pinned(() => {
