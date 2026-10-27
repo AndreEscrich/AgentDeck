@@ -333,6 +333,7 @@ app.whenReady().then(() => {
   ipcMain.handle('sessionchanges:load', async (_e, id) => (await require('./turnchanges').load(sessionChangesDir, [id]))[id] || null);
   ipcMain.handle('files:undo', (_e, cwd, file, snap) => undo.undoFile(cwd, file, snap));
   ipcMain.handle('files:versions', (_e, cwd, file) => undo.versions(cwd, file));
+  ipcMain.handle('files:span', (_e, cwd, filePath, changes) => undo.span(cwd, filePath, changes));
   ipcMain.handle('files:restore', (_e, cwd, p, previous, from) => undo.restoreFile(cwd, p, previous, from));
   ipcMain.handle('repo:of', (_e, cwd) => repoOf(cwd));
   ipcMain.handle('repo:branch', (_e, cwd) => branchOf(cwd));

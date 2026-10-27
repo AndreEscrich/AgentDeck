@@ -248,4 +248,27 @@ async function versions(cwd, file) {
   }
 }
 
-module.exports = { undoFile, restoreFile, unpatch, patch, hunksOf, versions };
+// The whole file before a run of changes and as it is now: each change is
+// undone from the file on disk, the newest first (an agent's Changes card when
+// there was no snapshot, see updateSession in app.js). changes: [{ status,
+// lines }], oldest first. Resolves with { before, after } (arrays of lines;
+// null for a file that did not exist) or { error }.
+async function span(cwd, filePath, changes) {
+  if (typeof filePath !== 'string' || !Array.isArray(changes) || !changes.length) return { error: 'No changes.' };
+  try {
+    const abs = resolve(cwd, filePath);
+    const disk = fs.existsSync(abs) ? splitText(fs.readFileSync(abs, 'utf8')).lines : null;
+    let current = disk;
+    for (const change of [...changes].reverse()) {
+      if (!change || !Array.isArray(change.lines)) return { error: 'No changes.' };
+      const s = step(current, change);
+      if (!s) return { error: 'The file was changed in the same lines since, so its version from before cannot be rebuilt.' };
+      current = s.before;
+    }
+    return { before: current, after: disk };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+module.exports = { undoFile, restoreFile, unpatch, patch, hunksOf, versions, span };

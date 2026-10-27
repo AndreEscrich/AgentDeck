@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('deck', {
   subagentEvidence: (sessionId, since) => ipcRenderer.invoke('subagents:evidence', sessionId, since),
   undoFile: (cwd, file, snap) => ipcRenderer.invoke('files:undo', cwd, file, snap),
   fileVersions: (cwd, file) => ipcRenderer.invoke('files:versions', cwd, file),
+  fileSpan: (cwd, filePath, changes) => ipcRenderer.invoke('files:span', cwd, filePath, changes),
   restoreFile: (cwd, p, previous, from) => ipcRenderer.invoke('files:restore', cwd, p, previous, from),
   activity: () => ipcRenderer.invoke('activity:get'),
   removeFromHistory: ids => ipcRenderer.invoke('history:remove', ids),
