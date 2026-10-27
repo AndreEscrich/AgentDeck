@@ -559,8 +559,9 @@ function addAssets(card, files, cwd, comments) {
 
 // What an agent changed since its first message, all its tasks together
 // (app.js keeps the snapshot from before its first task, see updateSession):
-// a small card floating at the top right of its chat, like a task's Changes
-// card made small: the class diagram of the C# it changed, then the assets.
+// a small card floating at the top left of its chat (the right edge is for
+// the next-agent hint), like a task's Changes card made small: the class
+// diagram of the C# it changed, then the assets.
 // Its title folds it to one line. It sits inside the chat (app.js puts it
 // there), so it opens and closes with it. Each task's own Changes card stays
 // in the chat; when a task ends, its changes fly from that card to here as
