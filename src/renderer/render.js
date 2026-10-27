@@ -3,6 +3,27 @@
 
 marked.setOptions({ gfm: true, breaks: true });
 
+// Markdown ends an image's path at the first space unless the path is in
+// <...>, and agents often leave the brackets out (C:/Users/Jane Doe/a.png).
+// This rule reads such a path as if it had them. It is an inline rule, so
+// marked never runs it inside code. A path followed by "a title" has a quote
+// in it, so the rule leaves that one to marked.
+const SPACED_IMAGE = /^!\[([^\]\n]*)\]\(\s*([^\s()<>"'\n][^()<>"'\n]*?\s[^()<>"'\n]*?\.[a-z0-9]{1,5})\s*\)/i;
+marked.use({
+  extensions: [{
+    name: 'spacedImage',
+    level: 'inline',
+    start: src => src.indexOf('!['),
+    tokenizer(src) {
+      const match = SPACED_IMAGE.exec(src);
+      if (!match) return undefined;
+      const image = this.lexer.inlineTokens(`![${match[1]}](<${match[2]}>)`)[0];
+      if (image?.type !== 'image') return undefined;
+      return { ...image, raw: match[0] };
+    },
+  }],
+});
+
 function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
