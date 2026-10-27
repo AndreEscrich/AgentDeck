@@ -3984,8 +3984,21 @@ function flightFrom(turns) {
 async function sessionFromSnapshot(a, s) {
   const diff = await window.deck.gitChanges(a.cwd, s.snap).catch(() => null);
   if (diff == null) return null;
-  return pairMoves(parseUnifiedDiff(diff)).filter(f => !isTempFile(f.path)
-    && (s.paths.has(pathKey(f.path)) || (f.from && s.paths.has(pathKey(f.from)))));
+  const all = pairMoves(parseUnifiedDiff(diff)).filter(f => !isTempFile(f.path));
+  const owned = f => s.paths.has(pathKey(f.path)) || (f.from && s.paths.has(pathKey(f.from)));
+  // A file the agent made in an earlier task and then moved or renamed with
+  // a command that does not name it (svn mv in a loop over find): its old
+  // name is gone from the folder, and its new name is a new file nobody
+  // claims. They pair up like a move (the same content, or the same .meta
+  // guid), and the new name becomes the agent's, so the card keeps it.
+  const here = new Set(all.map(f => pathKey(f.path)));
+  const gone = s.files.filter(f => f.status === 'new' && !here.has(pathKey(f.path)))
+    .map(f => ({ path: f.path, status: 'del', lines: f.lines.map(([k, t]) => (k === 'add' ? ['del', `-${t.slice(1)}`] : [k, t])) }));
+  const unclaimed = all.filter(f => f.status === 'new' && !owned(f));
+  if (gone.length && unclaimed.length) {
+    for (const f of pairMoves([...gone, ...unclaimed])) if (f.from) s.paths.add(pathKey(f.path));
+  }
+  return all.filter(owned);
 }
 
 // Without that snapshot: each task's files as its edits reported them, added

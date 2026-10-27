@@ -1997,7 +1997,7 @@ class Transcript {
   // True when a command or tool input named a deleted file by a path of at
   // least two parts that leads to it: its folder ("rm -r
   // Animations/TierTransitionView") or a pattern ("rm TierTransition/*.cs").
-  // Those delete files they do not name one by one.
+  // Those delete (or move) files they do not name one by one.
   folderNamed(turn, rel) {
     const file = rel.replace(/\\/g, '/');
     turn.pathWords = turn.pathWords || new Map();   // evidence text -> its path-like words
@@ -2122,7 +2122,8 @@ class Transcript {
     const files = pairMoves(parseUnifiedDiff(diffText)).filter(f => !isTempFile(f.path) && (own(f) || (!otherEdit?.(f.path)
       && (this.agentTouched(turn, f.path) || (f.from && this.agentTouched(turn, f.from))
       || (addedOrRemovedBinary(f) && this.folderTouched(turn, f.path))
-      || (f.status === 'del' && this.folderNamed(turn, f.path))))));
+      || (f.status === 'del' && this.folderNamed(turn, f.path))
+      || (f.from && this.folderNamed(turn, f.from))))));
     if (merge) {
       await this.pruneMissing(turn).catch(() => {});
       // The snapshot's paths use /, the Edit/Write reports the system's own
