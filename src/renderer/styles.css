@@ -2568,8 +2568,8 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 /* A task's changes flying from its card in the chat into the agent's
    Changes card, as one shape (flyCard). */
 .fly-card { position: fixed; left: 0; top: 0; z-index: 500; pointer-events: none; box-sizing: border-box; border-radius: 10px;
-  border: 1.5px solid var(--accent); background: color-mix(in srgb, var(--bg-panel) 85%, var(--accent));
-  box-shadow: 0 14px 34px -10px rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border, transparent)); background: color-mix(in srgb, var(--bg-panel) 94%, var(--accent));
+  box-shadow: 0 14px 34px -10px rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .fly-card-label { font-size: 12px; font-weight: 700; color: var(--text); white-space: nowrap; }
 
 /* The agent's changes, floating at the top right of its chat (sessionPanel
@@ -2626,12 +2626,13 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 /* Open, it keeps the chat's wide cards (and the "Tab to go" edge) clear of it. */
 .view.chat:has(.session-panel:not(.folded):not(.narrow)) .changes { --changes-wide: max(100%, min(calc(100vw - 2 * (var(--session-w) + 40px)), 1700px)); }
 #main:has(.view.chat:not(.hidden) .session-panel) .next-hint { top: 120px; }
-/* Taking in the files that flew in: a swallow and a glow. */
-.session-panel.digest { animation: session-digest 0.65s cubic-bezier(.3,1.5,.5,1); }
+/* Taking in the files that flew in: a small swallow and a faint warm
+   edge that fades in and out slowly, so it does not read as a flash. */
+.session-panel.digest { animation: session-digest 1.1s ease-out; }
 @keyframes session-digest {
   0% { scale: 1; box-shadow: 0 16px 40px -16px rgba(0, 0, 0, 0.8); }
-  30% { scale: 0.97 1.02; box-shadow: 0 0 0 2px var(--accent), 0 0 30px -4px var(--accent); }
-  65% { scale: 1.015 0.99; }
+  25% { scale: 0.985 1.01; box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent), 0 16px 40px -16px rgba(0, 0, 0, 0.8); }
+  55% { scale: 1.005 0.997; }
   100% { scale: 1; box-shadow: 0 16px 40px -16px rgba(0, 0, 0, 0.8); } }
 
 /* Renaming an agent in place (Rename… in its tile's menu): the title is a

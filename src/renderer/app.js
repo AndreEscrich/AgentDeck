@@ -3953,6 +3953,7 @@ async function playSession(a) {
   if (count) await flyCard(flightFrom(turns), s.panel.landing(), `${count} file${count === 1 ? '' : 's'}`);
   await s.panel.update(s.files);
   s.panel.digest();
+  if (count && playSounds()) sounds.takeIn();
   s.playing = false;
   if (s.pending.length) playSession(a);
 }

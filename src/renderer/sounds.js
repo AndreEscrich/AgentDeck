@@ -231,6 +231,23 @@ const sounds = (() => {
     connected: () => play([[659.25, 0, 0.35], [987.77, 0.09, 0.5]], 0.12),
     // Something that cannot be done (a file type the box does not take).
     refuse: () => play([[233.08, 0, 0.12], [233.08, 0.1, 0.16]], 0.08),
+    // A task's changes lift off its card in the chat (flyCard): a quiet
+    // airy slide up. Then the agent's Changes card takes them in: a soft
+    // low bubble and two gentle notes.
+    lift: () => {
+      try {
+        const ac = audio();
+        slide(ac, 0, 360, 720, 0.5, 0.05);
+        simmer(ac, ac.destination, 0.4, 0.008);
+      } catch { /* no sound is fine */ }
+    },
+    takeIn: () => {
+      try {
+        const ac = audio();
+        bubble(ac, ac.destination, 0, 330, 0.09);
+        play([[587.33, 0.04, 0.35], [880, 0.12, 0.5]], 0.06);
+      } catch { /* no sound is fine */ }
+    },
   };
 
   // ---------- Nostromo (the retro theme) ----------
@@ -498,6 +515,10 @@ const sounds = (() => {
     deny: safely(ac => { tone(ac, 0, 330, 0.12, 0.05); tone(ac, 0.1, 233, 0.35, 0.05); }),
     attach: safely(ac => tone(ac, 0, 466, 0.15, 0.045)),
     detach: safely(ac => tone(ac, 0, 311, 0.15, 0.04)),
+    // Changes lift off: a low hiss rising. Taken in: a short data burst
+    // and one low tone.
+    lift: safely(ac => { breath(ac, 0, 900, 0.5, 0.04, { q: 0.7, swell: true }); tone(ac, 0.05, 330, 0.45, 0.02, { type: 'sine', slideTo: 494 }); }),
+    takeIn: safely(ac => { const end = data(ac, 0, 3, { step: 0.05, volume: 0.035 }); tone(ac, end + 0.02, 311, 0.4, 0.04); }),
     tick: safely(ac => tone(ac, 0, 330, 0.06, 0.035, { cutoff: 1400 })),
     tickDown: safely(ac => tone(ac, 0, 311, 0.06, 0.032, { cutoff: 1400 })),
     select: safely(ac => tone(ac, 0, 311, 0.07, 0.04, { cutoff: 1400 })),

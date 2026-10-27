@@ -724,13 +724,14 @@ function flyCard(from, target, label) {
     const ghost = el('div', 'fly-card');
     ghost.appendChild(el('span', 'fly-card-label', label));
     document.body.appendChild(ghost);
+    if (playSounds()) sounds.lift();
     const at = (r, h = r.height, t = r.top) => ({ left: `${r.left}px`, top: `${t}px`, width: `${r.width}px`, height: `${h}px` });
     ghost.animate([
       { ...at(a, height, top), opacity: 0 },
-      { ...at(a, height, top), opacity: 0.95, offset: 0.15 },
-      { ...at(b), opacity: 0.9, offset: 0.85 },
+      { ...at(a, height, top), opacity: 0.85, offset: 0.2 },
+      { ...at(b), opacity: 0.7, offset: 0.8 },
       { ...at(b), opacity: 0 },
-    ], { duration: 800, easing: 'cubic-bezier(.6,0,.3,1)', fill: 'forwards' }).finished
+    ], { duration: 900, easing: 'cubic-bezier(.5,0,.3,1)', fill: 'forwards' }).finished
       .catch(() => {}).then(() => { ghost.remove(); done(); });
   });
 }
