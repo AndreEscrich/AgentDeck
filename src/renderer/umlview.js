@@ -1782,27 +1782,26 @@ function openUmlFull(model, { title, ...options }) {
   const body = el('div', 'uml-full-body');
   const diagram = umlPanel(model, { ...options, full: true });
   body.appendChild(diagram);
-  // The review peer beside the diagram, for the card's files (see reviewPeer).
+  // The review peer, for the card's files (see reviewPeer): a box at the
+  // bottom right of the diagram until you ask it something, then a panel
+  // beside it. Review peer in the title bar shows or hides that panel, once
+  // there is a conversation.
   const cwd = options.comments?.cwd;
   if (cwd && options.files?.length && window.deck?.reviewAsk) {
-    const peer = reviewPeer(options.files, cwd);
+    const toggle = el('button', 'uml-peer-toggle', 'Review peer');
+    toggle.title = 'Show or hide the conversation with the review peer';
+    const peer = reviewPeer(options.files, cwd, (open, talked) => {
+      const was = body.classList.contains('peer-open');
+      body.classList.toggle('peer-open', open);
+      toggle.classList.toggle('active', open);
+      toggle.hidden = !talked;
+      if (was !== open) requestAnimationFrame(() => diagram.fit());
+    });
     umlFullEl.peer = peer;
     body.appendChild(peer.el);
-    const toggle = el('button', 'uml-peer-toggle', 'Review peer');
-    toggle.title = 'Ask an agent about the files changed in this diff';
-    const show = on => {
-      body.classList.toggle('peer-open', on);
-      toggle.classList.toggle('active', on);
-      try { localStorage.setItem('umlPeerOpen', on ? '1' : '0'); } catch { /* storage off */ }
-      requestAnimationFrame(() => diagram.fit());
-    };
-    toggle.onclick = () => { show(!body.classList.contains('peer-open')); if (body.classList.contains('peer-open')) peer.focus(); };
-    peer.onHide = () => show(false);
-    let open = true;
-    try { open = localStorage.getItem('umlPeerOpen') !== '0'; } catch { /* storage off */ }
-    body.classList.toggle('peer-open', open);
-    toggle.classList.toggle('active', open);
+    toggle.onclick = () => peer.toggle();
     bar.appendChild(toggle);
+    peer.refresh();
   }
   bar.appendChild(close);
   umlFullEl.append(bar, body);
@@ -1812,26 +1811,31 @@ function openUmlFull(model, { title, ...options }) {
 
 // ---------- the review peer ----------
 
-// A chat beside the whole-window diagram with an agent that reviews the
-// change with you (reviewpeer.js in the main process): it gets the diff of
-// the card's files with your first question, and it can read and search the
-// project, but not change it. The conversation belongs to the card (its
-// files): closing the diagram and opening it again keeps it. The agent's
-// process stops 10 minutes after you close the diagram; a question after that
-// starts a new one, which gets the earlier questions and answers too.
+// A chat in the whole-window diagram with an agent that reviews the change
+// with you (reviewpeer.js in the main process): it gets the diff of the
+// card's files with your first question, and it can read and search the
+// project, but not change it. Until you ask something it is only a box at the
+// bottom right of the diagram, with the suggested questions above it (Alt+1–3
+// asks one); the first question opens the conversation as a panel beside the
+// diagram. × hides the panel again (back to the box), New empties it. The
+// conversation belongs to the card (its files): closing the diagram and
+// opening it again keeps it. The agent's process stops 10 minutes after you
+// close the diagram; a question after that starts a new one, which gets the
+// earlier questions and answers too. onLayout(open, talked) runs when the
+// panel opens or closes; talked: there is a conversation.
 const peerChats = new WeakMap();      // the card's files -> chat
 const peerById = new Map();           // chat id -> chat
 const PEER_IDLE_MS = 10 * 60 * 1000;
 let peerListening = false;
 
-function reviewPeer(files, cwd) {
+function reviewPeer(files, cwd, onLayout) {
   if (!peerListening) {
     peerListening = true;
     window.deck.onReviewEvent((id, event) => peerById.get(id)?.onEvent(event));
   }
   let chat = peerChats.get(files);
   if (!chat) {
-    chat = { id: null, alive: false, busy: false, turns: [], view: null, idle: 0 };
+    chat = { id: null, alive: false, busy: false, turns: [], hidden: false, idle: 0 };
     peerChats.set(files, chat);
   }
   clearTimeout(chat.idle);
@@ -1844,7 +1848,7 @@ function reviewPeer(files, cwd) {
   const head = el('div', 'uml-peer-head');
   const hide = el('button', 'uml-peer-hide', '×');
   hide.title = 'Hide the review peer';
-  hide.onclick = () => api.onHide?.();
+  hide.onclick = () => { chat.hidden = true; layout(); };
   const clear = el('button', 'uml-peer-clear', 'New');
   clear.title = 'Start a new conversation';
   head.append(el('span', 'uml-peer-title', 'Review peer'), el('span', 'uml-peer-sub', `${files.length} file${files.length === 1 ? '' : 's'} · reads the project, cannot change it`), clear, hide);
@@ -1852,16 +1856,34 @@ function reviewPeer(files, cwd) {
   const form = el('div', 'uml-peer-form');
   const input = el('textarea');
   input.rows = 2;
-  input.placeholder = 'Ask about this change… (↩ to send, ⇧↩ new line)';
+  input.placeholder = 'Ask a review peer about this change… (↩ to send)';
+  input.title = 'An agent that reads the diff and the project with you (it cannot change files). ⇧↩ for a new line.';
   const sendBtn = el('button', 'uml-peer-send', 'Ask');
   form.append(input, sendBtn);
-  root.append(head, log, form);
 
   const SUGGESTIONS = [
     'Review this change: what could break, and what did it miss?',
     'Explain how the changed types work together.',
     'Is anything here hard to test or likely to regress?',
   ];
+  // The suggested questions, as the follow-ups under an agent's answer look
+  // (a click or Alt+N asks it).
+  const chips = el('div', 'followups uml-peer-chips');
+  SUGGESTIONS.forEach((text, i) => {
+    const chip = el('button', 'followup');
+    chip.type = 'button';
+    chip.title = `Ask it (Alt+${i + 1})`;
+    chip.append(el('kbd', null, `Alt+${i + 1}`), el('span', null, text));
+    chip.onclick = () => ask(text);
+    chips.appendChild(chip);
+  });
+  root.append(head, log, chips, form);
+  // The panel is open while there is a conversation you did not hide.
+  const layout = () => {
+    const open = chat.turns.length > 0 && !chat.hidden;
+    root.classList.toggle('open', open);
+    onLayout?.(open, chat.turns.length > 0);
+  };
   const toolText = (name, i) => (name === 'Read' ? `Reading ${rel(i.file_path)}`
     : name === 'Grep' ? `Searching for “${i.pattern || ''}”${rel(i.path) ? ` in ${rel(i.path)}` : ''}`
       : name === 'Glob' ? `Looking for ${i.pattern || 'files'}` : name);
@@ -1885,16 +1907,6 @@ function reviewPeer(files, cwd) {
   };
   const drawAll = () => {
     log.replaceChildren();
-    if (!chat.turns.length) {
-      const empty = el('div', 'uml-peer-empty');
-      empty.appendChild(el('div', 'uml-peer-hello', 'Ask an agent about the files changed in this diff, like a colleague reviewing it with you. It gets the whole diff and can read the rest of the project.'));
-      for (const text of SUGGESTIONS) {
-        const b = el('button', 'uml-peer-suggest', text);
-        b.onclick = () => ask(text);
-        empty.appendChild(b);
-      }
-      log.appendChild(empty);
-    }
     for (const t of chat.turns) log.appendChild(drawTurn(t));
     log.scrollTop = log.scrollHeight;
   };
@@ -1951,9 +1963,12 @@ function reviewPeer(files, cwd) {
     const turn = { q, a: '', tools: [], error: null };
     chat.turns.push(turn);
     chat.busy = true;
+    chat.hidden = false;
     window.uiSound?.('sent');
     sync();
     drawAll();
+    layout();
+    input.focus();
     const diffs = chat.alive ? [] : files.map(f => ({ path: f.path, status: f.status, diff: (f.lines || []).map(l => l[1]).join('\n') }));
     const res = await window.deck.reviewAsk(chat.id, { cwd, question, files: diffs }).catch(e => ({ ok: false, error: e.message }));
     if (!res?.ok) {
@@ -1976,6 +1991,7 @@ function reviewPeer(files, cwd) {
     chat.turns = [];
     sync();
     drawAll();
+    layout();
     input.focus();
   };
   input.addEventListener('keydown', e => {
@@ -1997,8 +2013,11 @@ function reviewPeer(files, cwd) {
   drawAll();
   const api = {
     el: root,
-    onHide: null,
     focus: () => input.focus(),
+    // n: 1 to 3, the suggested question to ask.
+    suggest: n => { if (SUGGESTIONS[n - 1] && !chat.busy) ask(SUGGESTIONS[n - 1]); },
+    toggle: () => { chat.hidden = !chat.hidden; layout(); if (!chat.hidden) input.focus(); },
+    refresh: layout,
     // The diagram closed: the conversation stays; its process stops after a while.
     leave: () => {
       clearTimeout(chat.idle);
@@ -2020,6 +2039,13 @@ document.addEventListener('keydown', e => {
   const typing = e.target.closest?.('input, textarea, [contenteditable="true"]') && !(e.target.closest('.uml-search') && !e.target.value);
   if (typing && e.key === 'Escape') return;
   const stop = () => { e.preventDefault(); e.stopImmediatePropagation(); };
+  // Alt+1–3 asks the review peer's suggested question (instead of sending
+  // the chat's follow-up behind the diagram).
+  if (umlFullEl?.peer && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && /^Digit[1-3]$/.test(e.code)) {
+    stop();
+    umlFullEl.peer.suggest(Number(e.code.slice(5)));
+    return;
+  }
   // Ctrl+F (or ⌘F) in the whole-window diagram goes to its class search
   // (instead of the app's search of past agents); a type's diff open on it
   // closes first.

@@ -710,22 +710,31 @@ details.change-file > summary:hover .review-tick { opacity: 1; }
 .uml-marker-arrow { fill: none; stroke: var(--text-faint); stroke-width: 1.4; }
 .uml-marker-arrow-fresh { fill: none; stroke: var(--accent); stroke-width: 1.6; }
 .uml-full { position: absolute; inset: 0; z-index: 19; display: flex; flex-direction: column; background: var(--bg); outline: none; }
-/* The whole-window diagram with the review peer beside it (umlview.js, reviewPeer). */
-.uml-full-body { flex: 1; min-height: 0; display: flex; }
+/* The whole-window diagram with the review peer (umlview.js, reviewPeer):
+   a box at the bottom right of the diagram until you ask something, then a
+   panel beside it (.uml-peer.open). */
+.uml-full-body { position: relative; flex: 1; min-height: 0; display: flex; }
 .uml-full-body > .uml-panel.full { flex: 1; min-width: 0; }
 .review-bar .uml-peer-toggle + .uml-full-close { margin-left: 0; }
+.uml-peer-toggle[hidden] + .uml-full-close { margin-left: auto; }
 .uml-peer-toggle.active { border-color: var(--accent); color: var(--accent); }
-.uml-peer { display: none; width: 420px; max-width: 45vw; flex-shrink: 0; flex-direction: column; border-left: 1px solid var(--border); background: var(--bg-panel); }
-.uml-full-body.peer-open .uml-peer { display: flex; }
+.uml-peer { position: absolute; right: 14px; bottom: 12px; z-index: 2; width: 440px; max-width: calc(100% - 28px); display: flex; flex-direction: column; }
+.uml-peer:not(.open) .uml-peer-head, .uml-peer:not(.open) .uml-peer-log { display: none; }
+.uml-peer:not(.open) .uml-peer-chips { padding: 0 0 6px; justify-content: flex-end; }
+.uml-peer:not(.open) .uml-peer-chips .followup { background: var(--bg-panel); }
+.uml-peer:not(.open) .uml-peer-form { padding: 0; border: none; }
+.uml-peer:not(.open) .uml-peer-form textarea { box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); background: var(--bg-panel); }
+.uml-peer.open { position: static; width: 420px; max-width: 45vw; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--bg-panel); }
+.uml-full-body:not(.peer-open) .uml-legend { max-width: calc(100% - 480px); }
+/* A type's diff open over the diagram covers the box too. */
+.uml-full-body:has(.uml-panel.detail-open) .uml-peer:not(.open) { display: none; }
+.uml-peer-chips .followup span { white-space: nowrap; }
+.uml-peer.open .uml-peer-chips { padding: 8px 12px 0; border-top: 1px solid var(--border); }
 .uml-peer-head { display: flex; align-items: baseline; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
 .uml-peer-title { font-weight: 600; }
 .uml-peer-sub { flex: 1; min-width: 0; font-size: 11px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .uml-peer-head button { padding: 1px 8px; font-size: 12px; }
 .uml-peer-log { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 14px; }
-.uml-peer-empty { display: flex; flex-direction: column; gap: 8px; }
-.uml-peer-hello { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; margin-bottom: 4px; }
-.uml-peer-suggest { text-align: left; font-size: 12.5px; padding: 7px 10px; border-radius: 8px; white-space: normal; }
-.uml-peer-suggest:hover { border-color: var(--accent); }
 .uml-peer-turn { display: flex; flex-direction: column; gap: 6px; }
 .uml-peer-q { align-self: flex-end; max-width: 88%; padding: 7px 11px; border-radius: 10px; font-size: 13px; white-space: pre-wrap;
   background: color-mix(in srgb, var(--accent) 16%, var(--bg)); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
@@ -738,7 +747,7 @@ details.change-file > summary:hover .review-tick { opacity: 1; }
 .uml-peer-thinking { font-size: 12px; color: var(--text-faint); animation: uml-peer-pulse 1.4s ease-in-out infinite; }
 @keyframes uml-peer-pulse { 50% { opacity: 0.4; } }
 .uml-peer-error { margin-top: 4px; font-size: 12px; color: var(--err); }
-.uml-peer-form { display: flex; gap: 8px; align-items: flex-end; padding: 10px 12px; border-top: 1px solid var(--border); }
+.uml-peer-form { display: flex; gap: 8px; align-items: flex-end; padding: 8px 12px 10px; }
 .uml-peer-form textarea { flex: 1; resize: none; min-height: 38px; max-height: 160px; padding: 7px 10px; border-radius: 8px; font: 13px/1.4 var(--font);
   border: 1px solid var(--border); background: var(--bg); color: var(--text); outline: none; }
 .uml-peer-form textarea:focus { border-color: var(--accent); }
