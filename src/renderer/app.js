@@ -3930,10 +3930,12 @@ window.addEventListener('review-comments', e => {
 // agents on the Hub once in the background, one after another.
 const SNAPSHOT_WAIT = 5000;
 
+// Too late: the newest state recorded before, compared by the files' times
+// (quickSnapshot in git.js), so the task still gets its Changes card.
 async function snapshotInTime(cwd) {
   const snap = window.deck.gitSnapshot(cwd).catch(() => null);
   const late = new Promise(resolve => setTimeout(() => resolve(null), SNAPSHOT_WAIT));
-  return Promise.race([snap, late]);
+  return (await Promise.race([snap, late])) || window.deck.gitQuickSnapshot(cwd).catch(() => null);
 }
 
 function warmSnapshots() {

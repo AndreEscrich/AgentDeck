@@ -378,6 +378,7 @@ app.whenReady().then(() => {
     return [...listSessions(), ...codex].filter(x => !gone.has(x.id)).sort((a, b) => b.updatedAt - a.updatedAt);
   });
   ipcMain.handle('git:snapshot', (_e, cwd) => git.snapshot(cwd, path.join(app.getPath('userData'), 'snapshots')));
+  ipcMain.handle('git:quickSnapshot', (_e, cwd) => git.quickSnapshot(cwd, path.join(app.getPath('userData'), 'snapshots')));
   ipcMain.handle('git:changes', (_e, cwd, snap) => git.changesSince(cwd, snap));
   ipcMain.handle('subagents:evidence', (_e, sessionId, since) => require('./subagents').evidence(sessionId, since));
   const turnDir = path.join(app.getPath('userData'), 'turn-changes');
