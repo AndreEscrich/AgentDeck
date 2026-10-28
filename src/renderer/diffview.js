@@ -175,6 +175,8 @@ function setReviewed(f, on) {
   if (on) set.add(reviewKey(f));
   else set.delete(reviewKey(f));
   try { localStorage.setItem('reviewedFiles', JSON.stringify([...set].slice(-5000))); } catch { /* not important */ }
+  // The cards and diagrams that show it tick it too.
+  window.dispatchEvent(new CustomEvent('reviewed-change'));
 }
 
 // A count that rolls up from zero to its value.
@@ -328,6 +330,8 @@ function changesCard(files, cwd, { title = null, animate = false, peer = false }
   };
   card.syncReview = syncReview;
   syncReview();
+  // Reviewed from the class diagram (its type's Mark reviewed).
+  window.addEventListener('reviewed-change', () => { if (card.isConnected) syncReview(); });
   if (animate) {
     card.classList.add('deal');
     rollUp(head.querySelector('.plus'), totalAdd, ' +');
@@ -706,7 +710,8 @@ function sessionPanel(cwd) {
   let assetsBox = null;
   let diagramBox = null;
   let version = 0;
-  const update = async files => {
+  // tasks: [{ title, paths }], the agent's tasks in order (playback).
+  const update = async (files, { tasks = [] } = {}) => {
     const mine = ++version;
     files = sortFiles(files);
     let add = 0;
@@ -769,6 +774,8 @@ function sessionPanel(cwd) {
     const full = `Class diagram · this agent's changes · ${changed.length} type${changed.length === 1 ? '' : 's'}`;
     const panel = umlPanel(m, { ...options, onFull: () => openUmlFull(m, { ...options, title: full }) });
     diagramBox.replaceChildren(el('div', 'session-sub', `Class diagram · ${changed.length} type${changed.length === 1 ? '' : 's'}`), panel);
+    const play = taskPlayback(panel, m, tasks);
+    if (play) diagramBox.appendChild(play);
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
     fitDiagram();
   };
@@ -829,6 +836,61 @@ function flyCard(from, target, label) {
     ], { duration: 900, easing: 'cubic-bezier(.5,0,.3,1)', fill: 'forwards' }).finished
       .catch(() => {}).then(() => { ghost.remove(); done(); });
   });
+}
+
+// Under the agent's class diagram: its tasks one by one. A step shows the
+// types the tasks up to it touched (the others fade), the ones that task
+// touched outlined; ▶ plays them in turn, All shows everything again. Only
+// for two tasks or more that touched C#. tasks: [{ title, paths }].
+function taskPlayback(panel, model, tasks) {
+  const key = p => String(p || '').replace(/\\/g, '/').toLowerCase();
+  const steps = tasks.map(t => ({ title: t.title || '', ids: new Set(model.nodes.filter(n => t.paths.some(p => key(p) === key(n.file))).map(n => n.id)) }))
+    .filter(t => t.ids.size);
+  if (steps.length < 2) return null;
+  const bar = el('div', 'session-play');
+  const playBtn = el('button', 'session-play-go', '▶');
+  playBtn.type = 'button';
+  playBtn.title = 'Play the tasks one by one';
+  const dots = el('div', 'session-play-dots');
+  const label = el('div', 'session-play-label', `All ${steps.length} tasks`);
+  const all = el('button', 'session-play-all on', 'All');
+  all.type = 'button';
+  all.title = 'Show every task together';
+  let at = -1;
+  let timer = 0;
+  const show = i => {
+    at = i;
+    for (const [j, d] of [...dots.children].entries()) { d.classList.toggle('on', j === i); d.classList.toggle('past', i >= 0 && j < i); }
+    all.classList.toggle('on', i < 0);
+    if (i < 0) { panel.setPlayback(null); label.textContent = `All ${steps.length} tasks`; label.title = ''; return; }
+    const seen = new Set(steps.slice(0, i + 1).flatMap(s => [...s.ids]));
+    panel.setPlayback({ show: seen, focus: steps[i].ids });
+    label.textContent = `Task ${i + 1} of ${steps.length}${steps[i].title ? ` · ${steps[i].title}` : ''}`;
+    label.title = steps[i].title;
+    window.uiSound?.('tick');
+  };
+  const stop = () => { clearInterval(timer); timer = 0; playBtn.textContent = '▶'; playBtn.title = 'Play the tasks one by one'; };
+  steps.forEach((s, i) => {
+    const d = el('button', 'session-play-dot');
+    d.type = 'button';
+    d.title = `Task ${i + 1}${s.title ? `: ${s.title}` : ''}`;
+    d.onclick = () => { stop(); show(i); };
+    dots.appendChild(d);
+  });
+  all.onclick = () => { stop(); show(-1); };
+  playBtn.onclick = () => {
+    if (timer) { stop(); return; }
+    playBtn.textContent = '❚❚';
+    playBtn.title = 'Pause';
+    show(0);
+    timer = setInterval(() => {
+      if (!bar.isConnected) { stop(); return; }
+      if (at + 1 < steps.length) show(at + 1);
+      else { stop(); setTimeout(() => { if (!timer) show(-1); }, 1400); }
+    }, 1400);
+  };
+  bar.append(playBtn, dots, all, label);
+  return bar;
 }
 
 // Comments for the review peer (a card with peer, see changesCard): the

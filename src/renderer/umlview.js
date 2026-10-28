@@ -1519,7 +1519,8 @@ let activeDetail = null;
 
 // follow(id): goes to another type of the diagram (a click on its name in
 // the code, see linkTypes).
-function openDetail(panel, api, model, node, line, { files, comments, follow = null }) {
+// next(id): opens the next type not reviewed yet (after the Reviewed button).
+function openDetail(panel, api, model, node, line, { files, comments, follow = null, next = null }) {
   activeDetail?.close(true);
   const ids = api.order;
   const host = document.getElementById('main');
@@ -1590,7 +1591,30 @@ function openDetail(panel, api, model, node, line, { files, comments, follow = n
     back.type = 'button';
     back.title = 'Back to the diagram (Esc)';
     back.onclick = () => close();
-    head.append(step('‹', 'Previous type (←)', -1), step('›', 'Next type (→)', 1), text, send, back);
+    // Reviewed: the type's file counts as reviewed (the same tick as in the
+    // Files list), and the next type you have not reviewed opens.
+    const done = el('button', 'uml-detail-reviewed');
+    done.type = 'button';
+    const drawDone = () => {
+      const on = !!file && reviewedSet().has(reviewKey(file));
+      done.classList.toggle('on', on);
+      done.textContent = on ? 'Reviewed ✓' : 'Mark reviewed';
+      done.title = on ? 'Reviewed (click to undo)' : 'Mark this type as reviewed and go to the next one';
+    };
+    drawDone();
+    done.onclick = () => {
+      if (!file) return;
+      const on = !reviewedSet().has(reviewKey(file));
+      setReviewed(file, on);
+      drawDone();
+      window.uiSound?.('tick');
+      if (on && next) {
+        const id = n.id;
+        close();
+        setTimeout(() => { if (!next(id)) window.uiSound?.('done'); }, 220);
+      }
+    };
+    head.append(step('‹', 'Previous type (←)', -1), step('›', 'Next type (→)', 1), text, send, done, back);
     if (!file) {
       body.appendChild(el('div', 'uml-detail-empty', 'No diff for this type.'));
       return;
@@ -1725,6 +1749,54 @@ function linkTypes(root, model, current) {
   }
 }
 
+// How much of each type changed, from 0 to 1: its file's changed lines,
+// shared out among the file's types by how many of their members changed,
+// against the type that changed most.
+function changeHeat(model, files) {
+  const lines = new Map(files.map(f => { const s = fileStats(f); return [f.path, s.add + s.del]; }));
+  const perFile = new Map();
+  for (const n of model.nodes) if (lines.has(n.file)) perFile.set(n.file, [...(perFile.get(n.file) || []), n]);
+  const raw = new Map();
+  for (const [file, nodes] of perFile) {
+    const weights = nodes.map(n => n.members.filter(m => m.change).length || 1);
+    const sum = weights.reduce((a, b) => a + b, 0);
+    nodes.forEach((n, i) => raw.set(n.id, lines.get(file) * weights[i] / sum));
+  }
+  const max = Math.max(1, ...raw.values());
+  return new Map([...raw].map(([id, v]) => [id, Math.sqrt(v / max)]));
+}
+
+// Draws a lens's marks on a type's box: its heat tint, a check when it is
+// reviewed, and the review peer's mark.
+function decorateNode(g, { heat, done, mark }) {
+  const box = g.querySelector(':scope > .uml-box');
+  if (!box) return;
+  let w;
+  let h;
+  try { ({ width: w, height: h } = box.getBBox()); } catch { return; }
+  let tint = g.querySelector(':scope > .uml-heat');
+  if (heat != null) {
+    if (!tint) { tint = box.cloneNode(); tint.setAttribute('class', 'uml-heat'); box.after(tint); }
+    tint.style.fillOpacity = (0.06 + heat * 0.62).toFixed(2);
+  } else tint?.remove();
+  let check = g.querySelector(':scope > .uml-check');
+  if (done && !check) {
+    check = svgEl('text', { class: 'uml-check', x: w - 8, y: h - 7, 'text-anchor': 'end' });
+    check.textContent = '✓';
+    g.appendChild(check);
+  } else if (!done) check?.remove();
+  let pin = g.querySelector(':scope > .uml-mark');
+  if (mark && !pin) {
+    pin = svgEl('g', { class: 'uml-mark', transform: `translate(${w - 2},2)` });
+    pin.append(svgEl('circle', { r: 9 }), Object.assign(svgEl('text', { y: 4, 'text-anchor': 'middle' }), { textContent: '!' }));
+    const tip = svgEl('title', {});
+    pin.appendChild(tip);
+    g.appendChild(pin);
+  }
+  if (mark && pin) pin.querySelector('title').textContent = `Review peer: ${mark.text}\n(click to see the answer)`;
+  if (!mark) pin?.remove();
+}
+
 // A diagram with its buttons, for the Changes card or the full window.
 // Returns the element. files: the card's files, for the diffs of the boxes;
 // comments: the card's line comments (see lineComments in diffview.js).
@@ -1732,7 +1804,7 @@ function umlPanel(fullModel, { files = [], comments = null, onFull = null, full 
   const model = changedModel(fullModel);
   const panel = el('div', `uml-panel${full ? ' full' : ' wide'}`);
   const onOpen = (node, line) => {
-    if (api && files.some(f => f.path === node.file)) openDetail(panel, api, model, node, line, { files, comments, follow });
+    if (api && files.some(f => f.path === node.file)) openDetail(panel, api, model, node, line, { files, comments, follow, next: id => panel.nextUnreviewed?.(id) });
   };
   // A link in a type's diff to another type of the diagram: the diff goes
   // back into its box, the diagram moves to the other type, and its diff
@@ -1812,6 +1884,108 @@ function umlPanel(fullModel, { files = [], comments = null, onFull = null, full 
   panel.redraw = () => { stage.innerHTML = ''; api = null; draw(); };
   // The whole diagram in the panel as it is now (after its size changed).
   panel.fit = () => api?.fit();
+
+  // ---------- lenses ----------
+  // Ways to look at the same diagram, drawn over the boxes the diagram has:
+  //   Before / After: before, the new types and dependencies are gone and the
+  //     changes lose their colour (what the code was like)
+  //   Heat: each box tinted by how many lines its file changed (shared out
+  //     among the types of that file by their changed members)
+  //   review progress: a type whose file you marked reviewed is greyed out
+  //     with a check; "Next unreviewed" opens the next one in reading order
+  //   peer marks: the types the review peer talked about (setPeerMarks)
+  //   playback: an agent's tasks one by one (setPlayback, its Changes card)
+  const byId = new Map(model.nodes.map(n => [n.id, n]));
+  const heat = changeHeat(model, files);
+  const lens = { before: false, heat: false, play: null, marks: new Map(), onMark: null };
+  const fileFor = n => files.find(f => f.path === n.file);
+  const reviewable = () => (api?.order || model.nodes.map(n => n.id)).map(id => byId.get(id)).filter(n => n && fileFor(n));
+  const isReviewed = (n, set) => { const f = fileFor(n); return !!f && set.has(reviewKey(f)); };
+  const applyLens = () => {
+    if (!api) return;
+    const set = reviewedSet();
+    for (const g of stage.querySelectorAll('.uml-node[data-id]')) {
+      const n = byId.get(g.dataset.id);
+      if (!n) continue;
+      g.classList.toggle('lens-gone', lens.before && n.status === 'new');
+      g.classList.toggle('lens-before', lens.before && n.status !== 'new');
+      g.classList.toggle('lens-ghost', !!lens.play && !lens.play.show.has(n.id));
+      g.classList.toggle('lens-focus', !!lens.play && lens.play.focus.has(n.id));
+      const done = isReviewed(n, set);
+      g.classList.toggle('reviewed', done);
+      decorateNode(g, { heat: lens.heat ? heat.get(n.id) || 0 : null, done, mark: lens.marks.get(n.id) || null });
+    }
+    for (const e of stage.querySelectorAll('.uml-edge')) {
+      const from = byId.get(e.dataset.from);
+      const to = byId.get(e.dataset.to);
+      e.classList.toggle('lens-gone', lens.before && (e.classList.contains('fresh') || from?.status === 'new' || to?.status === 'new'));
+      e.classList.toggle('lens-ghost', !!lens.play && !(lens.play.show.has(e.dataset.from) && lens.play.show.has(e.dataset.to)));
+    }
+    const all = reviewable();
+    const left = all.filter(n => !isReviewed(n, set));
+    progress.textContent = all.length ? (left.length ? `${all.length - left.length} of ${all.length} reviewed` : `All ${all.length} reviewed ✓`) : '';
+    progress.classList.toggle('done', all.length > 0 && !left.length);
+    nextBtn.hidden = !left.length;
+  };
+  // Each drawing of the diagram (a collapsed group opened, a resize) gets the lenses again.
+  new MutationObserver(() => requestAnimationFrame(applyLens)).observe(stage, { childList: true });
+  const lensBar = el('div', 'uml-lens');
+  const seg = el('div', 'uml-lens-seg');
+  const beforeBtn = el('button', null, 'Before');
+  const afterBtn = el('button', 'on', 'After');
+  for (const b of [beforeBtn, afterBtn]) b.type = 'button';
+  beforeBtn.title = 'The code as it was: without the new types and dependencies';
+  afterBtn.title = 'The code with the change';
+  const setBefore = on => {
+    lens.before = on;
+    beforeBtn.classList.toggle('on', on);
+    afterBtn.classList.toggle('on', !on);
+    window.uiSound?.('tick');
+    applyLens();
+  };
+  beforeBtn.onclick = () => setBefore(true);
+  afterBtn.onclick = () => setBefore(false);
+  seg.append(beforeBtn, afterBtn);
+  const heatBtn = el('button', 'uml-lens-heat', 'Heat');
+  heatBtn.type = 'button';
+  heatBtn.title = 'Tint each type by how much of it changed';
+  heatBtn.onclick = () => { lens.heat = !lens.heat; heatBtn.classList.toggle('on', lens.heat); window.uiSound?.('tick'); applyLens(); };
+  const progress = el('span', 'uml-lens-progress');
+  const nextBtn = el('button', 'uml-lens-next', 'Next unreviewed ›');
+  nextBtn.type = 'button';
+  nextBtn.title = 'Open the next type you have not reviewed, in reading order';
+  const openNextUnreviewed = (after = null) => {
+    const set = reviewedSet();
+    const list = reviewable().filter(n => !isReviewed(n, set) && n.id !== after);
+    const next = list[0];
+    if (!next) return false;
+    reveal(next.id);
+    const first = next.members.filter(m => m.change).sort((a, b) => a.line - b.line)[0];
+    setTimeout(() => onOpen(next, first?.line ?? next.line), 320);
+    return true;
+  };
+  nextBtn.onclick = () => openNextUnreviewed();
+  const changesSomething = model.nodes.some(n => n.status === 'new') || model.edges.some(e => e.fresh);
+  if (changesSomething) lensBar.appendChild(seg);
+  lensBar.append(heatBtn, progress, nextBtn);
+  panel.appendChild(lensBar);
+  for (const type of ['pointerdown', 'wheel']) lensBar.addEventListener(type, e => e.stopPropagation());
+  // A click on a peer mark shows what the peer said (not the type's diff).
+  stage.addEventListener('pointerdown', e => {
+    const mark = e.target.closest?.('.uml-mark');
+    if (!mark) return;
+    e.stopPropagation();
+    e.preventDefault();
+    lens.onMark?.(mark.closest('.uml-node')?.dataset.id);
+  }, true);
+  const onReviewed = () => { if (panel.isConnected) applyLens(); };
+  window.addEventListener('reviewed-change', onReviewed);
+  panel.nextUnreviewed = openNextUnreviewed;
+  // marks: id -> { count, text }; onMark(id) when one is clicked.
+  panel.setPeerMarks = (marks, onMark) => { lens.marks = marks; lens.onMark = onMark; applyLens(); };
+  // play: { show: Set of ids, focus: Set of ids } or null for all.
+  panel.setPlayback = play => { lens.play = play; applyLens(); };
+  panel.model = model;
   return panel;
 }
 
@@ -1929,6 +2103,10 @@ function openUmlFull(model, { title, ...options }) {
     });
     umlFullEl.peer = peer;
     body.appendChild(peer.el);
+    // The types the peer talks about get its mark on their box (peerMarks).
+    const mark = () => diagram.setPeerMarks?.(peerMarks(diagram.model, peer.answers()), id => peer.showAbout(diagram.model.nodes.find(n => n.id === id)?.name));
+    peer.onAnswer(mark);
+    mark();
     toggle.onclick = () => peer.toggle();
     bar.appendChild(toggle);
     peer.refresh();
@@ -1940,6 +2118,27 @@ function openUmlFull(model, { title, ...options }) {
 }
 
 // ---------- the review peer ----------
+
+// The types of the diagram that the review peer's answers name: id ->
+// { count, text } with the sentence of the latest answer that names it.
+function peerMarks(model, answers) {
+  const marks = new Map();
+  if (!model) return marks;
+  answers.forEach(text => {
+    if (!text) return;
+    for (const n of model.nodes) {
+      const name = String(n.name || '').replace(/[^\w]/g, '');
+      if (name.length < 3) continue;
+      const re = new RegExp(`\\b${name}\\b`, 'g');
+      const hits = text.match(re);
+      if (!hits) continue;
+      const sentence = text.split(/(?<=[.!?])\s+|\n+/).find(s => new RegExp(`\\b${name}\\b`).test(s)) || '';
+      const before = marks.get(n.id);
+      marks.set(n.id, { count: (before?.count || 0) + hits.length, text: sentence.replace(/[*`_]/g, '').trim().slice(0, 220) });
+    }
+  });
+  return marks;
+}
 
 // A chat in the whole-window diagram with an agent that reviews the change
 // with you (reviewpeer.js in the main process): it gets the diff of the
@@ -2067,6 +2266,7 @@ function reviewPeer(files, cwd, onLayout) {
       if (event.error && chat.busy) t.error = event.error;
       if (chat.busy) window.uiSound?.(event.error ? 'error' : 'done');
       chat.busy = false;
+      chat.onAnswer?.();
       sync();
       cancelAnimationFrame(frame);
       frame = 0;
@@ -2151,6 +2351,22 @@ function reviewPeer(files, cwd, onLayout) {
     // Asks a question (the review comments from a Changes card, see
     // askPeerAbout), opening the conversation.
     ask: text => { chat.hidden = false; ask(text); },
+    // The answers so far, and fn() whenever one is finished (peer marks).
+    answers: () => chat.turns.map(t => t.a || ''),
+    onAnswer: fn => { chat.onAnswer = fn; },
+    // Opens the conversation at the latest answer that names a type.
+    showAbout: name => {
+      chat.hidden = false;
+      layout();
+      const re = new RegExp(`\\b${String(name || '').replace(/[^\w]/g, '')}\\b`);
+      const i = chat.turns.map(t => re.test(t.a || '')).lastIndexOf(true);
+      const box = log.children[i];
+      if (!box) return;
+      box.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      box.classList.remove('flash');
+      void box.offsetWidth;
+      box.classList.add('flash');
+    },
     // The diagram closed: the conversation stays; its process stops after a while.
     leave: () => {
       clearTimeout(chat.idle);

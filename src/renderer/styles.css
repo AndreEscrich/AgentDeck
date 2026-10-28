@@ -2776,3 +2776,55 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .uml-detail .uml-ref.status-mod { text-decoration-color: #e9a23b; }
 .uml-detail .uml-ref.status-del { text-decoration-color: #e06c6c; }
 .uml-detail .uml-ref:hover { text-decoration-style: solid; background: color-mix(in srgb, var(--accent) 18%, transparent); }
+
+/* The diagram's lenses (umlPanel in umlview.js): Before | After, Heat, and
+   review progress, at its top left. */
+.uml-lens { position: absolute; left: 10px; top: 10px; z-index: 3; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; max-width: calc(100% - 320px); }
+.uml-lens button { padding: 3px 10px; font-size: 12px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-dim); cursor: pointer; }
+.uml-lens button:hover { color: var(--text); border-color: var(--text-faint); }
+.uml-lens button.on { color: var(--text); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--bg-panel)); }
+.uml-lens-seg { display: flex; }
+.uml-lens-seg button:first-child { border-radius: 7px 0 0 7px; }
+.uml-lens-seg button:last-child { border-radius: 0 7px 7px 0; margin-left: -1px; }
+.uml-lens-progress { font-size: 12px; color: var(--text-faint); padding: 0 2px; }
+.uml-lens-progress.done { color: #7fd18b; }
+.uml-lens-next { color: var(--accent) !important; }
+.uml-lens-next[hidden] { display: none; }
+.uml-panel:not(.full) .uml-lens { max-width: calc(100% - 270px); }
+.session-diagram .uml-lens { display: none; }
+/* Before: the new types and dependencies fade away, the changes lose their colour. */
+.uml-node, .uml-edge { transition: opacity 0.4s ease, filter 0.4s ease; }
+.uml-node.lens-gone, .uml-edge.lens-gone { opacity: 0; pointer-events: none; }
+.uml-node.lens-before { filter: grayscale(0.85); }
+/* Playback: the types the tasks so far did not touch fade; this task's are outlined. */
+.uml-node.lens-ghost, .uml-edge.lens-ghost { opacity: 0.1; }
+.uml-node.lens-focus > .uml-box { stroke: var(--accent) !important; stroke-width: 2.5px !important; }
+/* Heat: a tint over the box, stronger where more changed. */
+.uml-heat { fill: #e9a23b !important; stroke: none !important; pointer-events: none; transition: fill-opacity 0.4s; }
+/* Reviewed: grey with a check. */
+.uml-node.reviewed > .uml-box, .uml-node.reviewed > text:not(.uml-check), .uml-node.reviewed > rect:not(.uml-heat) { opacity: 0.45; }
+.uml-check { fill: #7fd18b; font-size: 13px; font-weight: 700; pointer-events: none; }
+/* The review peer's mark. */
+.uml-mark { cursor: pointer; }
+.uml-mark circle { fill: #8b7cf6; stroke: var(--bg); stroke-width: 2; }
+.uml-mark text { fill: #fff; font-size: 12px; font-weight: 800; pointer-events: none; }
+.uml-mark:hover circle { fill: #a596ff; }
+.uml-peer-turn.flash { animation: peer-flash 1.4s ease-out; }
+@keyframes peer-flash { 0%, 40% { background: color-mix(in srgb, #8b7cf6 22%, transparent); } 100% { background: transparent; } }
+/* A type's diff: Mark reviewed. */
+.uml-detail-reviewed { padding: 4px 12px; border-radius: 7px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); cursor: pointer; }
+.uml-detail-reviewed:hover { color: var(--text); border-color: var(--text-faint); }
+.uml-detail-reviewed.on { color: #7fd18b; border-color: #4f9e5e; }
+
+/* The agent's Changes card: its tasks one by one under the diagram (taskPlayback). */
+.session-play { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.session-play-go, .session-play-all { padding: 2px 9px; font-size: 11px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-dim); cursor: pointer; }
+.session-play-go { min-width: 30px; color: var(--accent); }
+.session-play-all.on { color: var(--text); border-color: var(--accent); }
+.session-play-dots { display: flex; gap: 5px; }
+.session-play-dot { width: 10px; height: 10px; padding: 0; border-radius: 50%; border: 1.5px solid var(--accent); background: transparent; cursor: pointer; }
+.session-play-dot.past { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+.session-play-dot.on { background: var(--accent); transform: scale(1.25); }
+.session-play-label { flex-basis: 100%; font-size: 11px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The "Drag to move" hint goes under the lens buttons. */
+.uml-panel:has(> .uml-lens) > .uml-hint { top: 42px; }
