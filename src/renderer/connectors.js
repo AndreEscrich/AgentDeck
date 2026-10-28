@@ -9,8 +9,10 @@
 //
 // With Claude and Codex both on (Settings → Providers), the dialog has a tab
 // per provider: Codex's connectors are its own (`codex mcp`, in
-// ~/.codex/config.toml). With one provider on, it shows only that one's list,
-// without tabs.
+// ~/.codex/config.toml), the apps your ChatGPT account gives Codex, and
+// every connector Claude has that Codex does not yet, with Connect: it adds
+// the connector to Codex and signs in. With one provider on, it shows only
+// that one's list, without tabs.
 //
 // The dialog is built once; only the list and the status lines are drawn
 // again, so the search field keeps what you type while a check runs.
@@ -20,11 +22,16 @@ const CONNECTOR_GROUPS = [
   { status: 'connected', title: 'Connected' },
   { status: 'pending', title: 'Waiting for approval' },
   { status: 'ready', title: 'Set up' },
+  { status: 'available', title: 'From Claude: not in Codex yet' },
   { status: 'failed', title: 'Failed to connect' },
   { status: 'unknown', title: 'Other' },
 ];
 
-const SOURCE_LABEL = { 'claude.ai': 'claude.ai', user: 'Added by you', local: 'This folder only', project: 'Project', codex: 'Codex settings' };
+const SOURCE_LABEL = { 'claude.ai': 'claude.ai', user: 'Added by you', local: 'This folder only', project: 'Project', codex: 'Codex settings', claude: 'From Claude', chatgpt: 'ChatGPT app' };
+const BROWSE = {
+  claude: { label: 'Browse on claude.ai', url: 'https://claude.ai/settings/connectors', title: 'Add connectors from the directory to your claude.ai account (the same ones the Claude desktop app has)' },
+  codex: { label: 'Browse on chatgpt.com', url: 'https://chatgpt.com/apps', title: 'Add apps to your ChatGPT account: Codex gets them too' },
+};
 const CONNECTOR_PROVIDERS = ['claude', 'codex'];
 
 // A calm color per connector for its letter icon, always the same for a name.
@@ -94,9 +101,8 @@ class ConnectorsDialog {
     this.footer = el('div', 'conn-footer');
     const add = el('button', 'primary', '+ Add custom connector');
     add.onclick = () => this.showAddForm();
-    this.browse = el('button', null, 'Browse on claude.ai');
-    this.browse.title = 'Add connectors from the directory to your claude.ai account (the same ones the Claude desktop app has)';
-    this.browse.onclick = () => window.open('https://claude.ai/settings/connectors', '_blank');
+    this.browse = el('button', null, BROWSE.claude.label);
+    this.browse.onclick = () => window.open(BROWSE[this.provider].url, '_blank');
     this.footer.append(add, this.browse);
 
     dialog.append(head, this.tabs, this.search, this.summary, this.message, this.listEl, this.footer);
@@ -137,7 +143,8 @@ class ConnectorsDialog {
     if (!quiet && provider !== this.provider) window.uiSound?.('tick');
     this.provider = provider;
     for (const [p, b] of Object.entries(this.tabButtons)) b.classList.toggle('on', p === provider);
-    this.browse.classList.toggle('hidden', provider !== 'claude');
+    this.browse.textContent = BROWSE[provider].label;
+    this.browse.title = BROWSE[provider].title;
     this.hideAddForm();
     this.say('');
     this.search.value = '';
@@ -180,6 +187,7 @@ class ConnectorsDialog {
   // approve on claude.ai; the list then checks every 15 seconds for a few
   // minutes until the connector shows as connected.
   async connect(c, { started = false } = {}) {
+    if (c.source === 'claude') return this.copyFromClaude(c);
     const provider = this.provider;
     const signingIn = this.signingIn[provider];
     signingIn.add(c.id);
@@ -210,6 +218,28 @@ class ConnectorsDialog {
     poll();
   }
 
+  // A Claude connector Codex does not have: add it to Codex by its address.
+  // One with a sign-in opens it in your browser right away (see add in
+  // connectors.js), and the list waits for it like Connect.
+  async copyFromClaude(c) {
+    const signingIn = this.signingIn.codex;
+    signingIn.add(c.id);
+    this.say(`Adding ${c.name} to Codex…`);
+    this.renderList();
+    const result = await window.deck.connectors.add({ name: c.codexName, url: c.target }, 'codex').catch(err => ({ ok: false, message: String(err) }));
+    signingIn.delete(c.id);
+    if (!result.ok) {
+      window.uiSound?.('refuse');
+      this.say(`Could not add ${c.name} to Codex. ${result.message || ''}`.trim(), true);
+      this.renderList();
+      return;
+    }
+    await this.refresh('codex');
+    if (result.signingIn) return this.connect({ id: c.codexName, name: c.name, source: 'codex' }, { started: true });
+    window.uiSound?.('connected');
+    this.say(`Added ${c.name} to Codex. Agents you start from now on can use it.`);
+  }
+
   async remove(c) {
     if (!confirm(`Remove the connector "${c.name}"? Agents started afterwards no longer get it.`)) return;
     const result = await window.deck.connectors.remove({ id: c.id, source: c.source, cwd: this.folder() }, this.provider);
@@ -225,6 +255,7 @@ class ConnectorsDialog {
     if (count('connected')) parts.push(`${count('connected')} connected`);
     if (count('auth')) parts.push(`${count('auth')} need sign-in`);
     if (count('failed')) parts.push(`${count('failed')} failed`);
+    if (count('available')) parts.push(`${count('available')} from Claude to connect`);
     const checking = this.checking[this.provider];
     this.summary.textContent = checking ? `Checking your connectors…${parts.length ? '  ' + parts.join(' · ') : ''}` : parts.join(' · ') || (this.list ? 'No connectors yet' : '');
     this.refreshBtn.classList.toggle('spinning', checking);
@@ -255,12 +286,13 @@ class ConnectorsDialog {
       : c.status === 'auth' ? 'Needs sign-in'
       : c.status === 'failed' ? `Failed${c.detail ? ': ' + c.detail.slice(0, 80) : ''}`
       : c.status === 'ready' ? 'Set up'
+      : c.status === 'available' ? 'Not in Codex yet'
       : c.detail || c.status;
     text.append(el('div', 'conn-name', c.name), el('div', 'conn-meta', `${hostOf(c.target)} · ${SOURCE_LABEL[c.source] || c.source}`));
     const right = el('div', 'conn-right');
     if (c.status === 'connected') {
       right.appendChild(el('span', 'conn-state ok', '✓ Connected'));
-    } else if (c.status === 'auth' || c.status === 'failed') {
+    } else if (c.status === 'auth' || c.status === 'failed' || c.status === 'available') {
       const connect = el('button', 'conn-btn', waiting ? 'Waiting…' : 'Connect');
       connect.disabled = waiting;
       connect.onclick = () => this.connect(c);

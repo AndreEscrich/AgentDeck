@@ -802,4 +802,19 @@ async function loadCodexThread(config, threadId) {
   return { cwd: thread?.cwd || null, messages };
 }
 
-module.exports = { CodexManager, fetchCodexModels, codexHelperModel, codexAsk, fetchCodexUsage, listCodexThreads, loadCodexThread };
+// The apps your ChatGPT account gives Codex (its connectors from
+// chatgpt.com), by name. OpenAI's own built-in ones (connector_openai_…)
+// are left out: they are always there and need no setup.
+async function chatgptApps(config) {
+  const installed = (await helperRequest(config, 'app/installed', {}))?.apps || [];
+  const own = installed.filter(a => !/^connector_openai_/.test(a.id));
+  if (!own.length) return [];
+  const read = await helperRequest(config, 'app/read', { appIds: own.map(a => a.id) }).catch(() => null);
+  const meta = new Map((read?.apps || []).map(a => [a.id, a]));
+  return own.map(a => ({
+    id: a.id, name: meta.get(a.id)?.name || a.runtimeName || a.id, description: meta.get(a.id)?.description || '',
+    enabled: a.enabled !== false, callable: a.callable !== false, url: meta.get(a.id)?.installUrl || 'https://chatgpt.com/apps',
+  }));
+}
+
+module.exports = { CodexManager, fetchCodexModels, codexHelperModel, codexAsk, chatgptApps, fetchCodexUsage, listCodexThreads, loadCodexThread };

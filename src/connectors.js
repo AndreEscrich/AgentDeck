@@ -171,11 +171,51 @@ function codexEntry(s) {
 let lastCodexList = null;
 const codexLogins = new Map();   // connector id -> process
 
+// Everything the Codex tab can offer besides Codex's own connectors, so
+// setting them up is one click:
+// - Claude's connectors (claude.ai and your own) that Codex does not have
+//   yet, by their address: Connect adds them to Codex and signs in. Claude's
+//   own servers (api.anthropic.com) and ones that fail for Claude too are
+//   left out.
+// - The apps your ChatGPT account gives Codex: they work without setup.
+const urlKey = url => String(url || '').trim().toLowerCase().replace(/\/+$/, '');
+const codexName = name => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'connector';
+
+function fromClaude(claudeList, codexList) {
+  const have = new Set(codexList.map(c => urlKey(c.target)));
+  const names = new Set(codexList.map(c => c.id));
+  const offers = [];
+  for (const c of claudeList || []) {
+    const url = /https?:\/\/\S+/.exec(c.target)?.[0];
+    if (!url || c.status === 'failed' || /(^|\.)anthropic\.com$/i.test(hostOf(url)) || have.has(urlKey(url))) continue;
+    let name = codexName(c.name);
+    for (let n = 2; names.has(name); n++) name = `${codexName(c.name)}-${n}`;
+    names.add(name);
+    have.add(urlKey(url));
+    offers.push({ id: `claude:${c.id}`, name: c.name, codexName: name, target: url, status: 'available', detail: '', source: 'claude' });
+  }
+  return offers;
+}
+
+function hostOf(url) {
+  return /^https?:\/\/([^/:\s]+)/i.exec(url)?.[1] || '';
+}
+
 const codex = {
-  async list(config) {
+  async list(config, cwd) {
     const { code, out } = await runCodex(config, ['list', '--json'], { timeout: 90000 });
     if (code !== 0) throw new Error(out.trim() || 'codex mcp list failed');
-    lastCodexList = JSON.parse(out.slice(out.indexOf('['))).map(codexEntry);
+    const own = JSON.parse(out.slice(out.indexOf('['))).map(codexEntry);
+    // Claude's list takes a while to check; the last one is used when there is one.
+    const [claudeList, apps] = await Promise.all([
+      lastList || list(config, cwd).catch(() => []),
+      require('./codex').chatgptApps(config).catch(() => []),
+    ]);
+    const chatgpt = apps.map(a => ({
+      id: `chatgpt:${a.id}`, name: a.name, target: a.url, status: a.enabled && a.callable ? 'connected' : 'unknown',
+      detail: a.enabled ? '' : 'Turned off in ChatGPT', source: 'chatgpt', description: a.description,
+    }));
+    lastCodexList = [...own, ...chatgpt, ...fromClaude(claudeList, own)];
     return lastCodexList;
   },
 
