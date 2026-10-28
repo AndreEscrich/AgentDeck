@@ -1517,7 +1517,9 @@ function umlLegend(packages = false) {
 // line to comment on it.
 let activeDetail = null;
 
-function openDetail(panel, api, model, node, line, { files, comments }) {
+// follow(id): goes to another type of the diagram (a click on its name in
+// the code, see linkTypes).
+function openDetail(panel, api, model, node, line, { files, comments, follow = null }) {
   activeDetail?.close(true);
   const ids = api.order;
   const host = document.getElementById('main');
@@ -1597,6 +1599,7 @@ function openDetail(panel, api, model, node, line, { files, comments }) {
     const views = fileViews(file, comments?.cwd, () => (comments ? comments.diff(file, { maxLines: 20000 }) : renderDiff(file, { maxLines: 20000 })), comments);
     const diff = views;
     body.appendChild(diff);
+    if (follow) linkTypes(body, model, n);
     // The full file and side by side load after this, and switching views
     // changes the height: the box follows, up to the window's height.
     resizer?.disconnect();
@@ -1634,6 +1637,20 @@ function openDetail(panel, api, model, node, line, { files, comments }) {
       box.classList.add('shown');
     }, 60);
   };
+  // The names of the diagram's other types in the code are links (linkTypes):
+  // a click goes there instead of commenting on the line. The Full file and
+  // Side by side views come later, and get their links when they do.
+  if (follow) {
+    body.addEventListener('click', e => {
+      const ref = e.target.closest('.uml-ref');
+      if (!ref) return;
+      e.preventDefault();
+      e.stopPropagation();
+      follow(ref.dataset.id);
+    }, true);
+    const later = new MutationObserver(() => linkTypes(body, model, current));
+    later.observe(body, { childList: true, subtree: true });
+  }
   const onResize = () => { if (activeDetail?.box === box) place(target()); };
   window.addEventListener('resize', onResize);
   backdrop.onclick = () => close();
@@ -1669,6 +1686,45 @@ function openDetail(panel, api, model, node, line, { files, comments }) {
   activeDetail = { box, panel, close, step: go };
 }
 
+// In a type's code: each name of another type of the diagram becomes a link
+// to it (a click goes there, see follow in umlPanel). A name two types share
+// goes to the one in the same namespace as the type on screen.
+function linkTypes(root, model, current) {
+  const byName = new Map();
+  for (const n of model.nodes) {
+    if (n.id === current.id || n.name === current.name) continue;
+    const had = byName.get(n.name);
+    if (!had || (n.namespace === current.namespace && had.namespace !== current.namespace)) byName.set(n.name, n);
+  }
+  if (!byName.size) return;
+  const names = [...byName.keys()].sort((a, b) => b.length - a.length).map(x => x.replace(/[^\w]/g, ''));
+  const re = new RegExp(`\\b(${names.join('|')})\\b`, 'g');
+  for (const code of root.querySelectorAll('.code:not([data-refs])')) {
+    code.dataset.refs = '1';
+    const walker = document.createTreeWalker(code, NodeFilter.SHOW_TEXT);
+    const texts = [];
+    while (walker.nextNode()) texts.push(walker.currentNode);
+    for (const t of texts) {
+      re.lastIndex = 0;
+      if (!re.test(t.data)) continue;
+      re.lastIndex = 0;
+      const frag = document.createDocumentFragment();
+      let last = 0;
+      for (const m of t.data.matchAll(re)) {
+        const node = byName.get(m[1]);
+        frag.append(t.data.slice(last, m.index));
+        const ref = el('span', `uml-ref status-${node.status}`, m[1]);
+        ref.dataset.id = node.id;
+        ref.title = `Go to ${node.name}${node.namespace ? ` (${node.namespace})` : ''}`;
+        frag.append(ref);
+        last = m.index + m[0].length;
+      }
+      frag.append(t.data.slice(last));
+      t.replaceWith(frag);
+    }
+  }
+}
+
 // A diagram with its buttons, for the Changes card or the full window.
 // Returns the element. files: the card's files, for the diffs of the boxes;
 // comments: the card's line comments (see lineComments in diffview.js).
@@ -1676,7 +1732,20 @@ function umlPanel(fullModel, { files = [], comments = null, onFull = null, full 
   const model = changedModel(fullModel);
   const panel = el('div', `uml-panel${full ? ' full' : ' wide'}`);
   const onOpen = (node, line) => {
-    if (api && files.some(f => f.path === node.file)) openDetail(panel, api, model, node, line, { files, comments });
+    if (api && files.some(f => f.path === node.file)) openDetail(panel, api, model, node, line, { files, comments, follow });
+  };
+  // A link in a type's diff to another type of the diagram: the diff goes
+  // back into its box, the diagram moves to the other type, and its diff
+  // opens out of its box.
+  const follow = id => {
+    const node = model.nodes.find(n => n.id === id);
+    if (!node) return;
+    activeDetail?.close();
+    setTimeout(() => {
+      reveal(id);
+      const first = node.members.filter(m => m.change).sort((a, b) => a.line - b.line)[0];
+      setTimeout(() => onOpen(node, first?.line ?? node.line), 380);
+    }, 200);
   };
   const stage = el('div', 'uml-stage');
   const tools = el('div', 'uml-tools');
@@ -1694,7 +1763,8 @@ function umlPanel(fullModel, { files = [], comments = null, onFull = null, full 
   button('+', 'Zoom in', () => api?.zoom(1.25));
   button('Fit', 'Show the whole diagram', () => api?.fit());
   if (onFull) button('⤢', 'Open in the whole window', onFull);
-  tools.prepend(typeSearch(model, id => {
+  // Moves the diagram to a type (a search, a link in a type's diff).
+  const reveal = id => {
     // A type in a collapsed namespace or folder: open that box first.
     const key = api?.collapsedKeyOf(id);
     if (key) {
@@ -1706,7 +1776,8 @@ function umlPanel(fullModel, { files = [], comments = null, onFull = null, full 
     }
     window.uiSound?.('select');
     api?.showType(id);
-  }));
+  };
+  tools.prepend(typeSearch(model, reveal));
   if (!full) panel.appendChild(el('div', 'uml-hint', 'Drag to move · Ctrl+wheel to zoom · point at a box for its changes, click it for its diff'));
   // Drawn once the panel is in the page and has a size. In the chat, the
   // panel then grows to the diagram's whole height at the width it has (the

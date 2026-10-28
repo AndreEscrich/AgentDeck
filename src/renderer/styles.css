@@ -2767,3 +2767,12 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .settings-field.off * { cursor: not-allowed; }
 .settings-off-note { font-size: 11.5px; color: var(--text-faint); margin: -4px 0 8px; }
 .settings-off-note.hidden { display: none; }
+
+/* In a type's diff: the names of the diagram's other types are links to them
+   (linkTypes in umlview.js), underlined in the colour of their change. */
+.uml-detail .uml-ref { cursor: pointer; border-radius: 3px; text-decoration: underline dotted; text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, currentColor 55%, transparent); }
+.uml-detail .uml-ref.status-new { text-decoration-color: #5fbf7a; }
+.uml-detail .uml-ref.status-mod { text-decoration-color: #e9a23b; }
+.uml-detail .uml-ref.status-del { text-decoration-color: #e06c6c; }
+.uml-detail .uml-ref:hover { text-decoration-style: solid; background: color-mix(in srgb, var(--accent) 18%, transparent); }
