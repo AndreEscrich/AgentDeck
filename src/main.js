@@ -67,6 +67,7 @@ const DEFAULT_CONFIG = {
   notifyWhenDone: true,
   notifyStyle: 'tile',                  // tile: the agent's Hub tile in the corner (toast.js) | system: the system's own
   sounds: true,                         // a sound when you start an agent and when one finishes
+  updatePopup: true,                    // a card on the Hub asks to update when a new version is out (off: only the title bar's Update button)
   hubAfterSend: true,                   // show the Hub after you send a message
   summarizeTitles: true,                // title new agents with a short summary of your message
   suggestFollowUps: true,               // after a task, suggest the messages you will likely send next

@@ -167,6 +167,7 @@ function openSettings(config, { onSaved } = {}) {
   const notify = settingsSelect([['tile', 'Agent tile'], ['system', 'System notification'], ['off', 'Off']],
     config.notifyWhenDone === false ? 'off' : config.notifyStyle === 'system' ? 'system' : 'tile');
   const sounds = settingsInput('checkbox', config.sounds !== false);
+  const updatePopup = settingsInput('checkbox', config.updatePopup !== false);
   const theme = settingsSelect(THEMES, config.theme || 'default');
   // Updates: look on GitHub now instead of waiting for the next look (the
   // app looks when its window gets the focus and every 30 minutes).
@@ -271,7 +272,8 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('Short titles', 'Name new agents with a summary of your message, written by the quick-task model (Providers → Quick tasks)', titles),
       settingsField('Suggest follow-ups', 'After a task, the messages you will likely send next, written by the quick-task model. → or a click puts one in the box, Alt+1–3 sends it', followUps),
       settingsField('Notifications', 'When an agent finishes or needs you while the app is in the background: its tile in the corner of the screen, or the system\'s notification', notify),
-      settingsField('Sounds', 'For everything you and the agents do', sounds))]],
+      settingsField('Sounds', 'For everything you and the agents do', sounds),
+      settingsField('Update pop-up', 'A card on the Hub asks you to update when a new version is out. Off: only the Update button next to the version in the title bar shows it', updatePopup))]],
     ['branches', 'Branch diff', [section(null,
       settingsField('Projects', `The Branches view lists ${(config.svnServer || 'svn+ssh://svn@tactile.build').replace(/\/+$/, '')}/<project>/branches for each one. Separate them with commas. Empty: every project someone committed to in the last year`, svnProjects),
       settingsField('Branch names', 'Only branches whose names start with one of these. Separate them with commas. Empty: every branch', svnBranchFilter),
@@ -409,6 +411,7 @@ function openSettings(config, { onSaved } = {}) {
       notifyWhenDone: notify.value !== 'off',
       notifyStyle: notify.value === 'system' ? 'system' : 'tile',
       sounds: sounds.checked,
+      updatePopup: updatePopup.checked,
       theme: theme.value,
       curvedScreen: curved.checked,
       stuckAfterSeconds: number(stuckAfter, 30),

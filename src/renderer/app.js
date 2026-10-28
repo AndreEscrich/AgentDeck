@@ -3270,7 +3270,8 @@ function showUpdate(info) {
 // nothing. Agents that finished and that you have not checked yet stay that
 // way after the restart (the Hub is saved as the app quits). Only when the
 // update itself fails does the card say why and offer Close; that version
-// then does not force the card again until the app restarts.
+// then does not force the card again until the app restarts. Settings →
+// Update pop-up off: no card at all, only the button in the title bar.
 let latestInfo = null;
 let updateCardOpen = false;
 const failedUpdates = new Set();
@@ -3278,6 +3279,8 @@ window.addEventListener('focus', () => offerUpdate());
 function offerUpdate() {
   const info = latestInfo;
   if (!info || updateCardOpen || !document.hasFocus() || failedUpdates.has(info.version)) return;
+  // Settings → Update pop-up off: the Update button in the title bar is enough.
+  if (state.config?.updatePopup === false) return;
   if ([...state.agents.values()].some(a => !a.removed && BUSY.includes(a.status))) return;
   // Only on the Hub: never over an agent's chat, History or the Branches view.
   if (state.current?.kind !== 'hub') return;
