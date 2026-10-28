@@ -164,8 +164,20 @@ function createWindow() {
   win.on('closed', () => toast.destroy());
   // Links in agent replies open in the normal browser, not inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (/^(https?|mailto):/i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
+  });
+  // Nothing replaces Agent Hub's own page: a web link goes to your browser
+  // and a local file opens with its usual app.
+  win.webContents.on('will-navigate', (event, url) => {
+    event.preventDefault();
+    if (/^(https?|mailto):/i.test(url)) shell.openExternal(url);
+    else if (/^file:/i.test(url)) {
+      try {
+        const file = require('url').fileURLToPath(url);
+        if (fs.existsSync(file)) shell.openPath(file);
+      } catch { /* not a path we can open */ }
+    }
   });
 }
 
@@ -333,6 +345,7 @@ app.whenReady().then(() => {
   ipcMain.handle('sessionchanges:load', async (_e, id) => (await require('./turnchanges').load(sessionChangesDir, [id]))[id] || null);
   ipcMain.handle('files:undo', (_e, cwd, file, snap) => undo.undoFile(cwd, file, snap));
   ipcMain.handle('files:versions', (_e, cwd, file) => undo.versions(cwd, file));
+  ipcMain.handle('files:span', (_e, cwd, filePath, changes) => undo.span(cwd, filePath, changes));
   ipcMain.handle('files:restore', (_e, cwd, p, previous, from) => undo.restoreFile(cwd, p, previous, from));
   ipcMain.handle('repo:of', (_e, cwd) => repoOf(cwd));
   ipcMain.handle('repo:branch', (_e, cwd) => branchOf(cwd));

@@ -630,7 +630,7 @@ function show(kind, id) {
     a.view.classList.remove('hidden');
     // Its Changes card, when the app has one saved from before it restarted;
     // what its tasks changed since you last looked flies in.
-    loadSession(a.view, a.sessionId, a.cwd);
+    loadSession(a.view, a.sessionId, a.cwd, a.transcript);
     playSessionWhenOpen(a);
     // Finished while you were not looking: show its output from the start.
     if (a.unread && a.status === 'idle') revealLatest(a.view, a.transcript);
@@ -652,7 +652,7 @@ function show(kind, id) {
   } else if (kind === 'history') {
     const h = state.history.get(id);
     h.view.classList.remove('hidden');
-    loadSession(h.view, h.session.id, h.cwd || h.session.cwd);
+    loadSession(h.view, h.session.id, h.cwd || h.session.cwd, h.transcript);
     scrollToBottom(h.view);
     const listed = state.parked.get(id) || state.agentList.get(id);
     setHeader(agentName({ sessionId: h.session.id, latestTitle: listed?.latestTitle, title: h.session.title }), h.cwd || h.session.cwd, null, findGroup(groupOf(h.session.id))?.name || null);
@@ -3668,7 +3668,7 @@ async function sendToAgent(agent, text, images = []) {
   }
   if (!agent.snapshot) {
     agent.snapshotAt = Date.now() - 1000;
-    const [snap] = await Promise.all([snapshotInTime(agent.cwd), loadSession(agent.view, agent.sessionId, agent.cwd)]);
+    const [snap] = await Promise.all([snapshotInTime(agent.cwd), loadSession(agent.view, agent.sessionId, agent.cwd, agent.transcript)]);
     agent.snapshot = snap;
     // The project as it was before the agent's first task: its Changes card
     // compares with it (updateSession). Without one then (a big project's
@@ -3900,7 +3900,9 @@ function sessionCard(view, cwd) {
 
 // What was saved for this session, once (before the first task on this
 // view decides where the card starts, see sendToAgent).
-function loadSession(view, sessionId, cwd) {
+// transcript: the chat's, to add up its tasks' edits again when the card
+// was saved by a version that kept them glued together (see addEdits).
+function loadSession(view, sessionId, cwd, transcript = null) {
   const s = sessionState(view);
   if (s.loaded || !sessionId) return s.loaded || Promise.resolve();
   s.loaded = window.deck.loadSessionChanges(sessionId).catch(() => null).then(async saved => {
@@ -3910,6 +3912,12 @@ function loadSession(view, sessionId, cwd) {
     s.paths = new Set(saved.paths || []);
     s.edits = new Map((saved.edits || []).map(f => [pathKey(f.path), f]));
     s.files = saved.files || [];
+    if (!s.snap && (saved.edits || []).some(e => !e.changes) && transcript) {
+      s.edits = new Map();
+      for (const p of transcript.prompts) if (p.turn?.files) addEdits(s, p.turn.files);
+      s.files = await editsToFiles(cwd, s);
+      saveSession(sessionId, s);
+    }
     if (s.files.length) await sessionCard(view, cwd).update(s.files);
   });
   return s.loaded;
@@ -3919,13 +3927,14 @@ function saveSession(sessionId, s) {
   if (!sessionId) return;
   const slim = f => ({ path: f.path, status: f.status, lines: f.lines, from: f.from || undefined, binary: f.binary || undefined });
   window.deck.saveSessionChanges(sessionId, {
-    snap: s.snap, paths: [...s.paths], edits: [...s.edits.values()].map(slim), files: s.files.map(slim),
+    snap: s.snap, paths: [...s.paths], files: s.files.map(slim),
+    edits: [...s.edits.values()].map(e => ({ path: e.path, from: e.from || undefined, changes: e.changes })),
   }).catch(() => {});
 }
 
 async function updateSession(a, turn) {
   if (a.removed) return;
-  await loadSession(a.view, a.sessionId, a.cwd);
+  await loadSession(a.view, a.sessionId, a.cwd, a.transcript);
   const s = sessionState(a.view);
   if (!s.started) return;
   for (const f of turn?.files || []) {
@@ -3933,7 +3942,8 @@ async function updateSession(a, turn) {
     if (f.from) s.paths.add(pathKey(f.from));
   }
   if (!s.paths.size) return;
-  const files = s.snap ? await sessionFromSnapshot(a, s) : sessionFromEdits(s, turn);
+  if (!s.snap) addEdits(s, turn?.files || []);
+  const files = s.snap ? await sessionFromSnapshot(a, s) : await editsToFiles(a.cwd, s);
   if (!files) return;
   s.files = files;
   saveSession(a.sessionId, s);
@@ -4003,19 +4013,45 @@ async function sessionFromSnapshot(a, s) {
   return all.filter(owned);
 }
 
-// Without that snapshot: each task's files as its edits reported them, added
-// up. A file keeps the changes of every task; one the agent made and then
-// deleted again is gone.
-function sessionFromEdits(s, turn) {
-  for (const f of turn?.files || []) {
+// Without that snapshot: each file's changes, one per task as its edits
+// reported them, oldest first. (Glued into one diff, a file changed by two
+// tasks did not fit the file any more, and the class diagram left it out.)
+function addEdits(s, files) {
+  for (const f of files) {
     const key = pathKey(f.path);
-    const before = s.edits.get(key);
-    if (before?.status === 'new' && f.status === 'del') { s.edits.delete(key); continue; }
-    s.edits.set(key, before
-      ? { ...f, status: before.status === 'new' ? 'new' : f.status, lines: [...before.lines, ...f.lines] }
-      : { ...f });
+    const entry = s.edits.get(key) || { path: f.path, from: f.from, changes: [] };
+    entry.changes = entry.changes || [{ status: entry.status, lines: entry.lines }];
+    entry.changes.push({ status: f.status, lines: f.lines });
+    s.edits.set(key, entry);
   }
-  return [...s.edits.values()];
+}
+
+// The files as one diff each: the file as it was before the agent's first
+// change (its changes undone from the file on disk, newest first; see span in
+// undo.js) against the file now. A file the agent made and deleted again, or
+// put back the way it was, is left out; one whose changes do not undo any
+// more shows its last change.
+async function editsToFiles(cwd, s) {
+  const out = [];
+  for (const entry of s.edits.values()) {
+    const changes = entry.changes || [{ status: entry.status, lines: entry.lines }];
+    const last = changes[changes.length - 1];
+    const fallback = () => out.push({ path: entry.path, from: entry.from, status: last.status, lines: last.lines, earlier: changes.slice(0, -1) });
+    const r = await window.deck.fileSpan(cwd, entry.path, changes).catch(() => null);
+    if (!r || r.error) { fallback(); continue; }
+    if (!r.before && !r.after) continue;
+    let lines;
+    if (!r.before) lines = [['hunk', `@@ -0,0 +1,${r.after.length} @@`], ...r.after.map(t => ['add', '+' + t])];
+    else if (!r.after) lines = [['hunk', `@@ -1,${r.before.length} +0,0 @@`], ...r.before.map(t => ['del', '-' + t])];
+    else {
+      const merged = lineDiff(r.before, r.after);
+      if (!merged) { fallback(); continue; }
+      lines = toHunks(merged);
+    }
+    if (!lines.some(([k]) => k === 'add' || k === 'del')) continue;
+    out.push({ path: entry.path, from: entry.from, status: !r.before ? 'new' : !r.after ? 'del' : 'mod', lines });
+  }
+  return out;
 }
 
 // Folding one card folds them all.
