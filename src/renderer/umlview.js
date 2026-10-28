@@ -1791,6 +1791,19 @@ document.addEventListener('keydown', e => {
   const typing = e.target.closest?.('input, textarea, [contenteditable="true"]') && !(e.target.closest('.uml-search') && !e.target.value);
   if (typing && e.key === 'Escape') return;
   const stop = () => { e.preventDefault(); e.stopImmediatePropagation(); };
+  // Ctrl+F (or ⌘F) in the whole-window diagram goes to its class search
+  // (instead of the app's search of past agents); a type's diff open on it
+  // closes first.
+  if (umlFullEl && e.key.toLowerCase() === 'f' && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+    const search = umlFullEl.querySelector('.uml-search input');
+    if (search) {
+      stop();
+      if (activeDetail && umlFullEl.contains(activeDetail.panel)) activeDetail.close(true);
+      search.focus();
+      search.select();
+      return;
+    }
+  }
   if (e.key === 'Escape' && activeDetail) { stop(); activeDetail.close(); return; }
   if (e.key === 'Escape' && umlFullEl) { stop(); closeUmlFull(); return; }
   // Alt+← ("back") does the same, before it leaves the agent (see app.js).
