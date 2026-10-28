@@ -592,7 +592,9 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
   // One part per container (parts were a namespace's composers).
   const comp = new Map(model.nodes.map(n => [n.id, 'main']));
   // Collapsed namespaces and folders: their types become one box, and their
-  // arrows go to that box.
+  // arrows go to that box. hiddenIn: type id -> the key of the collapsed box
+  // it is in (for the search, which opens that box to show the type).
+  const hiddenIn = new Map();
   {
     const proxyOf = new Map();
     const proxies = new Map();
@@ -609,6 +611,7 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
       else if (!isComposer(n) && collapsed.has(folderKey)) { key = folderKey; label = folderOf.get(n.id).split('/').pop(); }
       if (!key) continue;
       proxyOf.set(n.id, key);
+      hiddenIn.set(n.id, key);
       if (!proxies.has(key)) {
         proxies.set(key, {
           id: `proxy:${key}`, name: label, kind: 'collapsed', namespace: n.namespace, folder: n.folder, file: '', line: 0,
@@ -1386,7 +1389,43 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
   // from one type's diff to the next.
   const readingOrder = [...boxes.values()].filter(b => !b.node.proxy).sort((a, b) => a.y - b.y || a.x - b.x).map(b => b.id);
   const elementOf = id => world.querySelector(`.uml-node[data-id="${CSS.escape(id)}"]`);
-  return { fit, zoom, svg, width: maxW, height: totalH, order: readingOrder, elementOf, view };
+  // A nested type is in a collapsed box when its owner is.
+  const ownerOf = new Map();
+  for (const [owner, list] of nesting.owners) for (const n of list) ownerOf.set(n.id, owner);
+  const collapsedKeyOf = id => hiddenIn.get(ownerOf.get(id) || id) || null;
+  // Moves the view (in about a quarter of a second) so the type's box is in
+  // the middle, at a size where its name can be read, and outlines the box
+  // for a moment.
+  let glide = 0;
+  const showType = id => {
+    const g = elementOf(id);
+    if (!g) return false;
+    const r = g.getBoundingClientRect();
+    const s = svg.getBoundingClientRect();
+    const wx = (r.left + r.width / 2 - s.left - view.x) / view.k;
+    const wy = (r.top + r.height / 2 - s.top - view.y) / view.k;
+    const k = Math.max(view.k, 1);
+    const to = { x: s.width / 2 - wx * k, y: s.height / 2 - wy * k, k };
+    const from = { ...view };
+    const start = performance.now();
+    cancelAnimationFrame(glide);
+    const step = now => {
+      const t = Math.min(1, (now - start) / 260);
+      const e = 1 - (1 - t) ** 3;
+      for (const key of ['x', 'y', 'k']) view[key] = from[key] + (to[key] - from[key]) * e;
+      apply();
+      if (t < 1) glide = requestAnimationFrame(step);
+    };
+    moving();
+    glide = requestAnimationFrame(step);
+    for (const old of world.querySelectorAll('.uml-node.found')) old.classList.remove('found');
+    g.classList.remove('found');
+    void g.getBBox();
+    g.classList.add('found');
+    setTimeout(() => g.classList.remove('found'), 2400);
+    return true;
+  };
+  return { fit, zoom, svg, width: maxW, height: totalH, order: readingOrder, elementOf, view, collapsedKeyOf, showType };
 }
 
 // The legend under the diagram.
@@ -1596,6 +1635,19 @@ function umlPanel(fullModel, { files = [], comments = null, onFull = null, full 
   button('+', 'Zoom in', () => api?.zoom(1.25));
   button('Fit', 'Show the whole diagram', () => api?.fit());
   if (onFull) button('⤢', 'Open in the whole window', onFull);
+  tools.prepend(typeSearch(model, id => {
+    // A type in a collapsed namespace or folder: open that box first.
+    const key = api?.collapsedKeyOf(id);
+    if (key) {
+      collapsed.delete(key);
+      keepView = { ...api.view };
+      stage.innerHTML = '';
+      api = null;
+      draw();
+    }
+    window.uiSound?.('select');
+    api?.showType(id);
+  }));
   if (!full) panel.appendChild(el('div', 'uml-hint', 'Drag to move · Ctrl+wheel to zoom · point at a box for its changes, click it for its diff'));
   // Drawn once the panel is in the page and has a size. In the chat, the
   // panel then grows to the diagram's whole height at the width it has (the
@@ -1633,6 +1685,83 @@ function umlPanel(fullModel, { files = [], comments = null, onFull = null, full 
   return panel;
 }
 
+// The search box in the diagram's buttons: type part of a type's name and
+// the types that match show under it (names that start with it first, then
+// names that contain it, then names whose capitals spell it: "pvc" finds
+// PlayerViewController). ↑ ↓ choose, Tab or Enter goes to the chosen one
+// (Tab fills in its name), Esc empties the box. onPick(id) shows the type.
+function typeSearch(model, onPick) {
+  const wrap = el('div', 'uml-search');
+  const input = el('input');
+  input.type = 'search';
+  input.placeholder = 'Find a class…';
+  input.spellcheck = false;
+  input.title = 'Type part of a class name · Tab or Enter goes to it';
+  const list = el('div', 'uml-search-list');
+  wrap.append(input, list);
+  const types = model.nodes.map(n => ({ id: n.id, name: n.name, lower: n.name.toLowerCase(), caps: n.name.replace(/[^A-Z0-9]/g, '').toLowerCase(), node: n }));
+  let found = [];
+  let chosen = 0;
+  const KINDS = { class: 'C', interface: 'I', struct: 'S', enum: 'E', record: 'R' };
+  const match = text => {
+    const q = text.trim().toLowerCase();
+    if (!q) return [];
+    const rank = t => (t.lower.startsWith(q) ? 0 : t.lower.includes(q) ? 1 : t.caps.startsWith(q) ? 2 : -1);
+    return types.map(t => ({ t, r: rank(t) })).filter(x => x.r >= 0)
+      .sort((a, b) => a.r - b.r || a.t.name.length - b.t.name.length || a.t.name.localeCompare(b.t.name))
+      .slice(0, 8).map(x => x.t);
+  };
+  const render = () => {
+    list.innerHTML = '';
+    wrap.classList.toggle('open', found.length > 0 || !!input.value.trim());
+    if (!found.length && input.value.trim()) list.appendChild(el('div', 'uml-search-none', 'No class with that name in this diagram'));
+    found.forEach((t, i) => {
+      const row = el('div', `uml-search-item status-${t.node.status}${i === chosen ? ' active' : ''}`);
+      row.append(el('span', 'uml-search-kind', KINDS[t.node.kind] || '·'), el('span', 'uml-search-name', t.name),
+        el('span', 'uml-search-ns', t.node.namespace || ''));
+      row.title = `${t.node.namespace ? `${t.node.namespace}.` : ''}${t.name}\n${t.node.file}`;
+      row.onpointerdown = e => { e.preventDefault(); chosen = i; pick(); };
+      list.appendChild(row);
+    });
+  };
+  const pick = () => {
+    const t = found[chosen];
+    if (!t) return;
+    input.value = t.name;
+    onPick(t.id);
+    found = match(input.value);
+    chosen = Math.max(0, found.findIndex(x => x.id === t.id));
+    render();
+  };
+  input.addEventListener('input', () => { found = match(input.value); chosen = 0; render(); });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (!found.length) return;
+      e.preventDefault();
+      chosen = (chosen + (e.key === 'ArrowDown' ? 1 : -1) + found.length) % found.length;
+      render();
+    } else if ((e.key === 'Tab' && !e.shiftKey) || e.key === 'Enter') {
+      if (!found.length) return;
+      // Not for the app's Tab (the next agent to check) or Enter.
+      e.preventDefault();
+      e.stopPropagation();
+      pick();
+    } else if (e.key === 'Escape' && input.value) {
+      // Esc empties the box; with nothing in it, Esc closes the diagram as before.
+      e.preventDefault();
+      e.stopPropagation();
+      input.value = '';
+      found = [];
+      render();
+    }
+  });
+  input.addEventListener('blur', () => wrap.classList.remove('open'));
+  input.addEventListener('focus', () => { found = match(input.value); render(); });
+  // Keys and clicks in the box are not for the diagram.
+  for (const type of ['pointerdown', 'wheel']) wrap.addEventListener(type, e => e.stopPropagation());
+  return wrap;
+}
+
 // The diagram in the whole window, over the chat (Esc closes it).
 let umlFullEl = null;
 function closeUmlFull() {
@@ -1658,7 +1787,8 @@ function openUmlFull(model, { title, ...options }) {
 // review on top of them closes by itself first. ← → step through the types' diffs.
 document.addEventListener('keydown', e => {
   // Keys in a comment box stay there (Esc cancels the comment).
-  const typing = e.target.closest?.('input, textarea, [contenteditable="true"]');
+  // (An empty class search box is not typing: Esc closes as usual.)
+  const typing = e.target.closest?.('input, textarea, [contenteditable="true"]') && !(e.target.closest('.uml-search') && !e.target.value);
   if (typing && e.key === 'Escape') return;
   const stop = () => { e.preventDefault(); e.stopImmediatePropagation(); };
   if (e.key === 'Escape' && activeDetail) { stop(); activeDetail.close(); return; }

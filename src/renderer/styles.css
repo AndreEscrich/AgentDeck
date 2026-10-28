@@ -612,6 +612,31 @@ details.change-file > summary:hover .review-tick { opacity: 1; }
 .uml-svg.dragging { cursor: grabbing; }
 .uml-tools { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
 .uml-tools button { min-width: 28px; padding: 2px 8px; font-size: 13px; background: var(--bg-panel); }
+/* The class search (umlview.js, typeSearch): a box left of the buttons, and
+   the matching classes in a list under it. */
+.uml-search { position: relative; }
+.uml-search input { width: 170px; height: 100%; box-sizing: border-box; padding: 2px 8px; font-size: 12.5px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--bg-panel); color: var(--text); outline: none; transition: width 0.15s; }
+.uml-search input:focus { width: 230px; border-color: var(--accent); }
+.uml-search-list { display: none; position: absolute; top: calc(100% + 4px); right: 0; width: 300px; max-width: 70vw; padding: 4px; z-index: 3;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); }
+.uml-search.open .uml-search-list { display: block; }
+.uml-search-item { display: flex; align-items: baseline; gap: 8px; padding: 4px 8px; border-radius: 5px; cursor: pointer; font-size: 12.5px; }
+.uml-search-item.active, .uml-search-item:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.uml-search-kind { flex: none; width: 14px; font-size: 10px; font-weight: 700; text-align: center; color: var(--text-faint); }
+.uml-search-item.status-new .uml-search-kind { color: var(--ok); }
+.uml-search-item.status-del .uml-search-kind { color: var(--err); }
+.uml-search-item.status-mod .uml-search-kind { color: var(--busy); }
+.uml-search-name { flex: none; color: var(--text); font-weight: 600; }
+.uml-search-ns { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-size: 11px; color: var(--text-faint); }
+.uml-search-none { padding: 6px 8px; font-size: 12px; color: var(--text-faint); }
+/* The class the search went to: its outline lights up for a moment. */
+.uml-node.found > .uml-box { animation: uml-found 2.4s ease-out; }
+@keyframes uml-found {
+  0%, 60% { stroke: var(--accent); stroke-width: 3; }
+  100% { stroke-width: 1; }
+}
+.session-diagram .uml-search { display: none; }
 .uml-hint { position: absolute; top: 10px; left: 12px; font-size: 11px; color: var(--text-faint); pointer-events: none; }
 .uml-legend { position: absolute; left: 10px; bottom: 8px; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--text-dim);
   padding: 4px 8px; border-radius: 8px; background: rgba(16, 13, 10, 0.75); max-width: calc(100% - 20px); }
