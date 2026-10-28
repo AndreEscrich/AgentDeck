@@ -42,19 +42,20 @@ const DEFAULT_CONFIG = {
   codexPath: '',                        // empty means: look in the usual install folders
   codexModel: 'auto',                   // auto (Luna, Terra or Sol per task, like Claude's Auto), a family (sol, terra, luna, astra: its newest model) or a model id
   codexEffort: '',                      // low | medium | high | xhigh | max | ultra; empty: Auto picks it (with the Auto model), else the model's default
+  codexFastMode: false,                 // Codex's Fast service tier for new agents (faster; for some models it uses your limits faster)
   codexExtraArgs: [],                   // extra command-line flags for every Codex agent (codex app-server)
   // The quick calls (titles, Auto's ratings, follow-ups, notes, games) run on
   // helperProvider, or on the other one while it is off or at its limit.
   helperProvider: 'claude',             // claude | codex
   claudeHelperModel: 'haiku',
-  codexHelperModel: '',                 // a family or model id; empty: its fastest, the newest Luna (always at low effort)
+  codexHelperModel: 'luna',             // a family (its newest model) or a model id; Luna is Codex's Haiku
   defaultPermissionMode: 'bypassPermissions', // default | acceptEdits | auto | plan | bypassPermissions
   defaultModel: 'auto',                 // a value from the model menu; "auto" picks Opus, Sonnet or Haiku per task (automodel.js)
   defaultEffort: '',                    // low | medium | high | xhigh | max; empty: Auto picks it (with the Auto model), else the model's default
   defaultFastMode: false,
   // When an agent's conversation reaches this size, Claude Code summarizes it
   // (compacts), so long tasks stop re-reading everything with every step.
-  // 100k to 1m, or 'auto' for Claude Code's own choice.
+  // Codex agents too. 100k to 1m, or 'auto' for Claude Code's and Codex's own choice.
   autoCompact: '200k',
   stuckAfterSeconds: 30,                // waiting this long for Unity to be ready marks the agent as stuck
   defaultFolder: '',

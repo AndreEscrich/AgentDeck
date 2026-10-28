@@ -124,17 +124,15 @@ function openSettings(config, { onSaved } = {}) {
     codexEffort.replaceWith(next);
     codexEffort = next;
   };
+  const codexFast = settingsInput('checkbox', !!config.codexFastMode);
   const codexPath = settingsInput('text', config.codexPath, { placeholder: 'Found by itself: Homebrew, npm or ~/.local/bin' });
   const codexExtraArgs = settingsText((config.codexExtraArgs || []).join('\n'), 'One flag or value per line, for example\n-c\nmodel_verbosity="low"');
   // Quick tasks: the provider and model for titles, Auto's ratings,
   // follow-ups, group notes and game folders.
   const helperProvider = settingsSelect([['claude', 'Claude'], ['codex', 'Codex']], config.helperProvider || 'claude');
   const claudeHelperModel = settingsSelect(menuModels().filter(m => m.value !== 'auto').map(m => [m.value, shortName(m)]), config.claudeHelperModel || 'haiku');
-  const helperChoices = () => {
-    const fast = codexMenuModels().find(m => m.fast);
-    return [['', fast ? `Fastest (${fast.displayName})` : 'Fastest'], ...codexMenuModels().map(m => [m.value, m.displayName])];
-  };
-  const codexHelperModel = settingsSelect(helperChoices(), config.codexHelperModel ? codexChoiceModel(config.codexHelperModel) : '');
+  const helperChoices = () => (codexMenuModels().length ? codexMenuModels().map(m => [m.value, m.displayName]) : [['luna', 'Luna']]);
+  const codexHelperModel = settingsSelect(helperChoices(), config.codexHelperModel ? codexChoiceModel(config.codexHelperModel) : 'luna');
   // The model menus get Codex's list once it is loaded (see fillCodexModels).
   const refill = (select, options) => {
     const keep = select.value;
@@ -158,7 +156,7 @@ function openSettings(config, { onSaved } = {}) {
       codexModel.onchange();
     });
   };
-  const compact = settingsSelect([['150k', '150k tokens'], ['200k', '200k tokens'], ['300k', '300k tokens'], ['500k', '500k tokens'], ['auto', 'When Claude Code decides']], config.autoCompact || '200k');
+  const compact = settingsSelect([['150k', '150k tokens'], ['200k', '200k tokens'], ['300k', '300k tokens'], ['500k', '500k tokens'], ['auto', 'When Claude Code / Codex decides']], config.autoCompact || '200k');
 
   // The app
   const hubAfterSend = settingsInput('checkbox', config.hubAfterSend !== false);
@@ -260,11 +258,12 @@ function openSettings(config, { onSaved } = {}) {
       section('Codex',
         settingsField('Use Codex', 'OpenAI\'s Codex CLI, with your ChatGPT login (codex login in a terminal). Its agents read the project\'s CLAUDE.md and your global one', codexOn),
         codexOnly(settingsField('Model', 'Auto picks Sol, Terra or Luna for each task. Each one is its newest version; Astra is for exceptions', codexModel)),
-        codexOnly(settingsField('Effort', 'Auto: with the Auto model, it picks the effort for each task too; with another model, the model\'s default', codexEffortSlot))),
+        codexOnly(settingsField('Effort', 'Auto: with the Auto model, it picks the effort for each task too; with another model, the model\'s default', codexEffortSlot)),
+        codexOnly(settingsField('Fast mode', 'Codex\'s Fast tier: 1.5 to 2 times faster; for Sol and Astra it uses your limits faster', codexFast))),
       section('Quick tasks',
         settingsField('Run quick tasks on', 'Short titles, Auto\'s ratings, suggested follow-ups, group notes and finding the game folder. While this provider is off or at its usage limit, they run on the other one', helperProvider),
         claudeOnly(settingsField('Claude model', 'Haiku is the fastest and uses the least of your limits', claudeHelperModel)),
-        codexOnly(settingsField('Codex model', 'Luna is Codex\'s Haiku: the fastest, and uses the least of your limits. Runs at low effort', codexHelperModel)))]],
+        codexOnly(settingsField('Codex model', 'Luna is the fastest and uses the least of your limits', codexHelperModel)))]],
     ['app', 'App', [section(null,
       settingsField('Theme', 'Nostromo: the screens of the ship’s computer in Alien, on an old tube', theme),
       settingsField('Curved screen', 'Nostromo only: the screen has the bulging shape of a tube’s glass, with scanlines that bow with it', curved),
@@ -398,6 +397,7 @@ function openSettings(config, { onSaved } = {}) {
       codexModel: codexModel.value,
       codexEffort: codexEffort.value,
       codexPath: codexPath.value.trim(),
+      codexFastMode: codexFast.checked,
       codexExtraArgs: codexExtraArgs.value.split('\n').map(l => l.trim()).filter(Boolean),
       helperProvider: helperProvider.value,
       claudeHelperModel: claudeHelperModel.value,

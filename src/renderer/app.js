@@ -115,7 +115,7 @@ function startProvider() {
 }
 
 function defaultChoice(provider = startProvider()) {
-  if (provider === 'codex') return { provider: 'codex', model: codexChoiceModel(state.config.codexModel), effort: state.config.codexEffort || '', fastMode: false };
+  if (provider === 'codex') return { provider: 'codex', model: codexChoiceModel(state.config.codexModel), effort: state.config.codexEffort || '', fastMode: !!state.config.codexFastMode };
   return {
     provider: 'claude',
     model: state.config.defaultModel || 'auto',

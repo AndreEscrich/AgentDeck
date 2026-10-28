@@ -5,13 +5,11 @@
 // (assistant text, tool calls, tool results, end-of-turn results) to stdout
 // as JSON lines. We forward those events to the window unchanged.
 
-const fs = require('fs');
 const os = require('os');
-const path = require('path');
 const { EventEmitter } = require('events');
 const { PassThrough } = require('stream');
 const { randomUUID } = require('crypto');
-const { findClaude, spawnClaude, spawnCodex, killTree, childEnv } = require('./platform');
+const { findClaude, spawnClaude, killTree, childEnv } = require('./platform');
 
 // Tells every agent that the chat shows images and videos (see media.js and
 // the Markdown rendering in render.js).
@@ -357,8 +355,8 @@ class AgentManager {
 // the provider Settings → Providers picks for them (helperProvider), with
 // its quick-task model: Haiku on Claude, by default. While that provider is
 // off or at its usage limit, they run on the other one, when it is on and
-// not at its limit too. On Codex it is a codex exec with the same prompt,
-// wrapped to look like `claude -p --output-format json`.
+// not at its limit too. On Codex it is a quick thread on Codex's app-server
+// (codexAsk in codex.js), wrapped to look like `claude -p --output-format json`.
 const limitedUntil = { claude: 0, codex: 0 };
 function setProviderLimited(provider, untilMs) {
   if (provider in limitedUntil) limitedUntil[provider] = Number(untilMs) || 0;
@@ -376,40 +374,21 @@ function helperProvider(config) {
 
 // args: Claude Code's arguments, with "haiku" where the quick-task model goes.
 function spawnHelper(config, args, options) {
-  if (helperProvider(config) === 'codex') return codexHelper(config, options);
+  if (helperProvider(config) === 'codex') return codexHelper(config);
   const model = config.claudeHelperModel || 'haiku';
   return spawnClaude(config.claudePath, args.map(a => (a === 'haiku' ? model : a)), options);
 }
 
-function codexHelper(config, options) {
+function codexHelper(config) {
   const fake = new EventEmitter();
   fake.stdout = new PassThrough();
   fake.stdin = new PassThrough();
   let prompt = '';
   fake.stdin.on('data', d => { prompt += d; });
   fake.stdin.on('end', async () => {
-    const out = path.join(os.tmpdir(), `agenthub-codex-${randomUUID()}.txt`);
-    // Codex's Haiku (its newest Luna) unless Settings picks another model.
-    const model = await require('./codex').codexHelperModel(config).catch(() => '');
-    const args = ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '-c', 'model_reasoning_effort="low"', '-o', out,
-      ...(model ? ['-m', model] : []), '-'];
-    const proc = spawnCodex(config.codexPath, args, { cwd: options?.cwd || os.tmpdir(), env: childEnv(config.env), stdio: ['pipe', 'ignore', 'ignore'] });
-    fake.pid = proc.pid;
-    let done = false;
-    const finish = text => {
-      if (done) return;
-      done = true;
-      try { fs.unlinkSync(out); } catch { /* not written */ }
-      fake.stdout.end(JSON.stringify(text == null ? { is_error: true } : { result: text.trim(), is_error: false, total_cost_usd: 0 }));
-      setImmediate(() => fake.emit('close', text == null ? 1 : 0));
-    };
-    proc.on('error', () => finish(null));
-    proc.on('close', code => {
-      let text = null;
-      if (code === 0) try { text = fs.readFileSync(out, 'utf8'); } catch { /* no answer */ }
-      finish(text);
-    });
-    proc.stdin.end(prompt);
+    const text = await require('./codex').codexAsk(config, prompt).catch(() => null);
+    fake.stdout.end(JSON.stringify(text == null ? { is_error: true } : { result: text.trim(), is_error: false, total_cost_usd: 0 }));
+    setImmediate(() => fake.emit('close', text == null ? 1 : 0));
   });
   return fake;
 }
@@ -687,4 +666,4 @@ function pickGame(config, question, { task = null } = {}) {
   });
 }
 
-module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, rateTask, pickGame, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited, SYSTEM_PROMPT, EDIT_PROMPT };
+module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, rateTask, pickGame, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited, compactTokens, SYSTEM_PROMPT, EDIT_PROMPT };

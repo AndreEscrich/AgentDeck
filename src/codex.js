@@ -14,7 +14,7 @@ const os = require('os');
 const path = require('path');
 const { randomUUID } = require('crypto');
 const { spawnCodex, killTree, childEnv } = require('./platform');
-const { SYSTEM_PROMPT, EDIT_PROMPT } = require('./agents');
+const { SYSTEM_PROMPT, EDIT_PROMPT, compactTokens } = require('./agents');
 
 // Codex edits files with its own patch tool, not Claude Code's Edit.
 const CODEX_EDIT_PROMPT = 'To change an existing file, edit the lines that change with apply_patch instead of writing the whole file again from a shell command, so its line endings and encoding stay as they are.';
@@ -31,8 +31,17 @@ function developerInstructions() {
 
 const START_ARGS = ['app-server', '-c', 'project_doc_fallback_filenames=["CLAUDE.md"]'];
 
-// Settings → Advanced → Codex → Extra flags go to every agent's app-server.
-const agentArgs = config => [...START_ARGS, ...(Array.isArray(config.codexExtraArgs) ? config.codexExtraArgs : [])];
+// Every agent's app-server gets: the size at which Codex compacts the
+// conversation (Settings → Agents → Compact the conversation at; "auto"
+// leaves it to Codex), and Settings → Advanced → Codex → Extra flags.
+function agentArgs(config) {
+  const compact = compactTokens(String(config.autoCompact || '').trim().toLowerCase());
+  return [
+    ...START_ARGS,
+    ...(typeof compact === 'number' ? ['-c', `model_auto_compact_token_limit=${compact}`] : []),
+    ...(Array.isArray(config.codexExtraArgs) ? config.codexExtraArgs : []),
+  ];
+}
 
 // The app's permission modes as Codex's approval policy and sandbox.
 const MODES = {
@@ -358,12 +367,12 @@ class CodexManager {
     return this.agents.has(id);
   }
 
-  start({ id: wantedId, cwd, resumeId, forkSession, resumeSessionAt, permissionMode, model, effort }) {
+  start({ id: wantedId, cwd, resumeId, forkSession, resumeSessionAt, permissionMode, model, effort, fastMode }) {
     const config = this.getConfig();
     const id = typeof wantedId === 'string' && /^[\w-]{8,64}$/.test(wantedId) && !this.agents.has(wantedId) ? wantedId : randomUUID();
     const agent = {
       id, cwd, status: 'starting', mode: permissionMode || config.defaultPermissionMode,
-      model: model && model !== 'default' ? model : null, effort: effort || null,
+      model: model && model !== 'default' ? model : null, effort: effort || null, fast: !!fastMode,
       threadId: null, turnId: null, pending: new Map(), events: null, stderr: '', tokenUsage: null,
     };
     this.agents.set(id, agent);
@@ -568,10 +577,12 @@ class CodexManager {
     }
     const { approvalPolicy, sandbox } = modeOf(agent.mode);
     const model = await resolveModel(this.getConfig(), agent.model).catch(() => '');
+    // Fast mode: the model's Fast service tier; off, the model's own default.
+    const tier = agent.fast ? (await fetchCodexModels(this.getConfig()).catch(() => null))?.find(m => m.value === model)?.fastTier?.id || 'priority' : null;
     try {
       await agent.client.request('turn/start', {
         threadId: agent.threadId, input, approvalPolicy, sandboxPolicy: SANDBOX_POLICY[sandbox],
-        ...(model ? { model } : {}), ...(agent.effort ? { effort: agent.effort } : {}),
+        ...(model ? { model } : {}), ...(agent.effort ? { effort: agent.effort } : {}), ...(tier ? { serviceTier: tier } : {}),
       });
     } catch (err) {
       this.setStatus(agent, 'error');
@@ -579,12 +590,13 @@ class CodexManager {
     }
   }
 
-  // Model and effort apply from the next message on.
-  setModel(id, { model, effort }) {
+  // Model, effort and fast mode apply from the next message on.
+  setModel(id, { model, effort, fastMode }) {
     const agent = this.agents.get(id);
     if (!agent) return;
     agent.model = model && model !== 'default' ? model : null;
     agent.effort = effort || null;
+    agent.fast = !!fastMode;
   }
 
   setPermissionMode(id, mode) {
@@ -639,7 +651,13 @@ let helper = null;
 function helperClient(config) {
   if (!helper) {
     const client = startServer(config, os.homedir(), {
-      onNotification: (method, params) => { if (method === 'account/rateLimits/updated') mergeLimits(params.rateLimits); },
+      onNotification: (method, params) => {
+        if (method === 'account/rateLimits/updated') mergeLimits(params.rateLimits);
+        const ask = asks.get(params.threadId);
+        if (!ask) return;
+        if (method === 'item/completed' && params.item?.type === 'agentMessage') ask.text = params.item.text;
+        if (method === 'turn/completed') ask.done(params.turn?.status === 'completed' ? ask.text : null);
+      },
       onExit: () => { if (helper?.client === client) helper = null; },
     });
     client.proc.on('error', () => {});
@@ -686,6 +704,11 @@ async function fetchCodexModels(config) {
       isDefault: !!m.isDefault, defaultEffort: m.defaultReasoningEffort || '',
       supportsEffort: !!m.supportedReasoningEfforts?.length,
       supportedEffortLevels: (m.supportedReasoningEfforts || []).map(e => e.reasoningEffort),
+      // Codex's fast mode: its "Fast" service tier, faster and for some
+      // models at a higher cost against your limits ("increased usage").
+      fastTier: (m.serviceTiers || []).find(t => /fast/i.test(t.name) || t.id === 'priority') || null,
+      supportsFastMode: (m.serviceTiers || []).some(t => /fast/i.test(t.name) || t.id === 'priority'),
+      fastByDefault: !!m.defaultServiceTier && (m.serviceTiers || []).some(t => t.id === m.defaultServiceTier && (/fast/i.test(t.name) || t.id === 'priority')),
     }));
     for (const m of models) m.family = familyOf(m.value);
     for (const f of FAMILIES) { const m = newestOf(models, f); if (m) m.latest = true; }
@@ -707,10 +730,37 @@ async function resolveModel(config, value) {
   return newestOf((await fetchCodexModels(config)) || [], value)?.value || '';
 }
 
-// The model for quick tasks: Settings' pick, else the fast one.
+// The model for quick tasks: Settings' pick, else the fast one, and the
+// service tier: the Fast one when it costs no more of your limits.
 async function codexHelperModel(config) {
-  if (config.codexHelperModel) return resolveModel(config, config.codexHelperModel);
-  return (await fetchCodexModels(config))?.find(m => m.fast)?.value || '';
+  const models = (await fetchCodexModels(config)) || [];
+  const id = config.codexHelperModel ? await resolveModel(config, config.codexHelperModel) : models.find(m => m.fast)?.value || '';
+  const tier = models.find(m => m.value === id)?.fastTier;
+  return { model: id, tier: tier && !/increased usage/i.test(tier.description || '') ? tier.id : null };
+}
+
+// A quick task (agents.js) on Codex: a throwaway thread on the shared
+// app-server, with a one-line instruction instead of Codex's own (about a
+// fifth fewer tokens), and no new process: about as fast as Haiku. At
+// medium effort: at low, Luna got more of Auto's ratings wrong than Haiku.
+// Resolves with the answer's text, or null.
+const asks = new Map();   // thread id -> { text, done }
+const QUICK_INSTRUCTIONS = 'You answer short questions about software tasks for a desktop app. Reply exactly in the format asked, with no other text. Do not run commands or change files.';
+async function codexAsk(config, prompt, timeoutMs = 60000) {
+  const { model, tier } = await codexHelperModel(config);
+  const effort = 'medium';
+  const res = await helperRequest(config, 'thread/start', {
+    ephemeral: true, cwd: os.tmpdir(), sandbox: 'read-only', approvalPolicy: 'never', baseInstructions: QUICK_INSTRUCTIONS, ...(model ? { model } : {}),
+  });
+  const threadId = res.thread.id;
+  return new Promise(resolve => {
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    const finish = text => { clearTimeout(timer); asks.delete(threadId); resolve(text ?? null); };
+    asks.set(threadId, { text: null, done: finish });
+    helperRequest(config, 'turn/start', {
+      threadId, effort, ...(tier ? { serviceTier: tier } : {}), input: [{ type: 'text', text: prompt, text_elements: [] }],
+    }).catch(() => finish(null));
+  });
 }
 
 // Codex's limits as rate_limit_info, or null. No model call is made.
@@ -752,4 +802,4 @@ async function loadCodexThread(config, threadId) {
   return { cwd: thread?.cwd || null, messages };
 }
 
-module.exports = { CodexManager, fetchCodexModels, codexHelperModel, fetchCodexUsage, listCodexThreads, loadCodexThread };
+module.exports = { CodexManager, fetchCodexModels, codexHelperModel, codexAsk, fetchCodexUsage, listCodexThreads, loadCodexThread };

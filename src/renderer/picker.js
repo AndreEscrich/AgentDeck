@@ -34,7 +34,7 @@ const CODEX_AUTO_FAMILIES = ['luna', 'terra', 'sol'];
 const FAMILY_NAMES = { sol: 'Sol', terra: 'Terra', luna: 'Luna', astra: 'Astra' };
 const CODEX_AUTO = {
   value: 'auto', displayName: 'Auto', description: 'Picks Sol, Terra or Luna for each task', provider: 'codex',
-  supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+  supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'], supportsFastMode: true,
 };
 const latestCodex = family => codexModels.find(m => m.family === family && m.latest) || null;
 // A family as a menu entry: its newest model, named by the family.
@@ -191,7 +191,7 @@ class ModelPicker {
       const text = el('div', 'menu-text');
       text.append(el('div', 'menu-name', shortName(m)), el('div', 'menu-desc', m.description || ''));
       item.append(text, el('span', 'menu-check', selected ? '✓' : ''));
-      item.onclick = () => this.change({ provider, model: m.value, ...(provider === 'codex' ? { fastMode: false } : {}) });
+      item.onclick = () => this.change({ provider, model: m.value });
       menu.appendChild(item);
     };
     if (show('claude')) {
@@ -231,7 +231,11 @@ class ModelPicker {
       const box = el('span', 'switch' + (this.value.fastMode ? ' on' : ''));
       row.onclick = () => this.change({ fastMode: !this.value.fastMode });
       const text = el('div', 'menu-text');
-      text.append(el('div', 'menu-name', 'Fast mode'), el('div', 'menu-desc', 'Faster output from the same model, and uses your limits faster'));
+      const codex = providerOf(this.value) === 'codex';
+      const desc = !codex ? 'Faster output from the same model, and uses your limits faster'
+        : model.value === 'auto' ? 'Codex\'s Fast tier for the model Auto picks: faster, and for Sol and Astra it uses your limits faster'
+        : `Codex's Fast tier: ${model.fastTier?.description || 'faster output'}${model.fastByDefault ? ' (this model runs fast even with it off)' : ''}`;
+      text.append(el('div', 'menu-name', 'Fast mode'), el('div', 'menu-desc', desc));
       row.append(text, box);
       menu.appendChild(row);
     }
