@@ -62,17 +62,41 @@ async function unityProjects(cwd, depth = 3, rel = '') {
   return found;
 }
 
+// Git variables the app may have been started with (by a hook or a script
+// that git ran) would point every command at that repository instead of the
+// folder it names: they are left out.
+const GIT_ENV = /^GIT_(DIR|WORK_TREE|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|COMMON_DIR|NAMESPACE|PREFIX|CEILING_DIRECTORIES)$/;
+const gitEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !GIT_ENV.test(k)));
+
+// The last error of a git command, for the snapshot log (logSnapshot).
+let lastGitError = '';
 function git(args, { cwd, gitDir, workTree, allowExitCodes = [0], timeout = 60000 } = {}) {
   const prefix = [];
   if (gitDir) prefix.push('--git-dir', gitDir);
   if (workTree) prefix.push('--work-tree', workTree);
   if (cwd) prefix.push('-C', cwd);
   return new Promise(resolve => {
-    execFile('git', [...prefix, ...args], { maxBuffer: 50 * 1024 * 1024, timeout }, (err, stdout) => {
+    execFile('git', [...prefix, ...args], { maxBuffer: 50 * 1024 * 1024, timeout, env: gitEnv }, (err, stdout, stderr) => {
       const code = err ? (typeof err.code === 'number' ? err.code : -1) : 0;
+      if (!allowExitCodes.includes(code)) lastGitError = `git ${args[0]}: ${err?.killed ? 'timed out' : String(stderr || err?.message || code).trim().split('\n').slice(-2).join(' ')}`;
       resolve(allowExitCodes.includes(code) ? stdout : null);
     });
   });
+}
+
+// Each snapshot, in <root>/snapshot-log.txt (the newest lines kept): the
+// folder, how it went and how long it took, to find out why a task got no
+// Changes card.
+function logSnapshot(root, cwd, what, started) {
+  if (!root) return;
+  try {
+    const file = path.join(root, 'snapshot-log.txt');
+    fs.mkdirSync(root, { recursive: true });
+    const line = `${new Date().toISOString()} ${Date.now() - started}ms ${what} :: ${cwd}\n`;
+    let text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+    text = (text + line).split('\n').slice(-500).join('\n');
+    fs.writeFileSync(file, text);
+  } catch { /* the log is only a help */ }
 }
 
 // ---------- kind 1: the folder is a git repository ----------
@@ -201,12 +225,13 @@ async function quickSnapshot(cwd, root) {
   if (!root || !fs.existsSync(cwd)) return null;
   if (await git(['rev-parse', '--show-toplevel'], { cwd })) return null;
   const dir = privateDir(cwd, root);
-  if (!fs.existsSync(path.join(dir, 'HEAD'))) return null;
+  if (!fs.existsSync(path.join(dir, 'HEAD'))) { logSnapshot(root, cwd, 'quick: never recorded', Date.now()); return null; }
   let tree = null;
   try { tree = JSON.parse(fs.readFileSync(path.join(dir, LAST), 'utf8')).tree; } catch { /* recorded before this was kept */ }
   // The state of the last recording is in the repository's index; reading
   // it does not wait for a recording that is running now.
   if (!tree) tree = (await git(['write-tree'], { gitDir: dir, workTree: cwd }))?.trim() || null;
+  logSnapshot(root, cwd, tree ? 'quick: the newest recorded state' : 'quick: none', Date.now());
   if (!tree) return null;
   return { kind: 'folder', dir, tree, nested: [], othersId: null, since: Date.now() - 1000 };
 }
@@ -295,13 +320,17 @@ async function fileAt(cwd, snap, rel) {
 
 // root is the folder where the app keeps its private repositories.
 async function snapshot(cwd, root) {
-  if (await git(['rev-parse', '--show-toplevel'], { cwd })) return repoSnapshot(cwd);
-  if (!root || !fs.existsSync(cwd)) return null;
+  const started = Date.now();
+  const done = (snap, what) => { logSnapshot(root, cwd, snap ? `${what}: ${snap.kind}` : `${what}: none${lastGitError ? ` (${lastGitError})` : ''}`, started); return snap; };
+  lastGitError = '';
+  const top = (await git(['rev-parse', '--show-toplevel'], { cwd }))?.trim();
+  if (top) return done(await repoSnapshot(cwd), `git repository ${top}`);
+  if (!root || !fs.existsSync(cwd)) return done(null, 'folder missing');
   // Your home folder (or a folder above it) holds far too many files to record.
-  if (os.homedir().startsWith(path.resolve(cwd))) return null;
+  if (os.homedir().startsWith(path.resolve(cwd))) return done(null, 'home folder or above');
   const projects = await unityProjects(cwd);
-  if (projects.length > 1) return null;
-  return folderSnapshot(cwd, root, projects[0] || '');
+  if (projects.length > 1) return done(null, `${projects.length} Unity projects inside`);
+  return done(await folderSnapshot(cwd, root, projects[0] || ''), 'folder');
 }
 
 // Unified diff of everything that changed since the snapshot, with paths
