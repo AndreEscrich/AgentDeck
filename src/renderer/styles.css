@@ -2832,3 +2832,42 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 /* Start review (Branch diff view): opens the diagram with the review peer. */
 .review-start { padding: 3px 12px; border-radius: 7px; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-weight: 600; cursor: pointer; }
 .review-start:hover { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+
+/* Start review's answer (reviewPeer in umlview.js): the panel twice as wide,
+   the summary apart, one card per finding, then what to look at first. */
+.uml-peer.open:has(.uml-peer-turn.review) { width: 840px; max-width: 62vw; }
+.uml-peer-turn.review .uml-peer-q { font-weight: 700; color: var(--text); }
+.uml-review-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-faint); margin: 0 0 8px; }
+.uml-review-summary { padding: 12px 14px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 7%, var(--bg-panel)); border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border)); }
+.uml-review-summary p { margin: 0; line-height: 1.55; }
+.uml-review-findings { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
+.uml-review-finding { padding: 10px 14px 12px; border-radius: 10px; border: 1px solid var(--border); border-left: 4px solid var(--sev, var(--border)); background: var(--bg); }
+.uml-review-finding.sev-high { --sev: #e06c6c; }
+.uml-review-finding.sev-medium { --sev: #e9a23b; }
+.uml-review-finding.sev-low { --sev: #7aa2d6; }
+.uml-review-finding.flash { animation: peer-flash 1.4s ease-out; }
+.uml-review-finding-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.uml-review-n { width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; background: var(--bg-active); color: var(--text-dim); }
+.uml-review-sev { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; padding: 1px 7px; border-radius: 99px; color: #111; background: var(--sev, #999); }
+.uml-review-sev.sev-high { --sev: #e06c6c; } .uml-review-sev.sev-medium { --sev: #e9a23b; } .uml-review-sev.sev-low { --sev: #7aa2d6; }
+.uml-review-sure { font-size: 11px; color: var(--text-faint); margin-left: auto; }
+.uml-review-title { margin-top: 8px; font-weight: 700; color: var(--text); }
+.uml-review-where { margin-top: 2px; font-family: 'Fira Code', monospace; font-size: 11px; color: var(--text-faint); }
+.uml-review-finding p { margin: 6px 0 0; line-height: 1.5; }
+.uml-review-first { margin-top: 16px; }
+.uml-review-first ol { margin: 0; padding-left: 20px; line-height: 1.5; }
+/* A type as the diagram draws it: a click goes there. */
+.uml-peer-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; border-radius: 8px; border: 1px solid var(--chip, var(--border)); background: var(--bg-panel);
+  color: var(--text); font: inherit; font-weight: 700; font-size: 12.5px; cursor: pointer; box-shadow: inset 3px 0 0 var(--chip, transparent); }
+span.uml-peer-chip { cursor: default; }
+button.uml-peer-chip:hover { background: color-mix(in srgb, var(--chip, var(--accent)) 16%, var(--bg-panel)); }
+.uml-peer-chip.status-new { --chip: #5fbf7a; } .uml-peer-chip.status-mod { --chip: #e9a23b; } .uml-peer-chip.status-del { --chip: #e06c6c; }
+.uml-peer-chip-kind { font-size: 10px; font-weight: 800; color: var(--text-faint); }
+.uml-peer-chip-ns { font-weight: 400; font-size: 11px; color: var(--text-faint); }
+/* A finding in a type's diff, under its line. */
+.uml-peer-note { margin: 4px 12px 8px 92px; padding: 8px 12px; border-radius: 8px; border: 1px solid #8b7cf6; border-left: 4px solid var(--sev, #8b7cf6);
+  background: color-mix(in srgb, #8b7cf6 10%, var(--bg-panel)); font-family: var(--font, inherit); white-space: normal; }
+.uml-peer-note.sev-high { --sev: #e06c6c; } .uml-peer-note.sev-medium { --sev: #e9a23b; } .uml-peer-note.sev-low { --sev: #7aa2d6; }
+.uml-peer-note-head { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #a596ff; }
+.uml-peer-note-title { margin-top: 3px; font-weight: 700; color: var(--text); }
+.uml-peer-note p { margin: 4px 0 0; line-height: 1.5; }

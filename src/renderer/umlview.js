@@ -1520,7 +1520,8 @@ let activeDetail = null;
 // follow(id): goes to another type of the diagram (a click on its name in
 // the code, see linkTypes).
 // next(id): opens the next type not reviewed yet (after the Reviewed button).
-function openDetail(panel, api, model, node, line, { files, comments, follow = null, next = null }) {
+// notes(node): the review peer's findings about it, shown under their lines.
+function openDetail(panel, api, model, node, line, { files, comments, follow = null, next = null, notes = null }) {
   activeDetail?.close(true);
   const ids = api.order;
   const host = document.getElementById('main');
@@ -1639,6 +1640,12 @@ function openDetail(panel, api, model, node, line, { files, comments, follow = n
       let best = null;
       for (const row of diff.querySelectorAll('.diff-line[data-new-line], .diff-line[data-old-line]')) {
         if (!best || Math.abs(no(row) - at) < Math.abs(no(best) - at)) best = row;
+      }
+      // The review peer's findings about this type, each under its line.
+      const rows = [...diff.querySelectorAll('.diff-line[data-new-line]')];
+      for (const f of notes?.(n) || []) {
+        const near = rows.reduce((b, r) => (!b || Math.abs(Number(r.dataset.newLine) - f.line) < Math.abs(Number(b.dataset.newLine) - f.line) ? r : b), null);
+        if (near) near.after(peerNote(f));
       }
       if (!best) return;
       body.scrollTop = Math.max(0, best.offsetTop - body.clientHeight / 3);
@@ -1785,22 +1792,29 @@ function decorateNode(g, { done, mark }) {
 function umlPanel(fullModel, { files = [], comments = null, onFull = null, full = false } = {}) {
   const model = changedModel(fullModel);
   const panel = el('div', `uml-panel${full ? ' full' : ' wide'}`);
+  let findings = [];   // the review peer's findings (setFindings), shown in the types' diffs
   const onOpen = (node, line) => {
-    if (api && files.some(f => f.path === node.file)) openDetail(panel, api, model, node, line, { files, comments, follow, next: id => panel.nextUnreviewed?.(id) });
+    if (api && files.some(f => f.path === node.file)) {
+      openDetail(panel, api, model, node, line, { files, comments, follow, next: id => panel.nextUnreviewed?.(id), notes: n => findings.filter(f => f.node?.id === n.id || f.node?.name === n.name) });
+    }
   };
+  panel.setFindings = list => { findings = list; };
   // A link in a type's diff to another type of the diagram: the diff goes
   // back into its box, the diagram moves to the other type, and its diff
   // opens out of its box.
-  const follow = id => {
+  // line: where its diff opens (else at its first change).
+  const follow = (id, line = 0) => {
     const node = model.nodes.find(n => n.id === id);
     if (!node) return;
-    activeDetail?.close();
+    const open = activeDetail;
+    open?.close();
     setTimeout(() => {
       reveal(id);
       const first = node.members.filter(m => m.change).sort((a, b) => a.line - b.line)[0];
-      setTimeout(() => onOpen(node, first?.line ?? node.line), 380);
-    }, 200);
+      setTimeout(() => onOpen(node, line || (first?.line ?? node.line)), 380);
+    }, open ? 200 : 0);
   };
+  panel.openType = follow;
   const stage = el('div', 'uml-stage');
   const tools = el('div', 'uml-tools');
   const button = (text, title, fn) => {
@@ -2078,11 +2092,25 @@ function openUmlFull(model, { title, ...options }) {
       toggle.classList.toggle('active', open);
       toggle.hidden = !talked;
       if (was !== open) requestAnimationFrame(() => diagram.fit());
+    }, {
+      typeOf: name => diagram.model.nodes.find(n => n.name === name) || null,
+      onFinding: (f, node) => diagram.openType?.(node.id, f.line),
     });
     umlFullEl.peer = peer;
     body.appendChild(peer.el);
     // The types the peer talks about get its mark on their box (peerMarks).
-    const mark = () => diagram.setPeerMarks?.(peerMarks(diagram.model, peer.answers()), id => peer.showAbout(diagram.model.nodes.find(n => n.id === id)?.name));
+    const mark = () => {
+      const findings = peer.findings();
+      const marks = peerMarks(diagram.model, peer.answers());
+      for (const f of findings) {
+        if (!f.node) continue;
+        const before = marks.get(f.node.id);
+        marks.set(f.node.id, { count: (before?.count || 0) + 1, text: before && !before.finding ? f.title : before?.text ? `${before.text} · ${f.title}` : f.title, finding: true });
+      }
+      diagram.setPeerMarks?.(marks, id => peer.showAbout(diagram.model.nodes.find(n => n.id === id)?.name));
+      // A type's diff shows its findings under their lines.
+      diagram.setFindings?.(findings.filter(f => f.node));
+    };
     peer.onAnswer(mark);
     mark();
     toggle.onclick = () => peer.toggle();
@@ -2102,19 +2130,60 @@ function openUmlFull(model, { title, ...options }) {
 // first; the types it finds problems in get its mark (peerMarks), and you
 // mark them reviewed as you go (Mark reviewed, Next unreviewed).
 const START_REVIEW = [
-  'Start a review of this change with me.',
-  'First, in two to four sentences, what the change is about: what it adds or changes and why, as far as the code shows.',
-  'Then review it: for each problem you find, a short bullet with the type name exactly as it is in the code, the file and line,',
-  'what is wrong or risky, and how sure you are. Check how the changed code is used in the project where it matters.',
-  'Leave out types that look fine. End with the one or two things I should look at first.',
+  'Start a review of this change with me. Read the diff, and check how the changed code is used in the project where it matters.',
+  'Answer with one fenced code block tagged review and nothing else. It holds JSON:',
+  '{"summary": "two to four sentences: what the change is about, what it adds or changes and why, as far as the code shows",',
+  '"findings": [{"type": "the class, interface or struct exactly as named in the code (empty when about no type)", "file": "its path as in the diff",',
+  '"line": the line number in the new file, "severity": "high" | "medium" | "low", "certainty": "very sure" | "sure" | "not sure",',
+  '"title": "the problem in one short line", "detail": "what is wrong or risky and what to do about it, short Markdown"}],',
+  '"first": ["the one or two things to look at first"]}.',
+  'One finding per problem, the most important first. Leave out types that look fine.',
 ].join(' ');
 function startReview(openFull) {
   openFull();
   const peer = umlFullEl?.peer;
   if (!peer) return;
   // Opened again on a review that already ran: the conversation is there.
-  if (!peer.talked()) peer.ask(START_REVIEW, 'Start review: a summary of the change, then an automated review');
+  if (!peer.talked()) peer.ask(START_REVIEW, 'Review of this change', { review: true });
   else peer.show?.();
+}
+
+// The review peer's answer to Start review: { summary, findings: [{ type,
+// file, line, severity, certainty, title, detail }], first }, or null when it
+// is not the JSON the prompt asks for (it then shows as an answer).
+function parseReview(text) {
+  const m = /```(?:review|json)\s*([\s\S]*)```/.exec(text || '') || /^\s*(\{[\s\S]*\})\s*$/.exec(text || '');
+  if (!m) return null;
+  try {
+    const r = JSON.parse(m[1]);
+    if (!r || typeof r !== 'object' || !Array.isArray(r.findings)) return null;
+    const pick = (v, list, fallback) => (list.includes(String(v || '').toLowerCase()) ? String(v).toLowerCase() : fallback);
+    return {
+      summary: String(r.summary || ''),
+      findings: r.findings.filter(x => x && (x.title || x.detail)).map(x => ({
+        type: String(x.type || '').trim(), file: String(x.file || ''), line: Number(x.line) || 0,
+        severity: pick(x.severity, ['high', 'medium', 'low'], 'medium'), certainty: pick(x.certainty, ['very sure', 'sure', 'not sure'], 'sure'),
+        title: String(x.title || ''), detail: String(x.detail || ''),
+      })),
+      first: Array.isArray(r.first) ? r.first.map(String) : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+// A one-line text into node, with `code` in it as code.
+function inlineCode(node, text) {
+  String(text || '').split(/`([^`]+)`/).forEach((part, i) => node.appendChild(i % 2 ? el('code', null, part) : document.createTextNode(part)));
+  return node;
+}
+
+// A finding of the review peer in a type's diff, under its line.
+function peerNote(f) {
+  const box = el('div', `uml-peer-note sev-${f.severity}`);
+  box.append(el('div', 'uml-peer-note-head', `Review peer · ${f.severity} · ${f.certainty}`), inlineCode(el('div', 'uml-peer-note-title'), f.title));
+  if (f.detail) box.appendChild(markdown(f.detail, ''));
+  return box;
 }
 
 // The types of the diagram that the review peer's findings name (the points
@@ -2156,7 +2225,9 @@ const peerById = new Map();           // chat id -> chat
 const PEER_IDLE_MS = 10 * 60 * 1000;
 let peerListening = false;
 
-function reviewPeer(files, cwd, onLayout) {
+// typeOf(name): the diagram's node of a type, for the chips of a review's
+// findings; onFinding(finding, node): a chip was clicked.
+function reviewPeer(files, cwd, onLayout, { typeOf = () => null, onFinding = null } = {}) {
   if (!peerListening) {
     peerListening = true;
     window.deck.onReviewEvent((id, event) => peerById.get(id)?.onEvent(event));
@@ -2217,8 +2288,50 @@ function reviewPeer(files, cwd, onLayout) {
       : name === 'Glob' ? `Looking for ${i.pattern || 'files'}` : name);
 
   // Draws one turn: the question, the steps, and the answer (as Markdown).
+  // A type as the diagram draws it (its status colour and kind), a click
+  // goes to it in the diagram and opens its diff at the finding.
+  const KINDS = { class: 'C', interface: 'I', struct: 'S', enum: 'E', record: 'R' };
+  const chip = (f, node) => {
+    const c = el(node ? 'button' : 'span', `uml-peer-chip status-${node?.status || 'none'}`);
+    if (node) {
+      c.type = 'button';
+      c.title = `Go to ${node.name} in the diagram and open its diff${f.line ? ` at line ${f.line}` : ''}`;
+      c.onclick = () => onFinding?.(f, node);
+    }
+    c.append(el('span', 'uml-peer-chip-kind', KINDS[node?.kind] || '·'), el('span', 'uml-peer-chip-name', f.type || 'General'));
+    if (node?.namespace) c.appendChild(el('span', 'uml-peer-chip-ns', node.namespace));
+    return c;
+  };
+  // Start review's answer: the summary apart, then one card per finding,
+  // then what to look at first.
+  const drawReview = (r, box) => {
+    const summary = el('section', 'uml-review-summary');
+    summary.append(el('div', 'uml-review-label', 'Summary'), markdown(r.summary || '(no summary)', cwd));
+    const list = el('section', 'uml-review-findings');
+    list.appendChild(el('div', 'uml-review-label', r.findings.length ? `Findings · ${r.findings.length}` : 'Findings · none: nothing to flag'));
+    r.findings.forEach((f, i) => {
+      const node = f.type ? typeOf(f.type) : null;
+      const card = el('article', `uml-review-finding sev-${f.severity}`);
+      card.dataset.type = f.type;
+      const head = el('div', 'uml-review-finding-head');
+      head.append(el('span', 'uml-review-n', String(i + 1)), chip(f, node), el('span', `uml-review-sev sev-${f.severity}`, f.severity), el('span', 'uml-review-sure', f.certainty));
+      const where = f.file ? el('div', 'uml-review-where', `${f.file}${f.line ? `:${f.line}` : ''}`) : null;
+      card.append(head, inlineCode(el('div', 'uml-review-title'), f.title));
+      if (where) card.appendChild(where);
+      if (f.detail) card.appendChild(markdown(f.detail, cwd));
+      list.appendChild(card);
+    });
+    box.append(summary, list);
+    if (r.first.length) {
+      const first = el('section', 'uml-review-first');
+      const ol = el('ol');
+      for (const x of r.first) ol.appendChild(el('li', null, x));
+      first.append(el('div', 'uml-review-label', 'Look at first'), ol);
+      box.appendChild(first);
+    }
+  };
   const drawTurn = t => {
-    const box = el('div', 'uml-peer-turn');
+    const box = el('div', `uml-peer-turn${t.review ? ' review' : ''}`);
     box.appendChild(el('div', 'uml-peer-q', t.q));
     const steps = el('div', 'uml-peer-steps');
     const answer = el('div', 'uml-peer-a');
@@ -2226,8 +2339,20 @@ function reviewPeer(files, cwd, onLayout) {
     t.draw = () => {
       steps.replaceChildren(...t.tools.slice(-4).map(x => el('div', 'uml-peer-step', x)));
       if (t.tools.length > 4) steps.prepend(el('div', 'uml-peer-step more', `${t.tools.length - 4} more`));
-      const text = t.a || (t.error ? '' : chat.busy && t === chat.turns.at(-1) ? '' : '(no answer)');
-      answer.replaceChildren(text ? markdown(text, cwd) : el('div', 'uml-peer-thinking', 'Thinking…'));
+      const working = chat.busy && t === chat.turns.at(-1);
+      const review = t.review && !working ? parseReview(t.a) : null;
+      if (review) {
+        steps.replaceChildren();
+        answer.replaceChildren();
+        drawReview(review, answer);
+        // Its marks on the diagram and its notes in the diffs, from what is drawn.
+        if (!t.marked) { t.marked = true; chat.onAnswer?.(); }
+      } else if (t.review && working) {
+        answer.replaceChildren(el('div', 'uml-peer-thinking', t.tools.length ? 'Reviewing the change…' : 'Reading the diff…'));
+      } else {
+        const text = t.a || (t.error ? '' : working ? '' : '(no answer)');
+        answer.replaceChildren(text ? markdown(text, cwd) : el('div', 'uml-peer-thinking', 'Thinking…'));
+      }
       if (t.error) answer.appendChild(el('div', 'uml-peer-error', t.error));
     };
     t.draw();
@@ -2275,7 +2400,7 @@ function reviewPeer(files, cwd, onLayout) {
     }
   };
 
-  async function ask(text, label = null) {
+  async function ask(text, label = null, { review = false } = {}) {
     const q = String(text || '').trim();
     if (!q || chat.busy) return;
     input.value = '';
@@ -2289,7 +2414,7 @@ function reviewPeer(files, cwd, onLayout) {
       const before = chat.turns.filter(t => t.a);
       if (before.length) question = `Earlier in this review:\n\n${before.map(t => `Q: ${t.q}\nA: ${t.a}`).join('\n\n')}\n\nNew question: ${q}`;
     }
-    const turn = { q: label || q, a: '', tools: [], error: null };
+    const turn = { q: label || q, a: '', tools: [], error: null, review };
     chat.turns.push(turn);
     chat.busy = true;
     chat.hidden = false;
@@ -2351,16 +2476,28 @@ function reviewPeer(files, cwd, onLayout) {
     // Asks a question (the review comments from a Changes card, see
     // askPeerAbout), opening the conversation. label: what the conversation
     // shows instead of the whole question.
-    ask: (text, label) => { chat.hidden = false; ask(text, label); },
+    ask: (text, label, opts) => { chat.hidden = false; ask(text, label, opts); },
     // Whether there is a conversation already.
     talked: () => chat.turns.length > 0,
     // The answers so far, and fn() whenever one is finished (peer marks).
-    answers: () => chat.turns.map(t => t.a || ''),
+    answers: () => chat.turns.filter(t => !t.review).map(t => t.a || ''),
+    // The findings of Start review, with their type's node in the diagram.
+    findings: () => chat.turns.filter(t => t.review).flatMap(t => parseReview(t.a)?.findings || [])
+      .map(f => ({ ...f, node: f.type ? typeOf(f.type) : null })),
     onAnswer: fn => { chat.onAnswer = fn; },
     // Opens the conversation at the latest answer that names a type.
     showAbout: name => {
       chat.hidden = false;
       layout();
+      // A finding about it: that card.
+      const card = [...log.querySelectorAll('.uml-review-finding')].find(c => c.dataset.type === name);
+      if (card) {
+        card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        card.classList.remove('flash');
+        void card.offsetWidth;
+        card.classList.add('flash');
+        return;
+      }
       const re = new RegExp(`\\b${String(name || '').replace(/[^\w]/g, '')}\\b`);
       const i = chat.turns.map(t => re.test(t.a || '')).lastIndexOf(true);
       const box = log.children[i];
