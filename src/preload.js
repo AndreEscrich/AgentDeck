@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('deck', {
   applyUpdate: () => ipcRenderer.invoke('update:apply'),
   onUpdate: fn => on('update:available', fn),
   fetchUsage: () => ipcRenderer.invoke('usage:fetch'),
+  fetchCodexUsage: () => ipcRenderer.invoke('codex:usage'),
+  setClaudeLimited: untilMs => ipcRenderer.invoke('providers:claudeLimited', untilMs),
   repoOf: cwd => ipcRenderer.invoke('repo:of', cwd),
   // The branch its repository is on: { vcs: 'git' | 'svn', name } or null.
   repoBranch: cwd => ipcRenderer.invoke('repo:branch', cwd),
@@ -110,6 +112,7 @@ contextBridge.exposeInMainWorld('deck', {
   pathForFile: file => { try { return webUtils.getPathForFile(file) || null; } catch { return null; } },
   setModel: (id, choice) => ipcRenderer.invoke('agent:setModel', id, choice),
   listModels: () => ipcRenderer.invoke('models:list'),
+  listCodexModels: () => ipcRenderer.invoke('codex:models'),
   respondPermission: (id, requestId, decision) => ipcRenderer.invoke('agent:respondPermission', id, requestId, decision),
   setPermissionMode: (id, mode) => ipcRenderer.invoke('agent:setPermissionMode', id, mode),
   interrupt: id => ipcRenderer.invoke('agent:interrupt', id),

@@ -5,9 +5,13 @@
 // (assistant text, tool calls, tool results, end-of-turn results) to stdout
 // as JSON lines. We forward those events to the window unchanged.
 
+const fs = require('fs');
 const os = require('os');
+const path = require('path');
+const { EventEmitter } = require('events');
+const { PassThrough } = require('stream');
 const { randomUUID } = require('crypto');
-const { findClaude, spawnClaude, killTree, childEnv } = require('./platform');
+const { findClaude, spawnClaude, spawnCodex, killTree, childEnv } = require('./platform');
 
 // Tells every agent that the chat shows images and videos (see media.js and
 // the Markdown rendering in render.js).
@@ -347,6 +351,55 @@ class AgentManager {
   }
 }
 
+// ---------- quick helper calls ----------
+
+// The quick calls below (titles, ratings, follow-ups, notes, games) run on
+// Haiku. While Claude is turned off in Settings, or its usage limit is
+// reached, they run on Codex instead (when it is on): a codex exec with
+// the same prompt, wrapped to look like `claude -p --output-format json`.
+let claudeLimitedUntil = 0;
+function setClaudeLimited(untilMs) {
+  claudeLimitedUntil = Number(untilMs) || 0;
+}
+
+function helperOnCodex(config) {
+  return !!config.codexEnabled && (config.claudeEnabled === false || claudeLimitedUntil > Date.now());
+}
+
+function spawnHelper(config, args, options) {
+  return helperOnCodex(config) ? codexHelper(config, options) : spawnClaude(config.claudePath, args, options);
+}
+
+function codexHelper(config, options) {
+  const fake = new EventEmitter();
+  fake.stdout = new PassThrough();
+  fake.stdin = new PassThrough();
+  let prompt = '';
+  fake.stdin.on('data', d => { prompt += d; });
+  fake.stdin.on('end', () => {
+    const out = path.join(os.tmpdir(), `agenthub-codex-${randomUUID()}.txt`);
+    const args = ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '-c', 'model_reasoning_effort="low"', '-o', out, '-'];
+    const proc = spawnCodex(config.codexPath, args, { cwd: options?.cwd || os.tmpdir(), env: childEnv(config.env), stdio: ['pipe', 'ignore', 'ignore'] });
+    fake.pid = proc.pid;
+    let done = false;
+    const finish = text => {
+      if (done) return;
+      done = true;
+      try { fs.unlinkSync(out); } catch { /* not written */ }
+      fake.stdout.end(JSON.stringify(text == null ? { is_error: true } : { result: text.trim(), is_error: false, total_cost_usd: 0 }));
+      setImmediate(() => fake.emit('close', text == null ? 1 : 0));
+    };
+    proc.on('error', () => finish(null));
+    proc.on('close', code => {
+      let text = null;
+      if (code === 0) try { text = fs.readFileSync(out, 'utf8'); } catch { /* no answer */ }
+      finish(text);
+    });
+    proc.stdin.end(prompt);
+  });
+  return fake;
+}
+
 // Asks the CLI which models this account can use. This is the same list, with
 // the same descriptions, that the model menu in the Claude desktop app shows.
 // We start a short-lived process, send the "initialize" request and read the
@@ -388,7 +441,7 @@ function fetchModels(config) {
 // in History. Resolves with the title, or null.
 function summarizeTitle(config, text) {
   return new Promise(resolve => {
-    const proc = spawnClaude(config.claudePath,
+    const proc = spawnHelper(config,
       ['-p', '--model', 'haiku', '--output-format', 'json', '--strict-mcp-config', '--tools', '', '--no-session-persistence'],
       { cwd: os.tmpdir(), env: childEnv(config.env), stdio: ['pipe', 'pipe', 'ignore'] });
     helperProcesses.add(proc);
@@ -426,7 +479,7 @@ function summarizeTitle(config, text) {
 // { level, cost } (level null when it could not tell; cost in dollars).
 function rateTask(config, text, context = '') {
   return new Promise(resolve => {
-    const proc = spawnClaude(config.claudePath,
+    const proc = spawnHelper(config,
       ['-p', '--model', 'haiku', '--output-format', 'json', '--strict-mcp-config', '--tools', '', '--no-session-persistence'],
       { cwd: os.tmpdir(), env: childEnv(config.env), stdio: ['pipe', 'pipe', 'ignore'] });
     helperProcesses.add(proc);
@@ -462,7 +515,7 @@ function rateTask(config, text, context = '') {
 // with an array (empty when it failed). See loadFollowUps in app.js.
 function suggestFollowUps(config, { task = '', answer = '', notes = '' }) {
   return new Promise(resolve => {
-    const proc = spawnClaude(config.claudePath,
+    const proc = spawnHelper(config,
       ['-p', '--model', 'haiku', '--output-format', 'json', '--strict-mcp-config', '--tools', '', '--no-session-persistence'],
       { cwd: os.tmpdir(), env: childEnv(config.env), stdio: ['pipe', 'pipe', 'ignore'] });
     helperProcesses.add(proc);
@@ -506,7 +559,7 @@ function suggestFollowUps(config, { task = '', answer = '', notes = '' }) {
 const NOTES_LIMIT = 40;
 function mergeNotes(config, { notes = '', category = '', task = '', answer = '', files = [] }) {
   return new Promise(resolve => {
-    const proc = spawnClaude(config.claudePath,
+    const proc = spawnHelper(config,
       ['-p', '--model', 'haiku', '--output-format', 'json', '--strict-mcp-config', '--tools', '', '--no-session-persistence'],
       { cwd: os.tmpdir(), env: childEnv(config.env), stdio: ['pipe', 'pipe', 'ignore'] });
     helperProcesses.add(proc);
@@ -598,7 +651,7 @@ function pickGame(config, question, { task = null } = {}) {
     const args = ['-p', '--model', 'haiku', '--output-format', 'json', '--no-session-persistence'];
     if (task) args.push('--tools', 'ToolSearch', '--allowedTools', 'ToolSearch,mcp__claude_ai_Tactile_PM__pm_get_task');
     else args.push('--strict-mcp-config', '--tools', '');
-    const proc = spawnClaude(config.claudePath, args,
+    const proc = spawnHelper(config, args,
       { cwd: os.tmpdir(), env: { ...childEnv(config.env), ENABLE_TOOL_SEARCH: 'true' }, stdio: ['pipe', 'pipe', 'ignore'] });
     helperProcesses.add(proc);
     let out = '';
@@ -620,4 +673,4 @@ function pickGame(config, question, { task = null } = {}) {
   });
 }
 
-module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, rateTask, pickGame, mergeNotes, suggestFollowUps, fetchUsage };
+module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, rateTask, pickGame, mergeNotes, suggestFollowUps, fetchUsage, setClaudeLimited, SYSTEM_PROMPT, EDIT_PROMPT };

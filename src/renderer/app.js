@@ -89,13 +89,53 @@ async function settleAuto(agent, rating) {
   refreshHub();
 }
 
-function defaultChoice() {
+// ---------- providers ----------
+
+// Each provider's last reported limits (see noteUsage), and the tokens.
+const usage = { claude: { limits: null, at: 0 }, codex: { limits: null, at: 0 }, tokens: 0, tasks: 0 };
+
+// Agents run on Claude Code or on Codex (Settings → Providers). A choice
+// says which: { provider, model, effort, fastMode }; providerOf (picker.js)
+// reads it, and older choices without one are Claude's.
+function providerOn(provider) {
+  return provider === 'codex' ? !!state.config.codexEnabled : state.config.claudeEnabled !== false;
+}
+
+// The provider new agents start on: the default one if it is on, else the other.
+function startProvider() {
+  const want = state.config.defaultProvider === 'codex' ? 'codex' : 'claude';
+  const other = want === 'codex' ? 'claude' : 'codex';
+  return providerOn(want) || !providerOn(other) ? want : other;
+}
+
+function defaultChoice(provider = startProvider()) {
+  if (provider === 'codex') return { provider: 'codex', model: state.config.codexModel || '', effort: state.config.codexEffort || '', fastMode: false };
   return {
+    provider: 'claude',
     model: state.config.defaultModel || 'auto',
     effort: state.config.defaultEffort || '',
     fastMode: !!state.config.defaultFastMode,
   };
 }
+
+// Until when (ms) a provider's usage limit is reached, or 0.
+function limitedUntil(provider) {
+  const l = usage[provider]?.limits;
+  const secs = l?.status === 'rejected' ? l.resetsAt || l.unifiedWindows?.[l.rateLimitType]?.resetsAt : null;
+  return secs && secs * 1000 > Date.now() ? secs * 1000 : 0;
+}
+
+// A new agent starts on the other provider while its own is off or at its
+// limit, when the other one is on and not at its limit too. Returns the
+// other provider's default choice, or null to keep the choice.
+function fallbackChoice(choice) {
+  const from = providerOf(choice);
+  const other = from === 'codex' ? 'claude' : 'codex';
+  if (providerOn(from) && !limitedUntil(from)) return null;
+  if (!providerOn(other) || limitedUntil(other)) return null;
+  return defaultChoice(other);
+}
+const startChoice = choice => fallbackChoice(choice) || choice;
 
 // The menu under the message box changes the agent on screen. For a history
 // session that is not running yet, it sets what the session resumes with.
@@ -230,10 +270,15 @@ function renderDraftButtons() {
     hub.markSelected(d.folder ? `${category}\n${repoName(d.folder)}` : null);
   } catch { /* the Hub is not created yet */ }
   // Which agent the next one continues from (see forkSourceFor).
-  const source = forkSourceFor(d.folder, d.groupId);
+  const source = forkSourceFor(d.folder, d.groupId, providerOf(startChoice(d.choice)));
   const fork = $('composer-fork');
-  fork.textContent = source ? `↳ continues from "${source.title}"` : '';
-  fork.title = source ? 'A new agent here continues from this agent: a copy of its conversation when that is short, or a handoff summary of it when it is long.' : '';
+  // While the chosen provider is at its limit, the next agent starts on the other one.
+  const fallback = fallbackChoice(d.choice);
+  const from = PROVIDER_NAMES[providerOf(d.choice)];
+  const switchText = fallback ? `→ ${PROVIDER_NAMES[fallback.provider]} (${from} ${providerOn(providerOf(d.choice)) ? 'at its limit' : 'off'})` : '';
+  fork.textContent = [source ? `↳ continues from "${source.title}"` : '', switchText].filter(Boolean).join(' · ');
+  fork.title = [source ? 'A new agent here continues from this agent: a copy of its conversation when that is short, or a handoff summary of it when it is long.' : '',
+    fallback ? `New agents start on ${PROVIDER_NAMES[fallback.provider]} until ${from}'s usage limit resets. Agents already on ${from} wait for it.` : ''].filter(Boolean).join('\n');
 }
 
 // The folder menu: recent folders, each with ✕ to remove it from the list,
@@ -408,6 +453,7 @@ function settingsDiffer() {
   const c = composerPicker.value;
   const d = defaultChoice();
   return composerModePicker.value !== defaultMode()
+    || providerOf(c) !== providerOf(d)
     || (c.model || 'default') !== (d.model || 'default')
     || (c.effort || '') !== (d.effort || '')
     || !!c.fastMode !== !!d.fastMode;
@@ -637,6 +683,7 @@ function show(kind, id) {
     else scrollToBottom(a.view);
     a.unread = false;
     setHeader(headerTitle(a), a.cwd, a);
+    composerPicker.setLocked(providerOf(a.choice));
     composerPicker.setValue(a.choice || defaultChoice());
     composerPicker.setResolved(null);
     showAutoPick(a);
@@ -656,6 +703,7 @@ function show(kind, id) {
     scrollToBottom(h.view);
     const listed = state.parked.get(id) || state.agentList.get(id);
     setHeader(agentName({ sessionId: h.session.id, latestTitle: listed?.latestTitle, title: h.session.title }), h.cwd || h.session.cwd, null, findGroup(groupOf(h.session.id))?.name || null);
+    composerPicker.setLocked(providerOf(h.choice));
     composerPicker.setValue(h.choice || defaultChoice());
     composerPicker.setResolved(null);
     composerModePicker.setValue(h.mode || defaultMode());
@@ -666,6 +714,7 @@ function show(kind, id) {
     $('hub-view').classList.remove('hidden');
     setHeader('Claude HUB', '', null);
     const d = ensureDraft();
+    composerPicker.setLocked(null);
     composerPicker.setValue(d.choice);
     composerPicker.setResolved(null);
     composerModePicker.setValue(d.mode);
@@ -684,6 +733,7 @@ function show(kind, id) {
   // first time you open the agent.
   if (kind === 'agent' && state.agents.get(id) && !state.agents.get(id).context) updateContext(state.agents.get(id));
   renderContextMeter();
+  renderLimitBanner();
   restoreInputDraft();
 }
 
@@ -1451,7 +1501,7 @@ function parkedItem(p) {
 // folder. Returns { sessionId, title } or null for the first agent of a Group.
 // Agents without a category are separate tasks: they still share a panel per
 // repository on the Hub, but a new one starts fresh, not as a fork.
-function forkSourceFor(cwd, categoryId) {
+function forkSourceFor(cwd, categoryId, provider = 'claude') {
   if (!cwd) return null;
   const known = id => state.groups.groups.some(g => g.id === id);
   const category = known(categoryId) ? categoryId : null;
@@ -1461,9 +1511,11 @@ function forkSourceFor(cwd, categoryId) {
     const itemCategory = known(item.groupId) ? item.groupId : null;
     if (itemCategory !== category || item.cwd !== cwd) continue;
     if (item.status !== 'idle' || !item.sessionId || !item.finishedAt) continue;
+    // A conversation can only continue on the provider it was made on.
+    if (providerOf(item.choice) !== provider) continue;
     if (!best || item.finishedAt > best.finishedAt) best = item;
   }
-  return best ? { sessionId: best.sessionId, title: best.title } : null;
+  return best ? { sessionId: best.sessionId, title: best.title, provider } : null;
 }
 
 // Running agents first, then the ones that are not running. Agents you removed are left out.
@@ -2416,6 +2468,7 @@ async function restartInNewFolder(agent) {
   refreshHub();
   await window.deck.startAgent({
     id: agent.id,
+    provider: providerOf(agent.choice),
     cwd: agent.cwd,
     permissionMode: agent.mode,
     model: cliModel(agent),
@@ -2509,7 +2562,7 @@ function historyItem(s) {
   if (state.current?.kind === 'history' && state.current.id === s.id) item.classList.add('active');
   const label = agentNames()[s.id] || s.title;
   item.title = `${label}\n${s.cwd || ''}`;
-  item.append(el('span', 'label', label), el('span', 'meta', timeAgo(s.updatedAt)));
+  item.append(el('span', 'label', label), ...(s.provider === 'codex' ? [el('span', 'item-provider', 'Codex')] : []), el('span', 'meta', timeAgo(s.updatedAt)));
   // Not on the Hub (any more): one click puts it back there.
   if (!isOnHub(s.id)) {
     const back = el('button', 'item-to-hub', 'Back to Hub');
@@ -2604,7 +2657,7 @@ async function loadHistory(session) {
     transcript.replaying = false;
     transcript.note('End of saved session. Send a message to continue it.');
     await restoreTurnChanges(transcript);
-    state.history.set(session.id, { session, view, transcript, cwd: data.cwd });
+    state.history.set(session.id, { session, view, transcript, cwd: data.cwd, ...(session.provider === 'codex' ? { choice: defaultChoice('codex') } : {}) });
     view.scrollTop = view.scrollHeight;
   }
   return state.history.get(session.id);
@@ -2746,9 +2799,14 @@ hub.branchOf = repoBranch;
 // The model on each agent's tile: "Opus 5.5 · High", or with Auto
 // "Auto · Sonnet · Med" (what Auto runs right now). The effort is left out
 // when it is the model's default. Fable shows apart, as in the model menu.
-const EFFORT_SHORT = { low: 'Low', medium: 'Med', high: 'High', xhigh: 'XHigh', max: 'Max' };
+const EFFORT_SHORT = { low: 'Low', medium: 'Med', high: 'High', xhigh: 'XHigh', max: 'Max', ultra: 'Ultra' };
 hub.modelOf = agent => {
   // A saved session from before models were recorded: nothing to show.
+  if (providerOf(agent.choice) === 'codex') {
+    const m = codexModelByValue(agent.choice.model || agent.resolvedModel || '');
+    const effort = agent.choice.effort;
+    return { label: `Codex · ${m.displayName}${effort ? ` · ${EFFORT_SHORT[effort] || effort}` : ''}`, codex: true, title: `Runs on Codex, ${m.displayName}${effort ? ` at ${(EFFORT_NAMES[effort] || effort).toLowerCase()} effort` : ''}` };
+  }
   if (!agent.choice?.model) return null;
   const value = agent.choice.model;
   const effort = cliEffort(agent);
@@ -3385,6 +3443,11 @@ async function startFrom(forkFrom, note = flashComposerNote) {
 async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId, fromRect, forkFrom, preamble = '', handoffFrom = null, images = [], ticket = null, rewindAt, prepare = null, folderNote = null }) {
   const title = resume ? resume.session.title : prompt.split('\n')[0].slice(0, 80);
   choice = choice || defaultChoice();
+  // A new agent starts on the other provider while this one is at its limit.
+  // (A resumed one stays: its conversation lives with its provider.)
+  const fellBack = !resume && rewindAt === undefined ? fallbackChoice(choice) : null;
+  const fellBackFrom = fellBack ? providerOf(choice) : null;
+  if (fellBack) choice = fellBack;
   permissionMode = permissionMode || defaultMode();
   // The agent and its tile exist right away, with the status "starting"
   // ("Booting up…" in the Hub); Claude Code starts in the background. The
@@ -3429,6 +3492,12 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
   // The chat gets its notes and your message once prepare is done (it can
   // change the message), so they only wait while the tile is in the Hub.
   const fillChat = () => {
+    if (fellBackFrom) {
+      const until = limitedUntil(fellBackFrom);
+      transcript.note(until
+        ? `${PROVIDER_NAMES[fellBackFrom]}'s usage limit is reached until ${new Date(until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}, so this agent runs on ${PROVIDER_NAMES[providerOf(choice)]}.`
+        : `${PROVIDER_NAMES[fellBackFrom]} is off, so this agent runs on ${PROVIDER_NAMES[providerOf(choice)]}.`);
+    }
     if (folderNote) transcript.note(folderNote);
     if (forkFrom) {
       agent.forkedFrom = forkFrom;
@@ -3458,6 +3527,7 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     // Removed from the Hub while it was getting ready: nothing to start.
     if (!state.agents.has(id) || agent.removed) return;
     ({ prompt = prompt, forkFrom = forkFrom, preamble = preamble, handoffFrom = handoffFrom, folderNote = folderNote } = ready || {});
+    if (forkFrom?.provider && forkFrom.provider !== providerOf(choice)) forkFrom = null;
     if (ready?.cwd && ready.cwd !== cwd) {
       cwd = agent.cwd = transcript.cwd = ready.cwd;
       checkUnityBridge(cwd);
@@ -3466,9 +3536,11 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
     refreshHub();
   }
 
+  if (fellBackFrom) toast(`${PROVIDER_NAMES[fellBackFrom]} is at its limit: the new agent runs on ${PROVIDER_NAMES[providerOf(choice)]}`);
   try {
     await window.deck.startAgent({
       id,
+      provider: providerOf(choice),
       cwd,
       permissionMode,
       model: cliModel(agent),
@@ -3749,6 +3821,7 @@ async function rewindTo(transcript, index, text, { undoFiles, files = [] } = {})
   try {
     await window.deck.startAgent({
       id: agent.id,
+      provider: providerOf(agent.choice),
       cwd,
       permissionMode: agent.mode,
       model: cliModel(agent),
@@ -4273,37 +4346,59 @@ async function sendQueued(agent, index = 0) {
   await sendToAgent(agent, item.text, item.images);
 }
 
-// Your plan's usage, as Claude Code reports it with each agent's replies,
-// and the tokens your agents used since the app opened. The last limits are
+// Your plans' usage, as Claude Code and Codex report it with each agent's
+// replies (rate_limit_event; Codex's carry provider: 'codex'), and the
+// tokens your agents used since the app opened. The last limits are
 // remembered, so the Hub shows them right after a restart.
-const usage = { limits: null, at: 0, tokens: 0, tasks: 0 };
-try { Object.assign(usage, JSON.parse(localStorage.getItem('usageLimits') || '{}'), { tokens: 0, tasks: 0 }); } catch { /* none yet */ }
-hub.setUsage({ ...usage });
-
-// The limits also come without an agent: when the app opens, and every 15
-// minutes after that if no agent has reported them in the meantime, a tiny
-// Claude Code request fetches them (see fetchUsage in agents.js).
-const USAGE_REFRESH = 15 * 60 * 1000;
-let fetchingUsage = false;
-async function refreshUsage() {
-  if (fetchingUsage) return;
-  fetchingUsage = true;
-  try {
-    const info = await window.deck.fetchUsage();
-    if (info) noteUsage({ type: 'rate_limit_event', rate_limit_info: info });
-  } catch { /* the last known numbers stay */ } finally {
-    fetchingUsage = false;
-  }
+const LIMITS_KEY = { claude: 'usageLimits', codex: 'usageLimitsCodex' };
+for (const p of ['claude', 'codex']) {
+  try { Object.assign(usage[p], JSON.parse(localStorage.getItem(LIMITS_KEY[p]) || '{}')); } catch { /* none yet */ }
 }
-refreshUsage();
-setInterval(() => { if (Date.now() - usage.at >= USAGE_REFRESH) refreshUsage(); }, 60 * 1000);
+
+// What the Hub shows: each provider that is on, and the tokens.
+function showUsage() {
+  if (state.current?.kind === 'hub') renderDraftButtons();
+  hub.setUsage({
+    claude: providerOn('claude') ? { ...usage.claude } : null,
+    codex: providerOn('codex') ? { ...usage.codex } : null,
+    tokens: usage.tokens,
+    tasks: usage.tasks,
+  });
+}
+showUsage();
+
+// The limits also come without an agent: when the app opens, and after that
+// when no agent has reported them for a while (Claude: 15 minutes, since a
+// tiny Haiku request fetches them, see fetchUsage in agents.js; Codex: 5
+// minutes, it reports them without a model call).
+const USAGE_REFRESH = { claude: 15 * 60 * 1000, codex: 5 * 60 * 1000 };
+const fetchingUsage = { claude: false, codex: false };
+async function refreshUsage(only = null) {
+  await Promise.all(['claude', 'codex'].filter(p => (!only || p === only) && providerOn(p) && !fetchingUsage[p]).map(async p => {
+    fetchingUsage[p] = true;
+    try {
+      const info = await (p === 'codex' ? window.deck.fetchCodexUsage() : window.deck.fetchUsage());
+      if (info) noteUsage({ type: 'rate_limit_event', provider: p, rate_limit_info: info });
+    } catch { /* the last known numbers stay */ } finally {
+      fetchingUsage[p] = false;
+    }
+  }));
+}
+setInterval(() => {
+  for (const p of ['claude', 'codex']) if (Date.now() - usage[p].at >= USAGE_REFRESH[p]) refreshUsage(p);
+}, 60 * 1000);
 function noteUsage(msg) {
   if (msg.type === 'rate_limit_event' && msg.rate_limit_info) {
-    usage.limits = msg.rate_limit_info;
-    usage.at = Date.now();
-    // The Auto report learns what 1% of the week is worth (autoreport.js).
-    autoReport.noteUsage(msg.rate_limit_info);
-    try { localStorage.setItem('usageLimits', JSON.stringify({ limits: usage.limits, at: usage.at })); } catch { /* not important */ }
+    const p = msg.provider === 'codex' ? 'codex' : 'claude';
+    usage[p].limits = msg.rate_limit_info;
+    usage[p].at = Date.now();
+    if (p === 'claude') {
+      // The Auto report learns what 1% of the week is worth (autoreport.js).
+      autoReport.noteUsage(msg.rate_limit_info);
+      // Haiku's quick calls run on Codex while Claude is at its limit.
+      window.deck.setClaudeLimited(limitedUntil('claude')).catch(() => {});
+    }
+    try { localStorage.setItem(LIMITS_KEY[p], JSON.stringify({ limits: usage[p].limits, at: usage[p].at })); } catch { /* not important */ }
   } else if (msg.type === 'result') {
     usage.tokens += totalTokens(msg.usage || {});
     usage.tasks++;
@@ -4311,16 +4406,19 @@ function noteUsage(msg) {
   } else {
     return;
   }
-  hub.setUsage({ ...usage });
+  showUsage();
 }
 
 // ---------- the usage limit ----------
 
-// When your plan's limit is reached, agents stop with "You've hit your
-// session limit · resets 10:20pm" (HTTP 429). Each such agent waits (its
-// tile says when it continues), and when the limit resets Agent Hub fetches
-// the new usage, refreshes the Hub and tells the waiting agents to carry on.
-// The waits are kept in local storage, so they survive a restart.
+// When a provider's limit is reached, its agents stop ("You've hit your
+// session limit · resets 10:20pm", HTTP 429). Each such agent waits for its
+// own provider's limit to reset (its tile and a banner over its chat count
+// down), so its conversation stays where it is; new agents start on the
+// other provider meanwhile (fallbackChoice). When the limit resets, Agent
+// Hub fetches the new usage, refreshes the Hub and tells the waiting agents
+// to carry on. The waits are kept in local storage, so they survive a
+// restart: { sessionId: { at, provider } } (older ones: a time, for Claude).
 const LIMIT_HIT = /hit your (session |weekly |opus |usage )?limit|usage limit (reached|was hit|hit)|rate_limit/i;
 const LIMIT_CONTINUE = 'Your usage limit has reset. Continue where you left off.';
 
@@ -4328,12 +4426,11 @@ function isLimitHit(msg) {
   return msg?.type === 'result' && msg.is_error && (msg.api_error_status === 429 || LIMIT_HIT.test(msg.result || ''));
 }
 
-// When the limit you hit resets, in ms: from the last report of your
-// limits, or else from the agent's message ("resets 10:20pm").
-function limitResetAt(text) {
-  const l = usage.limits;
-  const secs = l && l.status === 'rejected' ? l.resetsAt || l.unifiedWindows?.[l.rateLimitType]?.resetsAt : null;
-  if (secs && secs * 1000 > Date.now()) return secs * 1000;
+// When the limit you hit resets, in ms: from the last report of the
+// provider's limits, or else from the agent's message ("resets 10:20pm").
+function limitResetAt(text, provider) {
+  const until = limitedUntil(provider);
+  if (until) return until;
   const m = /resets (?:at )?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i.exec(text || '');
   if (m) {
     let h = Number(m[1]);
@@ -4346,6 +4443,8 @@ function limitResetAt(text) {
   return Date.now() + 15 * 60 * 1000;
 }
 
+const waitAt = w => (typeof w === 'number' ? w : w?.at || 0);
+const waitProvider = w => (typeof w === 'number' ? 'claude' : w?.provider || 'claude');
 function limitWaits() {
   try { return JSON.parse(localStorage.getItem('limitWaits') || '{}'); } catch { return {}; }
 }
@@ -4353,66 +4452,109 @@ function saveLimitWaits(waits) {
   try { localStorage.setItem('limitWaits', JSON.stringify(waits)); } catch { /* not important */ }
 }
 
-// An agent stopped at the limit: it waits for the reset.
+// An agent stopped at the limit: it waits for its provider's reset.
 function noteLimitHit(a, msg) {
-  const at = limitResetAt(msg.result);
-  a.limited = { resetAt: at };
-  if (a.sessionId) saveLimitWaits({ ...limitWaits(), [a.sessionId]: at });
-  a.transcript.note(`Usage limit reached. This agent continues by itself when it resets, at ${new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
+  const provider = providerOf(a.choice);
+  const at = limitResetAt(msg.result, provider);
+  a.limited = { resetAt: at, provider };
+  if (a.sessionId) saveLimitWaits({ ...limitWaits(), [a.sessionId]: { at, provider } });
+  const other = provider === 'codex' ? 'claude' : 'codex';
+  a.transcript.note(`${PROVIDER_NAMES[provider]}'s usage limit is reached. This agent waits for it and continues by itself at ${new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}, on ${PROVIDER_NAMES[provider]}, so its conversation stays where it is.${providerOn(other) ? ` New agents start on ${PROVIDER_NAMES[other]} meanwhile.` : ''}`);
+  renderLimitBanner();
   refreshHub();
 }
 
 // The tile of an agent that waits for the reset (live or not running).
 function limitOf(item) {
   if (item.limited) return item.limited;
-  const at = item.sessionId ? limitWaits()[item.sessionId] : null;
-  return at ? { resetAt: at } : null;
+  const w = item.sessionId ? limitWaits()[item.sessionId] : null;
+  return w ? { resetAt: waitAt(w), provider: waitProvider(w) } : null;
 }
 
-// Every 15 s: once a reset time has passed, fetch the new usage (which
-// refreshes the Hub); when the limit is not reached any more, the waiting
-// agents continue. While it still is, they wait for its new reset time.
+// Every 15 s, per provider: once a reset time has passed, fetch the new
+// usage (which refreshes the Hub); when the limit is not reached any more,
+// that provider's waiting agents continue. While it still is, they wait for
+// its new reset time.
 let continuing = false;
 async function checkLimitReset() {
-  const waits = limitWaits();
-  const live = [...state.agents.values()].filter(a => a.limited);
-  const due = Math.min(
-    ...live.map(a => a.limited.resetAt),
-    ...Object.values(waits),
-    usage.limits?.status === 'rejected' && usage.limits.resetsAt ? usage.limits.resetsAt * 1000 : Infinity,
-  );
-  if (continuing || !Number.isFinite(due) || Date.now() < due + 20 * 1000) return;
+  if (continuing) return;
   continuing = true;
   try {
-    await refreshUsage();
-    if (usage.limits?.status === 'rejected' && usage.limits.resetsAt * 1000 > Date.now()) {
-      // Not reset yet (the limit moved): wait for the new time.
-      const at = usage.limits.resetsAt * 1000;
-      for (const a of live) a.limited.resetAt = at;
-      for (const sid of Object.keys(waits)) waits[sid] = at;
-      saveLimitWaits(waits);
-      refreshHub();
-      return;
-    }
-    const sessions = new Set(Object.keys(waits));
-    for (const a of live) {
-      a.limited = null;
-      if (a.sessionId) sessions.delete(a.sessionId);
-      await sendToHubItem(a.id, LIMIT_CONTINUE).catch(() => {});
-    }
-    for (const sid of sessions) {
-      const runningAgent = [...state.agents.values()].find(x => x.sessionId === sid);
-      if (runningAgent) await sendToHubItem(runningAgent.id, LIMIT_CONTINUE).catch(() => {});
-      else if (state.parked.has(sid)) await sendToHubItem('p:' + sid, LIMIT_CONTINUE).catch(() => {});
-    }
-    saveLimitWaits({});
-    if (live.length || sessions.size) toast(`Usage limit reset: ${live.length + sessions.size} agent${live.length + sessions.size === 1 ? '' : 's'} continue`);
-    refreshHub();
+    for (const p of ['claude', 'codex']) await checkProviderReset(p);
   } finally {
     continuing = false;
   }
 }
+
+async function checkProviderReset(provider) {
+  const mine = Object.entries(limitWaits()).filter(([, w]) => waitProvider(w) === provider);
+  const live = [...state.agents.values()].filter(a => a.limited && (a.limited.provider || 'claude') === provider);
+  const l = usage[provider].limits;
+  const due = Math.min(
+    ...live.map(a => a.limited.resetAt),
+    ...mine.map(([, w]) => waitAt(w)),
+    l?.status === 'rejected' && l.resetsAt ? l.resetsAt * 1000 : Infinity,
+  );
+  if (!Number.isFinite(due) || Date.now() < due + 20 * 1000) return;
+  await refreshUsage(provider);
+  const now = usage[provider].limits;
+  const waits = limitWaits();
+  if (now?.status === 'rejected' && now.resetsAt * 1000 > Date.now()) {
+    // Not reset yet (the limit moved): wait for the new time.
+    const at = now.resetsAt * 1000;
+    for (const a of live) a.limited.resetAt = at;
+    for (const [sid] of mine) waits[sid] = { at, provider };
+    saveLimitWaits(waits);
+    refreshHub();
+    return;
+  }
+  const sessions = new Set(mine.map(([sid]) => sid));
+  for (const a of live) {
+    a.limited = null;
+    if (a.sessionId) sessions.delete(a.sessionId);
+    await sendToHubItem(a.id, LIMIT_CONTINUE).catch(() => {});
+  }
+  for (const sid of sessions) {
+    const runningAgent = [...state.agents.values()].find(x => x.sessionId === sid);
+    if (runningAgent) await sendToHubItem(runningAgent.id, LIMIT_CONTINUE).catch(() => {});
+    else if (state.parked.has(sid)) await sendToHubItem('p:' + sid, LIMIT_CONTINUE).catch(() => {});
+  }
+  const left = limitWaits();
+  for (const [sid] of mine) delete left[sid];
+  saveLimitWaits(left);
+  const n = live.length + sessions.size;
+  if (n) toast(`${PROVIDER_NAMES[provider]}'s usage limit reset: ${n} agent${n === 1 ? '' : 's'} continue`);
+  renderLimitBanner();
+  refreshHub();
+}
 setInterval(checkLimitReset, 15 * 1000);
+
+// Over the chat of an agent that waits for its limit: which provider, and a
+// countdown to when it continues by itself.
+function renderLimitBanner() {
+  const banner = $('limit-banner');
+  const cur = state.current;
+  const item = cur?.kind === 'agent' ? state.agents.get(cur.id)
+    : cur?.kind === 'history' ? state.parked.get(cur.id) || null : null;
+  const limited = item ? limitOf(item) : null;
+  banner.classList.toggle('hidden', !limited);
+  if (!limited) return;
+  const ms = Math.max(0, limited.resetAt - Date.now());
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  const sec = Math.floor((ms % 60000) / 1000);
+  const timer = `${h ? `${h}:${String(m).padStart(2, '0')}` : m}:${String(sec).padStart(2, '0')}`;
+  const name = PROVIDER_NAMES[limited.provider] || 'Claude';
+  banner.textContent = '';
+  banner.append(
+    el('span', 'limit-banner-icon', '⏳'),
+    el('span', 'limit-banner-text', `${name}'s usage limit is reached. This agent continues by itself at ${new Date(limited.resetAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}, on ${name}.`),
+    el('span', 'limit-banner-timer', ms ? timer : 'now'),
+  );
+}
+setInterval(() => { if (!$('limit-banner').classList.contains('hidden')) renderLimitBanner(); }, 1000);
+// The tiles' countdown ticks while agents wait.
+setInterval(() => { if (hubItems().some(i => i.limited)) refreshHub(); }, 30 * 1000);
 
 // Tokens of each API answer, once per answer: they float off the health bar.
 const tickedAnswers = new Set();
@@ -4424,7 +4566,7 @@ window.deck.onEvent((id, msg) => {
   if (msg.type === 'assistant' && msg.message?.usage && msg.message.id && !tickedAnswers.has(msg.message.id)) {
     tickedAnswers.add(msg.message.id);
     if (tickedAnswers.size > 5000) tickedAnswers.clear();
-    hub.tokenTick(tokenParts(msg.message.usage));
+    hub.tokenTick(tokenParts(msg.message.usage), providerOf(state.agents.get(id)?.choice));
   }
   const a = state.agents.get(id);
   if (!a) return;
@@ -4740,7 +4882,8 @@ async function sendFromComposer() {
     const gameNote = found => `Works in ${homePath(found.folder)}: your message is about ${found.product || found.game}. (Auto game folder; you picked ${homePath(d.folder)}.)`;
     const quickGame = gameFolder(autoGame);
     const cwd = quickGame ? quickGame.folder : d.folder;
-    const forkFrom = forkSourceFor(cwd, d.groupId);
+    const provider = providerOf(startChoice(d.choice));
+    const forkFrom = forkSourceFor(cwd, d.groupId, provider);
     // A message that is (or starts with) a Jira ticket brings the ticket along.
     const ticket = ticketIn(text);
     // Reading the ticket and writing a handoff (a long parent is not copied,
@@ -4757,7 +4900,7 @@ async function sendFromComposer() {
       if (autoGame?.lookup) {
         note('Finding the game…');
         const found = gameFolder(await window.deck.gameFolderLookup(prompt, d.folder).catch(() => null));
-        if (found) return { prompt, cwd: found.folder, folderNote: gameNote(found), ...(await startFrom(forkSourceFor(found.folder, d.groupId), note)) };
+        if (found) return { prompt, cwd: found.folder, folderNote: gameNote(found), ...(await startFrom(forkSourceFor(found.folder, d.groupId, provider), note)) };
       }
       return { prompt, ...(await startFrom(forkFrom, note)) };
     };
@@ -5400,6 +5543,10 @@ function showSettings() {
   openSettings(state.config, {
     onSaved: config => {
       state.config = config;
+      setProviders(config);
+      showUsage();
+      refreshUsage();
+      loadSessions();
       applyTheme(config.theme, { curved: config.curvedScreen !== false });
       if (state.current?.kind === 'hub' && state.draft) {
         state.draft.choice = defaultChoice();
@@ -5556,6 +5703,9 @@ setInterval(checkStuck, 3000);
 
 (async () => {
   state.config = await window.deck.getConfig();
+  setProviders(state.config);
+  showUsage();
+  refreshUsage();
   applyTheme(state.config.theme, { curved: state.config.curvedScreen !== false });
   // The version next to the title; the dev copy says "dev" after it.
   window.deck.appVersion().then(({ version, dev }) => {
@@ -5570,7 +5720,7 @@ setInterval(checkStuck, 3000);
   await loadAgentList();
   warmSnapshots();
   // Without Claude Code no agent can start: say so, and how to install it.
-  window.deck.setupClaude().then(r => { if (!r.found) showClaudeMissing(); }).catch(() => {});
+  if (providerOn('claude')) window.deck.setupClaude().then(r => { if (!r.found) showClaudeMissing(); }).catch(() => {});
   // Agents that were waiting for a sign-in when the app closed: offer it again.
   if (authWaits().length) setTimeout(noteAuthProblem, 1500);
   if (!IS_MAC) {

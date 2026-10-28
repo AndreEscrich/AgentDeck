@@ -148,6 +148,38 @@ function spawnClaude(configuredPath, args, options) {
   });
 }
 
+// ---------- starting codex ----------
+
+// OpenAI's Codex CLI, for agents that run on Codex (codex.js): the
+// configured path, else the usual install folders, else whatever PATH has.
+const CODEX_CANDIDATES = isWin
+  ? [path.join(process.env.APPDATA || '', 'npm', 'codex.cmd'), path.join(home, '.local', 'bin', 'codex.exe')]
+  : ['/opt/homebrew/bin/codex', '/usr/local/bin/codex', path.join(home, '.local', 'bin', 'codex'), path.join(home, '.npm-global', 'bin', 'codex')];
+
+function findCodex(configured) {
+  if (configured && fs.existsSync(configured)) return configured;
+  return CODEX_CANDIDATES.find(c => fs.existsSync(c)) || 'codex';
+}
+
+// As claudeCommand: an npm install on Windows is a .cmd file, started
+// through node so cmd.exe does not mangle the arguments.
+function codexCommand(binary) {
+  if (isWin && /\.(cmd|bat)$/i.test(binary)) {
+    const cli = path.join(path.dirname(binary), 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
+    if (fs.existsSync(cli)) return { command: 'node', prefix: [cli] };
+  }
+  return { command: binary, prefix: [] };
+}
+
+function spawnCodex(configuredPath, args, options) {
+  const { command, prefix } = codexCommand(findCodex(configuredPath));
+  return spawn(command, [...prefix, ...args], {
+    ...options,
+    detached: !isWin,
+    windowsHide: true,
+  });
+}
+
 // Stops a process and every process it started.
 function killTree(proc) {
   if (!proc?.pid) return;
@@ -206,4 +238,4 @@ function childEnv(extra) {
   return env;
 }
 
-module.exports = { isWin, findClaude, claudeInfo, spawnClaude, killTree, childEnv };
+module.exports = { isWin, findClaude, claudeInfo, spawnClaude, findCodex, spawnCodex, killTree, childEnv };

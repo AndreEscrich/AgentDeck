@@ -172,3 +172,7 @@ details.change-file > summary:hover { background: #f1ebe3; }
 .msg-user .cortex-card { background: rgba(255, 255, 255, 0.6); }
 .cortex-space { color: #5b45d6; }
 .cortex-logo { color: #6b55e6; }
+.limit-banner { background: #f1ecff; border-color: #cbbcf5; color: #4a3592; }
+.limit-banner-timer { color: #3a2486; }
+.hub-health.split .health-seg + .health-seg { border-left-color: #e6dfd5; }
+.hub-health.split .health-seg.codex .health-label, .usage-provider.codex, .item-provider { color: #23809a; }

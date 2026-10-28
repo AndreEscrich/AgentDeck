@@ -98,6 +98,29 @@ function openSettings(config, { onSaved } = {}) {
   reportBtn.onclick = () => autoReport.open();
   const effort = settingsSelect(EFFORT_OPTIONS, config.defaultEffort || '');
   const fast = settingsInput('checkbox', config.defaultFastMode);
+  // Providers: Claude Code and Codex, each on or off, and which one new
+  // agents start on (the other takes over while its limit is reached).
+  const claudeOn = settingsInput('checkbox', config.claudeEnabled !== false);
+  const codexOn = settingsInput('checkbox', !!config.codexEnabled);
+  const provider = settingsSelect([['claude', 'Claude'], ['codex', 'Codex']], config.defaultProvider || 'claude');
+  const codexModelChoices = [['', 'Codex default'], ...codexMenuModels().map(m => [m.value, m.displayName])];
+  const codexModel = settingsSelect(codexModelChoices, config.codexModel || '');
+  const codexEffortOptions = () => {
+    const m = codexModelByValue(codexModel.value);
+    const levels = m.supportedEffortLevels?.length ? m.supportedEffortLevels : ['low', 'medium', 'high', 'xhigh', 'max'];
+    return [['', m.defaultEffort ? `Model default (${EFFORT_NAMES[m.defaultEffort] || m.defaultEffort})` : 'Model default'], ...levels.map(l => [l, EFFORT_NAMES[l] || l])];
+  };
+  const codexEffortSlot = el('div', 'settings-inline');
+  let codexEffort = settingsSelect(codexEffortOptions(), config.codexEffort || '');
+  codexEffortSlot.appendChild(codexEffort);
+  codexModel.onchange = () => {
+    const keep = codexEffort.value;
+    const next = settingsSelect(codexEffortOptions(), '');
+    if ([...next.options].some(o => o.value === keep)) next.value = keep;
+    codexEffort.replaceWith(next);
+    codexEffort = next;
+  };
+  const codexPath = settingsInput('text', config.codexPath, { placeholder: 'Found by itself: Homebrew, npm or ~/.local/bin' });
   const compact = settingsSelect([['150k', '150k tokens'], ['200k', '200k tokens'], ['300k', '300k tokens'], ['500k', '500k tokens'], ['auto', 'When Claude Code decides']], config.autoCompact || '200k');
 
   // The app
@@ -166,11 +189,20 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('Auto game folder', 'A new agent whose message is about one game (by any of its names, or a PM task about it) works in that game\'s folder, for that agent only. About no game or several: the folder you picked', autoGame),
       settingsField('Permissions', null, mode),
       settingsField('Compact the conversation at', 'Every step re-reads the whole conversation, so long tasks get expensive. Smaller: less usage, but the agent remembers fewer details from early in the task', compact))]],
-    ['model', 'Model', [section(null,
-      settingsField('Model', 'Auto picks Opus, Sonnet or Haiku for each task', model),
-      settingsField('Auto model report', 'What Auto cost against running everything on Opus at medium effort', reportBtn),
-      settingsField('Effort', 'Auto: with the Auto model, it picks the effort for each task too; with another model, the model\'s default', effort),
-      settingsField('Fast mode', 'Faster answers from the same model', fast))]],
+    ['model', 'Providers', [
+      section(null,
+        settingsField('Start new agents on', 'When its usage limit is reached, new agents start on the other provider (if it is on). Agents that are working wait for their own provider\'s limit to reset, so their conversation stays where it is', provider)),
+      section('Claude',
+        settingsField('Use Claude', 'Claude Code, with your Claude login', claudeOn),
+        settingsField('Model', 'Auto picks Opus, Sonnet or Haiku for each task', model),
+        settingsField('Auto model report', 'What Auto cost against running everything on Opus at medium effort', reportBtn),
+        settingsField('Effort', 'Auto: with the Auto model, it picks the effort for each task too; with another model, the model\'s default', effort),
+        settingsField('Fast mode', 'Faster answers from the same model', fast)),
+      section('Codex',
+        settingsField('Use Codex', 'OpenAI\'s Codex CLI, with your ChatGPT login (codex login in a terminal). Its agents read the project\'s CLAUDE.md and your global one', codexOn),
+        settingsField('Model', 'The models your ChatGPT plan offers', codexModel),
+        settingsField('Effort', null, codexEffortSlot),
+        settingsField('Codex program', 'Empty: the app finds it', codexPath))]],
     ['app', 'App', [section(null,
       settingsField('Theme', 'Nostromo: the screens of the ship’s computer in Alien, on an old tube', theme),
       settingsField('Curved screen', 'Nostromo only: the screen has the bulging shape of a tube’s glass, with scanlines that bow with it', curved),
@@ -292,6 +324,12 @@ function openSettings(config, { onSaved } = {}) {
       defaultModel: model.value,
       defaultEffort: effort.value,
       defaultFastMode: fast.checked,
+      claudeEnabled: claudeOn.checked,
+      codexEnabled: codexOn.checked,
+      defaultProvider: provider.value,
+      codexModel: codexModel.value,
+      codexEffort: codexEffort.value,
+      codexPath: codexPath.value.trim(),
       autoCompact: compact.value,
       hubAfterSend: hubAfterSend.checked,
       summarizeTitles: titles.checked,
@@ -309,6 +347,12 @@ function openSettings(config, { onSaved } = {}) {
       extraArgs: extraArgs.value.split('\n').map(l => l.trim()).filter(Boolean),
       env: envVars,
     };
+    if (!next.claudeEnabled && !next.codexEnabled) {
+      problem.textContent = 'Keep at least one provider on.';
+      problem.classList.remove('hidden');
+      showSettingOf(claudeOn);
+      return;
+    }
     save.disabled = true;
     try {
       const saved = await window.deck.saveConfig(next);
