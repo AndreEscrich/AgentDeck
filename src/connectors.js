@@ -12,7 +12,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawnClaude, killTree, childEnv } = require('./platform');
+const { spawnClaude, spawnCodex, killTree, childEnv } = require('./platform');
 
 // Runs a `claude mcp …` command and resolves with { code, out }.
 function run(config, args, { cwd = os.homedir(), timeout = 60000 } = {}) {
@@ -129,4 +129,159 @@ async function remove(config, { id, source, cwd }) {
   return { ok: code === 0, message: out.trim() };
 }
 
-module.exports = { list, cached, login, cancelLogin, add, remove, parseList };
+// ---------- Codex ----------
+
+// Codex's connectors, for the Codex tab, managed with Codex's own commands
+// (they live in ~/.codex/config.toml):
+//
+//   codex mcp list --json    every connector, with its address and sign-in state
+//   codex mcp login <name>   sign in (opens the sign-in page in your browser)
+//   codex mcp add …          add one by URL
+//   codex mcp remove <name>  remove one
+
+function runCodex(config, args, { timeout = 60000 } = {}) {
+  return new Promise(resolve => {
+    const proc = spawnCodex(config.codexPath, ['mcp', ...args],
+      { cwd: os.homedir(), env: childEnv(config.env), stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '';
+    proc.stdout.on('data', d => { out += d; });
+    proc.stderr.on('data', d => { out += d; });
+    const timer = setTimeout(() => killTree(proc), timeout);
+    proc.on('error', err => { clearTimeout(timer); resolve({ code: -1, out: err.message }); });
+    proc.on('close', code => { clearTimeout(timer); resolve({ code, out }); });
+  });
+}
+
+// Codex only knows whether a connector needs a sign-in; whether it starts
+// shows when an agent uses it, so one without a sign-in is "Set up".
+function codexEntry(s) {
+  const t = s.transport || {};
+  const target = t.url || [t.command, ...(t.args || [])].filter(Boolean).join(' ');
+  const status = !s.enabled ? 'unknown'
+    : s.auth_status === 'not_logged_in' ? 'auth'
+    : ['o_auth', 'oauth', 'bearer_token'].includes(s.auth_status) ? 'connected'
+    : 'ready';
+  return {
+    id: s.name, name: s.name, target, status,
+    detail: !s.enabled ? `Turned off${s.disabled_reason ? `: ${s.disabled_reason}` : ''}` : '',
+    source: 'codex',
+  };
+}
+
+let lastCodexList = null;
+const codexLogins = new Map();   // connector id -> process
+
+// Everything the Codex tab can offer besides Codex's own connectors, so
+// setting them up is one click:
+// - Claude's connectors (claude.ai and your own) that Codex does not have
+//   yet, by their address: Connect adds them to Codex and signs in. Claude's
+//   own servers (api.anthropic.com) and ones that fail for Claude too are
+//   left out.
+// - The apps your ChatGPT account gives Codex: they work without setup.
+const urlKey = url => String(url || '').trim().toLowerCase().replace(/\/+$/, '');
+const codexName = name => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'connector';
+
+function fromClaude(claudeList, codexList) {
+  const have = new Set(codexList.map(c => urlKey(c.target)));
+  const names = new Set(codexList.map(c => c.id));
+  const offers = [];
+  for (const c of claudeList || []) {
+    const url = /https?:\/\/\S+/.exec(c.target)?.[0];
+    if (!url || c.status === 'failed' || /(^|\.)anthropic\.com$/i.test(hostOf(url)) || have.has(urlKey(url))) continue;
+    let name = codexName(c.name);
+    for (let n = 2; names.has(name); n++) name = `${codexName(c.name)}-${n}`;
+    names.add(name);
+    have.add(urlKey(url));
+    offers.push({ id: `claude:${c.id}`, name: c.name, codexName: name, target: url, status: 'available', detail: '', source: 'claude' });
+  }
+  return offers;
+}
+
+function hostOf(url) {
+  return /^https?:\/\/([^/:\s]+)/i.exec(url)?.[1] || '';
+}
+
+const codex = {
+  async list(config, cwd) {
+    const { code, out } = await runCodex(config, ['list', '--json'], { timeout: 90000 });
+    if (code !== 0) throw new Error(out.trim() || 'codex mcp list failed');
+    const own = JSON.parse(out.slice(out.indexOf('['))).map(codexEntry);
+    // Claude's list takes a while to check; the last one is used when there is one.
+    const [claudeList, apps] = await Promise.all([
+      lastList || list(config, cwd).catch(() => []),
+      require('./codex').chatgptApps(config).catch(() => []),
+    ]);
+    const chatgpt = apps.map(a => ({
+      id: `chatgpt:${a.id}`, name: a.name, target: a.url, status: a.enabled && a.callable ? 'connected' : 'unknown',
+      detail: a.enabled ? '' : 'Turned off in ChatGPT', source: 'chatgpt', description: a.description,
+    }));
+    lastCodexList = [...own, ...chatgpt, ...fromClaude(claudeList, own)];
+    return lastCodexList;
+  },
+
+  cached() {
+    return lastCodexList;
+  },
+
+  // Waits for you to finish in the browser (up to 5 minutes).
+  login(config, id) {
+    return new Promise(resolve => {
+      const proc = spawnCodex(config.codexPath, ['mcp', 'login', id],
+        { cwd: os.homedir(), env: childEnv(config.env), stdio: ['ignore', 'pipe', 'pipe'] });
+      codexLogins.set(id, proc);
+      let out = '';
+      proc.stdout.on('data', d => { out += d; });
+      proc.stderr.on('data', d => { out += d; });
+      const timer = setTimeout(() => killTree(proc), 5 * 60 * 1000);
+      const done = code => {
+        clearTimeout(timer);
+        codexLogins.delete(id);
+        resolve({ ok: code === 0, message: out.trim().split('\n').slice(-3).join('\n') });
+      };
+      proc.on('error', () => done(-1));
+      proc.on('close', done);
+    });
+  },
+
+  cancelLogin(id) {
+    const proc = codexLogins.get(id);
+    if (proc) killTree(proc);
+  },
+
+  // Adds a connector by URL. tokenVar: an optional environment variable
+  // that holds its API key (sent as a bearer token). A connector with a
+  // sign-in makes Codex open the sign-in page right away and wait for it:
+  // after a few seconds the add counts as done and the sign-in carries on,
+  // like Connect.
+  add(config, { name, url, tokenVar }) {
+    if (!/^[A-Za-z0-9_-]{1,60}$/.test(name || '')) return Promise.resolve({ ok: false, message: 'Use only letters, digits, dashes (-) and underscores (_) in the name, for example my-docs.' });
+    if (!/^https?:\/\//i.test(url || '')) return Promise.resolve({ ok: false, message: 'The URL must start with http:// or https://.' });
+    if (tokenVar && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(tokenVar)) return Promise.resolve({ ok: false, message: 'The token variable is the name of an environment variable, for example MY_DOCS_TOKEN.' });
+    const args = ['mcp', 'add', name, '--url', url, ...(tokenVar ? ['--bearer-token-env-var', tokenVar] : [])];
+    return new Promise(resolve => {
+      const proc = spawnCodex(config.codexPath, args, { cwd: os.homedir(), env: childEnv(config.env), stdio: ['ignore', 'pipe', 'pipe'] });
+      let out = '';
+      let answered = false;
+      const answer = result => { if (!answered) { answered = true; resolve(result); } };
+      proc.stdout.on('data', d => { out += d; });
+      proc.stderr.on('data', d => { out += d; });
+      codexLogins.set(name, proc);
+      const signIn = setTimeout(() => answer({ ok: true, signingIn: true, message: out.trim() }), 8000);
+      const timer = setTimeout(() => killTree(proc), 5 * 60 * 1000);
+      proc.on('error', err => { clearTimeout(signIn); clearTimeout(timer); codexLogins.delete(name); answer({ ok: false, message: err.message }); });
+      proc.on('close', code => {
+        clearTimeout(signIn);
+        clearTimeout(timer);
+        codexLogins.delete(name);
+        answer({ ok: code === 0 || /Added global MCP server/.test(out), message: out.trim() });
+      });
+    });
+  },
+
+  async remove(config, { id }) {
+    const { code, out } = await runCodex(config, ['remove', id]);
+    return { ok: code === 0, message: out.trim() };
+  },
+};
+
+module.exports = { list, cached, login, cancelLogin, add, remove, parseList, codex };

@@ -1559,7 +1559,9 @@ class Transcript {
             // The task's message may have been a /skill command.
             if (this.turn && this.prompts.length) this.addSlashSkill(this.turn, this.prompts[this.prompts.length - 1].text);
           }
-          this.addStep(el('div', 'note', `Session ready · ${msg.model} · ${msg.permissionMode} · Claude Code ${msg.claude_code_version || ''}`));
+          this.addStep(el('div', 'note', msg.provider === 'codex'
+            ? `Session ready · Codex · ${msg.model} · ${msg.permissionMode}${msg.codex_version ? ` · Codex CLI ${msg.codex_version}` : ''}`
+            : `Session ready · ${msg.model} · ${msg.permissionMode} · Claude Code ${msg.claude_code_version || ''}`));
         } else if (msg.subtype === 'compact_boundary') {
           // Claude Code summarized the conversation so far (autoCompact in Settings).
           const before = msg.compact_metadata?.pre_tokens;
@@ -2283,7 +2285,8 @@ class Transcript {
     const card = el('div', 'permission question-card');
     card.dataset.requestId = req.requestId;
     const head = el('div', 'perm-head');
-    head.append(el('span', 'question-icon', '?'), el('span', null, questions.length > 1 ? 'Claude has some questions' : 'Claude has a question'));
+    const who = req.who || 'Claude';
+    head.append(el('span', 'question-icon', '?'), el('span', null, questions.length > 1 ? `${who} has some questions` : `${who} has a question`));
     card.appendChild(head);
 
     const answers = () => {

@@ -6,6 +6,8 @@
 // as JSON lines. We forward those events to the window unchanged.
 
 const os = require('os');
+const { EventEmitter } = require('events');
+const { PassThrough } = require('stream');
 const { randomUUID } = require('crypto');
 const { findClaude, spawnClaude, killTree, childEnv } = require('./platform');
 
@@ -347,6 +349,50 @@ class AgentManager {
   }
 }
 
+// ---------- quick helper calls ----------
+
+// The quick calls below (titles, ratings, follow-ups, notes, games) run on
+// the provider Settings → Providers picks for them (helperProvider), with
+// its quick-task model: Haiku on Claude, by default. While that provider is
+// off or at its usage limit, they run on the other one, when it is on and
+// not at its limit too. On Codex it is a quick thread on Codex's app-server
+// (codexAsk in codex.js), wrapped to look like `claude -p --output-format json`.
+const limitedUntil = { claude: 0, codex: 0 };
+function setProviderLimited(provider, untilMs) {
+  if (provider in limitedUntil) limitedUntil[provider] = Number(untilMs) || 0;
+}
+
+function helperProvider(config) {
+  const on = { claude: config.claudeEnabled !== false, codex: !!config.codexEnabled };
+  const usable = p => on[p] && limitedUntil[p] <= Date.now();
+  const want = config.helperProvider === 'codex' ? 'codex' : 'claude';
+  const other = want === 'codex' ? 'claude' : 'codex';
+  if (usable(want)) return want;
+  if (usable(other)) return other;
+  return on[want] || !on[other] ? want : other;
+}
+
+// args: Claude Code's arguments, with "haiku" where the quick-task model goes.
+function spawnHelper(config, args, options) {
+  if (helperProvider(config) === 'codex') return codexHelper(config);
+  const model = config.claudeHelperModel || 'haiku';
+  return spawnClaude(config.claudePath, args.map(a => (a === 'haiku' ? model : a)), options);
+}
+
+function codexHelper(config) {
+  const fake = new EventEmitter();
+  fake.stdout = new PassThrough();
+  fake.stdin = new PassThrough();
+  let prompt = '';
+  fake.stdin.on('data', d => { prompt += d; });
+  fake.stdin.on('end', async () => {
+    const text = await require('./codex').codexAsk(config, prompt).catch(() => null);
+    fake.stdout.end(JSON.stringify(text == null ? { is_error: true } : { result: text.trim(), is_error: false, total_cost_usd: 0 }));
+    setImmediate(() => fake.emit('close', text == null ? 1 : 0));
+  });
+  return fake;
+}
+
 // Asks the CLI which models this account can use. This is the same list, with
 // the same descriptions, that the model menu in the Claude desktop app shows.
 // We start a short-lived process, send the "initialize" request and read the
@@ -388,7 +434,7 @@ function fetchModels(config) {
 // in History. Resolves with the title, or null.
 function summarizeTitle(config, text) {
   return new Promise(resolve => {
-    const proc = spawnClaude(config.claudePath,
+    const proc = spawnHelper(config,
       ['-p', '--model', 'haiku', '--output-format', 'json', '--strict-mcp-config', '--tools', '', '--no-session-persistence'],
       { cwd: os.tmpdir(), env: childEnv(config.env), stdio: ['pipe', 'pipe', 'ignore'] });
     helperProcesses.add(proc);
@@ -426,7 +472,7 @@ function summarizeTitle(config, text) {
 // { level, cost } (level null when it could not tell; cost in dollars).
 function rateTask(config, text, context = '') {
   return new Promise(resolve => {
-    const proc = spawnClaude(config.claudePath,
+    const proc = spawnHelper(config,
       ['-p', '--model', 'haiku', '--output-format', 'json', '--strict-mcp-config', '--tools', '', '--no-session-persistence'],
       { cwd: os.tmpdir(), env: childEnv(config.env), stdio: ['pipe', 'pipe', 'ignore'] });
     helperProcesses.add(proc);
@@ -462,7 +508,7 @@ function rateTask(config, text, context = '') {
 // with an array (empty when it failed). See loadFollowUps in app.js.
 function suggestFollowUps(config, { task = '', answer = '', notes = '' }) {
   return new Promise(resolve => {
-    const proc = spawnClaude(config.claudePath,
+    const proc = spawnHelper(config,
       ['-p', '--model', 'haiku', '--output-format', 'json', '--strict-mcp-config', '--tools', '', '--no-session-persistence'],
       { cwd: os.tmpdir(), env: childEnv(config.env), stdio: ['pipe', 'pipe', 'ignore'] });
     helperProcesses.add(proc);
@@ -506,7 +552,7 @@ function suggestFollowUps(config, { task = '', answer = '', notes = '' }) {
 const NOTES_LIMIT = 40;
 function mergeNotes(config, { notes = '', category = '', task = '', answer = '', files = [] }) {
   return new Promise(resolve => {
-    const proc = spawnClaude(config.claudePath,
+    const proc = spawnHelper(config,
       ['-p', '--model', 'haiku', '--output-format', 'json', '--strict-mcp-config', '--tools', '', '--no-session-persistence'],
       { cwd: os.tmpdir(), env: childEnv(config.env), stdio: ['pipe', 'pipe', 'ignore'] });
     helperProcesses.add(proc);
@@ -598,7 +644,7 @@ function pickGame(config, question, { task = null } = {}) {
     const args = ['-p', '--model', 'haiku', '--output-format', 'json', '--no-session-persistence'];
     if (task) args.push('--tools', 'ToolSearch', '--allowedTools', 'ToolSearch,mcp__claude_ai_Tactile_PM__pm_get_task');
     else args.push('--strict-mcp-config', '--tools', '');
-    const proc = spawnClaude(config.claudePath, args,
+    const proc = spawnHelper(config, args,
       { cwd: os.tmpdir(), env: { ...childEnv(config.env), ENABLE_TOOL_SEARCH: 'true' }, stdio: ['pipe', 'pipe', 'ignore'] });
     helperProcesses.add(proc);
     let out = '';
@@ -620,4 +666,4 @@ function pickGame(config, question, { task = null } = {}) {
   });
 }
 
-module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, rateTask, pickGame, mergeNotes, suggestFollowUps, fetchUsage };
+module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, rateTask, pickGame, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited, compactTokens, SYSTEM_PROMPT, EDIT_PROMPT };

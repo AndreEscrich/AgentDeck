@@ -2,6 +2,11 @@
 // opens a menu with the models, their descriptions, the effort levels the
 // selected model supports, and fast mode. The model list comes from the CLI,
 // so it matches what the Claude desktop app offers for your account.
+//
+// With Codex on too (Settings → Providers), the menu lists Claude's models
+// and Codex's, and a choice says which provider it is on ({ provider,
+// model, effort, fastMode }). An agent with a session stays on its provider
+// (setLocked): its conversation lives with that provider.
 
 const FALLBACK_MODELS = [
   { value: 'default', displayName: 'Default (recommended)', description: 'Claude Code picks the model' },
@@ -10,10 +15,53 @@ const FALLBACK_MODELS = [
   { value: 'haiku', displayName: 'Haiku', description: 'Fastest for quick answers' },
 ];
 
-const EFFORT_NAMES = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
+const EFFORT_NAMES = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max', ultra: 'Ultra' };
+const PROVIDER_NAMES = { claude: 'Claude', codex: 'Codex' };
 
 let sharedModels = FALLBACK_MODELS;
+let codexModels = [];
+// Which providers are on (Settings → Providers), see setProviders.
+const providersOn = { claude: true, codex: false };
 const pickers = [];
+
+// Codex's menu works like Claude's: Auto, then the newest Sol, Terra and
+// Luna, and apart from them Astra, for exceptions. A choice saves the family
+// ("sol"), and the newest model of it runs (resolveModel in codex.js), like
+// Claude's "opus". Auto picks Luna, Terra or Sol for each task, the way
+// Claude's Auto picks Haiku, Sonnet or Opus (automodel.js, level 1 to 3).
+const CODEX_FAMILIES = ['sol', 'terra', 'luna', 'astra'];
+const CODEX_AUTO_FAMILIES = ['luna', 'terra', 'sol'];
+const FAMILY_NAMES = { sol: 'Sol', terra: 'Terra', luna: 'Luna', astra: 'Astra' };
+const CODEX_AUTO = {
+  value: 'auto', displayName: 'Auto', description: 'Picks Sol, Terra or Luna for each task', provider: 'codex',
+  supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'], supportsFastMode: true,
+};
+const latestCodex = family => codexModels.find(m => m.family === family && m.latest) || null;
+// A family as a menu entry: its newest model, named by the family.
+const familyEntry = family => {
+  const m = latestCodex(family);
+  return m ? { ...m, value: family, displayName: FAMILY_NAMES[family], description: `${m.displayName}: ${m.description}` } : null;
+};
+const codexModelByValue = value => {
+  if (!value || value === 'auto' || value === 'default') return CODEX_AUTO;
+  if (CODEX_FAMILIES.includes(value)) return familyEntry(value) || { value, displayName: FAMILY_NAMES[value], description: '', provider: 'codex' };
+  return codexModels.find(m => m.value === value) || { value, displayName: value, description: '', provider: 'codex' };
+};
+// The menu's entries; while the list is not loaded (or names no families), Auto alone.
+function codexMenuModels() {
+  const families = CODEX_FAMILIES.map(familyEntry).filter(Boolean);
+  return families.length ? families : codexModels;
+}
+// A saved Codex model as the menu's choice: nothing is Auto, and a model id
+// that is its family's newest is the family.
+function codexChoiceModel(value) {
+  if (!value || value === 'default') return 'auto';
+  const m = codexModelByValue(value);
+  return m.latest && m.family ? m.family : value;
+}
+const codexAutoFamily = level => CODEX_AUTO_FAMILIES[Math.max(1, Math.min(3, level || 2)) - 1];
+const providerOf = value => (value?.provider === 'codex' ? 'codex' : 'claude');
+const bothOn = () => providersOn.claude && providersOn.codex;
 
 // The menu: Auto, then the newest Opus, Sonnet and Haiku, and apart from
 // them Fable, for exceptions (the older versions and "Default" stay out of
@@ -46,6 +94,7 @@ const isFable = m => /^fable/i.test(m.displayName || '') || m.value === 'fable';
 // family's alias, which always runs the newest version; a pinned older
 // version keeps its number ("Opus 4.8").
 function shortName(model) {
+  if (model.provider === 'codex') return model.displayName;
   const name = model.displayName.replace(/\s*\(recommended\)/i, '');
   return /^(fable|opus|sonnet|haiku)$/i.test(model.value || '') ? name.replace(/\s+[\d.]+$/, '') : name;
 }
@@ -76,7 +125,12 @@ class ModelPicker {
   }
 
   get model() {
-    return modelByValue(this.value.model);
+    return providerOf(this.value) === 'codex' ? codexModelByValue(this.value.model) : modelByValue(this.value.model);
+  }
+
+  // An agent with a session can only change models of its own provider.
+  setLocked(provider) {
+    this.locked = provider || null;
   }
 
   // With Auto: the model it picked for the agent on screen ("Sonnet"), shown
@@ -87,14 +141,15 @@ class ModelPicker {
   }
 
   setValue(value) {
-    this.value = { model: 'default', effort: '', fastMode: false, ...value };
-    if (!this.value.model) this.value.model = 'default';
+    this.value = { provider: 'claude', model: 'default', effort: '', fastMode: false, ...value };
+    if (!this.value.model) this.value.model = this.value.provider === 'codex' ? 'auto' : 'default';
     this.renderButton();
     if (!this.menu.classList.contains('hidden')) this.renderMenu();
   }
 
   renderButton() {
     const parts = [shortName(this.model) + (this.value.model === 'auto' && this.resolved ? ` → ${this.resolved}` : '')];
+    if (bothOn() || providerOf(this.value) === 'codex') parts.unshift(PROVIDER_NAMES[providerOf(this.value)]);
     if (this.value.effort) parts.push(EFFORT_NAMES[this.value.effort] || this.value.effort);
     this.button.textContent = parts.join(' · ') + (this.value.fastMode ? ' ⚡' : '') + ' ▾';
     this.button.title = this.model.description || '';
@@ -115,7 +170,7 @@ class ModelPicker {
   change(patch) {
     const next = { ...this.value, ...patch };
     // Keep only settings the newly selected model supports.
-    const model = modelByValue(next.model);
+    const model = providerOf(next) === 'codex' ? codexModelByValue(next.model) : modelByValue(next.model);
     if (!(model.supportedEffortLevels || []).includes(next.effort)) next.effort = '';
     if (!model.supportsFastMode) next.fastMode = false;
     this.setValue(next);
@@ -127,16 +182,33 @@ class ModelPicker {
     const menu = this.menu;
     menu.innerHTML = '';
 
-    menu.appendChild(el('div', 'menu-label', 'Model'));
-    for (const m of menuModels()) {
-      // Fable stands apart, below a line: the exception, not an everyday pick.
-      if (isFable(m)) menu.appendChild(el('div', 'menu-sep-label', 'For exceptions'));
-      const row = el('div', 'menu-item' + (m.value === this.value.model ? ' selected' : '') + (isFable(m) ? ' exception' : '') + (m.value === 'auto' ? ' auto' : ''));
+    const current = providerOf(this.value);
+    const show = p => (this.locked ? this.locked === p : providersOn[p] || current === p);
+    const both = show('claude') && show('codex');
+    const row = (m, provider, extra = '') => {
+      const selected = provider === current && m.value === this.value.model;
+      const item = el('div', 'menu-item' + (selected ? ' selected' : '') + extra);
       const text = el('div', 'menu-text');
       text.append(el('div', 'menu-name', shortName(m)), el('div', 'menu-desc', m.description || ''));
-      row.append(text, el('span', 'menu-check', m.value === this.value.model ? '✓' : ''));
-      row.onclick = () => this.change({ model: m.value });
-      menu.appendChild(row);
+      item.append(text, el('span', 'menu-check', selected ? '✓' : ''));
+      item.onclick = () => this.change({ provider, model: m.value });
+      menu.appendChild(item);
+    };
+    if (show('claude')) {
+      menu.appendChild(el('div', 'menu-label', both ? 'Claude' : 'Model'));
+      for (const m of menuModels()) {
+        // Fable stands apart, below a line: the exception, not an everyday pick.
+        if (isFable(m)) menu.appendChild(el('div', 'menu-sep-label', 'For exceptions'));
+        row(m, 'claude', (isFable(m) ? ' exception' : '') + (m.value === 'auto' ? ' auto' : ''));
+      }
+    }
+    if (show('codex')) {
+      menu.appendChild(el('div', 'menu-label', both ? 'Codex' : 'Model'));
+      row(CODEX_AUTO, 'codex', ' codex auto');
+      for (const m of codexMenuModels()) {
+        if (m.family === 'astra') menu.appendChild(el('div', 'menu-sep-label', 'For exceptions'));
+        row(m, 'codex', ' codex' + (m.family === 'astra' ? ' exception' : ''));
+      }
     }
 
     const model = this.model;
@@ -159,7 +231,11 @@ class ModelPicker {
       const box = el('span', 'switch' + (this.value.fastMode ? ' on' : ''));
       row.onclick = () => this.change({ fastMode: !this.value.fastMode });
       const text = el('div', 'menu-text');
-      text.append(el('div', 'menu-name', 'Fast mode'), el('div', 'menu-desc', 'Faster output from the same model, and uses your limits faster'));
+      const codex = providerOf(this.value) === 'codex';
+      const desc = !codex ? 'Faster output from the same model, and uses your limits faster'
+        : model.value === 'auto' ? 'Codex\'s Fast tier for the model Auto picks: faster, and for Sol and Astra it uses your limits faster'
+        : `Codex's Fast tier: ${model.fastTier?.description || 'faster output'}${model.fastByDefault ? ' (this model runs fast even with it off)' : ''}`;
+      text.append(el('div', 'menu-name', 'Fast mode'), el('div', 'menu-desc', desc));
       row.append(text, box);
       menu.appendChild(row);
     }
@@ -248,15 +324,46 @@ class ModePicker {
   }
 }
 
-// Loads the account's model list once and updates every picker on screen.
+// Loads the account's model lists once and updates every picker on screen.
 async function loadModels() {
-  const models = await window.deck.listModels();
-  if (Array.isArray(models) && models.length) {
-    sharedModels = models;
+  const [models, codex] = await Promise.all([
+    providersOn.claude ? window.deck.listModels().catch(() => null) : null,
+    providersOn.codex ? window.deck.listCodexModels().catch(() => null) : null,
+  ]);
+  if (Array.isArray(models) && models.length) sharedModels = models;
+  if (Array.isArray(codex) && codex.length) codexModels = codex;
+  for (const p of pickers) p.setValue(p.value);
+}
+
+// Codex's model list, also while Codex is still off (Settings lists its
+// models as soon as you turn it on). Resolves with the list, [] when Codex
+// could not be asked.
+async function loadCodexModels() {
+  const codex = await window.deck.listCodexModels().catch(() => null);
+  if (Array.isArray(codex) && codex.length) {
+    codexModels = codex;
     for (const p of pickers) p.setValue(p.value);
   }
+  return codexModels;
+}
+
+// Which providers are on, from the settings.
+function setProviders(config) {
+  const before = providersOn.codex;
+  providersOn.claude = config.claudeEnabled !== false;
+  providersOn.codex = !!config.codexEnabled;
+  if (providersOn.codex && !before) loadModels();
+  for (const p of pickers) if (p instanceof ModelPicker) p.renderButton();
 }
 
 window.ModelPicker = ModelPicker;
 window.ModePicker = ModePicker;
 window.loadModels = loadModels;
+window.setProviders = setProviders;
+window.loadCodexModels = loadCodexModels;
+window.codexModelByValue = codexModelByValue;
+window.codexMenuModels = codexMenuModels;
+window.codexAutoFamily = codexAutoFamily;
+window.codexChoiceModel = codexChoiceModel;
+window.FAMILY_NAMES = FAMILY_NAMES;
+window.PROVIDER_NAMES = PROVIDER_NAMES;

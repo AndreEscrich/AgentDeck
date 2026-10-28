@@ -99,21 +99,13 @@ class Hub {
 
     // Your session's usage as a health bar across the top of the Hub (see
     // renderHealth): what is left of the 5-hour limit, losing chunks as your
-    // agents use tokens. Clicking it opens the usage card.
+    // agents use tokens. Clicking it opens the usage card. With Claude and
+    // Codex both on, it has one part per provider, side by side.
     this.health = el('button', 'hub-health');
     this.health.type = 'button';
     this.health.title = 'Usage: click for details';
-    const track = el('div', 'health-track');
-    this.healthGhost = el('div', 'health-ghost');
-    this.healthFill = el('div', 'health-fill');
-    const ticks = el('div', 'health-ticks');
-    for (let i = 0; i < 9; i++) ticks.appendChild(el('span'));
-    this.healthFloat = el('div', 'health-floats');
-    track.append(this.healthGhost, this.healthFill, ticks, this.healthFloat);
-    this.healthLabel = el('span', 'health-label', 'Tokens');
-    this.healthText = el('span', 'health-text', '');
-    this.healthWeek = el('span', 'health-week');
-    this.health.append(this.healthLabel, track, this.healthText, this.healthWeek);
+    this.healthSegs = { claude: Hub.healthSeg(), codex: Hub.healthSeg() };
+    this.health.append(this.healthSegs.claude.el, this.healthSegs.codex.el);
     this.health.onclick = () => { clearTimeout(this.hoverOpen); this.rail.classList.remove('from-health'); this.showPanel?.('usage'); };
     // Pointing at the bar for a quarter of a second opens the usage card under it; it
     // closes again when the pointer leaves both the bar and the card.
@@ -218,26 +210,39 @@ class Hub {
     this.setUsage(null);
   }
 
-  // usage: { limits: rate_limit_info from Claude Code or null, at: when it
-  // arrived, tokens: tokens your agents used since the app opened, tasks }.
+  // usage: { claude, codex, tokens: tokens your agents used since the app
+  // opened, tasks }. claude and codex: { limits: rate_limit_info or null,
+  // at: when it arrived }, or null while that provider is off.
   setUsage(usage) {
     this.usageData = usage;
     this.renderUsage();
-    // While the limit is reached, the countdown and the tiles' "continues in" tick.
+    // While a limit is reached, the countdown and the tiles' "continues in" tick.
     clearInterval(this.limitTick);
-    if (usage?.limits?.status === 'rejected') this.limitTick = setInterval(() => { this.renderUsage(); if (this.latest) this.update(...this.latest); }, 30 * 1000);
+    if (Hub.providers(usage).some(p => usage[p].limits?.status === 'rejected')) this.limitTick = setInterval(() => { this.renderUsage(); if (this.latest) this.update(...this.latest); }, 30 * 1000);
+  }
+
+  // The providers that are on, Claude first.
+  static providers(usage) {
+    return ['claude', 'codex'].filter(p => usage?.[p]);
   }
 
   renderUsage() {
     const u = this.usageData;
-    this.renderUsageTab(u?.limits?.unifiedWindows);
+    this.renderUsageTab(u);
     this.renderHealth();
     const box = this.usageMain;
     box.textContent = '';
     box.appendChild(el('div', 'usage-title', 'Usage'));
-    const windows = u?.limits?.unifiedWindows;
+    const providers = Hub.providers(u);
     const meters = [['five_hour', 'Current session', '5-hour limit'], ['seven_day', 'This week', 'all models']];
-    if (windows) {
+    for (const p of providers) {
+      const data = u[p];
+      if (providers.length > 1) box.appendChild(el('div', `usage-provider ${p}`, PROVIDER_NAMES[p]));
+      const windows = data.limits?.unifiedWindows;
+      if (!windows) {
+        box.appendChild(el('div', 'usage-note', p === 'codex' ? 'Shows Codex\'s limits once Codex answers.' : 'Shows your plan limits after an agent\'s first reply.'));
+        continue;
+      }
       for (const [key, label, note] of meters) {
         const w = windows[key];
         if (!w) continue;
@@ -250,14 +255,12 @@ class Hub {
         const fill = el('div', 'usage-fill');
         fill.style.width = `${pct}%`;
         bar.appendChild(fill);
-        meter.append(top, bar, el('div', 'usage-note', `${note} · resets ${Hub.resetFull(w.resetsAt)}`));
+        meter.append(top, bar, el('div', 'usage-note', `${p === 'codex' && key === 'seven_day' ? 'Codex' : note} · resets ${Hub.resetFull(w.resetsAt)}`));
         box.appendChild(meter);
       }
-      if (u.limits.status === 'rejected') box.appendChild(el('div', 'usage-warn', `Limit reached: it resets ${Hub.resetFull(u.limits.resetsAt)}, and waiting agents continue then`));
-      const age = Date.now() - (u.at || 0);
+      if (data.limits.status === 'rejected') box.appendChild(el('div', 'usage-warn', `Limit reached: it resets ${Hub.resetFull(data.limits.resetsAt)}, and waiting ${PROVIDER_NAMES[p]} agents continue then${providers.length > 1 ? `; new agents start on ${PROVIDER_NAMES[providers.find(o => o !== p)]}` : ''}`));
+      const age = Date.now() - (data.at || 0);
       if (age > 10 * 60 * 1000) box.appendChild(el('div', 'usage-note', `as of ${Hub.ago(age)} ago`));
-    } else {
-      box.appendChild(el('div', 'usage-note', 'Shows your plan limits after an agent\'s first reply.'));
     }
     const tokens = u?.tokens || 0;
     const since = el('div', 'usage-since');
@@ -267,80 +270,119 @@ class Hub {
     box.appendChild(since);
   }
 
-  // The tab shows the session and the week as two small upright meters,
-  // with the session's percentage under them.
-  renderUsageTab(windows) {
+  // The tab shows each provider's session and week as two small upright
+  // meters, with the session's percentage under them.
+  renderUsageTab(u) {
     const tab = this.usageTab;
     tab.textContent = '';
-    const bars = el('div', 'usage-tab-bars');
-    for (const key of ['five_hour', 'seven_day']) {
-      const pct = windows?.[key] ? Math.max(0, Math.min(100, Math.round((windows[key].utilization || 0) * 100))) : 0;
-      const bar = el('span', `usage-tab-bar ${pct >= 90 ? 'high' : pct >= 70 ? 'mid' : 'low'}`);
-      const fill = el('span');
-      fill.style.height = `${pct}%`;
-      bar.appendChild(fill);
-      bars.appendChild(bar);
+    const providers = Hub.providers(u);
+    for (const p of providers.length ? providers : ['claude']) {
+      const windows = u?.[p]?.limits?.unifiedWindows;
+      const bars = el('div', `usage-tab-bars ${p}`);
+      for (const key of ['five_hour', 'seven_day']) {
+        const pct = windows?.[key] ? Math.max(0, Math.min(100, Math.round((windows[key].utilization || 0) * 100))) : 0;
+        const bar = el('span', `usage-tab-bar ${pct >= 90 ? 'high' : pct >= 70 ? 'mid' : 'low'}`);
+        const fill = el('span');
+        fill.style.height = `${pct}%`;
+        bar.appendChild(fill);
+        bars.appendChild(bar);
+      }
+      const session = windows?.five_hour ? `${Math.round((windows.five_hour.utilization || 0) * 100)}%` : '–';
+      tab.append(bars, el('span', 'usage-tab-pct', session));
+      if (providers.length > 1) bars.title = PROVIDER_NAMES[p];
     }
-    const session = windows?.five_hour ? `${Math.round((windows.five_hour.utilization || 0) * 100)}%` : '–';
-    tab.append(bars, el('span', 'usage-tab-pct', session), el('span', 'usage-tab-label', 'Usage'));
+    tab.append(el('span', 'usage-tab-label', 'Usage'));
     this.limitTimer?.remove();
     this.limitTimer = null;
   }
 
+  // One provider's part of the health bar.
+  static healthSeg() {
+    const seg = { el: el('div', 'health-seg'), left: null, pending: null, timer: null };
+    const track = el('div', 'health-track');
+    seg.ghost = el('div', 'health-ghost');
+    seg.fill = el('div', 'health-fill');
+    const ticks = el('div', 'health-ticks');
+    for (let i = 0; i < 9; i++) ticks.appendChild(el('span'));
+    seg.float = el('div', 'health-floats');
+    track.append(seg.ghost, seg.fill, ticks, seg.float);
+    seg.label = el('span', 'health-label', 'Tokens');
+    seg.text = el('span', 'health-text', '');
+    seg.week = el('span', 'health-week');
+    seg.el.append(seg.label, track, seg.text, seg.week);
+    return seg;
+  }
+
   // The health bar: what is left of the session's limit. When it drops, a
   // lighter "ghost" stays at the old level for a moment and then catches up,
-  // like a game's health bar taking damage.
+  // like a game's health bar taking damage. One part per provider that is on.
   renderHealth() {
-    const l = this.usageData?.limits;
+    const providers = Hub.providers(this.usageData);
+    const shown = providers.length ? providers : ['claude'];
+    const split = shown.length > 1;
+    this.health.classList.toggle('split', split);
+    for (const p of ['claude', 'codex']) {
+      const seg = this.healthSegs[p];
+      seg.el.classList.toggle('hidden', !shown.includes(p));
+      seg.el.classList.toggle(p, true);
+      if (!shown.includes(p)) continue;
+      seg.label.textContent = split ? PROVIDER_NAMES[p] : 'Tokens';
+      this.renderHealthSeg(seg, this.usageData?.[p]?.limits, split ? PROVIDER_NAMES[p] : null);
+    }
+  }
+
+  renderHealthSeg(seg, l, name) {
     const w = l?.unifiedWindows;
     const used = w?.five_hour ? Math.max(0, Math.min(100, (w.five_hour.utilization || 0) * 100)) : null;
     const resets = l?.status === 'rejected' ? l.resetsAt || w?.[l.rateLimitType]?.resetsAt : w?.five_hour?.resetsAt;
     const limited = l?.status === 'rejected' && resets && resets * 1000 > Date.now();
     const left = limited ? 0 : used == null ? null : 100 - used;
-    this.health.classList.toggle('unknown', left == null);
-    this.health.classList.toggle('limited', !!limited);
-    this.health.classList.remove('low', 'mid', 'high');
-    if (left != null) this.health.classList.add(left <= 10 ? 'low' : left <= 30 ? 'mid' : 'high');
+    seg.el.classList.toggle('unknown', left == null);
+    seg.el.classList.toggle('limited', !!limited);
+    seg.el.classList.remove('low', 'mid', 'high');
+    if (left != null) seg.el.classList.add(left <= 10 ? 'low' : left <= 30 ? 'mid' : 'high');
     const pct = left ?? 0;
-    const before = this.healthLeft;
-    this.healthLeft = pct;
-    this.healthFill.style.width = `${pct}%`;
+    const before = seg.left;
+    seg.left = pct;
+    seg.fill.style.width = `${pct}%`;
     if (before == null || pct >= before) {
       // Going up (a reset) or the first value: the ghost follows at once.
-      this.healthGhost.style.transitionDelay = '0s';
-      this.healthGhost.style.width = `${pct}%`;
+      seg.ghost.style.transitionDelay = '0s';
+      seg.ghost.style.width = `${pct}%`;
     } else {
       // Damage: the bar flashes, the ghost lingers, then drains to the new level.
-      this.health.classList.remove('hit');
-      void this.health.offsetWidth;
-      this.health.classList.add('hit');
-      this.healthGhost.style.transitionDelay = '0.6s';
-      this.healthGhost.style.width = `${pct}%`;
+      seg.el.classList.remove('hit');
+      void seg.el.offsetWidth;
+      seg.el.classList.add('hit');
+      seg.ghost.style.transitionDelay = '0.6s';
+      seg.ghost.style.width = `${pct}%`;
     }
-    this.healthText.textContent = limited
-      ? `Limit reached · resets ${Hub.resetText(resets)}, then waiting agents continue`
-      : left == null ? 'Usage shows after an agent\'s first reply'
+    seg.text.textContent = limited
+      ? (name ? `Limit reached · resets ${Hub.resetText(resets)}` : `Limit reached · resets ${Hub.resetText(resets)}, then waiting agents continue`)
+      : left == null ? (name ? 'Shows after its first reply' : 'Usage shows after an agent\'s first reply')
       : `${Math.round(left)}% left${resets ? ` · resets ${Hub.resetText(resets)}` : ''}`;
     const week = w?.seven_day ? Math.round((w.seven_day.utilization || 0) * 100) : null;
-    this.healthWeek.textContent = week == null ? '' : `Week ${week}%`;
+    seg.week.textContent = week == null ? '' : `Week ${week}%`;
   }
 
   // Tokens an agent just used: a number that floats off the bar's end.
-  // One answer's tokens float off the health bar, weighted roughly as they
-  // count against your usage: new input, cache writes and output in full,
-  // cache reads (the conversation read again from the prompt cache, most of
-  // a long conversation's tokens) at a tenth, as in the API's prices.
-  // Pointing at the number holds it and shows the breakdown; the health bar's
-  // tooltip keeps the last one. parts: { input, cacheWrite, cacheRead, output }.
-  tokenTick(parts) {
-    if (!parts || !this.healthFloat.isConnected) return;
-    const p = this.pendingParts = this.pendingParts || { input: 0, cacheWrite: 0, cacheRead: 0, output: 0 };
+  // One answer's tokens float off its provider's part of the health bar,
+  // weighted roughly as they count against your usage: new input, cache
+  // writes and output in full, cache reads (the conversation read again from
+  // the prompt cache, most of a long conversation's tokens) at a tenth, as in
+  // the API's prices. Pointing at the number holds it and shows the
+  // breakdown; the health bar's tooltip keeps the last one.
+  // parts: { input, cacheWrite, cacheRead, output }.
+  tokenTick(parts, provider = 'claude') {
+    const seg = this.healthSegs[provider] || this.healthSegs.claude;
+    if (!parts || !seg.float.isConnected) return;
+    const p = seg.pending = seg.pending || { input: 0, cacheWrite: 0, cacheRead: 0, output: 0 };
     for (const k of Object.keys(p)) p[k] += parts[k] || 0;
-    if (this.tokenTimer) return;
-    this.tokenTimer = setTimeout(() => {
-      const t = this.pendingParts;
-      this.pendingParts = null;
-      this.tokenTimer = null;
+    if (seg.timer) return;
+    seg.timer = setTimeout(() => {
+      const t = seg.pending;
+      seg.pending = null;
+      seg.timer = null;
       const weighted = Math.round(t.input + t.cacheWrite + t.output + t.cacheRead / 10);
       if (!weighted) return;
       const detail = [
@@ -349,12 +391,12 @@ class Hub {
       ].join(' · ');
       const f = el('span', 'health-float', `−${formatTokens(weighted)}`);
       f.title = `This step: about ${formatTokens(weighted)} tokens of your usage\n${detail}`;
-      f.style.left = `${Math.max(4, Math.min(92, this.healthLeft ?? 50))}%`;
-      this.healthFloat.appendChild(f);
+      f.style.left = `${Math.max(4, Math.min(92, seg.left ?? 50))}%`;
+      seg.float.appendChild(f);
       this.health.title = `Usage: click for details\nLast step: about ${formatTokens(weighted)} tokens (${detail})`;
-      this.healthFill.classList.remove('pulse');
-      void this.healthFill.offsetWidth;
-      this.healthFill.classList.add('pulse');
+      seg.fill.classList.remove('pulse');
+      void seg.fill.offsetWidth;
+      seg.fill.classList.add('pulse');
       // Pointing at it holds it, so the breakdown can be read.
       let gone = setTimeout(() => f.remove(), 1400);
       f.onmouseenter = () => { clearTimeout(gone); f.classList.add('held'); };
@@ -641,7 +683,7 @@ class Hub {
     if (!entry.renaming) parts.title.textContent = agentName(agent);
     tile.classList.toggle('named', !!customNameOf(agent));
     const busy = ['working', 'starting', 'stuck', 'waiting'].includes(agent.status);
-    const stepText = limited ? 'Waiting for the usage limit to reset'
+    const stepText = limited ? `Waiting for ${PROVIDER_NAMES[limited.provider] || 'Claude'}'s usage limit to reset`
       : authWait ? 'Waiting for you to sign in to Claude'
       : agent.status === 'background' && agent.backgroundTasks?.length
       ? `Waiting for: ${agent.backgroundTasks.join(', ')}`
@@ -658,7 +700,7 @@ class Hub {
       ? `${agent.latestPrompt}\n\nTask: ${agent.title}\n${agent.cwd}`
       : `${agent.title}\n${agent.cwd}`;
     parts.statusDot.className = `dot ${agent.status}`;
-    parts.statusText.textContent = limited ? `Usage limit · continues ${Hub.resetText(limited.resetAt / 1000)}`
+    parts.statusText.textContent = limited ? `${PROVIDER_NAMES[limited.provider] || 'Claude'} limit · continues ${Hub.resetText(limited.resetAt / 1000)}`
       : authWait ? 'Signed out · continues after you sign in'
       // Getting ready before Claude Code starts (a Jira ticket, a handoff).
       : agent.status === 'starting' && agent.bootNote ? `Booting up · ${agent.bootNote}`
