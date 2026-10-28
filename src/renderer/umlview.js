@@ -1646,9 +1646,13 @@ function openDetail(panel, api, model, node, line, { files, comments, follow = n
       setTimeout(() => best.classList.remove('flash'), 1600);
     });
   };
+  // The previous or next type (‹ ›, ← →): this diff goes back into its box,
+  // the diagram pans to that type and its diff opens out of its box, so you
+  // see where you go. (Without follow, the diff changes in place.)
   const go = delta => {
     const next = model.nodes.find(n => n.id === ids[ids.indexOf(current.id) + delta]);
     if (!next) return;
+    if (follow) { follow(next.id); return; }
     window.uiSound?.('tick');
     box.classList.remove('shown');
     setTimeout(() => {
@@ -1749,36 +1753,14 @@ function linkTypes(root, model, current) {
   }
 }
 
-// How much of each type changed, from 0 to 1: its file's changed lines,
-// shared out among the file's types by how many of their members changed,
-// against the type that changed most.
-function changeHeat(model, files) {
-  const lines = new Map(files.map(f => { const s = fileStats(f); return [f.path, s.add + s.del]; }));
-  const perFile = new Map();
-  for (const n of model.nodes) if (lines.has(n.file)) perFile.set(n.file, [...(perFile.get(n.file) || []), n]);
-  const raw = new Map();
-  for (const [file, nodes] of perFile) {
-    const weights = nodes.map(n => n.members.filter(m => m.change).length || 1);
-    const sum = weights.reduce((a, b) => a + b, 0);
-    nodes.forEach((n, i) => raw.set(n.id, lines.get(file) * weights[i] / sum));
-  }
-  const max = Math.max(1, ...raw.values());
-  return new Map([...raw].map(([id, v]) => [id, Math.sqrt(v / max)]));
-}
-
-// Draws a lens's marks on a type's box: its heat tint, a check when it is
-// reviewed, and the review peer's mark.
-function decorateNode(g, { heat, done, mark }) {
+// Draws a lens's marks on a type's box: a check when it is reviewed, and
+// the review peer's mark.
+function decorateNode(g, { done, mark }) {
   const box = g.querySelector(':scope > .uml-box');
   if (!box) return;
   let w;
   let h;
   try { ({ width: w, height: h } = box.getBBox()); } catch { return; }
-  let tint = g.querySelector(':scope > .uml-heat');
-  if (heat != null) {
-    if (!tint) { tint = box.cloneNode(); tint.setAttribute('class', 'uml-heat'); box.after(tint); }
-    tint.style.fillOpacity = (0.06 + heat * 0.62).toFixed(2);
-  } else tint?.remove();
   let check = g.querySelector(':scope > .uml-check');
   if (done && !check) {
     check = svgEl('text', { class: 'uml-check', x: w - 8, y: h - 7, 'text-anchor': 'end' });
@@ -1889,15 +1871,12 @@ function umlPanel(fullModel, { files = [], comments = null, onFull = null, full 
   // Ways to look at the same diagram, drawn over the boxes the diagram has:
   //   Before / After: before, the new types and dependencies are gone and the
   //     changes lose their colour (what the code was like)
-  //   Heat: each box tinted by how many lines its file changed (shared out
-  //     among the types of that file by their changed members)
   //   review progress: a type whose file you marked reviewed is greyed out
   //     with a check; "Next unreviewed" opens the next one in reading order
   //   peer marks: the types the review peer talked about (setPeerMarks)
   //   playback: an agent's tasks one by one (setPlayback, its Changes card)
   const byId = new Map(model.nodes.map(n => [n.id, n]));
-  const heat = changeHeat(model, files);
-  const lens = { before: false, heat: false, play: null, marks: new Map(), onMark: null };
+  const lens = { before: false, play: null, marks: new Map(), onMark: null };
   const fileFor = n => files.find(f => f.path === n.file);
   const reviewable = () => (api?.order || model.nodes.map(n => n.id)).map(id => byId.get(id)).filter(n => n && fileFor(n));
   const isReviewed = (n, set) => { const f = fileFor(n); return !!f && set.has(reviewKey(f)); };
@@ -1913,7 +1892,7 @@ function umlPanel(fullModel, { files = [], comments = null, onFull = null, full 
       g.classList.toggle('lens-focus', !!lens.play && lens.play.focus.has(n.id));
       const done = isReviewed(n, set);
       g.classList.toggle('reviewed', done);
-      decorateNode(g, { heat: lens.heat ? heat.get(n.id) || 0 : null, done, mark: lens.marks.get(n.id) || null });
+      decorateNode(g, { done, mark: lens.marks.get(n.id) || null });
     }
     for (const e of stage.querySelectorAll('.uml-edge')) {
       const from = byId.get(e.dataset.from);
@@ -1946,10 +1925,6 @@ function umlPanel(fullModel, { files = [], comments = null, onFull = null, full 
   beforeBtn.onclick = () => setBefore(true);
   afterBtn.onclick = () => setBefore(false);
   seg.append(beforeBtn, afterBtn);
-  const heatBtn = el('button', 'uml-lens-heat', 'Heat');
-  heatBtn.type = 'button';
-  heatBtn.title = 'Tint each type by how much of it changed';
-  heatBtn.onclick = () => { lens.heat = !lens.heat; heatBtn.classList.toggle('on', lens.heat); window.uiSound?.('tick'); applyLens(); };
   const progress = el('span', 'uml-lens-progress');
   const nextBtn = el('button', 'uml-lens-next', 'Next unreviewed ›');
   nextBtn.type = 'button';
@@ -1967,7 +1942,7 @@ function umlPanel(fullModel, { files = [], comments = null, onFull = null, full 
   nextBtn.onclick = () => openNextUnreviewed();
   const changesSomething = model.nodes.some(n => n.status === 'new') || model.edges.some(e => e.fresh);
   if (changesSomething) lensBar.appendChild(seg);
-  lensBar.append(heatBtn, progress, nextBtn);
+  lensBar.append(progress, nextBtn);
   panel.appendChild(lensBar);
   for (const type of ['pointerdown', 'wheel']) lensBar.addEventListener(type, e => e.stopPropagation());
   // A click on a peer mark shows what the peer said (not the type's diff).
@@ -2086,6 +2061,9 @@ function openUmlFull(model, { title, ...options }) {
   const body = el('div', 'uml-full-body');
   const diagram = umlPanel(model, { ...options, full: true });
   body.appendChild(diagram);
+  // An agent's diagram (its Changes card): its tasks, step by step (taskPlayback).
+  const play = options.tasks?.length ? taskPlayback(diagram, options.tasks) : null;
+  if (play) { play.classList.add('in-full'); diagram.appendChild(play); }
   // The review peer, for the card's files (see reviewPeer): a box at the
   // bottom right of the diagram until you ask it something, then a panel
   // beside it. Review peer in the title bar shows or hides that panel, once
@@ -2119,22 +2097,43 @@ function openUmlFull(model, { title, ...options }) {
 
 // ---------- the review peer ----------
 
-// The types of the diagram that the review peer's answers name: id ->
-// { count, text } with the sentence of the latest answer that names it.
+// Start review (the Branch diff view, see addDiagram): the whole-window
+// diagram with the review peer, which sums up the change and reviews it
+// first; the types it finds problems in get its mark (peerMarks), and you
+// mark them reviewed as you go (Mark reviewed, Next unreviewed).
+const START_REVIEW = [
+  'Start a review of this change with me.',
+  'First, in two to four sentences, what the change is about: what it adds or changes and why, as far as the code shows.',
+  'Then review it: for each problem you find, a short bullet with the type name exactly as it is in the code, the file and line,',
+  'what is wrong or risky, and how sure you are. Check how the changed code is used in the project where it matters.',
+  'Leave out types that look fine. End with the one or two things I should look at first.',
+].join(' ');
+function startReview(openFull) {
+  openFull();
+  const peer = umlFullEl?.peer;
+  if (!peer) return;
+  // Opened again on a review that already ran: the conversation is there.
+  if (!peer.talked()) peer.ask(START_REVIEW, 'Start review: a summary of the change, then an automated review');
+  else peer.show?.();
+}
+
+// The types of the diagram that the review peer's findings name (the points
+// of a list in its answers): id -> { count, text } with the first such point.
 function peerMarks(model, answers) {
   const marks = new Map();
   if (!model) return marks;
   answers.forEach(text => {
-    if (!text) return;
+    // Only its findings: the points of a list (a summary in prose names
+    // the types too, and would mark them all).
+    const points = String(text || '').split('\n').filter(l => /^\s*([-*•]|\d+[.)])\s+/.test(l));
     for (const n of model.nodes) {
       const name = String(n.name || '').replace(/[^\w]/g, '');
       if (name.length < 3) continue;
-      const re = new RegExp(`\\b${name}\\b`, 'g');
-      const hits = text.match(re);
-      if (!hits) continue;
-      const sentence = text.split(/(?<=[.!?])\s+|\n+/).find(s => new RegExp(`\\b${name}\\b`).test(s)) || '';
+      const re = new RegExp(`\\b${name}\\b`);
+      const hits = points.filter(l => re.test(l));
+      if (!hits.length) continue;
       const before = marks.get(n.id);
-      marks.set(n.id, { count: (before?.count || 0) + hits.length, text: sentence.replace(/[*`_]/g, '').trim().slice(0, 220) });
+      marks.set(n.id, { count: (before?.count || 0) + hits.length, text: hits[0].replace(/^\s*([-*•]|\d+[.)])\s+/, '').replace(/[*`_]/g, '').trim().slice(0, 220) });
     }
   });
   return marks;
@@ -2276,7 +2275,7 @@ function reviewPeer(files, cwd, onLayout) {
     }
   };
 
-  async function ask(text) {
+  async function ask(text, label = null) {
     const q = String(text || '').trim();
     if (!q || chat.busy) return;
     input.value = '';
@@ -2290,7 +2289,7 @@ function reviewPeer(files, cwd, onLayout) {
       const before = chat.turns.filter(t => t.a);
       if (before.length) question = `Earlier in this review:\n\n${before.map(t => `Q: ${t.q}\nA: ${t.a}`).join('\n\n')}\n\nNew question: ${q}`;
     }
-    const turn = { q, a: '', tools: [], error: null };
+    const turn = { q: label || q, a: '', tools: [], error: null };
     chat.turns.push(turn);
     chat.busy = true;
     chat.hidden = false;
@@ -2347,10 +2346,14 @@ function reviewPeer(files, cwd, onLayout) {
     // n: 1 to 3, the suggested question to ask.
     suggest: n => { if (SUGGESTIONS[n - 1] && !chat.busy) ask(SUGGESTIONS[n - 1]); },
     toggle: () => { chat.hidden = !chat.hidden; layout(); if (!chat.hidden) input.focus(); },
+    show: () => { chat.hidden = false; layout(); },
     refresh: layout,
     // Asks a question (the review comments from a Changes card, see
-    // askPeerAbout), opening the conversation.
-    ask: text => { chat.hidden = false; ask(text); },
+    // askPeerAbout), opening the conversation. label: what the conversation
+    // shows instead of the whole question.
+    ask: (text, label) => { chat.hidden = false; ask(text, label); },
+    // Whether there is a conversation already.
+    talked: () => chat.turns.length > 0,
     // The answers so far, and fn() whenever one is finished (peer marks).
     answers: () => chat.turns.map(t => t.a || ''),
     onAnswer: fn => { chat.onAnswer = fn; },

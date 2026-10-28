@@ -339,7 +339,7 @@ function changesCard(files, cwd, { title = null, animate = false, peer = false }
       summary.querySelector('.change-name').textContent = name;
     }
   });
-  addDiagram(card, head, files, cwd, comments);
+  addDiagram(card, head, files, cwd, comments, { review: peer });
   addAssets(card, other, cwd, comments);
   return card;
 }
@@ -385,7 +385,8 @@ function umlWaiting(csFiles) {
   return root;
 }
 
-function addDiagram(card, head, files, cwd, comments) {
+// review: Start review in its title (the Branch diff view, see startReview).
+function addDiagram(card, head, files, cwd, comments, { review = false } = {}) {
   // Temporary helpers stay out of the diagram, also the ones that only may
   // be temporary (TempProbe, AtlasTemp), and so do unit tests: it shows the
   // structure of the work. The Files list still has them.
@@ -427,6 +428,13 @@ function addDiagram(card, head, files, cwd, comments) {
     const panel = umlPanel(model, { ...options, onFull: () => openUmlFull(model, { ...options, title }) });
     // The whole-window diagram, where the review peer is (askPeerAbout).
     card.openFull = () => openUmlFull(model, { ...options, title });
+    if (review && window.deck?.reviewAsk) {
+      const start = el('button', 'review-start', 'Start review');
+      start.type = 'button';
+      start.title = 'Open the diagram in the whole window with a review peer: it sums up the change, reviews it and marks the types it finds problems in; then you mark them reviewed';
+      start.onclick = e => { e.stopPropagation(); window.uiSound?.('open'); startReview(card.openFull); };
+      head.insertBefore(start, switcher);
+    }
     card.insertBefore(panel, head.nextSibling);
     card.classList.add('has-diagram');
     diagramBtn.disabled = false;
@@ -767,9 +775,9 @@ function sessionPanel(cwd) {
     model = m;
     const options = { files, comments };
     const full = `Class diagram · this agent's changes · ${changed.length} type${changed.length === 1 ? '' : 's'}`;
-    const panel = umlPanel(m, { ...options, onFull: () => openUmlFull(m, { ...options, title: full }) });
+    const panel = umlPanel(m, { ...options, onFull: () => openUmlFull(m, { ...options, title: full, tasks }) });
     diagramBox.replaceChildren(el('div', 'session-sub', `Class diagram · ${changed.length} type${changed.length === 1 ? '' : 's'}`), panel);
-    const play = taskPlayback(panel, m, tasks);
+    const play = taskPlayback(panel, tasks);
     if (play) diagramBox.appendChild(play);
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
     fitDiagram();
@@ -833,58 +841,53 @@ function flyCard(from, target, label) {
   });
 }
 
-// Under the agent's class diagram: its tasks one by one. A step shows the
-// types the tasks up to it touched (the others fade), the ones that task
-// touched outlined; ▶ plays them in turn, All shows everything again. Only
-// for two tasks or more that touched C#. tasks: [{ title, paths }].
-function taskPlayback(panel, model, tasks) {
+// Under the agent's class diagram (and in it in the whole window): its tasks
+// one by one. ‹ › step through them: a step shows the types the tasks up to
+// it touched (the others fade), the ones that task touched outlined; All
+// shows everything again. Only for two tasks or more that touched C#.
+// tasks: [{ title, paths }]; panel: the diagram (umlPanel).
+function taskPlayback(panel, tasks) {
+  const model = panel.model;
   const key = p => String(p || '').replace(/\\/g, '/').toLowerCase();
   const steps = tasks.map(t => ({ title: t.title || '', ids: new Set(model.nodes.filter(n => t.paths.some(p => key(p) === key(n.file))).map(n => n.id)) }))
     .filter(t => t.ids.size);
   if (steps.length < 2) return null;
   const bar = el('div', 'session-play');
-  const playBtn = el('button', 'session-play-go', '▶');
-  playBtn.type = 'button';
-  playBtn.title = 'Play the tasks one by one';
+  const button = (text, title) => { const b = el('button', 'session-play-step', text); b.type = 'button'; b.title = title; return b; };
+  const prev = button('‹', 'Previous task');
+  const next = button('›', 'Next task');
   const dots = el('div', 'session-play-dots');
-  const label = el('div', 'session-play-label', `All ${steps.length} tasks`);
   const all = el('button', 'session-play-all on', 'All');
   all.type = 'button';
   all.title = 'Show every task together';
+  const label = el('div', 'session-play-label', `All ${steps.length} tasks · › to go through them`);
   let at = -1;
-  let timer = 0;
   const show = i => {
     at = i;
     for (const [j, d] of [...dots.children].entries()) { d.classList.toggle('on', j === i); d.classList.toggle('past', i >= 0 && j < i); }
     all.classList.toggle('on', i < 0);
-    if (i < 0) { panel.setPlayback(null); label.textContent = `All ${steps.length} tasks`; label.title = ''; return; }
+    prev.disabled = i < 0;
+    next.disabled = i === steps.length - 1;
+    window.uiSound?.('tick');
+    if (i < 0) { panel.setPlayback(null); label.textContent = `All ${steps.length} tasks · › to go through them`; label.title = ''; return; }
     const seen = new Set(steps.slice(0, i + 1).flatMap(s => [...s.ids]));
     panel.setPlayback({ show: seen, focus: steps[i].ids });
     label.textContent = `Task ${i + 1} of ${steps.length}${steps[i].title ? ` · ${steps[i].title}` : ''}`;
     label.title = steps[i].title;
-    window.uiSound?.('tick');
   };
-  const stop = () => { clearInterval(timer); timer = 0; playBtn.textContent = '▶'; playBtn.title = 'Play the tasks one by one'; };
   steps.forEach((s, i) => {
     const d = el('button', 'session-play-dot');
     d.type = 'button';
     d.title = `Task ${i + 1}${s.title ? `: ${s.title}` : ''}`;
-    d.onclick = () => { stop(); show(i); };
+    d.onclick = () => show(i);
     dots.appendChild(d);
   });
-  all.onclick = () => { stop(); show(-1); };
-  playBtn.onclick = () => {
-    if (timer) { stop(); return; }
-    playBtn.textContent = '❚❚';
-    playBtn.title = 'Pause';
-    show(0);
-    timer = setInterval(() => {
-      if (!bar.isConnected) { stop(); return; }
-      if (at + 1 < steps.length) show(at + 1);
-      else { stop(); setTimeout(() => { if (!timer) show(-1); }, 1400); }
-    }, 1400);
-  };
-  bar.append(playBtn, dots, all, label);
+  prev.onclick = () => show(at - 1);
+  next.onclick = () => show(at + 1);
+  all.onclick = () => show(-1);
+  prev.disabled = true;
+  bar.append(prev, dots, next, all, label);
+  for (const type of ['pointerdown', 'wheel']) bar.addEventListener(type, e => e.stopPropagation());
   return bar;
 }
 

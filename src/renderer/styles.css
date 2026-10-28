@@ -2774,8 +2774,8 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .uml-detail .uml-ref.status-del { text-decoration-color: #e06c6c; }
 .uml-detail .uml-ref:hover { text-decoration-style: solid; background: color-mix(in srgb, var(--accent) 18%, transparent); }
 
-/* The diagram's lenses (umlPanel in umlview.js): Before | After, Heat, and
-   review progress, at its top left. */
+/* The diagram's lenses (umlPanel in umlview.js): Before | After and review
+   progress, at its top left. */
 .uml-lens { position: absolute; left: 10px; top: 10px; z-index: 3; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; max-width: calc(100% - 320px); }
 .uml-lens button { padding: 3px 10px; font-size: 12px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-dim); cursor: pointer; }
 .uml-lens button:hover { color: var(--text); border-color: var(--text-faint); }
@@ -2796,10 +2796,8 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 /* Playback: the types the tasks so far did not touch fade; this task's are outlined. */
 .uml-node.lens-ghost, .uml-edge.lens-ghost { opacity: 0.1; }
 .uml-node.lens-focus > .uml-box { stroke: var(--accent) !important; stroke-width: 2.5px !important; }
-/* Heat: a tint over the box, stronger where more changed. */
-.uml-heat { fill: #e9a23b !important; stroke: none !important; pointer-events: none; transition: fill-opacity 0.4s; }
 /* Reviewed: grey with a check. */
-.uml-node.reviewed > .uml-box, .uml-node.reviewed > text:not(.uml-check), .uml-node.reviewed > rect:not(.uml-heat) { opacity: 0.45; }
+.uml-node.reviewed > .uml-box, .uml-node.reviewed > text:not(.uml-check), .uml-node.reviewed > rect { opacity: 0.45; }
 .uml-check { fill: #7fd18b; font-size: 13px; font-weight: 700; pointer-events: none; }
 /* The review peer's mark. */
 .uml-mark { cursor: pointer; }
@@ -2815,8 +2813,13 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 
 /* The agent's Changes card: its tasks one by one under the diagram (taskPlayback). */
 .session-play { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
-.session-play-go, .session-play-all { padding: 2px 9px; font-size: 11px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-dim); cursor: pointer; }
-.session-play-go { min-width: 30px; color: var(--accent); }
+.session-play-step, .session-play-all { padding: 2px 9px; font-size: 11px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-dim); cursor: pointer; }
+.session-play-step { min-width: 28px; font-size: 13px; line-height: 1; padding: 3px 8px; color: var(--accent); }
+.session-play-step:disabled { opacity: 0.35; cursor: default; }
+/* In the whole-window diagram: a bar at the bottom middle, over the canvas. */
+.session-play.in-full { position: absolute; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 3; padding: 8px 12px; border-radius: 12px;
+  border: 1px solid var(--border); background: var(--bg-panel); box-shadow: 0 10px 28px -10px rgba(0, 0, 0, 0.7); flex-wrap: nowrap; max-width: calc(100% - 40px); }
+.session-play.in-full .session-play-label { flex-basis: auto; max-width: 420px; font-size: 12px; }
 .session-play-all.on { color: var(--text); border-color: var(--accent); }
 .session-play-dots { display: flex; gap: 5px; }
 .session-play-dot { width: 10px; height: 10px; padding: 0; border-radius: 50%; border: 1.5px solid var(--accent); background: transparent; cursor: pointer; }
@@ -2825,3 +2828,7 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .session-play-label { flex-basis: 100%; font-size: 11px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* The "Drag to move" hint goes under the lens buttons. */
 .uml-panel:has(> .uml-lens) > .uml-hint { top: 42px; }
+
+/* Start review (Branch diff view): opens the diagram with the review peer. */
+.review-start { padding: 3px 12px; border-radius: 7px; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-weight: 600; cursor: pointer; }
+.review-start:hover { background: color-mix(in srgb, var(--accent) 26%, transparent); }
