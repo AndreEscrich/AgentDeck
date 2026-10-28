@@ -689,6 +689,7 @@ details.change-file > summary:hover .review-tick { opacity: 1; }
 .uml-edges .uml-edge.api-call path { stroke-width: 2.2; opacity: 1; }
 .uml-swatch.role-composer { background: rgba(233, 162, 59, 0.12); border: 1px dashed var(--accent); }
 .uml-swatch.role-facade { background: transparent; border: 2px solid var(--accent); }
+.uml-swatch.package { background: color-mix(in srgb, var(--info) 15%, transparent); border: 1px dashed var(--info); }
 .uml-sub { font: 11px var(--font); fill: var(--text-faint); text-anchor: middle; }
 .uml-divider { stroke: var(--border); }
 .uml-member { font: 12px var(--mono); fill: var(--text-dim); white-space: pre; }
@@ -2078,6 +2079,17 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .uml-part text { font: 600 11px var(--font); fill: var(--text-dim); letter-spacing: 0.02em; }
 .uml-card rect { fill: rgba(255, 255, 255, 0.03); stroke: var(--border); stroke-width: 1; }
 .uml-card text { font: 600 11px var(--font); fill: var(--text-dim); letter-spacing: 0.02em; }
+/* Code from a Unity package (umlview.js, packageOf): its container (or, in
+   a container of mixed code, its folder's card) is blue and dashed, with the
+   package's name in a tag on its top edge, so it stands apart from the
+   project's own code. */
+.uml-group.package > rect { fill: color-mix(in srgb, var(--info) 6%, transparent); stroke: color-mix(in srgb, var(--info) 65%, transparent); stroke-dasharray: 7 4; }
+.uml-group.package > text { fill: var(--info); }
+.uml-card.package > rect { fill: color-mix(in srgb, var(--info) 8%, transparent); stroke: color-mix(in srgb, var(--info) 55%, transparent); stroke-dasharray: 5 3; }
+.uml-card.package > text { fill: color-mix(in srgb, var(--info) 70%, var(--text-dim)); }
+.uml-pkg-tag rect { fill: color-mix(in srgb, var(--info) 22%, var(--bg)); stroke: color-mix(in srgb, var(--info) 70%, transparent); stroke-width: 1; stroke-dasharray: none; }
+.uml-pkg-tag text { font: 600 11px var(--font); fill: color-mix(in srgb, var(--info) 35%, var(--text)); letter-spacing: 0; opacity: 1; }
+.uml-pkg-icon { fill: none; stroke: color-mix(in srgb, var(--info) 35%, var(--text)); stroke-width: 1.1; stroke-linejoin: round; }
 .uml-card.collapsed rect { fill: rgba(255, 255, 255, 0.015); }
 .uml-toggle { cursor: pointer; }
 .uml-toggle:hover { fill: var(--text) !important; text-decoration: underline; }

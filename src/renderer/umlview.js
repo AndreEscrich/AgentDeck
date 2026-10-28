@@ -329,6 +329,42 @@ function folderLabels(nodes) {
   };
 }
 
+// The Unity package a file is in (com.company.name), or null: an embedded
+// package (Packages/com.company.name/…) or one from the package cache
+// (Library/PackageCache/com.company.name@version/…).
+function packageOf(file) {
+  const f = String(file || '');
+  return /(?:^|[\\/])PackageCache[\\/]([^\\/@]+)/.exec(f)?.[1]
+    || /(?:^|[\\/])Packages[\\/]([a-z0-9_-]+(?:\.[a-z0-9_-]+)+)[\\/]/i.exec(f)?.[1]
+    || null;
+}
+
+// The one package all these node ids are in, or null (none, or several).
+function onePackage(ids, pkgOf) {
+  const set = new Set(ids.map(id => pkgOf.get(id) ?? null));
+  return set.size === 1 ? [...set][0] : null;
+}
+
+// The tag on a package's container or card: a pill on its top edge, at the
+// right, with a box icon and the package's name (fitted to the room there
+// is). Returns the room it takes from the title.
+function packageTag(parent, pkg, width, y, small = false) {
+  const h = small ? 16 : 18;
+  const label = fitLabel(pkg, Math.max(40, width * 0.55 - 40));
+  const w = Math.round(textWidth(label, UML_SMALL) + (small ? 30 : 34));
+  const x = width - w - 12;
+  const tag = svgEl('g', { class: 'uml-pkg-tag', transform: `translate(${x},${y - h / 2})` });
+  tag.appendChild(svgEl('rect', { width: w, height: h, rx: h / 2 }));
+  // A small box (an open package), drawn with lines.
+  const s = small ? 8 : 9;
+  const ix = 8;
+  const iy = (h - s) / 2;
+  tag.appendChild(svgEl('path', { class: 'uml-pkg-icon', d: `M${ix},${iy + s * 0.3} L${ix + s / 2},${iy} L${ix + s},${iy + s * 0.3} V${iy + s} H${ix} Z M${ix},${iy + s * 0.3} H${ix + s} M${ix + s / 2},${iy} V${iy + s * 0.3}` }));
+  tag.appendChild(svgEl('text', { x: ix + s + 6, y: h / 2 + 3.5 }, label));
+  parent.appendChild(tag);
+  return w + 16;
+}
+
 // A name shown in the space there is: its last parts, with … in front.
 function fitLabel(text, width) {
   let label = text;
@@ -503,7 +539,8 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
     for (const e of model.edges) {
       const a = nodeById.get(e.from);
       const b = nodeById.get(e.to);
-      if (!pulls(a) || !pulls(b) || a === b || containerOf.get(a.id) !== containerOf.get(b.id)) continue;
+      // A package's types and the project's do not share a card (see packageOf).
+      if (!pulls(a) || !pulls(b) || a === b || containerOf.get(a.id) !== containerOf.get(b.id) || packageOf(a.file) !== packageOf(b.file)) continue;
       for (const [x, y] of [[a.id, b.id], [b.id, a.id]]) {
         if (!linksOf.has(x)) linksOf.set(x, new Map());
         linksOf.get(x).set(y, (linksOf.get(x).get(y) || 0) + 1);
@@ -620,6 +657,7 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
         });
       }
       const p = proxies.get(key);
+      p.packages = (p.packages || new Set()).add(packageOf(n.file));
       p.count++;
       p.statuses.add(n.status);
     }
@@ -833,6 +871,9 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
     return [...pairs.values()];
   };
 
+  // The package of each box (a collapsed box: the one package of its types).
+  const pkgOf = new Map(model.nodes.map(n => [n.id, n.proxy ? (n.packages?.size === 1 ? [...n.packages][0] : null) : packageOf(n.file)]));
+
   // One container per system composer (see containerOf), or per namespace
   // for what no composer wires; in it a card per folder. A container says
   // its composer and, small under it, the namespaces of its types.
@@ -847,6 +888,7 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
     if (!n.proxy || n.proxy.startsWith('f:')) groups.get(key).namespaces.add(nsKey(n));
   }
   for (const g of groups.values()) {
+    g.package = onePackage(g.ids, pkgOf);
     g.collapsed = collapsed.has(`c:${g.id}`);
     g.sub = nodeById.get(g.id) ? [...g.namespaces].join(' · ') : '';
     // Parts: by compartment (one per composer, or one for all).
@@ -1126,16 +1168,21 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
   // one box (▸); clicking it again opens it.
   const groupLayer = svgEl('g', { class: 'uml-groups' });
   for (const g of groups.values()) {
-    const box = svgEl('g', { class: 'uml-group', transform: `translate(${g.x},${g.y})` });
+    // A container of a package's types looks different (blue, dashed, with
+    // the package's name in a tag on its top edge), so code from packages
+    // stands apart from the project's own.
+    const box = svgEl('g', { class: `uml-group${g.package ? ' package' : ''}`, transform: `translate(${g.x},${g.y})` });
     box.appendChild(svgEl('rect', { width: g.w, height: g.h, rx: 14 }));
-    const name = fitLabel(g.label, g.w - 44);
+    const tagW = g.package ? packageTag(box, g.package, g.w, 0) : 0;
+    const name = fitLabel(g.label, g.w - 44 - tagW);
     const title = svgEl('text', { class: 'uml-toggle', x: 14, y: 20, 'data-toggle': `c:${g.id}` }, `${g.collapsed ? '▸' : '▾'} ${name}`);
     // The namespaces of what it wires, small after its name (the name is
     // bold: about a fifth wider than measured).
-    const room = g.w - 44 - textWidth(name, UML_SMALL) * 1.2 - 12;
+    const room = g.w - 44 - tagW - textWidth(name, UML_SMALL) * 1.2 - 12;
     if (g.sub && room > 40) title.appendChild(svgEl('tspan', { class: 'uml-group-sub', dx: 10 }, fitLabel(g.sub, room)));
     box.appendChild(title);
-    const what = nodeById.get(g.id) ? `${g.label}: what it wires (${[...g.namespaces].join(', ')})` : `namespace ${g.label}`;
+    const what = (nodeById.get(g.id) ? `${g.label}: what it wires (${[...g.namespaces].join(', ')})` : `namespace ${g.label}`)
+      + (g.package ? `\nFrom the package ${g.package}` : '');
     box.appendChild(svgEl('title', {}, `${what}\n${g.collapsed ? 'Click its name to open it' : 'Click its name to collapse it'}`));
     groupLayer.appendChild(box);
     for (const part of g.parts) {
@@ -1147,10 +1194,21 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
         groupLayer.appendChild(p);
       }
       for (const card of part.cards) {
-        const c = svgEl('g', { class: `uml-card${card.collapsed ? ' collapsed' : ''}`, transform: `translate(${card.ax},${card.ay})` });
+        // A folder of a package in a container that is not all that
+        // package's: the card gets the package look and tag instead.
+        const pkg = !g.package && onePackage(card.ids, pkgOf);
+        const c = svgEl('g', { class: `uml-card${card.collapsed ? ' collapsed' : ''}${pkg ? ' package' : ''}`, transform: `translate(${card.ax},${card.ay})` });
         c.appendChild(svgEl('rect', { width: card.w, height: card.h, rx: 10 }));
-        c.appendChild(svgEl('text', { class: 'uml-toggle', x: 10, y: 16, 'data-toggle': card.key }, `${card.collapsed ? '▸' : '▾'} ${fitLabel(card.label || card.folder, card.w - 30)}`));
-        c.appendChild(svgEl('title', {}, `${card.title || `folder ${card.folder}`}\n${card.collapsed ? 'Click its name to open it' : 'Click its name to collapse it'}`));
+        const cardTag = pkg ? packageTag(c, pkg, card.w, 0, true) : 0;
+        // In a package, the folder inside it (the tag names the package).
+        const inPkg = pkg || g.package;
+        let cardName = card.label || card.folder;
+        if (inPkg) {
+          const at = cardName.indexOf(inPkg);
+          if (at >= 0) cardName = cardName.slice(at + inPkg.length).replace(/^@[^/]*/, '').replace(/^\//, '') || inPkg;
+        }
+        c.appendChild(svgEl('text', { class: 'uml-toggle', x: 10, y: 16, 'data-toggle': card.key }, `${card.collapsed ? '▸' : '▾'} ${fitLabel(cardName, card.w - 30 - cardTag)}`));
+        c.appendChild(svgEl('title', {}, `${card.title || `folder ${card.folder}`}${pkg ? `\nFrom the package ${pkg}` : ''}\n${card.collapsed ? 'Click its name to open it' : 'Click its name to collapse it'}`));
         groupLayer.appendChild(c);
       }
     }
@@ -1428,8 +1486,8 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
   return { fit, zoom, svg, width: maxW, height: totalH, order: readingOrder, elementOf, view, collapsedKeyOf, showType };
 }
 
-// The legend under the diagram.
-function umlLegend() {
+// The legend under the diagram. packages: some types are from a package.
+function umlLegend(packages = false) {
   const legend = el('div', 'uml-legend');
   const item = (cls, text) => {
     const i = el('span', 'uml-legend-item');
@@ -1445,6 +1503,7 @@ function umlLegend() {
   item('edge-fresh', 'New dependency');
   item('role-composer', 'Composer');
   item('role-facade', 'Facade (API)');
+  if (packages) item('package', 'From a package');
   return legend;
 }
 
@@ -1629,7 +1688,7 @@ function umlPanel(fullModel, { files = [], comments = null, onFull = null, full 
     tools.appendChild(b);
     return b;
   };
-  panel.append(stage, tools, umlLegend());
+  panel.append(stage, tools, umlLegend(model.nodes.some(n => packageOf(n.file))));
   let api = null;
   button('−', 'Zoom out', () => api?.zoom(1 / 1.25));
   button('+', 'Zoom in', () => api?.zoom(1.25));
