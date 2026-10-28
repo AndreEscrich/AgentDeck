@@ -1158,22 +1158,12 @@ function ownerOfCard(card) {
   return null;
 }
 
-// Commit or Ask for changes, once every file of a card is ticked as reviewed.
-window.reviewAction = async (action, card, files) => {
-  const owner = ownerOfCard(card);
-  if (!owner) return;
-  if (action === 'changes') {
-    $('input').value = 'Please change this: ';
-    autosize();
-    $('input').focus();
-    return;
-  }
-  const list = files.map(f => f.path).join(', ');
-  const text = `I reviewed the changes of your last task (${list}). Commit them, with a short message that says what changed and why. Commit only these files.`;
-  sfx('sent');
-  if (owner.kind === 'agent') await sendToHubItem(owner.id, text);
-  else await sendToHubItem('p:' + owner.id, text);
-  refreshHub();
+// Ask for changes, once every file of a card is ticked as reviewed.
+window.reviewAction = async (action, card) => {
+  if (action !== 'changes' || !ownerOfCard(card)) return;
+  $('input').value = 'Please change this: ';
+  autosize();
+  $('input').focus();
 };
 
 // A task whose changes you reviewed completely counts as seen: Tab skips it.
@@ -1181,7 +1171,7 @@ window.addEventListener('changes-reviewed', e => {
   const owner = ownerOfCard(e.detail.card);
   if (owner?.agent) owner.agent.unread = false;
   if (owner?.kind === 'history' && state.parked.get(owner.id)) state.parked.get(owner.id).unread = false;
-  toast('All files reviewed: Commit or Ask for changes');
+  toast('All files reviewed');
   refreshHub();
   updateAttention();
 });

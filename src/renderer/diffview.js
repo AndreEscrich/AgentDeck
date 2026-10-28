@@ -287,19 +287,15 @@ function changesCard(files, cwd, { title = null, animate = false, peer = false }
   // changes under it (addAssets).
   for (const f of code) addFile(card, f);
   // Reviewing: a tick per file, "N of M reviewed", and when all are ticked,
-  // Commit or Ask for changes (handled by window.reviewAction in app.js).
+  // Ask for changes (handled by window.reviewAction in app.js).
   const progress = el('span', 'review-progress');
   const actions = el('span', 'review-actions hidden');
   if (!title) {
-    const commit = el('button', 'review-commit', 'Commit');
-    commit.type = 'button';
-    commit.title = 'Ask the agent to commit these changes, with a message that says what changed';
-    commit.onclick = () => window.reviewAction?.('commit', card, files);
     const ask = el('button', null, 'Ask for changes');
     ask.type = 'button';
     ask.title = 'Send your line comments, or write what to change';
     ask.onclick = () => (comments.count() ? comments.send() : window.reviewAction?.('changes', card, files));
-    actions.append(ask, commit);
+    actions.append(ask);
   }
   head.insertBefore(progress, send);
   head.insertBefore(actions, send);
@@ -319,12 +315,11 @@ function changesCard(files, cwd, { title = null, animate = false, peer = false }
     actions.classList.toggle('hidden', !all);
     if (all && wasAll === false) {
       window.dispatchEvent(new CustomEvent('changes-reviewed', { detail: { card } }));
-      // A stamp lands on the card, and Commit glows once.
+      // A stamp lands on the card.
       const stamp = el('div', 'review-stamp', 'Reviewed');
       head.appendChild(stamp);
       setTimeout(() => stamp.classList.add('fade'), 1400);
       setTimeout(() => stamp.remove(), 2000);
-      actions.querySelector('.review-commit')?.classList.add('glow');
     }
     wasAll = all;
   };

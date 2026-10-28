@@ -559,7 +559,6 @@ details.change-file > summary:hover .review-tick { opacity: 1; }
 .review-progress.done { color: var(--ok); }
 .review-actions { display: inline-flex; gap: 6px; margin-left: 10px; }
 .review-actions button { padding: 2px 10px; border-radius: 99px; font-size: 12px; font-weight: 500; }
-.review-commit { background: var(--ok); border-color: var(--ok); color: #10140f; }
 .changes-title { margin-right: 4px; }
 /* Class diagram of the C# changes (umlview.js) */
 /* Diagram | Files in the card's title */
@@ -1855,8 +1854,6 @@ details.other-files details.change-file > summary { padding-left: 12px; }
   animation: stamp-in 0.45s cubic-bezier(.2,1.6,.4,1) both; transition: opacity 0.5s; }
 .review-stamp.fade { opacity: 0; }
 @keyframes stamp-in { 0% { opacity: 0; transform: rotate(-10deg) scale(2.4); } 60% { opacity: 1; transform: rotate(-10deg) scale(0.92); } 100% { opacity: 1; transform: rotate(-10deg) scale(1); } }
-.review-commit.glow { animation: commit-glow 1.2s ease-out 2; }
-@keyframes commit-glow { 0% { box-shadow: 0 0 0 0 rgba(76, 175, 122, 0.75); } 100% { box-shadow: 0 0 0 12px rgba(76, 175, 122, 0); } }
 /* Cards grow out of the point you clicked (transform-origin set in app.js) */
 .from-click > :first-child { transition: transform 0.32s cubic-bezier(.3,1.2,.4,1), opacity 0.22s !important; }
 .from-click:not(.show) > :first-child { transform: scale(0.12) !important; opacity: 0; }
