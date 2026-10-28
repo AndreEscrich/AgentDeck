@@ -24,9 +24,42 @@ let codexModels = [];
 const providersOn = { claude: true, codex: false };
 const pickers = [];
 
-// Codex's models; '' is Codex's own default model.
-const CODEX_DEFAULT = { value: '', displayName: 'Codex default', description: 'The model Codex picks', provider: 'codex' };
-const codexModelByValue = value => codexModels.find(m => m.value === value) || (value ? { value, displayName: value, description: '', provider: 'codex' } : codexModels.find(m => m.isDefault) || CODEX_DEFAULT);
+// Codex's menu works like Claude's: Auto, then the newest Sol, Terra and
+// Luna, and apart from them Astra, for exceptions. A choice saves the family
+// ("sol"), and the newest model of it runs (resolveModel in codex.js), like
+// Claude's "opus". Auto picks Luna, Terra or Sol for each task, the way
+// Claude's Auto picks Haiku, Sonnet or Opus (automodel.js, level 1 to 3).
+const CODEX_FAMILIES = ['sol', 'terra', 'luna', 'astra'];
+const CODEX_AUTO_FAMILIES = ['luna', 'terra', 'sol'];
+const FAMILY_NAMES = { sol: 'Sol', terra: 'Terra', luna: 'Luna', astra: 'Astra' };
+const CODEX_AUTO = {
+  value: 'auto', displayName: 'Auto', description: 'Picks Sol, Terra or Luna for each task', provider: 'codex',
+  supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+};
+const latestCodex = family => codexModels.find(m => m.family === family && m.latest) || null;
+// A family as a menu entry: its newest model, named by the family.
+const familyEntry = family => {
+  const m = latestCodex(family);
+  return m ? { ...m, value: family, displayName: FAMILY_NAMES[family], description: `${m.displayName}: ${m.description}` } : null;
+};
+const codexModelByValue = value => {
+  if (!value || value === 'auto' || value === 'default') return CODEX_AUTO;
+  if (CODEX_FAMILIES.includes(value)) return familyEntry(value) || { value, displayName: FAMILY_NAMES[value], description: '', provider: 'codex' };
+  return codexModels.find(m => m.value === value) || { value, displayName: value, description: '', provider: 'codex' };
+};
+// The menu's entries; while the list is not loaded (or names no families), Auto alone.
+function codexMenuModels() {
+  const families = CODEX_FAMILIES.map(familyEntry).filter(Boolean);
+  return families.length ? families : codexModels;
+}
+// A saved Codex model as the menu's choice: nothing is Auto, and a model id
+// that is its family's newest is the family.
+function codexChoiceModel(value) {
+  if (!value || value === 'default') return 'auto';
+  const m = codexModelByValue(value);
+  return m.latest && m.family ? m.family : value;
+}
+const codexAutoFamily = level => CODEX_AUTO_FAMILIES[Math.max(1, Math.min(3, level || 2)) - 1];
 const providerOf = value => (value?.provider === 'codex' ? 'codex' : 'claude');
 const bothOn = () => providersOn.claude && providersOn.codex;
 
@@ -109,7 +142,7 @@ class ModelPicker {
 
   setValue(value) {
     this.value = { provider: 'claude', model: 'default', effort: '', fastMode: false, ...value };
-    if (!this.value.model && this.value.provider !== 'codex') this.value.model = 'default';
+    if (!this.value.model) this.value.model = this.value.provider === 'codex' ? 'auto' : 'default';
     this.renderButton();
     if (!this.menu.classList.contains('hidden')) this.renderMenu();
   }
@@ -171,7 +204,11 @@ class ModelPicker {
     }
     if (show('codex')) {
       menu.appendChild(el('div', 'menu-label', both ? 'Codex' : 'Model'));
-      for (const m of codexModels.length ? codexModels : [CODEX_DEFAULT]) row(m, 'codex', ' codex');
+      row(CODEX_AUTO, 'codex', ' codex auto');
+      for (const m of codexMenuModels()) {
+        if (m.family === 'astra') menu.appendChild(el('div', 'menu-sep-label', 'For exceptions'));
+        row(m, 'codex', ' codex' + (m.family === 'astra' ? ' exception' : ''));
+      }
     }
 
     const model = this.model;
@@ -294,6 +331,18 @@ async function loadModels() {
   for (const p of pickers) p.setValue(p.value);
 }
 
+// Codex's model list, also while Codex is still off (Settings lists its
+// models as soon as you turn it on). Resolves with the list, [] when Codex
+// could not be asked.
+async function loadCodexModels() {
+  const codex = await window.deck.listCodexModels().catch(() => null);
+  if (Array.isArray(codex) && codex.length) {
+    codexModels = codex;
+    for (const p of pickers) p.setValue(p.value);
+  }
+  return codexModels;
+}
+
 // Which providers are on, from the settings.
 function setProviders(config) {
   const before = providersOn.codex;
@@ -307,6 +356,10 @@ window.ModelPicker = ModelPicker;
 window.ModePicker = ModePicker;
 window.loadModels = loadModels;
 window.setProviders = setProviders;
+window.loadCodexModels = loadCodexModels;
 window.codexModelByValue = codexModelByValue;
-window.codexMenuModels = () => codexModels;
+window.codexMenuModels = codexMenuModels;
+window.codexAutoFamily = codexAutoFamily;
+window.codexChoiceModel = codexChoiceModel;
+window.FAMILY_NAMES = FAMILY_NAMES;
 window.PROVIDER_NAMES = PROVIDER_NAMES;

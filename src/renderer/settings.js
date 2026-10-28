@@ -103,12 +103,15 @@ function openSettings(config, { onSaved } = {}) {
   const claudeOn = settingsInput('checkbox', config.claudeEnabled !== false);
   const codexOn = settingsInput('checkbox', !!config.codexEnabled);
   const provider = settingsSelect([['claude', 'Claude'], ['codex', 'Codex']], config.defaultProvider || 'claude');
-  const codexModelChoices = [['', 'Codex default'], ...codexMenuModels().map(m => [m.value, m.displayName])];
-  const codexModel = settingsSelect(codexModelChoices, config.codexModel || '');
+  // Codex's model: Auto, or the newest Sol, Terra, Luna or Astra, as in its
+  // model menu (picker.js). A model saved by its id shows as its family when
+  // it is that family's newest.
+  const codexModelChoices = () => [['auto', 'Auto'], ...codexMenuModels().map(m => [m.value, m.displayName])];
+  const codexModel = settingsSelect(codexModelChoices(), codexChoiceModel(config.codexModel));
   const codexEffortOptions = () => {
     const m = codexModelByValue(codexModel.value);
     const levels = m.supportedEffortLevels?.length ? m.supportedEffortLevels : ['low', 'medium', 'high', 'xhigh', 'max'];
-    return [['', m.defaultEffort ? `Model default (${EFFORT_NAMES[m.defaultEffort] || m.defaultEffort})` : 'Model default'], ...levels.map(l => [l, EFFORT_NAMES[l] || l])];
+    return [['', 'Auto'], ...levels.map(l => [l, EFFORT_NAMES[l] || l])];
   };
   const codexEffortSlot = el('div', 'settings-inline');
   let codexEffort = settingsSelect(codexEffortOptions(), config.codexEffort || '');
@@ -117,10 +120,44 @@ function openSettings(config, { onSaved } = {}) {
     const keep = codexEffort.value;
     const next = settingsSelect(codexEffortOptions(), '');
     if ([...next.options].some(o => o.value === keep)) next.value = keep;
+    next.disabled = codexEffort.disabled;
     codexEffort.replaceWith(next);
     codexEffort = next;
   };
   const codexPath = settingsInput('text', config.codexPath, { placeholder: 'Found by itself: Homebrew, npm or ~/.local/bin' });
+  const codexExtraArgs = settingsText((config.codexExtraArgs || []).join('\n'), 'One flag or value per line, for example\n-c\nmodel_verbosity="low"');
+  // Quick tasks: the provider and model for titles, Auto's ratings,
+  // follow-ups, group notes and game folders.
+  const helperProvider = settingsSelect([['claude', 'Claude'], ['codex', 'Codex']], config.helperProvider || 'claude');
+  const claudeHelperModel = settingsSelect(menuModels().filter(m => m.value !== 'auto').map(m => [m.value, shortName(m)]), config.claudeHelperModel || 'haiku');
+  const helperChoices = () => {
+    const fast = codexMenuModels().find(m => m.fast);
+    return [['', fast ? `Fastest (${fast.displayName})` : 'Fastest'], ...codexMenuModels().map(m => [m.value, m.displayName])];
+  };
+  const codexHelperModel = settingsSelect(helperChoices(), config.codexHelperModel ? codexChoiceModel(config.codexHelperModel) : '');
+  // The model menus get Codex's list once it is loaded (see fillCodexModels).
+  const refill = (select, options) => {
+    const keep = select.value;
+    const next = settingsSelect(options, keep);
+    select.replaceChildren(...next.options);
+    select.value = keep;
+  };
+  let codexLoading = null;
+  const fillCodexModels = () => {
+    if (codexMenuModels().length || codexLoading) return;
+    for (const select of [codexModel, codexHelperModel]) select.appendChild(new Option('Loading Codex\'s models…', '__loading', false, false)).disabled = true;
+    codexLoading = loadCodexModels().then(models => {
+      codexLoading = null;
+      for (const select of [codexModel, codexHelperModel]) select.querySelector('option[value="__loading"]')?.remove();
+      if (!models.length) {
+        for (const select of [codexModel, codexHelperModel]) select.appendChild(new Option('Could not load the models: is Codex installed and signed in?', '__failed', false, false)).disabled = true;
+        return;
+      }
+      refill(codexModel, codexModelChoices());
+      refill(codexHelperModel, helperChoices());
+      codexModel.onchange();
+    });
+  };
   const compact = settingsSelect([['150k', '150k tokens'], ['200k', '200k tokens'], ['300k', '300k tokens'], ['500k', '500k tokens'], ['auto', 'When Claude Code decides']], config.autoCompact || '200k');
 
   // The app
@@ -175,6 +212,28 @@ function openSettings(config, { onSaved } = {}) {
   const extraArgs = settingsText((config.extraArgs || []).join('\n'), 'One flag or value per line, for example\n--add-dir\nC:\\Some\\Folder');
   const env = settingsText(Object.entries(config.env || {}).map(([k, v]) => `${k}=${v}`).join('\n'), 'One per line: NAME=value');
 
+  // Settings of a provider that is off are greyed out (see showProviders).
+  const providerRows = { claude: [], codex: [] };
+  const claudeOnly = row => (providerRows.claude.push(row), row);
+  const codexOnly = row => (providerRows.codex.push(row), row);
+  const showProviders = () => {
+    const on = { claude: claudeOn.checked, codex: codexOn.checked };
+    for (const [p, rows] of Object.entries(providerRows)) {
+      for (const row of rows) {
+        row.classList.toggle('off', !on[p]);
+        row.title = on[p] ? '' : `Turn on ${p === 'codex' ? 'Codex' : 'Claude'} in Providers to change this`;
+        for (const c of row.querySelectorAll('input, select, textarea, button')) c.disabled = !on[p];
+      }
+      for (const select of [provider, helperProvider]) {
+        const option = [...select.options].find(o => o.value === p);
+        if (option) option.disabled = !on[p];
+      }
+    }
+  };
+  claudeOn.addEventListener('change', showProviders);
+  codexOn.addEventListener('change', showProviders);
+  codexOn.addEventListener('change', () => { if (codexOn.checked) fillCodexModels(); });
+
   const section = (title, ...rows) => {
     const s = el('div', 'settings-section');
     if (title) s.appendChild(el('div', 'settings-section-title', title));
@@ -194,21 +253,24 @@ function openSettings(config, { onSaved } = {}) {
         settingsField('Start new agents on', 'When its usage limit is reached, new agents start on the other provider (if it is on). Agents that are working wait for their own provider\'s limit to reset, so their conversation stays where it is', provider)),
       section('Claude',
         settingsField('Use Claude', 'Claude Code, with your Claude login', claudeOn),
-        settingsField('Model', 'Auto picks Opus, Sonnet or Haiku for each task', model),
-        settingsField('Auto model report', 'What Auto cost against running everything on Opus at medium effort', reportBtn),
-        settingsField('Effort', 'Auto: with the Auto model, it picks the effort for each task too; with another model, the model\'s default', effort),
-        settingsField('Fast mode', 'Faster answers from the same model', fast)),
+        claudeOnly(settingsField('Model', 'Auto picks Opus, Sonnet or Haiku for each task', model)),
+        claudeOnly(settingsField('Auto model report', 'What Auto cost against running everything on Opus at medium effort', reportBtn)),
+        claudeOnly(settingsField('Effort', 'Auto: with the Auto model, it picks the effort for each task too; with another model, the model\'s default', effort)),
+        claudeOnly(settingsField('Fast mode', 'Faster answers from the same model', fast))),
       section('Codex',
         settingsField('Use Codex', 'OpenAI\'s Codex CLI, with your ChatGPT login (codex login in a terminal). Its agents read the project\'s CLAUDE.md and your global one', codexOn),
-        settingsField('Model', 'The models your ChatGPT plan offers', codexModel),
-        settingsField('Effort', null, codexEffortSlot),
-        settingsField('Codex program', 'Empty: the app finds it', codexPath))]],
+        codexOnly(settingsField('Model', 'Auto picks Sol, Terra or Luna for each task. Each one is its newest version; Astra is for exceptions', codexModel)),
+        codexOnly(settingsField('Effort', 'Auto: with the Auto model, it picks the effort for each task too; with another model, the model\'s default', codexEffortSlot))),
+      section('Quick tasks',
+        settingsField('Run quick tasks on', 'Short titles, Auto\'s ratings, suggested follow-ups, group notes and finding the game folder. While this provider is off or at its usage limit, they run on the other one', helperProvider),
+        claudeOnly(settingsField('Claude model', 'Haiku is the fastest and uses the least of your limits', claudeHelperModel)),
+        codexOnly(settingsField('Codex model', 'Luna is Codex\'s Haiku: the fastest, and uses the least of your limits. Runs at low effort', codexHelperModel)))]],
     ['app', 'App', [section(null,
       settingsField('Theme', 'Nostromo: the screens of the ship’s computer in Alien, on an old tube', theme),
       settingsField('Curved screen', 'Nostromo only: the screen has the bulging shape of a tube’s glass, with scanlines that bow with it', curved),
       settingsField('Show the Hub after sending', 'Off: stay in the chat after you send a message', hubAfterSend),
-      settingsField('Short titles', 'Name new agents with a summary of your message, written by Haiku', titles),
-      settingsField('Suggest follow-ups', 'After a task, the messages you will likely send next, written by Haiku. → or a click puts one in the box, Alt+1–3 sends it', followUps),
+      settingsField('Short titles', 'Name new agents with a summary of your message, written by the quick-task model (Providers → Quick tasks)', titles),
+      settingsField('Suggest follow-ups', 'After a task, the messages you will likely send next, written by the quick-task model. → or a click puts one in the box, Alt+1–3 sends it', followUps),
       settingsField('Notifications', 'When an agent finishes or needs you while the app is in the background: its tile in the corner of the screen, or the system\'s notification', notify),
       settingsField('Sounds', 'For everything you and the agents do', sounds))]],
     ['branches', 'Branch diff', [section(null,
@@ -217,9 +279,13 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('GitHub', 'Also list your open pull requests and the branches you pushed in the last 90 days, for the account gh is signed in with', githubBranches))]],
     ['advanced', 'Advanced', [
       section('Claude Code',
-        settingsField('Claude Code program', 'Empty: the app finds it', claudePath),
-        settingsField('Extra flags', 'Added to every agent', extraArgs),
-        settingsField('Environment variables', 'For every agent', env)),
+        claudeOnly(settingsField('Claude Code program', 'Empty: the app finds it', claudePath)),
+        claudeOnly(settingsField('Extra flags', 'Added to every Claude agent', extraArgs))),
+      section('Codex',
+        codexOnly(settingsField('Codex program', 'Empty: the app finds it', codexPath)),
+        codexOnly(settingsField('Extra flags', 'Added to every Codex agent (codex app-server)', codexExtraArgs))),
+      section('Both providers',
+        settingsField('Environment variables', 'For every agent, on Claude and on Codex', env)),
       section('Stuck agents',
         settingsField('Waiting for Unity for', 'Seconds. An agent only counts as stuck while it waits for Unity to be ready', stuckAfter))]],
   ];
@@ -268,6 +334,8 @@ function openSettings(config, { onSaved } = {}) {
     body.style.paddingBottom = `${Math.max(16, body.clientHeight - last.offsetHeight - 8)}px`;
   };
   requestAnimationFrame(() => { fitEnd(); lightFromScroll(); });
+  showProviders();
+  if (codexOn.checked) fillCodexModels();
   // A setting that cannot be saved: the list scrolls to it.
   const showSettingOf = input => {
     input.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -330,6 +398,10 @@ function openSettings(config, { onSaved } = {}) {
       codexModel: codexModel.value,
       codexEffort: codexEffort.value,
       codexPath: codexPath.value.trim(),
+      codexExtraArgs: codexExtraArgs.value.split('\n').map(l => l.trim()).filter(Boolean),
+      helperProvider: helperProvider.value,
+      claudeHelperModel: claudeHelperModel.value,
+      codexHelperModel: codexHelperModel.value,
       autoCompact: compact.value,
       hubAfterSend: hubAfterSend.checked,
       summarizeTitles: titles.checked,

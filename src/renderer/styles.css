@@ -2676,3 +2676,12 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .limit-banner-timer { flex-shrink: 0; font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; color: #efe9ff; letter-spacing: 0.03em; }
 .item-provider { flex-shrink: 0; margin: 0 6px; padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
   color: #9fd8e8; border: 1px solid rgba(159, 216, 232, 0.35); }
+.conn-tabs { display: flex; gap: 4px; margin: 0 0 12px; padding: 3px; border-radius: 10px; background: rgba(0, 0, 0, 0.25); align-self: flex-start; }
+.conn-tabs.hidden { display: none; }
+.conn-tab { padding: 5px 16px; border-radius: 8px; border: none; background: transparent; color: var(--text-dim); font-weight: 600; cursor: pointer; }
+.conn-tab:hover { color: var(--text); }
+.conn-tab.on { background: var(--bg-elev, #2a221b); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); }
+.settings-field.off, .settings-section.off { opacity: 0.45; }
+.settings-field.off * { cursor: not-allowed; }
+.settings-off-note { font-size: 11.5px; color: var(--text-faint); margin: -4px 0 8px; }
+.settings-off-note.hidden { display: none; }

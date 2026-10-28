@@ -31,6 +31,9 @@ function developerInstructions() {
 
 const START_ARGS = ['app-server', '-c', 'project_doc_fallback_filenames=["CLAUDE.md"]'];
 
+// Settings → Advanced → Codex → Extra flags go to every agent's app-server.
+const agentArgs = config => [...START_ARGS, ...(Array.isArray(config.codexExtraArgs) ? config.codexExtraArgs : [])];
+
 // The app's permission modes as Codex's approval policy and sandbox.
 const MODES = {
   bypassPermissions: { approvalPolicy: 'never', sandbox: 'danger-full-access' },
@@ -112,8 +115,8 @@ class CodexClient {
   }
 }
 
-function startServer(config, cwd, handlers) {
-  const proc = spawnCodex(config.codexPath, START_ARGS, { cwd, env: childEnv(config.env), stdio: ['pipe', 'pipe', 'pipe'] });
+function startServer(config, cwd, handlers, args = START_ARGS) {
+  const proc = spawnCodex(config.codexPath, args, { cwd, env: childEnv(config.env), stdio: ['pipe', 'pipe', 'pipe'] });
   return new CodexClient(proc, handlers);
 }
 
@@ -372,7 +375,7 @@ class CodexManager {
         this.send('agent:exit', id, { code, stderr: agent.stderr });
         this.agents.delete(id);
       },
-    });
+    }, agentArgs(config));
     agent.client.proc.stderr.on('data', chunk => { agent.stderr = (agent.stderr + chunk.toString('utf8')).slice(-8000); });
     agent.client.proc.on('error', err => {
       this.setStatus(agent, 'error');
@@ -390,7 +393,8 @@ class CodexManager {
   async open(agent, { resumeId, forkSession, resumeSessionAt }) {
     await agent.client.initialize();
     const { approvalPolicy, sandbox } = modeOf(agent.mode);
-    const params = { cwd: agent.cwd, approvalPolicy, sandbox, developerInstructions: developerInstructions(), ...(agent.model ? { model: agent.model } : {}) };
+    const model = await resolveModel(this.getConfig(), agent.model).catch(() => '');
+    const params = { cwd: agent.cwd, approvalPolicy, sandbox, developerInstructions: developerInstructions(), ...(model ? { model } : {}) };
     let res;
     if (resumeId && (forkSession || resumeSessionAt)) {
       res = await agent.client.request('thread/fork', { ...params, threadId: resumeId, ...(resumeSessionAt ? { lastTurnId: resumeSessionAt } : {}) });
@@ -563,10 +567,11 @@ class CodexManager {
       } catch { /* the turn ended meanwhile: start a new one */ }
     }
     const { approvalPolicy, sandbox } = modeOf(agent.mode);
+    const model = await resolveModel(this.getConfig(), agent.model).catch(() => '');
     try {
       await agent.client.request('turn/start', {
         threadId: agent.threadId, input, approvalPolicy, sandboxPolicy: SANDBOX_POLICY[sandbox],
-        ...(agent.model ? { model: agent.model } : {}), ...(agent.effort ? { effort: agent.effort } : {}),
+        ...(model ? { model } : {}), ...(agent.effort ? { effort: agent.effort } : {}),
       });
     } catch (err) {
       this.setStatus(agent, 'error');
@@ -653,20 +658,59 @@ async function helperRequest(config, method, params, timeoutMs = 20000) {
   return h.client.request(method, params, timeoutMs);
 }
 
+// Codex's models come in families, like Claude's: Luna (fast, Codex's
+// Haiku), Terra (balanced, its Sonnet), Sol (the workhorse, its Opus) and
+// Astra (frontier, for exceptions, like Fable). Codex has no alias that
+// follows a family's newest version, so the app saves the family ("sol")
+// and runs its newest model (resolveModel).
+const FAMILIES = ['sol', 'terra', 'luna', 'astra'];
+const familyOf = id => FAMILIES.find(f => new RegExp(`(^|[-_.])${f}($|[-_.])`, 'i').test(id)) || null;
+const versionOf = id => (/(\d+(?:\.\d+)*)/.exec(id)?.[1] || '0').split('.').map(Number);
+const newer = (a, b) => { for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0); return false; };
+function newestOf(models, family) {
+  const all = models.filter(m => m.family === family);
+  return all.length ? all.reduce((best, m) => (newer(versionOf(m.value), versionOf(best.value)) ? m : best)) : null;
+}
+
 // The models this account can use, in the shape of Claude Code's list (see
-// picker.js), each marked as a Codex model.
+// picker.js), each marked as a Codex model, with its family; the newest of
+// each family has latest, and the one for quick tasks (the newest Luna, or
+// one that says it is fast) has fast.
+let modelsCache = null;
 async function fetchCodexModels(config) {
+  if (modelsCache) return modelsCache;
   try {
     const res = await helperRequest(config, 'model/list', {});
-    return (res?.data || []).filter(m => !m.hidden).map(m => ({
+    const models = (res?.data || []).filter(m => !m.hidden).map(m => ({
       value: m.id, displayName: m.displayName || m.id, description: m.description || '', provider: 'codex',
       isDefault: !!m.isDefault, defaultEffort: m.defaultReasoningEffort || '',
       supportsEffort: !!m.supportedReasoningEfforts?.length,
       supportedEffortLevels: (m.supportedReasoningEfforts || []).map(e => e.reasoningEffort),
     }));
+    for (const m of models) m.family = familyOf(m.value);
+    for (const f of FAMILIES) { const m = newestOf(models, f); if (m) m.latest = true; }
+    const fast = newestOf(models, 'luna') || models.find(m => /\bfast/i.test(m.description));
+    if (fast) fast.fast = true;
+    if (models.length) modelsCache = models;
+    return models;
   } catch {
     return null;
   }
+}
+
+// A model choice as the model Codex runs: a family is its newest model;
+// Auto or nothing is Codex's own default (the window picks a family for
+// Auto before this); a model id stays as it is.
+async function resolveModel(config, value) {
+  if (!value || value === 'auto' || value === 'default') return '';
+  if (!FAMILIES.includes(value)) return value;
+  return newestOf((await fetchCodexModels(config)) || [], value)?.value || '';
+}
+
+// The model for quick tasks: Settings' pick, else the fast one.
+async function codexHelperModel(config) {
+  if (config.codexHelperModel) return resolveModel(config, config.codexHelperModel);
+  return (await fetchCodexModels(config))?.find(m => m.fast)?.value || '';
 }
 
 // Codex's limits as rate_limit_info, or null. No model call is made.
@@ -708,4 +752,4 @@ async function loadCodexThread(config, threadId) {
   return { cwd: thread?.cwd || null, messages };
 }
 
-module.exports = { CodexManager, fetchCodexModels, fetchCodexUsage, listCodexThreads, loadCodexThread };
+module.exports = { CodexManager, fetchCodexModels, codexHelperModel, fetchCodexUsage, listCodexThreads, loadCodexThread };

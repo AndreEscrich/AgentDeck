@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Notification, Menu, protocol
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
-const { AgentManager, fetchModels, summarizeTitle, rateTask, pickGame, mergeNotes, suggestFollowUps, fetchUsage, setClaudeLimited } = require('./agents');
+const { AgentManager, fetchModels, summarizeTitle, rateTask, pickGame, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited } = require('./agents');
 const { CodexManager, fetchCodexModels, fetchCodexUsage, listCodexThreads, loadCodexThread } = require('./codex');
 const { listSessions, loadTranscript, PROJECTS_DIR } = require('./sessions');
 const git = require('./git');
@@ -40,8 +40,14 @@ const DEFAULT_CONFIG = {
   codexEnabled: false,
   defaultProvider: 'claude',            // claude | codex
   codexPath: '',                        // empty means: look in the usual install folders
-  codexModel: '',                       // a Codex model id; empty: Codex's default
-  codexEffort: '',                      // low | medium | high | xhigh | max | ultra; empty: the model's default
+  codexModel: 'auto',                   // auto (Luna, Terra or Sol per task, like Claude's Auto), a family (sol, terra, luna, astra: its newest model) or a model id
+  codexEffort: '',                      // low | medium | high | xhigh | max | ultra; empty: Auto picks it (with the Auto model), else the model's default
+  codexExtraArgs: [],                   // extra command-line flags for every Codex agent (codex app-server)
+  // The quick calls (titles, Auto's ratings, follow-ups, notes, games) run on
+  // helperProvider, or on the other one while it is off or at its limit.
+  helperProvider: 'claude',             // claude | codex
+  claudeHelperModel: 'haiku',
+  codexHelperModel: '',                 // a family or model id; empty: its fastest, the newest Luna (always at low effort)
   defaultPermissionMode: 'bypassPermissions', // default | acceptEdits | auto | plan | bypassPermissions
   defaultModel: 'auto',                 // a value from the model menu; "auto" picks Opus, Sonnet or Haiku per task (automodel.js)
   defaultEffort: '',                    // low | medium | high | xhigh | max; empty: Auto picks it (with the Auto model), else the model's default
@@ -314,12 +320,14 @@ app.whenReady().then(() => {
   ipcMain.handle('auth:input', (_e, text) => auth.input(text));
   ipcMain.handle('auth:cancel', () => auth.cancel());
   ipcMain.handle('auth:status', () => auth.status(getConfig()));
-  ipcMain.handle('connectors:list', (_e, cwd) => connectors.list(getConfig(), cwd));
-  ipcMain.handle('connectors:cached', () => connectors.cached());
-  ipcMain.handle('connectors:login', (_e, id) => connectors.login(getConfig(), id));
-  ipcMain.handle('connectors:cancelLogin', (_e, id) => connectors.cancelLogin(id));
-  ipcMain.handle('connectors:add', (_e, spec) => connectors.add(getConfig(), spec));
-  ipcMain.handle('connectors:remove', (_e, spec) => connectors.remove(getConfig(), spec));
+  // Each call names its provider: Claude Code's connectors, or Codex's.
+  const connectorsOf = provider => (provider === 'codex' ? connectors.codex : connectors);
+  ipcMain.handle('connectors:list', (_e, cwd, provider) => connectorsOf(provider).list(getConfig(), cwd));
+  ipcMain.handle('connectors:cached', (_e, provider) => connectorsOf(provider).cached());
+  ipcMain.handle('connectors:login', (_e, id, provider) => connectorsOf(provider).login(getConfig(), id));
+  ipcMain.handle('connectors:cancelLogin', (_e, id, provider) => connectorsOf(provider).cancelLogin(id));
+  ipcMain.handle('connectors:add', (_e, spec, provider) => connectorsOf(provider).add(getConfig(), spec));
+  ipcMain.handle('connectors:remove', (_e, spec, provider) => connectorsOf(provider).remove(getConfig(), spec));
   // Shows the Agent Hub icon in the Dock also when you run `npm start`.
   if (app.dock) app.dock.setIcon(path.join(__dirname, '..', 'build', 'icon.png'));
   configPath = path.join(app.getPath('userData'), 'config.json');
@@ -345,7 +353,7 @@ app.whenReady().then(() => {
   ipcMain.handle('app:quit', () => quitNow());
   ipcMain.handle('usage:fetch', () => (getConfig().claudeEnabled === false ? null : fetchUsage(getConfig())));
   ipcMain.handle('codex:usage', () => (getConfig().codexEnabled ? fetchCodexUsage(getConfig()) : null));
-  ipcMain.handle('providers:claudeLimited', (_e, untilMs) => setClaudeLimited(untilMs));
+  ipcMain.handle('providers:limited', (_e, provider, untilMs) => setProviderLimited(provider, untilMs));
   ipcMain.handle('app:version', () => appVersion());
   ipcMain.handle('update:latest', () => latestUpdate);
   // Settings → Check for updates: a look right now. The dev copy does not

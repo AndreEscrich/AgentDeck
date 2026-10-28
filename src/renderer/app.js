@@ -42,12 +42,18 @@ const state = {
 
 // ---------- the Auto model (automodel.js) ----------
 
-// The model Claude Code runs for an agent: its choice, or with Auto the one
-// Auto picked for it (agent.autoLevel, 1 to 3).
+// The model an agent runs: its choice, or with Auto the one Auto picked for
+// it (agent.autoLevel, 1 to 3): Haiku, Sonnet or Opus on Claude, Luna,
+// Terra or Sol on Codex (codexAutoFamily, picker.js).
 function cliModel(agent) {
   const m = agent.choice?.model;
-  return m === 'auto' ? autoModel.modelOf(agent.autoLevel || 2) : m;
+  if (m !== 'auto') return m;
+  return providerOf(agent.choice) === 'codex' ? codexAutoFamily(agent.autoLevel) : autoModel.modelOf(agent.autoLevel || 2);
 }
+// The name of Auto's smallest model, for the notes about its picks.
+const smallModel = agent => (providerOf(agent.choice) === 'codex' ? 'Luna' : 'Haiku');
+// What a model is called in the notes: "Opus", "Sol".
+const pickName = agent => (providerOf(agent.choice) === 'codex' ? FAMILY_NAMES[cliModel(agent)] || cliModel(agent) : autoModel.nameOf(cliModel(agent)));
 // The effort: its choice, or with Auto and Effort "Auto" the one Auto
 // picked for it (agent.autoEffort; '' is the model's default).
 function cliEffort(agent) {
@@ -60,7 +66,7 @@ function cliChoice(agent) {
 // What Auto picked, for the model button and the chat: "Opus · High".
 function autoPickName(agent) {
   const effort = !agent.choice?.effort && agent.autoEffort;
-  return autoModel.nameOf(cliModel(agent)) + (effort ? ` · ${EFFORT_NAMES[effort] || effort}` : '');
+  return pickName(agent) + (effort ? ` · ${EFFORT_NAMES[effort] || effort}` : '');
 }
 // The model button says what Auto picked for the agent on screen.
 function showAutoPick(agent) {
@@ -83,7 +89,7 @@ async function settleAuto(agent, rating) {
   agent.autoEffort = autoModel.effortFor(agent.autoLevel, autoModel.score(agent.autoRules, haiku));
   if (JSON.stringify(cliChoice(agent)) !== before) window.deck.setModel(agent.id, cliChoice(agent));
   const easy = autoModel.combine(agent.autoRules, haiku) === 1;
-  const why = easy && agent.autoLevel > 1 ? 'it rates easy, but it asks for work, which is too much for Haiku' : haiku ? `Haiku rated it ${haiku} of 3` : 'from your message';
+  const why = easy && agent.autoLevel > 1 ? `it rates easy, but it asks for work, which is too much for ${smallModel(agent)}` : haiku ? `the quick-task model rated it ${haiku} of 3` : 'from your message';
   agent.transcript.note(`Auto picked ${autoPickName(agent)} (${why}).`);
   showAutoPick(agent);
   refreshHub();
@@ -109,7 +115,7 @@ function startProvider() {
 }
 
 function defaultChoice(provider = startProvider()) {
-  if (provider === 'codex') return { provider: 'codex', model: state.config.codexModel || '', effort: state.config.codexEffort || '', fastMode: false };
+  if (provider === 'codex') return { provider: 'codex', model: codexChoiceModel(state.config.codexModel), effort: state.config.codexEffort || '', fastMode: false };
   return {
     provider: 'claude',
     model: state.config.defaultModel || 'auto',
@@ -2803,9 +2809,15 @@ const EFFORT_SHORT = { low: 'Low', medium: 'Med', high: 'High', xhigh: 'XHigh', 
 hub.modelOf = agent => {
   // A saved session from before models were recorded: nothing to show.
   if (providerOf(agent.choice) === 'codex') {
-    const m = codexModelByValue(agent.choice.model || agent.resolvedModel || '');
-    const effort = agent.choice.effort;
-    return { label: `Codex · ${m.displayName}${effort ? ` · ${EFFORT_SHORT[effort] || effort}` : ''}`, codex: true, title: `Runs on Codex, ${m.displayName}${effort ? ` at ${(EFFORT_NAMES[effort] || effort).toLowerCase()} effort` : ''}` };
+    const effort = cliEffort(agent);
+    const short = effort ? ` · ${EFFORT_SHORT[effort] || effort}` : '';
+    const long = effort ? ` at ${(EFFORT_NAMES[effort] || effort).toLowerCase()} effort` : '';
+    if ((agent.choice.model || 'auto') === 'auto') {
+      const picked = pickName(agent);
+      return { label: `Codex · Auto · ${picked}${short}`, auto: true, codex: true, title: `Auto picked ${picked}${long} on Codex for this task (it can change with your next message)` };
+    }
+    const m = codexModelByValue(agent.choice.model);
+    return { label: `Codex · ${m.displayName}${short}`, codex: true, title: `Runs on Codex, ${m.displayName}${long}` };
   }
   if (!agent.choice?.model) return null;
   const value = agent.choice.model;
@@ -3443,6 +3455,8 @@ async function startFrom(forkFrom, note = flashComposerNote) {
 async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId, fromRect, forkFrom, preamble = '', handoffFrom = null, images = [], ticket = null, rewindAt, prepare = null, folderNote = null }) {
   const title = resume ? resume.session.title : prompt.split('\n')[0].slice(0, 80);
   choice = choice || defaultChoice();
+  // An older Codex choice: no model is Auto, a newest model id its family.
+  if (providerOf(choice) === 'codex') choice = { ...choice, model: codexChoiceModel(choice.model) };
   // A new agent starts on the other provider while this one is at its limit.
   // (A resumed one stays: its conversation lives with its provider.)
   const fellBack = !resume && rewindAt === undefined ? fallbackChoice(choice) : null;
@@ -3682,7 +3696,7 @@ async function sendToAgent(agent, text, images = []) {
     if (JSON.stringify(cliChoice(agent)) !== before) {
       window.deck.setModel(agent.id, cliChoice(agent));
       const why = autoModel.visual(rateText) ? `visual work: ${autoModel.visual(rateText)}`
-        : current === 1 && level > 1 && !autoModel.haikuFits(rateText) ? 'it asks for work, which is too much for Haiku' : haiku ? `Haiku rated this ${haiku} of 3` : autoModel.stepUp(lastStatus, rateText) ? 'the last try did not work' : 'from your message';
+        : current === 1 && level > 1 && !autoModel.haikuFits(rateText) ? `it asks for work, which is too much for ${smallModel(agent)}` : haiku ? `the quick-task model rated this ${haiku} of 3` : autoModel.stepUp(lastStatus, rateText) ? 'the last try did not work' : 'from your message';
       agent.transcript.note(`Auto switched to ${autoPickName(agent)} for this (${why}).`);
       showAutoPick(agent);
     }
@@ -4395,9 +4409,9 @@ function noteUsage(msg) {
     if (p === 'claude') {
       // The Auto report learns what 1% of the week is worth (autoreport.js).
       autoReport.noteUsage(msg.rate_limit_info);
-      // Haiku's quick calls run on Codex while Claude is at its limit.
-      window.deck.setClaudeLimited(limitedUntil('claude')).catch(() => {});
     }
+    // The quick calls switch provider while theirs is at its limit (agents.js).
+    window.deck.setProviderLimited(p, limitedUntil(p)).catch(() => {});
     try { localStorage.setItem(LIMITS_KEY[p], JSON.stringify({ limits: usage[p].limits, at: usage[p].at })); } catch { /* not important */ }
   } else if (msg.type === 'result') {
     usage.tokens += totalTokens(msg.usage || {});
@@ -4578,7 +4592,7 @@ window.deck.onEvent((id, msg) => {
   if (msg.type === 'user' && Array.isArray(msg.message?.content) && msg.message.content.some(b => b?.type === 'tool_result' && b.is_error)) taskType.noteError(a);
   if (msg.type === 'result') clearClashes(a);
   // A finished turn of an Auto agent goes into the Auto report (autoreport.js).
-  if (msg.type === 'result' && a.choice?.model === 'auto') {
+  if (msg.type === 'result' && a.choice?.model === 'auto' && providerOf(a.choice) === 'claude') {
     autoReport.recordTurn(msg, { family: cliModel(a), title: a.latestTitle || a.summaryTitle || a.title, switched: !!a.autoSwitched, contextBefore: a.autoContext || 0, failedStepUp: !!a.autoFailStep, effort: cliEffort(a) });
     a.autoContext = autoReport.contextOf(msg);
     a.autoSwitched = false;

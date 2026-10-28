@@ -354,20 +354,31 @@ class AgentManager {
 // ---------- quick helper calls ----------
 
 // The quick calls below (titles, ratings, follow-ups, notes, games) run on
-// Haiku. While Claude is turned off in Settings, or its usage limit is
-// reached, they run on Codex instead (when it is on): a codex exec with
-// the same prompt, wrapped to look like `claude -p --output-format json`.
-let claudeLimitedUntil = 0;
-function setClaudeLimited(untilMs) {
-  claudeLimitedUntil = Number(untilMs) || 0;
+// the provider Settings → Providers picks for them (helperProvider), with
+// its quick-task model: Haiku on Claude, by default. While that provider is
+// off or at its usage limit, they run on the other one, when it is on and
+// not at its limit too. On Codex it is a codex exec with the same prompt,
+// wrapped to look like `claude -p --output-format json`.
+const limitedUntil = { claude: 0, codex: 0 };
+function setProviderLimited(provider, untilMs) {
+  if (provider in limitedUntil) limitedUntil[provider] = Number(untilMs) || 0;
 }
 
-function helperOnCodex(config) {
-  return !!config.codexEnabled && (config.claudeEnabled === false || claudeLimitedUntil > Date.now());
+function helperProvider(config) {
+  const on = { claude: config.claudeEnabled !== false, codex: !!config.codexEnabled };
+  const usable = p => on[p] && limitedUntil[p] <= Date.now();
+  const want = config.helperProvider === 'codex' ? 'codex' : 'claude';
+  const other = want === 'codex' ? 'claude' : 'codex';
+  if (usable(want)) return want;
+  if (usable(other)) return other;
+  return on[want] || !on[other] ? want : other;
 }
 
+// args: Claude Code's arguments, with "haiku" where the quick-task model goes.
 function spawnHelper(config, args, options) {
-  return helperOnCodex(config) ? codexHelper(config, options) : spawnClaude(config.claudePath, args, options);
+  if (helperProvider(config) === 'codex') return codexHelper(config, options);
+  const model = config.claudeHelperModel || 'haiku';
+  return spawnClaude(config.claudePath, args.map(a => (a === 'haiku' ? model : a)), options);
 }
 
 function codexHelper(config, options) {
@@ -376,9 +387,12 @@ function codexHelper(config, options) {
   fake.stdin = new PassThrough();
   let prompt = '';
   fake.stdin.on('data', d => { prompt += d; });
-  fake.stdin.on('end', () => {
+  fake.stdin.on('end', async () => {
     const out = path.join(os.tmpdir(), `agenthub-codex-${randomUUID()}.txt`);
-    const args = ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '-c', 'model_reasoning_effort="low"', '-o', out, '-'];
+    // Codex's Haiku (its newest Luna) unless Settings picks another model.
+    const model = await require('./codex').codexHelperModel(config).catch(() => '');
+    const args = ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '-c', 'model_reasoning_effort="low"', '-o', out,
+      ...(model ? ['-m', model] : []), '-'];
     const proc = spawnCodex(config.codexPath, args, { cwd: options?.cwd || os.tmpdir(), env: childEnv(config.env), stdio: ['pipe', 'ignore', 'ignore'] });
     fake.pid = proc.pid;
     let done = false;
@@ -673,4 +687,4 @@ function pickGame(config, question, { task = null } = {}) {
   });
 }
 
-module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, rateTask, pickGame, mergeNotes, suggestFollowUps, fetchUsage, setClaudeLimited, SYSTEM_PROMPT, EDIT_PROMPT };
+module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, rateTask, pickGame, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited, SYSTEM_PROMPT, EDIT_PROMPT };
