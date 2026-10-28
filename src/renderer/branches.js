@@ -253,6 +253,37 @@ class BranchesView {
     requestAnimationFrame(() => this.filter.focus());
   }
 
+  // Opens at the branch a working copy is on ({ vcs, name }, see branchOf
+  // in src/repos.js): the list filtered to its name, and the branch picked
+  // once the list has it. A branch that is not in the list (trunk, a merged
+  // pull request, a name the Settings filter leaves out) says so.
+  openBranch(want) {
+    // A read already under way is fresh enough: no second one after it.
+    this.want = { ...want, again: !!this.loading };
+    this.filter.value = want.name;
+    this.renderList();
+    if (this.branches) this.pickWanted();
+  }
+
+  pickWanted() {
+    const want = this.want;
+    if (!want || !this.branches) return;
+    const same = this.branches.filter(b => (b.source === 'github' ? b.branch : b.name) === want.name
+      && (want.vcs === 'git') === (b.source === 'github'));
+    // A pull request before the plain branch of the same name.
+    const b = same.find(x => x.kind === 'pull') || same[0];
+    if (b) { this.want = null; this.pick(b); return; }
+    // The list read last may not have it yet (a branch made since): wait
+    // for the fresh one, or read them again once.
+    if (this.loading) return;
+    if (!want.again) { want.again = true; this.load(false); return; }
+    this.want = null;
+    const trunk = /^(trunk|main|master)$/.test(want.name);
+    this.main.replaceChildren(el('div', 'branch-empty', trunk
+      ? `${want.name} is the main line: it has no branch diff of its own.`
+      : `${want.name} is not in the list. Its pull request may be merged already, or the branch names in Settings → Branches leave it out.`));
+  }
+
   showIdle() {
     this.main.replaceChildren(el('div', 'branch-empty', 'Pick a branch to see what it changed. What came in from trunk is left out.'));
   }
@@ -280,6 +311,7 @@ class BranchesView {
       }
       this.source.textContent = '';
       this.list.replaceChildren(el('div', 'note err', r?.error || 'Could not read the branches.'));
+      this.want = null;
       return;
     }
     this.showList(r);
@@ -306,6 +338,7 @@ class BranchesView {
     ].filter(Boolean).join('\n');
     this.source.classList.toggle('err', failed.length > 0);
     this.renderList();
+    this.pickWanted();
   }
 
   renderList() {

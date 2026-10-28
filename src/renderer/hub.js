@@ -901,11 +901,12 @@ class Hub {
       repo.cwds = repoCwds.get(name) || [];
       const b = repo.cwds.map(c => this.branchOf?.(c)).find(Boolean);
       repo.branch.classList.toggle('hidden', !b);
+      repo.branchInfo = b || null;
       if (b && repo.branch.dataset.name !== b.name) {
         repo.branch.dataset.name = b.name;
         repo.branch.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2.2"/><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="7" r="2.2"/><path d="M6 7.2v9.6M18 9.2c0 4.5-6 3.8-11 7.6"/></svg>';
         repo.branch.appendChild(document.createTextNode(b.name));
-        repo.branch.title = `${b.vcs === 'svn' ? 'SVN' : 'Git'} branch: ${b.name}`;
+        repo.branch.title = `${b.vcs === 'svn' ? 'SVN' : 'Git'} branch: ${b.name}\nClick to see what it changed (Branch diff)`;
       }
     }
     if (before) {
@@ -997,8 +998,11 @@ class Hub {
     const box = el('div', 'hub-repo');
     const head = el('div', 'hub-repo-head');
     const title = el('span', 'hub-repo-name', name || 'No folder');
-    // The branch its working copy is on (git or svn), when known.
-    const branch = el('span', 'hub-repo-branch hidden');
+    // The branch its working copy is on (git or svn), when known. Clicking
+    // it opens that branch in the Branch diff view.
+    const branch = el('button', 'hub-repo-branch hidden');
+    branch.type = 'button';
+    branch.onclick = e => { e.stopPropagation(); if (repo.branchInfo) this.onOpenBranch?.(repo.branchInfo); };
     const count = el('span', 'hub-repo-count');
     const unity = el('button', 'section-unity hidden');
     unity.type = 'button';

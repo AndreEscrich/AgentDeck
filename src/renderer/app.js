@@ -906,6 +906,8 @@ hub.onOpenConnectors = () => connectorsDialog.open();
 // The Branches view: an SVN branch's own changes (renderer/branches.js).
 const branchesView = new BranchesView();
 hub.onOpenBranches = () => { sfx('open'); show('branches'); };
+// A group's branch tag: the Branch diff view, with that branch picked.
+hub.onOpenBranch = b => { sfx('open'); show('branches'); branchesView.openBranch(b); };
 hub.onOpenSettings = () => showSettings();
 hub.onOpenNotes = groupId => openNotesEditor(findGroup(groupId));
 
