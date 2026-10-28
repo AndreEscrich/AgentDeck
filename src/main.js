@@ -22,6 +22,7 @@ const undo = require('./undo');
 const csharp = require('./csharp');
 const gameFolders = require('./gamefolders');
 const toast = require('./toast');
+const { ReviewPeer } = require('./reviewpeer');
 
 // The window loads images and videos from disk through media:// (see media.js).
 // "stream" lets video players read a file piece by piece.
@@ -149,6 +150,8 @@ function send(channel, ...args) {
 
 const claudeAgents = new AgentManager({ send, getConfig });
 const codexAgents = new CodexManager({ send, getConfig });
+// The review peer of the whole-window class diagram (reviewpeer.js).
+const reviewPeer = new ReviewPeer({ send, getConfig });
 
 // Each agent runs on one provider; calls for an agent go to its manager.
 const managerOf = id => (codexAgents.has(id) ? codexAgents : claudeAgents);
@@ -162,7 +165,7 @@ const agents = {
   close: id => managerOf(id).close(id),
   contextUsage: id => managerOf(id).contextUsage(id),
   activeCount: () => claudeAgents.activeCount() + codexAgents.activeCount(),
-  closeAll: () => { claudeAgents.closeAll(); codexAgents.closeAll(); },
+  closeAll: () => { claudeAgents.closeAll(); codexAgents.closeAll(); reviewPeer.closeAll(); },
 };
 
 function createWindow() {
@@ -484,6 +487,9 @@ app.whenReady().then(() => {
   ipcMain.handle('agent:title', (_e, text) => (getConfig().summarizeTitles ? summarizeTitle(getConfig(), text) : null));
   ipcMain.handle('gamefolder:quick', (_e, text, current) => gameFolders.quick(getConfig().gamesFolder, String(text || ''), current || ''));
   ipcMain.handle('gamefolder:lookup', (_e, text, current) => gameFolders.lookup(getConfig().gamesFolder, String(text || ''), current || '', (q, o) => pickGame(getConfig(), q, o)));
+  ipcMain.handle('review:ask', (_e, id, input) => reviewPeer.ask(String(id), input || {}));
+  ipcMain.handle('review:interrupt', (_e, id) => reviewPeer.interrupt(String(id)));
+  ipcMain.handle('review:close', (_e, id) => reviewPeer.close(String(id)));
   ipcMain.handle('agent:rate', (_e, text, context) => rateTask(getConfig(), String(text || ''), String(context || '')));
   // Clicking a notification opens its agent. The app keeps each notification
   // until it closes, or Windows would forget the click handler.

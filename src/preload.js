@@ -122,6 +122,11 @@ contextBridge.exposeInMainWorld('deck', {
   summarizeTitle: text => ipcRenderer.invoke('agent:title', text),
   // How hard a task is (1-3), rated by Haiku, for the Auto model.
   rateTask: (text, context) => ipcRenderer.invoke('agent:rate', text, context),
+  // The review peer in the whole-window class diagram (reviewpeer.js).
+  reviewAsk: (id, input) => ipcRenderer.invoke('review:ask', id, input),
+  reviewInterrupt: id => ipcRenderer.invoke('review:interrupt', id),
+  reviewClose: id => ipcRenderer.invoke('review:close', id),
+  onReviewEvent: fn => on('review:event', fn),
   gameFolderQuick: (text, current) => ipcRenderer.invoke('gamefolder:quick', text, current),
   gameFolderLookup: (text, current) => ipcRenderer.invoke('gamefolder:lookup', text, current),
   mergeNotes: input => ipcRenderer.invoke('notes:merge', input),
