@@ -2077,6 +2077,9 @@ function reviewPeer(files, cwd, onLayout) {
     suggest: n => { if (SUGGESTIONS[n - 1] && !chat.busy) ask(SUGGESTIONS[n - 1]); },
     toggle: () => { chat.hidden = !chat.hidden; layout(); if (!chat.hidden) input.focus(); },
     refresh: layout,
+    // Asks a question (the review comments from a Changes card, see
+    // askPeerAbout), opening the conversation.
+    ask: text => { chat.hidden = false; ask(text); },
     // The diagram closed: the conversation stays; its process stops after a while.
     leave: () => {
       clearTimeout(chat.idle);

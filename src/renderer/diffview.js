@@ -221,7 +221,9 @@ function fileSummary(f) {
 // title: the card's heading instead of "Changed N files" (a diff you asked for).
 // animate: a task that just finished, so its files deal in one by one and
 // the line counts roll up.
-function changesCard(files, cwd, { title = null, animate = false } = {}) {
+// peer: comments on its lines go to the review peer in the whole-window
+// class diagram (the Branch diff view, which has no agent), not to the agent.
+function changesCard(files, cwd, { title = null, animate = false, peer = false } = {}) {
   files = sortFiles(files);
   const code = files.filter(f => isCodeFile(f.path));
   const other = files.filter(f => !isCodeFile(f.path));
@@ -235,7 +237,7 @@ function changesCard(files, cwd, { title = null, animate = false } = {}) {
 
   const card = el('div', 'changes');
   const head = el('div', 'changes-head');
-  const comments = lineComments(files, cwd);
+  const comments = lineComments(files, cwd, peer ? { toPeer: text => askPeerAbout(card, text) } : {});
   const send = comments.sendButton();
   head.append(
     el('span', 'changes-title', title ? `${title} · ${files.length} file${files.length === 1 ? '' : 's'}` : `Changed ${files.length} file${files.length === 1 ? '' : 's'}`),
@@ -424,6 +426,8 @@ function addDiagram(card, head, files, cwd, comments) {
     const title = `Class diagram · ${changed.length} changed type${changed.length === 1 ? '' : 's'}`;
     const options = { files, comments };
     const panel = umlPanel(model, { ...options, onFull: () => openUmlFull(model, { ...options, title }) });
+    // The whole-window diagram, where the review peer is (askPeerAbout).
+    card.openFull = () => openUmlFull(model, { ...options, title });
     card.insertBefore(panel, head.nextSibling);
     card.classList.add('has-diagram');
     diagramBtn.disabled = false;
@@ -827,6 +831,22 @@ function flyCard(from, target, label) {
   });
 }
 
+// Comments for the review peer (a card with peer, see changesCard): the
+// whole-window class diagram opens with the peer, which is asked about them.
+// A card without a class diagram (no C# types) has no peer: the comments go
+// to the clipboard instead.
+function askPeerAbout(card, text) {
+  // Sent from a type's diff in the whole-window diagram: its peer is there.
+  if (umlFullEl?.peer) { umlFullEl.peer.ask(text); return true; }
+  if (card.openFull) {
+    card.openFull();
+    if (umlFullEl?.peer) { umlFullEl.peer.ask(text); return true; }
+  }
+  navigator.clipboard?.writeText(text).catch(() => {});
+  window.toast?.('No class diagram to ask the review peer in: the comments are on the clipboard');
+  return true;
+}
+
 // ---------- comments on lines ----------
 
 // Click a line of a diff (in the Files list, or in a type's diff from the
@@ -834,9 +854,10 @@ function flyCard(from, target, label) {
 // (f.comments: diff line index -> { line, side, code, text }), so they stay
 // when a file is closed and opened again. "Send N comments" in the card's
 // title (and in a type's diff) puts them all into the message box, as one
-// message to the agent. Returns { diff(f), sendButton(), count(), send(),
-// onChange(fn) }.
-function lineComments(files, cwd) {
+// message to the agent. toPeer(text): instead, the comments are a question
+// for the review peer (askPeerAbout), worded for it. Returns { diff(f),
+// sendButton(), count(), send(), onChange(fn) }.
+function lineComments(files, cwd, { toPeer = null } = {}) {
   // A comment is kept by the side and number of its line (new:42, old:17),
   // so it shows in each view of the file: Changes, Full file, Side by side.
   const keyOf = c => `${c.side}:${c.line}`;
@@ -845,7 +866,7 @@ function lineComments(files, cwd) {
   const changed = () => { for (const fn of listeners) fn(count()); };
 
   const message = () => {
-    const lines = ['Review comments on your changes:', ''];
+    const lines = [toPeer ? 'My review comments on this change:' : 'Review comments on your changes:', ''];
     let i = 0;
     for (const f of files) {
       for (const c of [...(f.comments || new Map()).values()].sort((x, y) => x.line - y.line || (x.side === 'old' ? -1 : 1))) {
@@ -855,7 +876,9 @@ function lineComments(files, cwd) {
         lines.push(...c.text.split('\n').map(t => `   ${t}`), '');
       }
     }
-    lines.push('Please address each comment.');
+    lines.push(toPeer
+      ? 'For each comment: do you agree, what is the risk if it stays, and what would you change (file and line)? Check the code around it in the project when it helps.'
+      : 'Please address each comment.');
     return lines.join('\n');
   };
   const boxes = new Set();   // the comment boxes on screen, removed after sending
@@ -866,7 +889,8 @@ function lineComments(files, cwd) {
     for (const box of boxes) box.remove();
     boxes.clear();
     changed();
-    window.dispatchEvent(new CustomEvent('review-comments', { detail: { text, cwd } }));
+    if (toPeer) toPeer(text);
+    else window.dispatchEvent(new CustomEvent('review-comments', { detail: { text, cwd } }));
   };
 
   // A saved comment under its line: the text, Edit and Delete.
@@ -895,7 +919,7 @@ function lineComments(files, cwd) {
     const editor = el('div', 'review-comment-editor');
     const input = document.createElement('textarea');
     input.rows = 3;
-    input.placeholder = 'Comment for the agent… (↩ to save, ⇧↩ for a new line, Esc to cancel)';
+    input.placeholder = `Comment for the ${toPeer ? 'review peer' : 'agent'}… (↩ to save, ⇧↩ for a new line, Esc to cancel)`;
     input.value = f.comments?.get(keyOf(info))?.text || '';
     const save = el('button', 'review-comment-save', 'Comment');
     const cancel = el('button', null, 'Cancel');
@@ -979,11 +1003,13 @@ function lineComments(files, cwd) {
     sendButton: () => {
       const button = el('button', 'comments-send hidden');
       button.type = 'button';
-      button.title = 'Put the comments into the message box, as one message to the agent';
+      button.title = toPeer
+        ? 'Ask the review peer about the comments, in the whole-window class diagram'
+        : 'Put the comments into the message box, as one message to the agent';
       button.onclick = e => { e.stopPropagation(); send(); };
       const refresh = n => {
         button.classList.toggle('hidden', !n);
-        button.textContent = `Send ${n} comment${n === 1 ? '' : 's'}`;
+        button.textContent = toPeer ? `Ask the review peer · ${n} comment${n === 1 ? '' : 's'}` : `Send ${n} comment${n === 1 ? '' : 's'}`;
       };
       listeners.add(refresh);
       refresh(count());
