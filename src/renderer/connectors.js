@@ -7,6 +7,13 @@
 // (src/connectors.js), so agents get exactly what this list shows. Changes
 // apply to agents started afterwards.
 //
+// With Claude and Codex both on (Settings → Providers), the dialog has a tab
+// per provider: Codex's connectors are its own (`codex mcp`, in
+// ~/.codex/config.toml), the apps your ChatGPT account gives Codex, and
+// every connector Claude has that Codex does not yet, with Connect: it adds
+// the connector to Codex and signs in. With one provider on, it shows only
+// that one's list, without tabs.
+//
 // The dialog is built once; only the list and the status lines are drawn
 // again, so the search field keeps what you type while a check runs.
 
@@ -14,11 +21,18 @@ const CONNECTOR_GROUPS = [
   { status: 'auth', title: 'Needs sign-in' },
   { status: 'connected', title: 'Connected' },
   { status: 'pending', title: 'Waiting for approval' },
+  { status: 'ready', title: 'Set up' },
+  { status: 'available', title: 'From Claude: not in Codex yet' },
   { status: 'failed', title: 'Failed to connect' },
   { status: 'unknown', title: 'Other' },
 ];
 
-const SOURCE_LABEL = { 'claude.ai': 'claude.ai', user: 'Added by you', local: 'This folder only', project: 'Project' };
+const SOURCE_LABEL = { 'claude.ai': 'claude.ai', user: 'Added by you', local: 'This folder only', project: 'Project', codex: 'Codex settings', claude: 'From Claude', chatgpt: 'ChatGPT app' };
+const BROWSE = {
+  claude: { label: 'Browse on claude.ai', url: 'https://claude.ai/settings/connectors', title: 'Add connectors from the directory to your claude.ai account (the same ones the Claude desktop app has)' },
+  codex: { label: 'Browse on chatgpt.com', url: 'https://chatgpt.com/apps', title: 'Add apps to your ChatGPT account: Codex gets them too' },
+};
+const CONNECTOR_PROVIDERS = ['claude', 'codex'];
 
 // A calm color per connector for its letter icon, always the same for a name.
 const AVATAR_COLORS = ['#6c7fd8', '#4f9e8a', '#b07a3e', '#a0619a', '#5a8fb8', '#8c8a3e', '#b85c5c', '#6a9a4f'];
@@ -38,9 +52,10 @@ class ConnectorsDialog {
   // set up for one folder only).
   constructor({ folder }) {
     this.folder = folder;
-    this.list = null;
-    this.checking = false;
-    this.signingIn = new Set();   // connector ids waiting for you in the browser
+    this.provider = 'claude';     // the tab on screen
+    this.lists = { claude: null, codex: null };
+    this.checking = { claude: false, codex: false };
+    this.signingIn = { claude: new Set(), codex: new Set() };   // connector ids waiting for you in the browser
     this.build();
   }
 
@@ -62,6 +77,17 @@ class ConnectorsDialog {
       el('div', 'conn-dialog-sub', 'Tools and data your agents can use. Changes apply to agents you start afterwards.'));
     head.append(titles, this.refreshBtn, close);
 
+    // One tab per provider, only while both are on.
+    this.tabs = el('div', 'conn-tabs hidden');
+    this.tabButtons = {};
+    for (const p of CONNECTOR_PROVIDERS) {
+      const b = el('button', 'conn-tab', PROVIDER_NAMES[p]);
+      b.type = 'button';
+      b.onclick = () => this.showTab(p);
+      this.tabButtons[p] = b;
+      this.tabs.appendChild(b);
+    }
+
     this.search = document.createElement('input');
     this.search.type = 'search';
     this.search.className = 'conn-search';
@@ -75,12 +101,11 @@ class ConnectorsDialog {
     this.footer = el('div', 'conn-footer');
     const add = el('button', 'primary', '+ Add custom connector');
     add.onclick = () => this.showAddForm();
-    const browse = el('button', null, 'Browse on claude.ai');
-    browse.title = 'Add connectors from the directory to your claude.ai account (the same ones the Claude desktop app has)';
-    browse.onclick = () => window.open('https://claude.ai/settings/connectors', '_blank');
-    this.footer.append(add, browse);
+    this.browse = el('button', null, BROWSE.claude.label);
+    this.browse.onclick = () => window.open(BROWSE[this.provider].url, '_blank');
+    this.footer.append(add, this.browse);
 
-    dialog.append(head, this.search, this.summary, this.message, this.listEl, this.footer);
+    dialog.append(head, this.tabs, this.search, this.summary, this.message, this.listEl, this.footer);
     this.overlay.appendChild(dialog);
     // A click outside the dialog, or Esc, closes it.
     this.overlay.addEventListener('mousedown', e => { if (e.target === this.overlay) this.close(); });
@@ -99,13 +124,32 @@ class ConnectorsDialog {
     return !this.overlay.classList.contains('hidden');
   }
 
-  // Shows the last known list right away, then checks again.
+  get list() {
+    return this.lists[this.provider];
+  }
+
+  // Shows the last known list right away, then checks again. The tabs show
+  // while both providers are on; with one, its list is the whole dialog.
   async open() {
     window.uiSound?.('tick');
     this.overlay.classList.remove('hidden');
+    const on = CONNECTOR_PROVIDERS.filter(p => providersOn[p]);
+    this.tabs.classList.toggle('hidden', on.length < 2);
+    if (!on.includes(this.provider)) this.provider = on[0] || 'claude';
+    await this.showTab(this.provider, { quiet: true });
+  }
+
+  async showTab(provider, { quiet = false } = {}) {
+    if (!quiet && provider !== this.provider) window.uiSound?.('tick');
+    this.provider = provider;
+    for (const [p, b] of Object.entries(this.tabButtons)) b.classList.toggle('on', p === provider);
+    this.browse.textContent = BROWSE[provider].label;
+    this.browse.title = BROWSE[provider].title;
+    this.hideAddForm();
+    this.say('');
     this.search.value = '';
     setTimeout(() => this.search.focus());
-    if (!this.list) this.list = await window.deck.connectors.cached().catch(() => null);
+    if (!this.lists[provider]) this.lists[provider] = await window.deck.connectors.cached(provider).catch(() => null);
     this.renderList();
     this.refresh();
   }
@@ -122,19 +166,19 @@ class ConnectorsDialog {
     this.message.classList.toggle('err', !!error);
   }
 
-  async refresh() {
-    if (this.checking) return;
-    this.checking = true;
+  async refresh(provider = this.provider) {
+    if (this.checking[provider]) return;
+    this.checking[provider] = true;
     this.renderList();
     try {
-      this.list = await window.deck.connectors.list(this.folder());
+      this.lists[provider] = await window.deck.connectors.list(this.folder(), provider);
     } catch {
-      this.say('Could not read the connectors from Claude Code.', true);
+      if (provider === this.provider) this.say(`Could not read the connectors from ${provider === 'codex' ? 'Codex' : 'Claude Code'}.`, true);
     }
-    this.checking = false;
+    this.checking[provider] = false;
     // A sign-in is done once the connector shows as connected.
-    for (const id of [...this.signingIn]) {
-      if (this.list?.find(c => c.id === id)?.status === 'connected') this.signingIn.delete(id);
+    for (const id of [...this.signingIn[provider]]) {
+      if (this.lists[provider]?.find(c => c.id === id)?.status === 'connected') this.signingIn[provider].delete(id);
     }
     this.renderList();
   }
@@ -142,26 +186,30 @@ class ConnectorsDialog {
   // Opens the sign-in page in your browser. For claude.ai connectors you
   // approve on claude.ai; the list then checks every 15 seconds for a few
   // minutes until the connector shows as connected.
-  async connect(c) {
-    this.signingIn.add(c.id);
+  async connect(c, { started = false } = {}) {
+    if (c.source === 'claude') return this.copyFromClaude(c);
+    const provider = this.provider;
+    const signingIn = this.signingIn[provider];
+    signingIn.add(c.id);
     this.say(`Finish signing in to ${c.name} in your browser.`);
     this.renderList();
-    const result = await window.deck.connectors.login(c.id).catch(() => ({ ok: false }));
+    // A Codex connector added by URL starts its sign-in by itself (see add in connectors.js).
+    const result = started ? { ok: true } : await window.deck.connectors.login(c.id, provider).catch(() => ({ ok: false }));
     if (!result.ok && c.source !== 'claude.ai') {
-      this.signingIn.delete(c.id);
+      signingIn.delete(c.id);
       this.say(`Signing in to ${c.name} did not finish. ${result.message || ''}`.trim(), true);
       this.renderList();
       return;
     }
     let tries = 0;
     const poll = async () => {
-      if (!this.signingIn.has(c.id) || tries++ > 12) {
-        this.signingIn.delete(c.id);
+      if (!signingIn.has(c.id) || tries++ > 12) {
+        signingIn.delete(c.id);
         this.renderList();
         return;
       }
-      await this.refresh();
-      if (this.signingIn.has(c.id)) setTimeout(poll, 15000);
+      await this.refresh(provider);
+      if (signingIn.has(c.id)) setTimeout(poll, 15000);
       else {
         window.uiSound?.('connected');
         this.say(`${c.name} is connected. Agents you start from now on can use it.`);
@@ -170,9 +218,31 @@ class ConnectorsDialog {
     poll();
   }
 
+  // A Claude connector Codex does not have: add it to Codex by its address.
+  // One with a sign-in opens it in your browser right away (see add in
+  // connectors.js), and the list waits for it like Connect.
+  async copyFromClaude(c) {
+    const signingIn = this.signingIn.codex;
+    signingIn.add(c.id);
+    this.say(`Adding ${c.name} to Codex…`);
+    this.renderList();
+    const result = await window.deck.connectors.add({ name: c.codexName, url: c.target }, 'codex').catch(err => ({ ok: false, message: String(err) }));
+    signingIn.delete(c.id);
+    if (!result.ok) {
+      window.uiSound?.('refuse');
+      this.say(`Could not add ${c.name} to Codex. ${result.message || ''}`.trim(), true);
+      this.renderList();
+      return;
+    }
+    await this.refresh('codex');
+    if (result.signingIn) return this.connect({ id: c.codexName, name: c.name, source: 'codex' }, { started: true });
+    window.uiSound?.('connected');
+    this.say(`Added ${c.name} to Codex. Agents you start from now on can use it.`);
+  }
+
   async remove(c) {
     if (!confirm(`Remove the connector "${c.name}"? Agents started afterwards no longer get it.`)) return;
-    const result = await window.deck.connectors.remove({ id: c.id, source: c.source, cwd: this.folder() });
+    const result = await window.deck.connectors.remove({ id: c.id, source: c.source, cwd: this.folder() }, this.provider);
     window.uiSound?.(result.ok ? 'removed' : 'refuse');
     this.say(result.ok ? `Removed ${c.name}.` : result.message || 'Removing failed.', !result.ok);
     await this.refresh();
@@ -185,8 +255,10 @@ class ConnectorsDialog {
     if (count('connected')) parts.push(`${count('connected')} connected`);
     if (count('auth')) parts.push(`${count('auth')} need sign-in`);
     if (count('failed')) parts.push(`${count('failed')} failed`);
-    this.summary.textContent = this.checking ? `Checking your connectors…${parts.length ? '  ' + parts.join(' · ') : ''}` : parts.join(' · ') || (this.list ? 'No connectors yet' : '');
-    this.refreshBtn.classList.toggle('spinning', this.checking);
+    if (count('available')) parts.push(`${count('available')} from Claude to connect`);
+    const checking = this.checking[this.provider];
+    this.summary.textContent = checking ? `Checking your connectors…${parts.length ? '  ' + parts.join(' · ') : ''}` : parts.join(' · ') || (this.list ? 'No connectors yet' : '');
+    this.refreshBtn.classList.toggle('spinning', checking);
 
     const q = this.search.value.trim().toLowerCase();
     const matches = list.filter(c => !q || c.name.toLowerCase().includes(q) || c.target.toLowerCase().includes(q));
@@ -208,17 +280,19 @@ class ConnectorsDialog {
     const avatar = el('span', 'conn-avatar', (c.name.match(/[A-Za-z0-9]/) || ['?'])[0].toUpperCase());
     avatar.style.background = avatarColor(c.name);
     const text = el('div', 'conn-text');
-    const waiting = this.signingIn.has(c.id);
+    const waiting = this.signingIn[this.provider].has(c.id);
     const status = waiting ? 'Waiting for sign-in…'
       : c.status === 'connected' ? 'Connected'
       : c.status === 'auth' ? 'Needs sign-in'
       : c.status === 'failed' ? `Failed${c.detail ? ': ' + c.detail.slice(0, 80) : ''}`
-      : c.status;
+      : c.status === 'ready' ? 'Set up'
+      : c.status === 'available' ? 'Not in Codex yet'
+      : c.detail || c.status;
     text.append(el('div', 'conn-name', c.name), el('div', 'conn-meta', `${hostOf(c.target)} · ${SOURCE_LABEL[c.source] || c.source}`));
     const right = el('div', 'conn-right');
     if (c.status === 'connected') {
       right.appendChild(el('span', 'conn-state ok', '✓ Connected'));
-    } else if (c.status === 'auth' || c.status === 'failed') {
+    } else if (c.status === 'auth' || c.status === 'failed' || c.status === 'available') {
       const connect = el('button', 'conn-btn', waiting ? 'Waiting…' : 'Connect');
       connect.disabled = waiting;
       connect.onclick = () => this.connect(c);
@@ -227,7 +301,7 @@ class ConnectorsDialog {
     } else {
       right.appendChild(el('span', 'conn-state', status));
     }
-    if (c.source === 'user' || c.source === 'local') {
+    if (c.source === 'user' || c.source === 'local' || c.source === 'codex') {
       const remove = el('button', 'conn-btn conn-remove', '✕');
       remove.title = `Remove ${c.name}`;
       remove.onclick = () => this.remove(c);
@@ -242,7 +316,13 @@ class ConnectorsDialog {
     this.hideAddForm();
     const form = document.createElement('form');
     form.className = 'conn-form';
-    form.innerHTML = `
+    const codex = this.provider === 'codex';
+    form.innerHTML = codex ? `
+      <div class="conn-form-title">Add a custom connector to Codex</div>
+      <label>Name <input type="text" name="name" placeholder="my-docs" required></label>
+      <label>URL <input type="text" name="url" placeholder="https://example.com/mcp" required></label>
+      <label>Token variable (optional) <input type="text" name="tokenVar" placeholder="MY_DOCS_TOKEN: an environment variable with its API key"></label>
+      <div class="conn-form-buttons"><button type="button" class="cancel">Cancel</button><button type="submit" class="primary">Add</button></div>` : `
       <div class="conn-form-title">Add a custom connector</div>
       <label>Name <input type="text" name="name" placeholder="my-docs" required></label>
       <label>URL <input type="text" name="url" placeholder="https://example.com/mcp" required></label>
@@ -253,16 +333,23 @@ class ConnectorsDialog {
       <div class="conn-form-buttons"><button type="button" class="cancel">Cancel</button><button type="submit" class="primary">Add</button></div>`;
     form.onsubmit = async e => {
       e.preventDefault();
-      const spec = { name: form.name.value.trim(), url: form.url.value.trim(), transport: form.transport.value, header: form.header.value.trim() || undefined };
-      const result = await window.deck.connectors.add(spec);
+      const spec = codex
+        ? { name: form.name.value.trim(), url: form.url.value.trim(), tokenVar: form.tokenVar.value.trim() || undefined }
+        : { name: form.name.value.trim(), url: form.url.value.trim(), transport: form.transport.value, header: form.header.value.trim() || undefined };
+      const result = await window.deck.connectors.add(spec, this.provider);
       if (!result.ok) {
         window.uiSound?.('refuse');
         this.say(result.message || 'Adding failed.', true);
         return;
       }
       window.uiSound?.('approve');
-      this.say(`Added ${spec.name}. If it needs a sign-in, click Connect.`);
       this.hideAddForm();
+      if (result.signingIn) {
+        await this.refresh();
+        this.connect({ id: spec.name, name: spec.name, source: 'codex' }, { started: true });
+        return;
+      }
+      this.say(`Added ${spec.name}. If it needs a sign-in, click Connect.`);
       await this.refresh();
     };
     form.querySelector('.cancel').onclick = () => this.hideAddForm();

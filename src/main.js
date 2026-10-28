@@ -2,7 +2,8 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Notification, Menu, protocol
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
-const { AgentManager, fetchModels, summarizeTitle, rateTask, pickGame, mergeNotes, suggestFollowUps, fetchUsage } = require('./agents');
+const { AgentManager, fetchModels, summarizeTitle, rateTask, pickGame, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited } = require('./agents');
+const { CodexManager, fetchCodexModels, fetchCodexUsage, listCodexThreads, loadCodexThread } = require('./codex');
 const { listSessions, loadTranscript, PROJECTS_DIR } = require('./sessions');
 const git = require('./git');
 const { repoOf, branchOf } = require('./repos');
@@ -32,13 +33,29 @@ protocol.registerSchemesAsPrivileged([
 // the first time it starts; use "Settings" in the sidebar to open it.
 const DEFAULT_CONFIG = {
   claudePath: '',                       // empty means: look in the usual install folders
+  // Providers: Claude Code and OpenAI's Codex CLI (codex.js). New agents
+  // start on defaultProvider; when its limit is reached they start on the
+  // other one, if it is on.
+  claudeEnabled: true,
+  codexEnabled: false,
+  defaultProvider: 'claude',            // claude | codex
+  codexPath: '',                        // empty means: look in the usual install folders
+  codexModel: 'auto',                   // auto (Luna, Terra or Sol per task, like Claude's Auto), a family (sol, terra, luna, astra: its newest model) or a model id
+  codexEffort: '',                      // low | medium | high | xhigh | max | ultra; empty: Auto picks it (with the Auto model), else the model's default
+  codexFastMode: false,                 // Codex's Fast service tier for new agents (faster; for some models it uses your limits faster)
+  codexExtraArgs: [],                   // extra command-line flags for every Codex agent (codex app-server)
+  // The quick calls (titles, Auto's ratings, follow-ups, notes, games) run on
+  // helperProvider, or on the other one while it is off or at its limit.
+  helperProvider: 'claude',             // claude | codex
+  claudeHelperModel: 'haiku',
+  codexHelperModel: 'luna',             // a family (its newest model) or a model id; Luna is Codex's Haiku
   defaultPermissionMode: 'bypassPermissions', // default | acceptEdits | auto | plan | bypassPermissions
   defaultModel: 'auto',                 // a value from the model menu; "auto" picks Opus, Sonnet or Haiku per task (automodel.js)
   defaultEffort: '',                    // low | medium | high | xhigh | max; empty: Auto picks it (with the Auto model), else the model's default
   defaultFastMode: false,
   // When an agent's conversation reaches this size, Claude Code summarizes it
   // (compacts), so long tasks stop re-reading everything with every step.
-  // 100k to 1m, or 'auto' for Claude Code's own choice.
+  // Codex agents too. 100k to 1m, or 'auto' for Claude Code's and Codex's own choice.
   autoCompact: '200k',
   stuckAfterSeconds: 30,                // waiting this long for Unity to be ready marks the agent as stuck
   defaultFolder: '',
@@ -130,7 +147,23 @@ function send(channel, ...args) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args);
 }
 
-const agents = new AgentManager({ send, getConfig });
+const claudeAgents = new AgentManager({ send, getConfig });
+const codexAgents = new CodexManager({ send, getConfig });
+
+// Each agent runs on one provider; calls for an agent go to its manager.
+const managerOf = id => (codexAgents.has(id) ? codexAgents : claudeAgents);
+const agents = {
+  start: opts => (opts?.provider === 'codex' ? codexAgents : claudeAgents).start(opts),
+  sendMessage: (id, text, images) => managerOf(id).sendMessage(id, text, images),
+  setModel: (id, choice) => managerOf(id).setModel(id, choice),
+  respondPermission: (id, requestId, decision) => managerOf(id).respondPermission(id, requestId, decision),
+  setPermissionMode: (id, mode) => managerOf(id).setPermissionMode(id, mode),
+  interrupt: id => managerOf(id).interrupt(id),
+  close: id => managerOf(id).close(id),
+  contextUsage: id => managerOf(id).contextUsage(id),
+  activeCount: () => claudeAgents.activeCount() + codexAgents.activeCount(),
+  closeAll: () => { claudeAgents.closeAll(); codexAgents.closeAll(); },
+};
 
 function createWindow() {
   win = new BrowserWindow({
@@ -288,12 +321,14 @@ app.whenReady().then(() => {
   ipcMain.handle('auth:input', (_e, text) => auth.input(text));
   ipcMain.handle('auth:cancel', () => auth.cancel());
   ipcMain.handle('auth:status', () => auth.status(getConfig()));
-  ipcMain.handle('connectors:list', (_e, cwd) => connectors.list(getConfig(), cwd));
-  ipcMain.handle('connectors:cached', () => connectors.cached());
-  ipcMain.handle('connectors:login', (_e, id) => connectors.login(getConfig(), id));
-  ipcMain.handle('connectors:cancelLogin', (_e, id) => connectors.cancelLogin(id));
-  ipcMain.handle('connectors:add', (_e, spec) => connectors.add(getConfig(), spec));
-  ipcMain.handle('connectors:remove', (_e, spec) => connectors.remove(getConfig(), spec));
+  // Each call names its provider: Claude Code's connectors, or Codex's.
+  const connectorsOf = provider => (provider === 'codex' ? connectors.codex : connectors);
+  ipcMain.handle('connectors:list', (_e, cwd, provider) => connectorsOf(provider).list(getConfig(), cwd));
+  ipcMain.handle('connectors:cached', (_e, provider) => connectorsOf(provider).cached());
+  ipcMain.handle('connectors:login', (_e, id, provider) => connectorsOf(provider).login(getConfig(), id));
+  ipcMain.handle('connectors:cancelLogin', (_e, id, provider) => connectorsOf(provider).cancelLogin(id));
+  ipcMain.handle('connectors:add', (_e, spec, provider) => connectorsOf(provider).add(getConfig(), spec));
+  ipcMain.handle('connectors:remove', (_e, spec, provider) => connectorsOf(provider).remove(getConfig(), spec));
   // Shows the Agent Hub icon in the Dock also when you run `npm start`.
   if (app.dock) app.dock.setIcon(path.join(__dirname, '..', 'build', 'icon.png'));
   configPath = path.join(app.getPath('userData'), 'config.json');
@@ -317,7 +352,9 @@ app.whenReady().then(() => {
     return { ...getConfig(), home: require('os').homedir() };
   });
   ipcMain.handle('app:quit', () => quitNow());
-  ipcMain.handle('usage:fetch', () => fetchUsage(getConfig()));
+  ipcMain.handle('usage:fetch', () => (getConfig().claudeEnabled === false ? null : fetchUsage(getConfig())));
+  ipcMain.handle('codex:usage', () => (getConfig().codexEnabled ? fetchCodexUsage(getConfig()) : null));
+  ipcMain.handle('providers:limited', (_e, provider, untilMs) => setProviderLimited(provider, untilMs));
   ipcMain.handle('app:version', () => appVersion());
   ipcMain.handle('update:latest', () => latestUpdate);
   // Settings → Check for updates: a look right now. The dev copy does not
@@ -330,7 +367,12 @@ app.whenReady().then(() => {
   ipcMain.handle('app:changelog', () => updates.changelog(app.getAppPath()));
   ipcMain.handle('update:apply', () => applyUpdate());
   // Sessions you removed from History stay out (removedsessions.js).
-  ipcMain.handle('sessions:list', () => { const gone = require('./removedsessions').list(); return listSessions().filter(x => !gone.has(x.id)); });
+  // History: Claude Code's sessions, and Codex's threads while Codex is on.
+  ipcMain.handle('sessions:list', async () => {
+    const gone = require('./removedsessions').list();
+    const codex = getConfig().codexEnabled ? await listCodexThreads(getConfig()) : [];
+    return [...listSessions(), ...codex].filter(x => !gone.has(x.id)).sort((a, b) => b.updatedAt - a.updatedAt);
+  });
   ipcMain.handle('git:snapshot', (_e, cwd) => git.snapshot(cwd, path.join(app.getPath('userData'), 'snapshots')));
   ipcMain.handle('git:changes', (_e, cwd, snap) => git.changesSince(cwd, snap));
   ipcMain.handle('subagents:evidence', (_e, sessionId, since) => require('./subagents').evidence(sessionId, since));
@@ -398,7 +440,7 @@ app.whenReady().then(() => {
     if (win.isMaximized()) win.unmaximize();
     else win.maximize();
   });
-  ipcMain.handle('sessions:load', (_e, file) => loadTranscript(file));
+  ipcMain.handle('sessions:load', (_e, file) => (/^codex:/.test(String(file)) ? loadCodexThread(getConfig(), String(file).slice(6)) : loadTranscript(file)));
   ipcMain.handle('dialog:pickFolder', async () => {
     const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] });
     return r.canceled ? null : r.filePaths[0];
@@ -410,6 +452,11 @@ app.whenReady().then(() => {
   ipcMain.handle('models:list', async () => {
     if (!models) models = await fetchModels(getConfig());
     return models;
+  });
+  let codexModels = null;
+  ipcMain.handle('codex:models', async () => {
+    if (!codexModels) codexModels = await fetchCodexModels(getConfig());
+    return codexModels;
   });
   ipcMain.handle('agent:respondPermission', (_e, id, requestId, decision) => agents.respondPermission(id, requestId, decision));
   ipcMain.handle('agent:setPermissionMode', (_e, id, mode) => agents.setPermissionMode(id, mode));

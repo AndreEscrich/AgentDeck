@@ -80,8 +80,8 @@ input[type=text], input[type=search], select, textarea { background: var(--bg-si
 .health-fill { --hp1: var(--accent); background: repeating-linear-gradient(90deg, var(--hp1) 0 9px, transparent 9px 12px) !important;
   box-shadow: 0 0 8px color-mix(in srgb, var(--hp1) 45%, transparent) !important; }
 .health-fill::after { display: none; }
-.hub-health.mid .health-fill { --hp1: #ffb000; }
-.hub-health.low .health-fill, .hub-health.limited .health-fill { --hp1: #ff5a3c; }
+.health-seg.mid .health-fill { --hp1: #ffb000; }
+.health-seg.low .health-fill, .health-seg.limited .health-fill { --hp1: #ff5a3c; }
 
 /* Panels: thin phosphor frames with a header line. */
 .hub-section { background: transparent !important; border: 1px solid var(--border) !important; box-shadow: none !important; }
