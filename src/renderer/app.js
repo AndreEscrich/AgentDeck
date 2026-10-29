@@ -3152,6 +3152,9 @@ function showLoginCard() {
 // The app is about to quit: save which agents are busy, and keep that list,
 // because stopping the agents would otherwise mark them as finished.
 const BUSY = ['working', 'starting', 'waiting', 'stuck', 'background'];
+// How long an agent you sent a message to counts as working before it says so
+// itself (see sendToAgent).
+const SENT_GRACE = 30000;
 
 // A card in the app (not a system dialog) that asks before stopping working
 // agents: a title, a sentence, the agents with their state, and two buttons.
@@ -3278,7 +3281,8 @@ window.addEventListener('focus', () => offerUpdate());
 function offerUpdate() {
   const info = latestInfo;
   if (!info || updateCardOpen || !document.hasFocus() || failedUpdates.has(info.version)) return;
-  if ([...state.agents.values()].some(a => !a.removed && BUSY.includes(a.status))) return;
+  // Not while an agent works, or has just been sent a message it has not got yet.
+  if ([...state.agents.values()].some(a => !a.removed && (BUSY.includes(a.status) || Date.now() - (a.sentAt || 0) < SENT_GRACE))) return;
   // Only on the Hub: never over an agent's chat, History or the Branches view.
   if (state.current?.kind !== 'hub') return;
   // Another card (quitting, stopping agents) first: try again once it is gone.
@@ -3669,6 +3673,12 @@ function userContent(text, images = []) {
 }
 
 async function sendToAgent(agent, text, images = []) {
+  // The message can wait a few seconds (for the folder's snapshot, and for
+  // the Auto model's rating) before the agent gets it and reports "working".
+  // Until then it counts as working already, so the update card does not
+  // come up on the Hub you were sent back to (see offerUpdate).
+  agent.sentAt = Date.now();
+  setTimeout(offerUpdate, SENT_GRACE + 100);
   clearFollowUps(agent);
   // Auto rates every follow-up again (see followUp in automodel.js) and
   // changes the model when its level changes. The message waits for Haiku's
@@ -4690,6 +4700,8 @@ window.deck.onStatus((id, status) => {
   const a = state.agents.get(id);
   if (!a) return;
   a.status = status;
+  // It got the message (or it stopped): its status says it from now on.
+  if (BUSY.includes(status) || status === 'error' || status === 'exited') a.sentAt = 0;
   if (status !== 'idle') clearFollowUps(a);
   // Its group moved to another folder while it worked (moveGroup): it moves now.
   if (a.moveWhenDone && !BUSY.includes(status)) {
