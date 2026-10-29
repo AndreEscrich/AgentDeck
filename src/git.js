@@ -163,10 +163,20 @@ async function privateRepo(cwd, root, project) {
 }
 
 // Records the code files and returns the hash of that state (a git tree).
+// When the repository lost objects its index names (a recording cut off when
+// the app was closed), every recording failed from then on: the index is
+// thrown away and the folder recorded again from nothing, once (as slow as
+// the first recording, after that quick again).
 async function recordTree(dir, cwd) {
-  const ok = await git(['add', '-A', '.'], { gitDir: dir, workTree: cwd, timeout: 30 * 60000 });
-  if (ok == null) return null;
-  return (await git(['write-tree'], { gitDir: dir, workTree: cwd }))?.trim() || null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const ok = await git(['add', '-A', '.'], { gitDir: dir, workTree: cwd, timeout: 30 * 60000 });
+    if (ok == null) return null;
+    const tree = (await git(['write-tree'], { gitDir: dir, workTree: cwd }))?.trim();
+    if (tree) return tree;
+    if (attempt || !/invalid object|error building trees|missing|corrupt/i.test(lastGitError)) return null;
+    try { fs.rmSync(path.join(dir, 'index')); } catch { return null; }
+  }
+  return null;
 }
 
 // Embedded packages that are git repositories show up as "gitlinks" (mode 160000).
