@@ -1580,6 +1580,18 @@ function saveGroupOrder(keys) {
   refreshHub();
 }
 
+let pinnedGroups = {};
+try { pinnedGroups = JSON.parse(localStorage.getItem('hubPinnedGroups') || '{}'); } catch { /* none pinned */ }
+hub.pinned = new Map(Object.entries(pinnedGroups));
+hub.onPin = (key, info) => {
+  sfx('select');
+  if (info) pinnedGroups[key] = info;
+  else delete pinnedGroups[key];
+  hub.pinned = new Map(Object.entries(pinnedGroups));
+  try { localStorage.setItem('hubPinnedGroups', JSON.stringify(pinnedGroups)); } catch { /* not important */ }
+  refreshHub();
+};
+
 // The Hub has one panel per group and repository. The main process finds the
 // repository (the nearest folder with .git or .svn); until it answers, the
 // agent's folder name is used.

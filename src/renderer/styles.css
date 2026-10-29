@@ -879,6 +879,18 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 .hub-section { transition: border-color 0.2s, background 0.2s; }
 .hub-section.removing-group { overflow: hidden; pointer-events: none; border-color: var(--err); background: rgba(224, 90, 90, 0.06); }
 .hub-section.removing-group .section-remove { opacity: 0; }
+.section-pin { display: inline-flex; align-items: center; align-self: center; padding: 3px 7px; border-radius: 99px;
+  border: 1px solid var(--border); background: transparent; color: var(--text-faint);
+  opacity: 0; transition: opacity 0.15s, color 0.15s, border-color 0.15s; }
+.section-pin svg { transform: rotate(45deg); transition: transform 0.2s; }
+.hub-section:hover .section-pin { opacity: 1; }
+.section-pin:hover { color: var(--text); border-color: var(--text-faint); }
+.hub-section.pinned .section-pin { opacity: 1; color: var(--accent); border-color: var(--accent); }
+.hub-section.pinned .section-pin svg { transform: none; fill: currentColor; }
+.hub-section.empty .section-move, .hub-section.empty .section-remove { display: none; }
+.hub-section.empty .section-pin { margin-left: auto; }
+.hub-section.empty .section-notes:not(.hidden) ~ .section-pin { margin-left: 0; }
+.hub-section.empty .hub-grid::before { content: "Pinned · click to start an agent here"; font-size: 12px; color: var(--text-faint); padding: 6px 2px; }
 .hub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px; }
 /* Inside a group, all tiles stay on one row: they share its width equally and
    get smaller the more there are, up to 240px wide each. */

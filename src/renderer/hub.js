@@ -73,6 +73,7 @@ class Hub {
     this.onContext = onContext;
     this.sections = new Map();       // group id ('' for no group) + repository -> { el, name, repo, count, grid }
     this.repos = new Map();          // repository -> { el, name, count, unity, body }: holds that repository's category panels
+    this.pinned = new Map();
     this.tiles = new Map();          // agent id -> { el, parts, status }
     // Tiles you Ctrl+clicked: your next message in the Hub goes to each of
     // them (see broadcast in app.js).
@@ -863,6 +864,16 @@ class Hub {
       this.paint(entry, agent, currentId);
     }
 
+    const pinnedHere = sec => {
+      const p = this.pinned.get(sec.key);
+      return !!p && (!p.groupKey || groups.some(g => g.id === p.groupKey));
+    };
+    for (const [key, p] of this.pinned) {
+      if (p.groupKey && !groups.some(g => g.id === p.groupKey)) continue;
+      const sec = this.section(key, p.groupKey, p.repo);
+      if (!seenSections.has(sec)) { sec.cwd = p.cwd; sec.root = p.root; }
+    }
+
     for (const [id, entry] of this.tiles) {
       if (!seen.has(id)) {
         entry.el.remove();
@@ -882,7 +893,12 @@ class Hub {
     const sorted = [...this.sections.values()].sort((a, b) => place(a) - place(b) || rank(a) - rank(b));
     sorted.forEach((sec, i) => {
       const n = counts.get(sec.key) || 0;
-      sec.el.classList.toggle('hidden', !n);
+      const pinned = pinnedHere(sec);
+      sec.el.classList.toggle('hidden', !n && !pinned);
+      sec.el.classList.toggle('empty', !n);
+      sec.el.classList.toggle('pinned', pinned);
+      sec.pin.title = pinned ? 'Unpin: this group disappears when its last agent is gone' : 'Pin: keep this group in the Hub when its last agent is gone';
+      sec.pin.setAttribute('aria-pressed', String(pinned));
       sec.count.textContent = String(n);
       const group = sec.groupKey ? groups.find(g => g.id === sec.groupKey) : null;
       sec.name.textContent = sec.groupKey ? group?.name || 'Category' : 'No category';
@@ -911,7 +927,7 @@ class Hub {
       const name = sec.root ?? sec.repo;
       const repo = this.repoBox(name);
       if (sec.el.parentNode !== repo.body && !sec.el.classList.contains('dragging-group')) repo.body.appendChild(sec.el);
-      if (!n) return;
+      if (!n && !pinnedHere(sec)) return;
       repoCounts.set(name, (repoCounts.get(name) || 0) + n);
       if (!repoFirst.has(name)) repoFirst.set(name, i);
       if (!repoCwds.has(name)) repoCwds.set(name, []);
@@ -937,7 +953,7 @@ class Hub {
     const before = !this.drag && moving.length ? new Map([...this.repos.values()].map(r => [r, r.el.getBoundingClientRect()])) : null;
     for (const [name, repo] of this.repos) {
       const n = repoCounts.get(name) || 0;
-      repo.el.classList.toggle('hidden', !n);
+      repo.el.classList.toggle('hidden', !repoCounts.has(name));
       repo.el.style.order = String(repoPlace.get(name) ?? 1000);
       repo.count.textContent = `${n} agent${n === 1 ? '' : 's'}`;
       repo.cwds = repoCwds.get(name) || [];
@@ -964,9 +980,10 @@ class Hub {
     if (this.svnStates) this.setTactileSvn(this.svnStates);
     this.ensureKeyAgent();
 
-    this.empty.classList.toggle('hidden', agents.length > 0);
+    const anyPanel = agents.length > 0 || sorted.some(sec => !sec.el.classList.contains('hidden'));
+    this.empty.classList.toggle('hidden', anyPanel);
     requestAnimationFrame(() => this.fitToHeight());
-    this.grid.classList.toggle('hidden', agents.length === 0);
+    this.grid.classList.toggle('hidden', !anyPanel);
   }
 
   // A panel's title is "Category — folder".
@@ -983,6 +1000,13 @@ class Hub {
       const notes = el('button', 'section-notes', 'Notes');
       notes.title = 'The notes every agent in this category reads and adds to';
       notes.onclick = e => { e.stopPropagation(); this.onOpenNotes?.(sec.groupKey); };
+      const pin = el('button', 'section-pin');
+      pin.type = 'button';
+      pin.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l-1 6 4 4v2H6v-2l4-4z"/><path d="M12 15v6"/></svg>';
+      pin.onclick = e => {
+        e.stopPropagation();
+        this.onPin?.(sec.key, this.pinned.has(sec.key) ? null : { groupKey: sec.groupKey, repo: sec.repo, cwd: sec.cwd, root: sec.root ?? sec.repo });
+      };
       const remove = el('button', 'section-remove', '× Remove group');
       remove.title = 'Remove this group and all its agents from the Hub';
       // A group in a Unity project: open its Unity Editor, or bring it to
@@ -1001,10 +1025,10 @@ class Hub {
         e.preventDefault();
         this.onMoveGroup?.(idsHere(), sec.cwd, sec.groupKey || null);
       });
-      head.append(name, repoEl, count, loneHint, notes, move, unity, remove);
+      head.append(name, repoEl, count, loneHint, notes, move, unity, pin, remove);
       const grid = el('div', 'hub-grid');
       elSec.append(head, grid);   // render puts it into its repository's container
-      sec = { key, groupKey, repo, el: elSec, name, repoEl, count, notes, unity, grid, cwd: null };
+      sec = { key, groupKey, repo, el: elSec, name, repoEl, count, notes, unity, pin, grid, cwd: null };
       elSec.classList.toggle('selected', key === this.selectedKey);
       elSec.title = 'Click to start the next agent in this group';
       // The title row is the handle for dragging the whole panel.
@@ -1590,6 +1614,10 @@ class Hub {
     }, i * STAGGER));
     await new Promise(r => setTimeout(r, (entries.length - 1) * STAGGER + 600));
     if (!sec) return;
+    if (this.pinned.has(sec.key)) {
+      sec.el.classList.remove('removing-group');
+      return;
+    }
     const fold = sec.el.animate([
       { height: `${sec.el.offsetHeight}px`, opacity: 1, transform: 'none' },
       { height: '0px', paddingTop: '0px', paddingBottom: '0px', opacity: 0, transform: 'scaleX(0.96)' },
