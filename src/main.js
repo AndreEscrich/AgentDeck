@@ -67,6 +67,7 @@ const DEFAULT_CONFIG = {
   notifyWhenDone: true,
   notifyStyle: 'tile',                  // tile: the agent's Hub tile in the corner (toast.js) | system: the system's own
   sounds: true,                         // a sound when you start an agent and when one finishes
+  updatePopup: true,                    // a card on the Hub asks to update when a new version is out (off: only the title bar's Update button)
   hubAfterSend: true,                   // show the Hub after you send a message
   summarizeTitles: true,                // title new agents with a short summary of your message
   suggestFollowUps: true,               // after a task, suggest the messages you will likely send next
@@ -377,6 +378,7 @@ app.whenReady().then(() => {
     return [...listSessions(), ...codex].filter(x => !gone.has(x.id)).sort((a, b) => b.updatedAt - a.updatedAt);
   });
   ipcMain.handle('git:snapshot', (_e, cwd) => git.snapshot(cwd, path.join(app.getPath('userData'), 'snapshots')));
+  ipcMain.handle('git:quickSnapshot', (_e, cwd) => git.quickSnapshot(cwd, path.join(app.getPath('userData'), 'snapshots')));
   ipcMain.handle('git:changes', (_e, cwd, snap) => git.changesSince(cwd, snap));
   ipcMain.handle('subagents:evidence', (_e, sessionId, since) => require('./subagents').evidence(sessionId, since));
   const turnDir = path.join(app.getPath('userData'), 'turn-changes');

@@ -1158,22 +1158,12 @@ function ownerOfCard(card) {
   return null;
 }
 
-// Commit or Ask for changes, once every file of a card is ticked as reviewed.
-window.reviewAction = async (action, card, files) => {
-  const owner = ownerOfCard(card);
-  if (!owner) return;
-  if (action === 'changes') {
-    $('input').value = 'Please change this: ';
-    autosize();
-    $('input').focus();
-    return;
-  }
-  const list = files.map(f => f.path).join(', ');
-  const text = `I reviewed the changes of your last task (${list}). Commit them, with a short message that says what changed and why. Commit only these files.`;
-  sfx('sent');
-  if (owner.kind === 'agent') await sendToHubItem(owner.id, text);
-  else await sendToHubItem('p:' + owner.id, text);
-  refreshHub();
+// Ask for changes, once every file of a card is ticked as reviewed.
+window.reviewAction = async (action, card) => {
+  if (action !== 'changes' || !ownerOfCard(card)) return;
+  $('input').value = 'Please change this: ';
+  autosize();
+  $('input').focus();
 };
 
 // A task whose changes you reviewed completely counts as seen: Tab skips it.
@@ -1181,7 +1171,7 @@ window.addEventListener('changes-reviewed', e => {
   const owner = ownerOfCard(e.detail.card);
   if (owner?.agent) owner.agent.unread = false;
   if (owner?.kind === 'history' && state.parked.get(owner.id)) state.parked.get(owner.id).unread = false;
-  toast('All files reviewed: Commit or Ask for changes');
+  toast('All files reviewed');
   refreshHub();
   updateAttention();
 });
@@ -1589,6 +1579,18 @@ function saveGroupOrder(keys) {
   try { localStorage.setItem('hubGroupOrder', JSON.stringify(groupOrder)); } catch { /* not important */ }
   refreshHub();
 }
+
+let pinnedGroups = {};
+try { pinnedGroups = JSON.parse(localStorage.getItem('hubPinnedGroups') || '{}'); } catch { /* none pinned */ }
+hub.pinned = new Map(Object.entries(pinnedGroups));
+hub.onPin = (key, info) => {
+  sfx('select');
+  if (info) pinnedGroups[key] = info;
+  else delete pinnedGroups[key];
+  hub.pinned = new Map(Object.entries(pinnedGroups));
+  try { localStorage.setItem('hubPinnedGroups', JSON.stringify(pinnedGroups)); } catch { /* not important */ }
+  refreshHub();
+};
 
 // The Hub has one panel per group and repository. The main process finds the
 // repository (the nearest folder with .git or .svn); until it answers, the
@@ -3273,7 +3275,8 @@ function showUpdate(info) {
 // nothing. Agents that finished and that you have not checked yet stay that
 // way after the restart (the Hub is saved as the app quits). Only when the
 // update itself fails does the card say why and offer Close; that version
-// then does not force the card again until the app restarts.
+// then does not force the card again until the app restarts. Settings →
+// Update pop-up off: no card at all, only the button in the title bar.
 let latestInfo = null;
 let updateCardOpen = false;
 const failedUpdates = new Set();
@@ -3281,6 +3284,8 @@ window.addEventListener('focus', () => offerUpdate());
 function offerUpdate() {
   const info = latestInfo;
   if (!info || updateCardOpen || !document.hasFocus() || failedUpdates.has(info.version)) return;
+  // Settings → Update pop-up off: the Update button in the title bar is enough.
+  if (state.config?.updatePopup === false) return;
   // Not while an agent works, or has just been sent a message it has not got yet.
   if ([...state.agents.values()].some(a => !a.removed && (BUSY.includes(a.status) || Date.now() - (a.sentAt || 0) < SENT_GRACE))) return;
   // Only on the Hub: never over an agent's chat, History or the Branches view.
@@ -3947,10 +3952,12 @@ window.addEventListener('review-comments', e => {
 // agents on the Hub once in the background, one after another.
 const SNAPSHOT_WAIT = 5000;
 
+// Too late: the newest state recorded before, compared by the files' times
+// (quickSnapshot in git.js), so the task still gets its Changes card.
 async function snapshotInTime(cwd) {
   const snap = window.deck.gitSnapshot(cwd).catch(() => null);
   const late = new Promise(resolve => setTimeout(() => resolve(null), SNAPSHOT_WAIT));
-  return Promise.race([snap, late]);
+  return (await Promise.race([snap, late])) || window.deck.gitQuickSnapshot(cwd).catch(() => null);
 }
 
 function warmSnapshots() {
@@ -3979,7 +3986,7 @@ function warmSnapshots() {
 const pathKey = p => p.replace(/\\/g, '/').toLowerCase();
 
 function sessionState(view) {
-  if (!view._session) view._session = { started: false, snap: null, paths: new Set(), edits: new Map(), files: [], panel: null, loaded: null, pending: [], playing: false };
+  if (!view._session) view._session = { started: false, snap: null, paths: new Set(), edits: new Map(), files: [], tasks: [], panel: null, loaded: null, pending: [], playing: false };
   return view._session;
 }
 
@@ -4015,7 +4022,10 @@ function loadSession(view, sessionId, cwd, transcript = null) {
       s.files = await editsToFiles(cwd, s);
       saveSession(sessionId, s);
     }
-    if (s.files.length) await sessionCard(view, cwd).update(s.files);
+    // The tasks in order, for its playback: from the chat when the card was
+    // saved before it kept them.
+    s.tasks = saved.tasks || (transcript ? tasksOf(transcript) : []);
+    if (s.files.length) await sessionCard(view, cwd).update(s.files, { tasks: s.tasks });
   });
   return s.loaded;
 }
@@ -4024,7 +4034,7 @@ function saveSession(sessionId, s) {
   if (!sessionId) return;
   const slim = f => ({ path: f.path, status: f.status, lines: f.lines, from: f.from || undefined, binary: f.binary || undefined });
   window.deck.saveSessionChanges(sessionId, {
-    snap: s.snap, paths: [...s.paths], files: s.files.map(slim),
+    snap: s.snap, paths: [...s.paths], files: s.files.map(slim), tasks: s.tasks,
     edits: [...s.edits.values()].map(e => ({ path: e.path, from: e.from || undefined, changes: e.changes })),
   }).catch(() => {});
 }
@@ -4040,6 +4050,7 @@ async function updateSession(a, turn) {
   }
   if (!s.paths.size) return;
   if (!s.snap) addEdits(s, turn?.files || []);
+  if (turn?.files?.length) s.tasks.push(taskOf(a.transcript, turn));
   const files = s.snap ? await sessionFromSnapshot(a, s) : await editsToFiles(a.cwd, s);
   if (!files) return;
   s.files = files;
@@ -4060,7 +4071,7 @@ async function playSession(a) {
   const turns = s.pending.splice(0);
   const count = new Set(turns.flatMap(t => (t.files || []).map(f => f.path))).size;
   if (count) await flyCard(flightFrom(turns), s.panel.landing(), `${count} file${count === 1 ? '' : 's'}`);
-  await s.panel.update(s.files);
+  await s.panel.update(s.files, { tasks: s.tasks });
   s.panel.digest();
   if (count && playSounds()) sounds.takeIn();
   s.playing = false;
@@ -4149,6 +4160,15 @@ async function editsToFiles(cwd, s) {
     out.push({ path: entry.path, from: entry.from, status: !r.before ? 'new' : !r.after ? 'del' : 'mod', lines });
   }
   return out;
+}
+
+// A task for the card's playback: what you asked (short) and its files.
+function taskOf(transcript, turn) {
+  const text = transcript?.prompts.find(p => p.turn === turn || p.turn?.el === turn.el)?.text || '';
+  return { title: text.replace(/\s+/g, ' ').trim().slice(0, 80), paths: (turn.files || []).map(f => f.path) };
+}
+function tasksOf(transcript) {
+  return transcript.prompts.filter(p => p.turn?.files?.length).map(p => taskOf(transcript, p.turn));
 }
 
 // Folding one card folds them all.

@@ -175,6 +175,8 @@ function setReviewed(f, on) {
   if (on) set.add(reviewKey(f));
   else set.delete(reviewKey(f));
   try { localStorage.setItem('reviewedFiles', JSON.stringify([...set].slice(-5000))); } catch { /* not important */ }
+  // The cards and diagrams that show it tick it too.
+  window.dispatchEvent(new CustomEvent('reviewed-change'));
 }
 
 // A count that rolls up from zero to its value.
@@ -221,7 +223,9 @@ function fileSummary(f) {
 // title: the card's heading instead of "Changed N files" (a diff you asked for).
 // animate: a task that just finished, so its files deal in one by one and
 // the line counts roll up.
-function changesCard(files, cwd, { title = null, animate = false } = {}) {
+// peer: comments on its lines go to the review peer in the whole-window
+// class diagram (the Branch diff view, which has no agent), not to the agent.
+function changesCard(files, cwd, { title = null, animate = false, peer = false } = {}) {
   files = sortFiles(files);
   const code = files.filter(f => isCodeFile(f.path));
   const other = files.filter(f => !isCodeFile(f.path));
@@ -235,7 +239,7 @@ function changesCard(files, cwd, { title = null, animate = false } = {}) {
 
   const card = el('div', 'changes');
   const head = el('div', 'changes-head');
-  const comments = lineComments(files, cwd);
+  const comments = lineComments(files, cwd, peer ? { toPeer: text => askPeerAbout(card, text) } : {});
   const send = comments.sendButton();
   head.append(
     el('span', 'changes-title', title ? `${title} · ${files.length} file${files.length === 1 ? '' : 's'}` : `Changed ${files.length} file${files.length === 1 ? '' : 's'}`),
@@ -283,19 +287,15 @@ function changesCard(files, cwd, { title = null, animate = false } = {}) {
   // changes under it (addAssets).
   for (const f of code) addFile(card, f);
   // Reviewing: a tick per file, "N of M reviewed", and when all are ticked,
-  // Commit or Ask for changes (handled by window.reviewAction in app.js).
+  // Ask for changes (handled by window.reviewAction in app.js).
   const progress = el('span', 'review-progress');
   const actions = el('span', 'review-actions hidden');
   if (!title) {
-    const commit = el('button', 'review-commit', 'Commit');
-    commit.type = 'button';
-    commit.title = 'Ask the agent to commit these changes, with a message that says what changed';
-    commit.onclick = () => window.reviewAction?.('commit', card, files);
     const ask = el('button', null, 'Ask for changes');
     ask.type = 'button';
     ask.title = 'Send your line comments, or write what to change';
     ask.onclick = () => (comments.count() ? comments.send() : window.reviewAction?.('changes', card, files));
-    actions.append(ask, commit);
+    actions.append(ask);
   }
   head.insertBefore(progress, send);
   head.insertBefore(actions, send);
@@ -315,17 +315,18 @@ function changesCard(files, cwd, { title = null, animate = false } = {}) {
     actions.classList.toggle('hidden', !all);
     if (all && wasAll === false) {
       window.dispatchEvent(new CustomEvent('changes-reviewed', { detail: { card } }));
-      // A stamp lands on the card, and Commit glows once.
+      // A stamp lands on the card.
       const stamp = el('div', 'review-stamp', 'Reviewed');
       head.appendChild(stamp);
       setTimeout(() => stamp.classList.add('fade'), 1400);
       setTimeout(() => stamp.remove(), 2000);
-      actions.querySelector('.review-commit')?.classList.add('glow');
     }
     wasAll = all;
   };
   card.syncReview = syncReview;
   syncReview();
+  // Reviewed from the class diagram (its type's Mark reviewed).
+  window.addEventListener('reviewed-change', () => { if (card.isConnected) syncReview(); });
   if (animate) {
     card.classList.add('deal');
     rollUp(head.querySelector('.plus'), totalAdd, ' +');
@@ -338,7 +339,7 @@ function changesCard(files, cwd, { title = null, animate = false } = {}) {
       summary.querySelector('.change-name').textContent = name;
     }
   });
-  addDiagram(card, head, files, cwd, comments);
+  addDiagram(card, head, files, cwd, comments, { review: peer });
   addAssets(card, other, cwd, comments);
   return card;
 }
@@ -384,7 +385,8 @@ function umlWaiting(csFiles) {
   return root;
 }
 
-function addDiagram(card, head, files, cwd, comments) {
+// review: Start review in its title (the Branch diff view, see startReview).
+function addDiagram(card, head, files, cwd, comments, { review = false } = {}) {
   // Temporary helpers stay out of the diagram, also the ones that only may
   // be temporary (TempProbe, AtlasTemp), and so do unit tests: it shows the
   // structure of the work. The Files list still has them.
@@ -424,6 +426,15 @@ function addDiagram(card, head, files, cwd, comments) {
     const title = `Class diagram · ${changed.length} changed type${changed.length === 1 ? '' : 's'}`;
     const options = { files, comments };
     const panel = umlPanel(model, { ...options, onFull: () => openUmlFull(model, { ...options, title }) });
+    // The whole-window diagram, where the review peer is (askPeerAbout).
+    card.openFull = () => openUmlFull(model, { ...options, title });
+    if (review && window.deck?.reviewAsk) {
+      const start = el('button', 'review-start', 'Start review');
+      start.type = 'button';
+      start.title = 'Open the diagram in the whole window with a review peer: it sums up the change, reviews it and marks the types it finds problems in; then you mark them reviewed';
+      start.onclick = e => { e.stopPropagation(); window.uiSound?.('open'); startReview(card.openFull); };
+      head.insertBefore(start, switcher);
+    }
     card.insertBefore(panel, head.nextSibling);
     card.classList.add('has-diagram');
     diagramBtn.disabled = false;
@@ -702,7 +713,8 @@ function sessionPanel(cwd) {
   let assetsBox = null;
   let diagramBox = null;
   let version = 0;
-  const update = async files => {
+  // tasks: [{ title, paths }], the agent's tasks in order (playback).
+  const update = async (files, { tasks = [] } = {}) => {
     const mine = ++version;
     files = sortFiles(files);
     let add = 0;
@@ -763,8 +775,10 @@ function sessionPanel(cwd) {
     model = m;
     const options = { files, comments };
     const full = `Class diagram · this agent's changes · ${changed.length} type${changed.length === 1 ? '' : 's'}`;
-    const panel = umlPanel(m, { ...options, onFull: () => openUmlFull(m, { ...options, title: full }) });
+    const panel = umlPanel(m, { ...options, onFull: () => openUmlFull(m, { ...options, title: full, tasks }) });
     diagramBox.replaceChildren(el('div', 'session-sub', `Class diagram · ${changed.length} type${changed.length === 1 ? '' : 's'}`), panel);
+    const play = taskPlayback(panel, tasks);
+    if (play) diagramBox.appendChild(play);
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
     fitDiagram();
   };
@@ -827,6 +841,72 @@ function flyCard(from, target, label) {
   });
 }
 
+// Under the agent's class diagram (and in it in the whole window): its tasks
+// one by one. ‹ › step through them: a step shows the types the tasks up to
+// it touched (the others fade), the ones that task touched outlined; All
+// shows everything again. Only for two tasks or more that touched C#.
+// tasks: [{ title, paths }]; panel: the diagram (umlPanel).
+function taskPlayback(panel, tasks) {
+  const model = panel.model;
+  const key = p => String(p || '').replace(/\\/g, '/').toLowerCase();
+  const steps = tasks.map(t => ({ title: t.title || '', ids: new Set(model.nodes.filter(n => t.paths.some(p => key(p) === key(n.file))).map(n => n.id)) }))
+    .filter(t => t.ids.size);
+  if (steps.length < 2) return null;
+  const bar = el('div', 'session-play');
+  const button = (text, title) => { const b = el('button', 'session-play-step', text); b.type = 'button'; b.title = title; return b; };
+  const prev = button('‹', 'Previous task');
+  const next = button('›', 'Next task');
+  const dots = el('div', 'session-play-dots');
+  const all = el('button', 'session-play-all on', 'All');
+  all.type = 'button';
+  all.title = 'Show every task together';
+  const label = el('div', 'session-play-label', `All ${steps.length} tasks · › to go through them`);
+  let at = -1;
+  const show = i => {
+    at = i;
+    for (const [j, d] of [...dots.children].entries()) { d.classList.toggle('on', j === i); d.classList.toggle('past', i >= 0 && j < i); }
+    all.classList.toggle('on', i < 0);
+    prev.disabled = i < 0;
+    next.disabled = i === steps.length - 1;
+    window.uiSound?.('tick');
+    if (i < 0) { panel.setPlayback(null); label.textContent = `All ${steps.length} tasks · › to go through them`; label.title = ''; return; }
+    const seen = new Set(steps.slice(0, i + 1).flatMap(s => [...s.ids]));
+    panel.setPlayback({ show: seen, focus: steps[i].ids });
+    label.textContent = `Task ${i + 1} of ${steps.length}${steps[i].title ? ` · ${steps[i].title}` : ''}`;
+    label.title = steps[i].title;
+  };
+  steps.forEach((s, i) => {
+    const d = el('button', 'session-play-dot');
+    d.type = 'button';
+    d.title = `Task ${i + 1}${s.title ? `: ${s.title}` : ''}`;
+    d.onclick = () => show(i);
+    dots.appendChild(d);
+  });
+  prev.onclick = () => show(at - 1);
+  next.onclick = () => show(at + 1);
+  all.onclick = () => show(-1);
+  prev.disabled = true;
+  bar.append(prev, dots, next, all, label);
+  for (const type of ['pointerdown', 'wheel']) bar.addEventListener(type, e => e.stopPropagation());
+  return bar;
+}
+
+// Comments for the review peer (a card with peer, see changesCard): the
+// whole-window class diagram opens with the peer, which is asked about them.
+// A card without a class diagram (no C# types) has no peer: the comments go
+// to the clipboard instead.
+function askPeerAbout(card, text) {
+  // Sent from a type's diff in the whole-window diagram: its peer is there.
+  if (umlFullEl?.peer) { umlFullEl.peer.ask(text); return true; }
+  if (card.openFull) {
+    card.openFull();
+    if (umlFullEl?.peer) { umlFullEl.peer.ask(text); return true; }
+  }
+  navigator.clipboard?.writeText(text).catch(() => {});
+  window.toast?.('No class diagram to ask the review peer in: the comments are on the clipboard');
+  return true;
+}
+
 // ---------- comments on lines ----------
 
 // Click a line of a diff (in the Files list, or in a type's diff from the
@@ -834,9 +914,10 @@ function flyCard(from, target, label) {
 // (f.comments: diff line index -> { line, side, code, text }), so they stay
 // when a file is closed and opened again. "Send N comments" in the card's
 // title (and in a type's diff) puts them all into the message box, as one
-// message to the agent. Returns { diff(f), sendButton(), count(), send(),
-// onChange(fn) }.
-function lineComments(files, cwd) {
+// message to the agent. toPeer(text): instead, the comments are a question
+// for the review peer (askPeerAbout), worded for it. Returns { diff(f),
+// sendButton(), count(), send(), onChange(fn) }.
+function lineComments(files, cwd, { toPeer = null } = {}) {
   // A comment is kept by the side and number of its line (new:42, old:17),
   // so it shows in each view of the file: Changes, Full file, Side by side.
   const keyOf = c => `${c.side}:${c.line}`;
@@ -845,7 +926,7 @@ function lineComments(files, cwd) {
   const changed = () => { for (const fn of listeners) fn(count()); };
 
   const message = () => {
-    const lines = ['Review comments on your changes:', ''];
+    const lines = [toPeer ? 'My review comments on this change:' : 'Review comments on your changes:', ''];
     let i = 0;
     for (const f of files) {
       for (const c of [...(f.comments || new Map()).values()].sort((x, y) => x.line - y.line || (x.side === 'old' ? -1 : 1))) {
@@ -855,7 +936,9 @@ function lineComments(files, cwd) {
         lines.push(...c.text.split('\n').map(t => `   ${t}`), '');
       }
     }
-    lines.push('Please address each comment.');
+    lines.push(toPeer
+      ? 'For each comment: do you agree, what is the risk if it stays, and what would you change (file and line)? Check the code around it in the project when it helps.'
+      : 'Please address each comment.');
     return lines.join('\n');
   };
   const boxes = new Set();   // the comment boxes on screen, removed after sending
@@ -866,7 +949,8 @@ function lineComments(files, cwd) {
     for (const box of boxes) box.remove();
     boxes.clear();
     changed();
-    window.dispatchEvent(new CustomEvent('review-comments', { detail: { text, cwd } }));
+    if (toPeer) toPeer(text);
+    else window.dispatchEvent(new CustomEvent('review-comments', { detail: { text, cwd } }));
   };
 
   // A saved comment under its line: the text, Edit and Delete.
@@ -895,7 +979,7 @@ function lineComments(files, cwd) {
     const editor = el('div', 'review-comment-editor');
     const input = document.createElement('textarea');
     input.rows = 3;
-    input.placeholder = 'Comment for the agent… (↩ to save, ⇧↩ for a new line, Esc to cancel)';
+    input.placeholder = `Comment for the ${toPeer ? 'review peer' : 'agent'}… (↩ to save, ⇧↩ for a new line, Esc to cancel)`;
     input.value = f.comments?.get(keyOf(info))?.text || '';
     const save = el('button', 'review-comment-save', 'Comment');
     const cancel = el('button', null, 'Cancel');
@@ -979,11 +1063,13 @@ function lineComments(files, cwd) {
     sendButton: () => {
       const button = el('button', 'comments-send hidden');
       button.type = 'button';
-      button.title = 'Put the comments into the message box, as one message to the agent';
+      button.title = toPeer
+        ? 'Ask the review peer about the comments, in the whole-window class diagram'
+        : 'Put the comments into the message box, as one message to the agent';
       button.onclick = e => { e.stopPropagation(); send(); };
       const refresh = n => {
         button.classList.toggle('hidden', !n);
-        button.textContent = `Send ${n} comment${n === 1 ? '' : 's'}`;
+        button.textContent = toPeer ? `Ask the review peer · ${n} comment${n === 1 ? '' : 's'}` : `Send ${n} comment${n === 1 ? '' : 's'}`;
       };
       listeners.add(refresh);
       refresh(count());

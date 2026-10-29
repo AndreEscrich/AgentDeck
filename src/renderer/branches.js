@@ -451,7 +451,8 @@ class BranchesView {
       const notes = [];
       if (shown.length > BRANCH_FILE_LIMIT) notes.push(`${shown.length - BRANCH_FILE_LIMIT} more files not shown: pick a domain`);
       if (meta.length) notes.push(`${meta.length} .meta file${meta.length === 1 ? '' : 's'} hidden`);
-      slot.replaceChildren(changesCard(shown.slice(0, BRANCH_FILE_LIMIT), r.cwd, { title }));
+      // Comments on its lines go to the review peer (there is no agent here).
+      slot.replaceChildren(changesCard(shown.slice(0, BRANCH_FILE_LIMIT), r.cwd, { title, peer: true }));
       if (notes.length) slot.appendChild(el('div', 'note', notes.join(' · ')));
     };
     if (domains.size > 1) box.appendChild(chips);
