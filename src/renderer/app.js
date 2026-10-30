@@ -4076,7 +4076,7 @@ function warmSnapshots() {
 const pathKey = p => p.replace(/\\/g, '/').toLowerCase();
 
 function sessionState(view) {
-  if (!view._session) view._session = { started: false, snap: null, paths: new Set(), edits: new Map(), files: [], tasks: [], panel: null, loaded: null, pending: [], playing: false };
+  if (!view._session) view._session = { started: false, snap: null, paths: new Set(), edits: new Map(), own: null, shared: new Set(), files: [], tasks: [], panel: null, loaded: null, pending: [], playing: false };
   return view._session;
 }
 
@@ -4105,6 +4105,8 @@ function loadSession(view, sessionId, cwd, transcript = null) {
     s.snap = saved.snap || null;
     s.paths = new Set(saved.paths || []);
     s.edits = new Map((saved.edits || []).map(f => [pathKey(f.path), f]));
+    s.own = saved.own ? new Map(saved.own.map(f => [pathKey(f.path), f])) : null;
+    s.shared = new Set(saved.shared || []);
     s.files = saved.files || [];
     if (!s.snap && (saved.edits || []).some(e => !e.changes) && transcript) {
       s.edits = new Map();
@@ -4126,6 +4128,7 @@ function saveSession(sessionId, s) {
   window.deck.saveSessionChanges(sessionId, {
     snap: s.snap, paths: [...s.paths], files: s.files.map(slim), tasks: s.tasks,
     edits: [...s.edits.values()].map(e => ({ path: e.path, from: e.from || undefined, changes: e.changes })),
+    own: s.own ? [...s.own.values()] : undefined, shared: [...s.shared],
   }).catch(() => {});
 }
 
@@ -4140,6 +4143,17 @@ async function updateSession(a, turn) {
   }
   if (!s.paths.size) return;
   if (!s.snap) addEdits(s, turn?.files || []);
+  else {
+    // The agent's own edits, for the files another agent changed too (see
+    // sessionFromSnapshot); a card saved before it kept them starts from
+    // the chat's tasks.
+    if (!s.own) {
+      s.own = new Map();
+      for (const p of a.transcript.prompts) if (p.turn && p.turn !== turn) addOwn(a, s, p.turn);
+    }
+    if (turn) addOwn(a, s, turn);
+    for (const f of turn?.files || []) if (f.ownOnly) s.shared.add(pathKey(f.path));
+  }
   if (turn?.files?.length) s.tasks.push(taskOf(a.transcript, turn));
   const files = s.snap ? await sessionFromSnapshot(a, s) : await editsToFiles(a.cwd, s);
   if (!files) return;
@@ -4208,7 +4222,26 @@ async function sessionFromSnapshot(a, s) {
   if (gone.length && unclaimed.length) {
     for (const f of pairMoves([...gone, ...unclaimed])) if (f.from) s.paths.add(pathKey(f.path));
   }
-  return all.filter(owned);
+  // A file another agent changed too shows only this agent's lines.
+  const files = await Promise.all(all.filter(owned).map(async f => {
+    const entry = f.status === 'mod' && s.shared.has(pathKey(f.path)) && s.own?.get(pathKey(f.path));
+    if (!entry) return f;
+    const mine = await spanDiff(a.cwd, f.path, f.from, entry.changes).catch(() => null);
+    return mine === 'none' ? null : mine || f;
+  }));
+  return files.filter(Boolean);
+}
+
+// A task's Edit and Write reports, per file, oldest first (each task once).
+function addOwn(a, s, turn) {
+  if (!turn.changes?.size || turn.ownAdded) return;
+  turn.ownAdded = true;
+  for (const c of a.transcript.toolChanges(turn.changes)) {
+    const key = pathKey(c.path);
+    const entry = s.own.get(key) || { path: c.path, changes: [] };
+    entry.changes.push({ status: c.status, lines: c.lines });
+    s.own.set(key, entry);
+  }
 }
 
 // Without that snapshot: each file's changes, one per task as its edits
@@ -4234,22 +4267,42 @@ async function editsToFiles(cwd, s) {
   for (const entry of s.edits.values()) {
     const changes = entry.changes || [{ status: entry.status, lines: entry.lines }];
     const last = changes[changes.length - 1];
-    const fallback = () => out.push({ path: entry.path, from: entry.from, status: last.status, lines: last.lines, earlier: changes.slice(0, -1) });
-    const r = await window.deck.fileSpan(cwd, entry.path, changes).catch(() => null);
-    if (!r || r.error) { fallback(); continue; }
-    if (!r.before && !r.after) continue;
-    let lines;
-    if (!r.before) lines = [['hunk', `@@ -0,0 +1,${r.after.length} @@`], ...r.after.map(t => ['add', '+' + t])];
-    else if (!r.after) lines = [['hunk', `@@ -1,${r.before.length} +0,0 @@`], ...r.before.map(t => ['del', '-' + t])];
-    else {
-      const merged = lineDiff(r.before, r.after);
-      if (!merged) { fallback(); continue; }
-      lines = toHunks(merged);
-    }
-    if (!lines.some(([k]) => k === 'add' || k === 'del')) continue;
-    out.push({ path: entry.path, from: entry.from, status: !r.before ? 'new' : !r.after ? 'del' : 'mod', lines });
+    const f = await spanDiff(cwd, entry.path, entry.from, changes);
+    if (f === 'none') continue;
+    out.push(f || { path: entry.path, from: entry.from, status: last.status, lines: last.lines, earlier: changes.slice(0, -1) });
   }
   return out;
+}
+
+// One file's changes as one diff: the file before them (undone from the file
+// on disk, newest first; see span in undo.js) against the file now. Lines
+// someone else changed meanwhile are the same on both sides, so only these
+// changes show. Resolves with the file, 'none' when it ends as it started,
+// or null when the changes do not undo any more.
+async function spanDiff(cwd, path, from, changes) {
+  const r = await window.deck.fileSpan(cwd, path, changes).catch(() => null);
+  if (!r || r.error) return null;
+  if (!r.before && !r.after) return 'none';
+  let lines;
+  if (!r.before) lines = [['hunk', `@@ -0,0 +1,${r.after.length} @@`], ...r.after.map(t => ['add', '+' + t])];
+  else if (!r.after) lines = [['hunk', `@@ -1,${r.before.length} +0,0 @@`], ...r.before.map(t => ['del', '-' + t])];
+  else {
+    const merged = lineDiff(r.before, r.after);
+    if (!merged) return null;
+    lines = toHunks(merged);
+  }
+  if (!lines.some(([k]) => k === 'add' || k === 'del')) return 'none';
+  return { path, from, status: !r.before ? 'new' : !r.after ? 'del' : 'mod', lines };
+}
+
+// The agent's own lines in a file another agent changed too: the snapshot's
+// diff has both agents' lines, so its Edit and Write reports of this task
+// (oldest first) are undone from the file instead.
+function ownDiff(a, turns, f) {
+  const key = pathKey(f.path);
+  const changes = turns.flatMap(t => (t?.changes ? a.transcript.toolChanges(t.changes) : []).filter(c => pathKey(c.path) === key));
+  if (!changes.length) return Promise.resolve(null);
+  return spanDiff(a.cwd, f.path, f.from, changes);
 }
 
 // A task for the card's playback: what you asked (short) and its files.
@@ -4761,8 +4814,12 @@ window.deck.onEvent((id, msg) => {
       turn.evidence.push(...(found?.evidence || []));
     }) : Promise.resolve();
     const since = a.snapshotAt;
+    const turns = a.taskTurns;
     evidence.then(() => window.deck.gitChanges(a.cwd, snap))
-      .then(diff => a.transcript.showGitChanges(turn, diff, snap.kind === 'folder', { otherEdit: rel => editedByOther(a, rel, since) }))
+      .then(diff => a.transcript.showGitChanges(turn, diff, snap.kind === 'folder', {
+        otherEdit: rel => editedByOther(a, rel, since),
+        ownOnly: f => ownDiff(a, turns, f),
+      }))
       .then(() => saveTurnChanges(turn))
       .then(() => updateSession(a, turn))
       .then(() => refreshHeaderIfCurrent(a.id))

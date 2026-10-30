@@ -2186,20 +2186,32 @@ class Transcript {
   // code files, so with merge=true the Edit/Write reports for other files
   // (for example a .prefab) are kept.
   // otherEdit(path): true when another agent edited that file during this
-  // task (see editedByOther in app.js).
-  async showGitChanges(turn, diffText, merge, { otherEdit = null } = {}) {
+  // task (see editedByOther in app.js). ownOnly(file): that file with only
+  // this agent's lines (see ownDiff in app.js).
+  async showGitChanges(turn, diffText, merge, { otherEdit = null, ownOnly = null } = {}) {
     if (!turn || diffText == null) return;
     turn.gitShown = true;
     // The snapshot also catches changes you (or other agents) made in the same
     // folder while this agent worked. Only files the agent touched stay, and
     // a file another agent edited meanwhile only when this agent edited it too.
     const own = f => this.agentEdited(turn, f.path) || (f.from && this.agentEdited(turn, f.from));
-    const files = pairMoves(parseUnifiedDiff(diffText)).filter(f => !isTempFile(f.path) && (own(f) || (!otherEdit?.(f.path)
+    let files = pairMoves(parseUnifiedDiff(diffText)).filter(f => !isTempFile(f.path) && (own(f) || (!otherEdit?.(f.path)
       && (this.agentTouched(turn, f.path) || (f.from && this.agentTouched(turn, f.from))
       || (addedOrRemovedBinary(f) && this.folderTouched(turn, f.path))
       || (f.status === 'del' && this.folderNamed(turn, f.path))
       || this.patternNamed(turn, f.path) || (f.from && this.patternNamed(turn, f.from))
       || (f.from && this.folderNamed(turn, f.from))))));
+    // In a file both agents changed, the other agent's lines are left out:
+    // the file shows only what this agent's edits did (when they still undo
+    // from the file; else the whole diff, as before).
+    if (ownOnly && otherEdit) {
+      files = (await Promise.all(files.map(async f => {
+        if (!otherEdit(f.path) || f.status !== 'mod') return f;
+        const mine = await ownOnly(f).catch(() => null);
+        if (mine === 'none') return null;
+        return mine ? { ...mine, ownOnly: true } : f;
+      }))).filter(Boolean);
+    }
     if (merge) {
       await this.pruneMissing(turn).catch(() => {});
       // The snapshot's paths use /, the Edit/Write reports the system's own
