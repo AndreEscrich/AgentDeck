@@ -664,6 +664,8 @@ function show(kind, id) {
   saveInputDraft();
   state.current = { kind, id };
   requestAnimationFrame(updateNextHint);
+  // Close selected floats over the Hub only.
+  document.getElementById('close-selected')?.classList.toggle('hidden', kind !== 'hub' || hub.selected.size < 2);
   // Back on the Hub: an update that waited for it can come now.
   if (kind === 'hub') setTimeout(offerUpdate, 400);
   $('back-to-hub').classList.toggle('hidden', !['agent', 'history', 'branches'].includes(kind));
@@ -985,7 +987,7 @@ hub.onPour = (fromId, toId) => {
   inputDrafts.set(key, [inputDrafts.get(key)?.trim(), block].filter(Boolean).join('\n\n'));
   hub.open(toId);
 };
-hub.onSelect = () => renderBroadcast();
+hub.onSelect = () => { renderBroadcast(); renderCloseSelected(); };
 
 // ---------- command palette (Ctrl+K) ----------
 
@@ -1216,6 +1218,25 @@ function renderBroadcast() {
   clear.title = 'Unselect them (Esc)';
   clear.onclick = () => hub.clearSelection();
   bar.appendChild(clear);
+}
+
+// With 2 or more tiles selected (Shift or Ctrl/⌘+click), a button floats
+// above the message box: Close N selected removes them all from the Hub.
+function renderCloseSelected() {
+  let btn = document.getElementById('close-selected');
+  if (!btn) {
+    btn = el('button', 'close-selected hidden');
+    btn.id = 'close-selected';
+    btn.type = 'button';
+    btn.onclick = () => removeSelectedFromHub([...hub.selected]);
+    document.getElementById('composer').appendChild(btn);
+  }
+  const n = hub.selected.size;
+  const show = state.current?.kind === 'hub' && n >= 2;
+  btn.classList.toggle('hidden', !show);
+  if (!show) return;
+  btn.replaceChildren(el('span', 'close-selected-x', '×'), document.createTextNode(` Close ${n} selected`));
+  btn.title = 'Remove the selected agents from the Hub (their sessions stay in History)';
 }
 
 // A command run with the Run button under an agent's answer (addShellRun in
@@ -1857,6 +1878,29 @@ async function removeFromHub(id) {
   window.deck.closeAgent(id);
   if (state.current?.kind === 'agent' && state.current.id === id) show('hub');
   refreshHub();
+}
+
+// Removes the selected agents from the Hub (Close selected, see
+// renderCloseSelected). Busy agents are stopped, after one question for all
+// of them. Their sessions stay in History.
+async function removeSelectedFromHub(ids) {
+  const live = ids.filter(id => !id.startsWith('p:')).map(id => state.agents.get(id)).filter(Boolean);
+  if (!(await confirmStop(live, { action: 'Closing the selected agents', label: `Stop and close ${ids.length}` }))) return;
+  hub.clearSelection();
+  if (playSounds()) sounds.groupRemoved(ids.length);
+  await hub.removeTiles(ids);
+  for (const id of ids) {
+    if (id.startsWith('p:')) {
+      state.parked.delete(id.slice(2));
+      continue;
+    }
+    const a = state.agents.get(id);
+    if (!a) continue;
+    a.removed = true;
+    window.deck.closeAgent(id);
+  }
+  refreshHub();
+  saveHub();
 }
 
 // Removes every agent of a Hub group (one panel). Busy agents are stopped,

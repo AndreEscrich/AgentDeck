@@ -207,6 +207,8 @@ class Hub {
     container.append(this.rail, this.root);
     // The groups shrink to fit the window's height (see fitToHeight).
     this.container = container;
+    // Shift and drag draws a selection box (see marquee).
+    container.addEventListener('pointerdown', e => this.marquee(e), true);
     new ResizeObserver(() => requestAnimationFrame(() => this.fitToHeight())).observe(container);
     this.setUsage(null);
   }
@@ -471,7 +473,9 @@ class Hub {
     // A click opens the agent, unless it was the end of dragging the tile.
     tile.onclick = e => {
       if (this.justDragged) return;
-      if (e.ctrlKey || e.metaKey) { this.toggleSelected(agent.id); return; }
+      // Ctrl/⌘ or Shift+click selects it (see renderBroadcast and
+      // renderCloseSelected in app.js).
+      if (e.ctrlKey || e.metaKey || e.shiftKey) { this.toggleSelected(agent.id); return; }
       this.open(agent.id);
     };
     tile.addEventListener('pointerdown', e => this.press(e, agent.id));
@@ -1036,8 +1040,8 @@ class Hub {
       head.addEventListener('pointerdown', e => this.pressGroup(e, sec));
       elSec.addEventListener('click', e => {
         if (this.justDragged || e.target.closest('.hub-tile, button')) return;
-        // Ctrl+click on a panel selects all its agents (or none, when all were).
-        if (e.ctrlKey || e.metaKey) {
+        // Ctrl/⌘ or Shift+click on a panel selects all its agents (or none, when all were).
+        if (e.ctrlKey || e.metaKey || e.shiftKey) {
           const ids = [...this.tiles].filter(([, t]) => t.el.parentNode === grid && !t.removing).map(([id]) => id);
           const all = ids.every(id => this.selected.has(id));
           for (const id of ids) this.toggleSelected(id, !all, false);
@@ -1194,6 +1198,72 @@ class Hub {
     entry.parts.liquid.style.height = '0%';
     entry.el.classList.add('removing');
     await new Promise(r => setTimeout(r, 650));
+  }
+
+  // Removes several tiles (the selected ones), one after another; their
+  // panels stay (an empty one goes on the next render, as with one tile).
+  async removeTiles(agentIds) {
+    const entries = agentIds.map(id => this.tiles.get(id)).filter(e => e && !e.removing);
+    const STAGGER = 90;
+    entries.forEach((entry, i) => setTimeout(() => {
+      entry.removing = true;
+      entry.parts.liquid.style.height = '0%';
+      entry.el.classList.add('removing');
+    }, i * STAGGER));
+    await new Promise(r => setTimeout(r, Math.max(0, entries.length - 1) * STAGGER + 650));
+  }
+
+  // Shift and drag on the Hub (on a tile or beside one) draws a box: the
+  // tiles it touches are selected, added to the ones selected before. A
+  // Shift+click without moving still selects one tile (or a panel's).
+  marquee(e) {
+    if (e.button !== 0 || !e.shiftKey || this.drag || this.opening) return;
+    if (e.target.closest('button, input, textarea, select, a, .usage-rail')) return;
+    // Not the tile drag or the panel drag: the box instead.
+    e.stopPropagation();
+    e.preventDefault();
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const before = new Set(this.selected);
+    let box = null;
+    const move = ev => {
+      if (!box) {
+        if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
+        box = el('div', 'hub-marquee');
+        document.body.appendChild(box);
+        window.uiSound?.('tick');
+      }
+      const r = { left: Math.min(sx, ev.clientX), top: Math.min(sy, ev.clientY), right: Math.max(sx, ev.clientX), bottom: Math.max(sy, ev.clientY) };
+      Object.assign(box.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.right - r.left}px`, height: `${r.bottom - r.top}px` });
+      let changed = false;
+      for (const [id, t] of this.tiles) {
+        if (t.removing || !t.el.isConnected) continue;
+        const b = t.el.getBoundingClientRect();
+        const inside = b.width > 0 && b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top;
+        const on = before.has(id) || inside;
+        if (on !== this.selected.has(id)) {
+          this.toggleSelected(id, on, false);
+          changed = true;
+        }
+      }
+      if (changed) {
+        window.uiSound?.('select');
+        this.onSelect?.([...this.selected]);
+      }
+    };
+    const up = () => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', up);
+      if (!box) return;
+      box.remove();
+      // The click that ends the drag does not also toggle a tile.
+      this.justDragged = true;
+      setTimeout(() => { this.justDragged = false; }, 60);
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', up);
   }
 
   // ---------- sorting tiles by dragging them ----------
