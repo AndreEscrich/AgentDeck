@@ -33,14 +33,17 @@ if [ ! -d "$ELECTRON_APP" ]; then
 fi
 
 # 1. Turn build/icon.png into a macOS .icns file with all the sizes Finder uses.
+#    It is made in a temporary folder, not in build/: iconutil never writes the
+#    same bytes twice, and a changed file in the stable copy stops its updates.
 ICONSET="$(mktemp -d)/AgentHub.iconset"
+ICNS="$(dirname "$ICONSET")/AgentHub.icns"
 mkdir -p "$ICONSET"
 for size in 16 32 128 256 512; do
   sips -z $size $size "$PROJECT/build/icon.png" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
   double=$((size * 2))
   sips -z $double $double "$PROJECT/build/icon.png" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
 done
-iconutil -c icns "$ICONSET" -o "$PROJECT/build/icon.icns"
+iconutil -c icns "$ICONSET" -o "$ICNS"
 
 # 2. Copy Electron.app. On APFS, `cp -c` makes a clone that takes no extra disk space.
 mkdir -p "$HOME/Applications"
@@ -54,7 +57,7 @@ cp -cR "$ELECTRON_APP" "$APP" 2>/dev/null || cp -R "$ELECTRON_APP" "$APP"
   || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string Agent Hub" "$PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.agentdeck.app" "$PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile AgentHub.icns" "$PLIST"
-cp "$PROJECT/build/icon.icns" "$APP/Contents/Resources/AgentHub.icns"
+cp "$ICNS" "$APP/Contents/Resources/AgentHub.icns"
 
 # 4. Electron loads Resources/app when it exists. Point it at this project.
 rm -f "$APP/Contents/Resources/default_app.asar"
