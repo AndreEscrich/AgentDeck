@@ -110,6 +110,26 @@ function popupMenu(items) {
   });
 }
 
+// Shows a file selected in Explorer (Windows) or Finder (macOS). A folder
+// opens itself; a file that is gone (the task deleted it) opens the nearest
+// folder that still exists. target may be relative to cwd. Resolves with an
+// error message, or '' when it worked.
+async function revealInFolder(target, cwd) {
+  if (typeof target !== 'string' || !target) return 'Not found';
+  const wanted = path.resolve(typeof cwd === 'string' ? cwd : '', target);
+  let existing = wanted;
+  while (!fs.existsSync(existing)) {
+    const parent = path.dirname(existing);
+    if (parent === existing) return 'Not found';
+    existing = parent;
+  }
+  if (existing === wanted && fs.statSync(existing).isFile()) {
+    shell.showItemInFolder(existing);
+    return '';
+  }
+  return shell.openPath(existing);
+}
+
 function getConfig() {
   try {
     const saved = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -406,6 +426,8 @@ app.whenReady().then(() => {
   ipcMain.handle('slash:list', (_e, cwd) => require('./slashcommands').list(cwd));
   // A file the diagram shows but the task did not change: open it in your editor.
   ipcMain.handle('file:open', (_e, p) => (typeof p === 'string' && fs.existsSync(p) ? shell.openPath(p) : 'Not found'));
+  // Show in Explorer / Finder, in the right-click menus of a session and of a changed file.
+  ipcMain.handle('file:reveal', (_e, p, cwd) => revealInFolder(p, cwd));
   ipcMain.handle('cs:namespaces',(_e, paths) => Promise.all((Array.isArray(paths) ? paths : []).slice(0, 500).map(async p => {
     if (typeof p !== 'string' || !/\.cs$/i.test(p)) return null;
     try {
