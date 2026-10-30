@@ -2214,6 +2214,7 @@ async function sessionMenu(sessionId, hubId = null) {
   if (!sessionId) return;
   const current = groupOf(sessionId);
   const moving = hubId ? folderMenu(hubId) : null;
+  const onHub = hubAgentOfSession(sessionId);
   const items = [
     ...(moving ? [moving, { type: 'separator' }] : []),
     {
@@ -2226,6 +2227,12 @@ async function sessionMenu(sessionId, hubId = null) {
     },
     { id: 'remove', label: 'Remove from category', enabled: !!current },
     { type: 'separator' },
+    // Its Hub tile shows as new again, so Tab and the badge count it until
+    // you open it. Only agents on the Hub have a tile to mark.
+    ...(onHub ? [
+      { id: 'unread', label: 'Mark as unread', enabled: !onHub.unread },
+      { type: 'separator' },
+    ] : []),
     // A name of your own for its tile (and wherever it shows), instead of
     // the summary of its latest message; Clear name goes back to that.
     ...(hubId ? [
@@ -2243,6 +2250,7 @@ async function sessionMenu(sessionId, hubId = null) {
   if (!picked) return;
   if (picked === 'forget') { removeFromHistory([sessionId]); return; }
   if (picked === 'copy-id') { window.deck.copyText(sessionId); sfx('select'); return; }
+  if (picked === 'unread') { markUnread(onHub); return; }
   if (picked === 'rename') {
     const item = hubItems().find(i => i.id === hubId);
     hub.renameTile(hubId, item ? agentName(item) : '', name => {
@@ -2260,6 +2268,18 @@ async function sessionMenu(sessionId, hubId = null) {
   if (picked === 'remove') assignGroup(sessionId, null);
   else if (picked === 'new') assignGroup(sessionId, createGroup().id);
   else assignGroup(sessionId, picked.slice(2));
+}
+
+// The running agent of a session, or its completed tile; null when the
+// session is not on the Hub.
+function hubAgentOfSession(sessionId) {
+  return [...state.agents.values()].find(a => a.sessionId === sessionId && !a.removed) || state.parked.get(sessionId) || null;
+}
+
+// refreshHub also saves the flag, so it holds after a restart.
+function markUnread(agent) {
+  agent.unread = true;
+  refreshHub();
 }
 
 // ---------- removing agents from History ----------
