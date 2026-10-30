@@ -37,6 +37,9 @@ contextBridge.exposeInMainWorld('deck', {
   saveSessionChanges: (id, data) => ipcRenderer.invoke('sessionchanges:save', id, data),
   loadSessionChanges: id => ipcRenderer.invoke('sessionchanges:load', id),
   openFile: p => ipcRenderer.invoke('file:open', p),
+  // p may be relative to cwd. revealLabel is its name in the menus.
+  revealFile: (p, cwd) => ipcRenderer.invoke('file:reveal', p, cwd),
+  revealLabel: process.platform === 'darwin' ? 'Show in Finder' : 'Show in Explorer',
   getGroups: () => ipcRenderer.invoke('groups:get'),
   saveGroups: data => ipcRenderer.invoke('groups:save', data),
   popupMenu: items => ipcRenderer.invoke('menu:popup', items),
