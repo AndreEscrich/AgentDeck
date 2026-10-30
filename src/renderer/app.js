@@ -1957,8 +1957,32 @@ function setHeader(title, subtitle, agent, category = null) {
   renderUndoButton(agent);
   renderUnityButton();
   renderRestartButton();
+  renderRevealButton();
   $('btn-close').classList.toggle('hidden', !agent || agent.status === 'exited');
 }
+
+// The folder button next to the path in the top bar: the folder the agent on
+// screen works in, in Explorer (Windows) or Finder (macOS). Hidden on the Hub
+// and in the Branch diff, which have no folder.
+function renderRevealButton() {
+  const folder = currentFolder();
+  const button = $('view-reveal');
+  button.classList.toggle('hidden', !folder);
+  button.title = folder ? `${window.deck.revealLabel}\n${folder}` : '';
+}
+
+// The folder of the agent or saved session on screen, or null.
+function currentFolder() {
+  const cur = state.current;
+  if (cur?.kind === 'agent') return state.agents.get(cur.id)?.cwd || null;
+  if (cur?.kind === 'history') return state.history.get(cur.id)?.cwd || state.history.get(cur.id)?.session.cwd || null;
+  return null;
+}
+
+$('view-reveal').onclick = () => {
+  const folder = currentFolder();
+  if (folder) window.deck.revealFile(folder);
+};
 
 function refreshHeaderIfCurrent(agentId) {
   if (state.current?.kind === 'agent' && state.current.id === agentId) {
@@ -2259,6 +2283,7 @@ async function sessionMenu(sessionId, hubId = null) {
   const current = groupOf(sessionId);
   const moving = hubId ? folderMenu(hubId) : null;
   const onHub = hubAgentOfSession(sessionId);
+  const workFolder = onHub?.cwd || state.sessions.find(s => s.id === sessionId)?.cwd || null;
   const items = [
     ...(moving ? [moving, { type: 'separator' }] : []),
     {
@@ -2284,6 +2309,8 @@ async function sessionMenu(sessionId, hubId = null) {
       { id: 'clear-name', label: 'Clear name', enabled: !!agentNames()[sessionId] },
       { type: 'separator' },
     ] : []),
+    // The folder the agent works in, in Explorer (Windows) or Finder (macOS).
+    { id: 'reveal', label: window.deck.revealLabel, enabled: !!workFolder },
     // Its Claude Code session id, to name it to an agent (its transcript is
     // ~/.claude/projects/<folder>/<id>.jsonl).
     { id: 'copy-id', label: 'Copy agent id' },
@@ -2293,6 +2320,7 @@ async function sessionMenu(sessionId, hubId = null) {
   const picked = await window.deck.popupMenu(items);
   if (!picked) return;
   if (picked === 'forget') { removeFromHistory([sessionId]); return; }
+  if (picked === 'reveal') { window.deck.revealFile(workFolder); return; }
   if (picked === 'copy-id') { window.deck.copyText(sessionId); sfx('select'); return; }
   if (picked === 'unread') { markUnread(onHub); return; }
   if (picked === 'rename') {
@@ -2811,8 +2839,7 @@ const unityStates = new Map();   // folder -> { unity, running, version, root }
 const UNITY_ICON = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M8 1.5 14 5v6l-6 3.5L2 11V5z"/><path d="M8 8v6.5M8 8l6-3M8 8 2 5"/></svg>';
 async function refreshUnity() {
   const folders = new Set([...hub.sections.values()].map(s => s.cwd).filter(Boolean));
-  const cur = state.current;
-  const curCwd = cur?.kind === 'agent' ? state.agents.get(cur.id)?.cwd : cur?.kind === 'history' ? (state.history.get(cur.id)?.cwd || state.history.get(cur.id)?.session.cwd) : null;
+  const curCwd = currentFolder();
   if (curCwd) folders.add(curCwd);
   await Promise.all([...folders].filter(f => f !== state.config?.home).map(async f => {
     unityStates.set(f, await window.deck.unityStatus(f).catch(() => ({ unity: false })));
@@ -2825,8 +2852,7 @@ async function refreshUnity() {
 function renderUnityButton() {
   // The top bar is drawn once before this part of the file has run.
   try { unityStates; } catch { return; }
-  const cur = state.current;
-  const cwd = cur?.kind === 'agent' ? state.agents.get(cur.id)?.cwd : cur?.kind === 'history' ? (state.history.get(cur.id)?.cwd || state.history.get(cur.id)?.session.cwd) : null;
+  const cwd = currentFolder();
   const st = cwd ? unityStates.get(cwd) : null;
   renderTactileSvnButton(cwd);
   const b = $('composer-unity');

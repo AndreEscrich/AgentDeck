@@ -263,6 +263,7 @@ function changesCard(files, cwd, { title = null, animate = false, peer = false }
     rows.set(f, row);
     if (f.undone) row.classList.add('undone');
     row.appendChild(summary);
+    revealOnRightClick(summary, f, cwd);
     const tick = el('button', 'review-tick');
     tick.type = 'button';
     tick.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 8.5 L7 11 L12 5"/></svg>';
@@ -342,6 +343,19 @@ function changesCard(files, cwd, { title = null, animate = false, peer = false }
   addDiagram(card, head, files, cwd, comments, { review: peer });
   addAssets(card, other, cwd, comments);
   return card;
+}
+
+// Right-click on a changed file: Show in Explorer (Windows) or Finder
+// (macOS). A deleted file shows its folder. Without the task's folder the
+// path means nothing on this computer, so there is no menu.
+function revealOnRightClick(node, f, cwd) {
+  if (!cwd) return;
+  node.addEventListener('contextmenu', async e => {
+    e.preventDefault();
+    e.stopPropagation();
+    const picked = await window.deck.popupMenu([{ id: 'reveal', label: window.deck.revealLabel }]);
+    if (picked === 'reveal') window.deck.revealFile(f.path, cwd);
+  });
 }
 
 // The class diagram of the C# changes (see umlview.js; the types come from
@@ -565,6 +579,7 @@ function addAssets(card, files, cwd, comments) {
     summary.append(...assetLabel(f));
     summary.title = f.from ? `${f.path}\nmoved from ${f.from}` : f.path;
     row.appendChild(summary);
+    revealOnRightClick(summary, f, cwd);
     const body = el('div', 'asset-body');
     row.appendChild(body);
     row.addEventListener('toggle', () => {
