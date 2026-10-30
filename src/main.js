@@ -518,6 +518,12 @@ app.whenReady().then(() => {
     shown.add(n);
     n.on('click', () => openFrom(id));
     n.on('close', () => shown.delete(n));
+    // Since Electron 42, macOS can refuse the notification of an app that is
+    // only signed for this Mac (make-app.sh): the app's own one comes instead.
+    n.on('failed', () => {
+      shown.delete(n);
+      if (extra?.tile) toast.show({ id, title, body, tile: extra.tile, theme: extra.theme });
+    });
     n.show();
   });
 

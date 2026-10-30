@@ -91,11 +91,14 @@ async function apply(dir) {
 function installAndRelaunch(dir, { electronChanged }) {
   const electron = process.execPath;
   const makeApp = electronChanged ? 'node scripts/make-app.js' : null;
+  // npm ci removes Electron itself (node_modules/electron/dist) and, since
+  // Electron 42, does not download it again; the Windows app runs from there.
+  const getElectron = 'node node_modules/electron/install.js';
   if (process.platform === 'win32') {
-    const steps = ['timeout /t 3 /nobreak >nul', 'npm ci', makeApp, `start "" "${electron}" .`].filter(Boolean);
+    const steps = ['timeout /t 3 /nobreak >nul', 'npm ci', getElectron, makeApp, `start "" "${electron}" .`].filter(Boolean);
     spawn('cmd.exe', ['/d', '/c', steps.join(' & ')], { cwd: dir, detached: true, stdio: 'ignore', windowsHide: true }).unref();
   } else {
-    const steps = ['sleep 3', 'npm ci', makeApp, `"${electron}" . &`].filter(Boolean);
+    const steps = ['sleep 3', 'npm ci', getElectron, makeApp, `"${electron}" . &`].filter(Boolean);
     spawn('/bin/sh', ['-lc', steps.join('; ')], { cwd: dir, detached: true, stdio: 'ignore' }).unref();
   }
 }

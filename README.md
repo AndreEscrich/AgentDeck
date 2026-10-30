@@ -24,7 +24,7 @@ Run this in the stable copy (see below).
 - **macOS:** it builds `~/Applications/Agent Hub.app` with the Agent Hub icon and puts a link to it on your Desktop.
 - **Windows:** it creates "Agent Hub" shortcuts on the Desktop and in the Start menu, with the Agent Hub icon.
 
-Both run the code in that folder directly, so after an update you only quit and reopen Agent Hub. Run `npm run make-app` again only after `npm install` updates Electron, or after you change the icon (`build/icon.html`, then `npm run icon`, which writes `icon.png` and the Windows `icon.ico`).
+Both run the code in that folder directly, so after an update you only quit and reopen Agent Hub. Since Electron 42 (the app uses Electron 45), `npm install` no longer downloads Electron itself; `npm start` does on its first run, and `npm run make-app`, promote and the self-update do it when it is missing (`node node_modules/electron/install.js`). Run `npm run make-app` again only after `npm install` updates Electron, or after you change the icon (`build/icon.html`, then `npm run icon`, which writes `icon.png` and the Windows `icon.ico`).
 
 ### On Windows
 

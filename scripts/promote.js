@@ -72,6 +72,10 @@ const packagesChanged = JSON.stringify(before) !== JSON.stringify(after);
 if (packagesChanged) {
   console.log('Packages changed, installing them in the stable copy…');
   npm(stable, 'ci');
+  // npm ci removes Electron itself (node_modules/electron/dist) and, since
+  // Electron 42, does not download it again: the Windows app runs from there.
+  const r = spawnSync(process.execPath, [path.join(stable, 'node_modules', 'electron', 'install.js')], { cwd: stable, stdio: 'inherit' });
+  if (r.status !== 0) fail('Downloading Electron failed.');
 }
 
 // A new Electron version or a new icon needs a rebuilt app.

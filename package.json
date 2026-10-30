@@ -12,7 +12,7 @@
     "promote": "node scripts/promote.js"
   },
   "devDependencies": {
-    "electron": "^38.0.0"
+    "electron": "^45.1.0"
   },
   "dependencies": {
     "@fontsource/fira-code": "^5.3.0",
