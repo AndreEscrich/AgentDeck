@@ -720,7 +720,7 @@ function show(kind, id) {
   } else {
     state.current = { kind: 'hub' };
     $('hub-view').classList.remove('hidden');
-    setHeader('Claude HUB', '', null);
+    setHeader('Agent HUB', '', null);
     const d = ensureDraft();
     composerPicker.setLocked(null);
     composerPicker.setValue(d.choice);
