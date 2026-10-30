@@ -1098,15 +1098,41 @@ const READ_ONLY = new Set(['Read', 'Grep', 'Glob', 'LS', 'WebFetch', 'WebSearch'
 const READ_COMMAND = /^(cd|pushd|popd|ls|ll|cat|bat|head|tail|less|more|grep|egrep|fgrep|rg|ag|ack|find|fd|wc|file|stat|du|df|diff|cmp|cut|sort|uniq|tr|column|nl|jq|yq|xxd|hexdump|od|strings|which|where|type|command|echo|printf|true|false|test|\[|\[\[|pwd|date|sleep|basename|dirname|realpath|readlink|tree|sed|awk|gawk|for|while|until|if|elif|else|then|do|done|fi|case|esac|setopt|set|export|local|read|wait|time|svn +(st|stat|status|di|diff|log|info|cat|ls|list|blame|praise|annotate)|git +(status|diff|log|show|blame|ls-files|rev-parse|branch|grep|config +--get))\b/i;
 const WRITES = /(^|[^0-9&<>])>>?\s*(?!&|\/dev\/null)|\btee\b|\b(sed|perl|ruby)\b[^|;&]*\s-[a-z]*i|\bawk\b[^|;&]*-i\s*inplace|\bfind\b[^|;&]*-(delete|exec|execdir)\b/i;
 // A shell command split at ; && || | and new lines that are not inside
-// quotes (grep -E "a|b" stays one part).
+// quotes (grep -E "a|b" stays one part). A heredoc's body (python3 - <<'EOF'
+// … EOF) stays in the part of the command it is for: its lines are a
+// script, not commands of their own (a script line "for f in glob(…)" is
+// not the shell's read-only for).
 function shellParts(text) {
   const parts = [];
   let cur = '';
   let quote = null;
+  const heredocs = [];   // the end words of the heredocs started on this line
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     if (c === '\\' && quote !== "'") { cur += c + (text[i + 1] || ''); i++; continue; }
     if (quote) { if (c === quote) quote = null; cur += c; continue; }
+    if (c === '<' && text[i + 1] === '<' && text[i + 2] !== '<') {
+      const m = /^<<(-?)\s*(['"]?)([A-Za-z_][\w-]*)\2/.exec(text.slice(i));
+      if (m) { heredocs.push({ word: m[3], tabs: !!m[1] }); cur += m[0]; i += m[0].length - 1; continue; }
+    }
+    if (c === '\n' && heredocs.length) {
+      // The bodies, up to their end words, go with this part.
+      let at = i + 1;
+      for (const h of heredocs) {
+        while (at < text.length) {
+          const end = text.indexOf('\n', at);
+          const line = text.slice(at, end < 0 ? text.length : end);
+          at = end < 0 ? text.length : end + 1;
+          if ((h.tabs ? line.replace(/^\t+/, '') : line).trim() === h.word) break;
+          cur += `\n${line}`;
+        }
+      }
+      heredocs.length = 0;
+      parts.push(cur.trim());
+      cur = '';
+      i = at - 1;
+      continue;
+    }
     if (c === '"' || c === "'") { quote = c; cur += c; continue; }
     if (c === '\n' || c === ';' || c === '|' || (c === '&' && text[i + 1] === '&')) {
       parts.push(cur.trim());
@@ -1144,6 +1170,16 @@ function expandedEvidence(turn) {
   turn.expanded = all.map(text => (/^\s*[{[]/.test(text) ? text : expandShellVars(text)));
   turn.expandedFrom = all.length;
   return turn.expanded;
+}
+
+// A path from a command as a regular expression that matches the files it
+// leads to: a folder matches what is in it, * any part of a name, and **/
+// any number of folders.
+function pathPattern(w) {
+  const re = w.replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*\//g, '\u0000').replace(/\*\*/g, '\u0001').replace(/\*/g, '[^/]*')
+    .replace(/\u0000/g, '(?:[^/]*/)*').replace(/\u0001/g, '.*');
+  return new RegExp(`(^|/)${re}(/|$)`, 'i');
 }
 
 function writingEvidence(turn) {
@@ -2025,12 +2061,32 @@ class Transcript {
       if (!words) {
         // Only what deletes or moves files ("grep -r x Assets/Code" names a
         // folder too, and deletes nothing).
-        const deletes = /\b(rm|rmdir|del|erase|rd|Remove-Item|rmtree|unlink|unlinkSync|rmSync|remove|delete|DeleteAsset|MoveAsset|mv|Move-Item)\b/i.test(text);
+        const deletes = /\b(rm|rmdir|del|erase|rd|Remove-Item|rmtree|unlink|unlinkSync|rmSync|remove|delete|DeleteAsset|MoveAsset|mv|Move-Item|rename|renames|renameSync)\b/i.test(text);
         words = !deletes ? [] : text.replace(/\\/g, '/').split(/[\s'"`;|&()<>,=]+/)
           .map(w => w.replace(/^\.\//, '').replace(/\/+$/, ''))
           .filter(w => /[^/]\/[^/]/.test(w) && w.length < 300)
-          .map(w => new RegExp(`(^|/)${w.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*')}(/|$)`, 'i'));
+          .map(pathPattern);
         turn.pathWords.set(text, words);
+      }
+      return words.some(re => re.test(file));
+    });
+  }
+
+  // True when a command or script that writes names a pattern with a
+  // wildcard that matches this file: a script that edits every file of
+  // glob('Expedition/**/*.cs') names none of them one by one. The pattern
+  // needs a folder name of its own ("**/*.cs" alone matches anything).
+  patternNamed(turn, rel) {
+    const file = rel.replace(/\\/g, '/');
+    turn.globWords = turn.globWords || new Map();   // evidence text -> its wildcard patterns
+    return writingEvidence(turn).some(text => {
+      let words = turn.globWords.get(text);
+      if (!words) {
+        words = text.replace(/\\/g, '/').split(/[\s'"`;|&()<>,=[\]{}]+/)
+          .map(w => w.replace(/^\.\//, '').replace(/\/+$/, ''))
+          .filter(w => w.includes('*') && /(^|\/)[^*/]+\//.test(w) && w.length < 300)
+          .map(pathPattern);
+        turn.globWords.set(text, words);
       }
       return words.some(re => re.test(file));
     });
@@ -2142,6 +2198,7 @@ class Transcript {
       && (this.agentTouched(turn, f.path) || (f.from && this.agentTouched(turn, f.from))
       || (addedOrRemovedBinary(f) && this.folderTouched(turn, f.path))
       || (f.status === 'del' && this.folderNamed(turn, f.path))
+      || this.patternNamed(turn, f.path) || (f.from && this.patternNamed(turn, f.from))
       || (f.from && this.folderNamed(turn, f.from))))));
     if (merge) {
       await this.pruneMissing(turn).catch(() => {});
