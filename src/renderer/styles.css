@@ -777,8 +777,8 @@ details.other-files details.change-file > summary { padding-left: 24px; }
 .platform-win32 .review-bar { padding-right: 150px; }
 .review-bar button { -webkit-app-region: no-drag; margin-left: auto; }
 .review-title { font-weight: 600; }
-.diff-line.commentable { cursor: pointer; }
-.diff-line.commentable:hover .ln { color: var(--accent); opacity: 1; }
+.diff-line.commentable > .ln { cursor: pointer; }
+.diff-line.commentable > .ln:hover { color: var(--accent); opacity: 1; }
 .review-comment, .review-comment-editor {
   margin: 4px 16px 8px 60px; padding: 8px 12px; border: 1px solid var(--border); border-left: 3px solid var(--accent);
   border-radius: 8px; background: var(--bg-panel); font: 13px/1.45 var(--font); white-space: normal;
@@ -2050,6 +2050,14 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .file-views-bar .change-nav-btn { padding: 1px 9px; font-size: 13px; line-height: 18px; border: 1px solid var(--border); }
 .file-views-bar .change-nav-btn:disabled { opacity: 0.35; cursor: default; }
 .change-nav-count { font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; min-width: 52px; text-align: right; }
+.diff-search { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.diff-search + .change-nav { margin-left: 8px; }
+.diff-search input { width: 180px; font: 12px var(--mono); padding: 2px 8px; border: 1px solid var(--accent); border-radius: 6px; background: var(--code-bg); color: var(--text); outline: none; }
+.diff-search-count { font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; min-width: 44px; }
+.diff-search-count.none { color: var(--err); }
+.file-views-bar .diff-search-close { padding: 0 6px; font-size: 14px; line-height: 18px; }
+::highlight(diff-search) { background-color: rgba(255, 200, 40, 0.3); }
+::highlight(diff-search-current) { background-color: rgba(255, 170, 0, 0.85); color: #000; }
 .change-rail { position: absolute; width: 8px; z-index: 3; pointer-events: none; }
 .change-mark { position: absolute; left: 0; right: 0; padding: 0; border: none; border-radius: 2px; pointer-events: auto; cursor: pointer; opacity: 0.85; }
 .change-mark:hover { opacity: 1; transform: scaleX(1.4); }
@@ -2418,8 +2426,8 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
    tiles shrink to fit (fitToHeight), the scrollbar goes, the tiles grow
    back, and the whole Hub flips between two positions on every frame. */
 #hub-view { scrollbar-gutter: stable both-edges; }
-.sbs-cell.commentable { cursor: pointer; }
-.sbs-cell.commentable:hover .ln { color: var(--accent); opacity: 1; }
+.sbs-cell.commentable > .ln { cursor: pointer; }
+.sbs-cell.commentable > .ln:hover { color: var(--accent); opacity: 1; }
 
 /* The assets a task changed, under its code (addAssets in diffview.js). */
 .assets-section { margin-top: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); overflow: hidden; }

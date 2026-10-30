@@ -58,7 +58,7 @@ function highlightLine(text, language) {
 }
 
 // One diff table: old line number, new line number, sign, code. With
-// onLine, clicking a line calls onLine(row, { index, line, side, code }).
+// onLine, clicking a line's number calls onLine(row, { index, line, side, code }).
 function renderDiff(file, { maxLines = 3000, onLine = null } = {}) {
   const language = LANGUAGES[extensionOf(file.path)];
   const diff = el('div', 'diff');
@@ -91,16 +91,22 @@ function renderDiff(file, { maxLines = 3000, onLine = null } = {}) {
     if (html != null) code.innerHTML = html || ' ';
     else code.textContent = body || ' ';
     row.append(oldCell, newCell, el('span', 'sign', text[0] === ' ' ? '' : text[0]), code);
-    if (onLine) {
-      row.classList.add('commentable');
-      row.title = 'Click to comment on this line';
-      row.onclick = () => { if (!window.getSelection()?.toString()) onLine(row, info); };
-    }
+    if (onLine) commentOnNumber(row, () => onLine(row, info));
     diff.appendChild(row);
   });
   if (file.lines.length > maxLines) diff.appendChild(el('div', 'diff-line hunk', `… ${file.lines.length - maxLines} more lines`));
   if (!file.lines.length) diff.appendChild(el('div', 'diff-line hunk', 'No text changes to show'));
   return diff;
+}
+
+// A line takes a comment from a click on its number at the left; a click
+// on the code itself does nothing (so you can select and copy it).
+function commentOnNumber(node, fn) {
+  node.classList.add('commentable');
+  for (const cell of node.querySelectorAll(':scope > .ln')) {
+    cell.title = 'Click to comment on this line';
+    cell.onclick = e => { e.stopPropagation(); fn(); };
+  }
 }
 
 const BADGES = { new: 'New', mod: 'Edited', del: 'Deleted', bin: 'Binary' };
@@ -1049,9 +1055,7 @@ function lineComments(files, cwd, { toPeer = null } = {}) {
         const side = row.classList.contains('del') ? 'old' : 'new';
         const line = Number(side === 'old' ? row.dataset.oldLine : row.dataset.newLine);
         if (!line) continue;
-        row.classList.add('commentable');
-        row.title = 'Click to comment on this line';
-        row.onclick = () => { if (!window.getSelection()?.toString()) edit(f, row, { line, side, code: row.querySelector('.code')?.textContent || '' }); };
+        commentOnNumber(row, () => edit(f, row, { line, side, code: row.querySelector('.code')?.textContent || '' }));
       }
       for (const row of view.querySelectorAll('.sbs-row')) {
         for (const cell of row.querySelectorAll('.sbs-cell:not(.empty)')) {
@@ -1059,9 +1063,7 @@ function lineComments(files, cwd, { toPeer = null } = {}) {
           const old = cell.classList.contains('del');
           const line = Number(old ? cell.dataset.oldLine : cell.dataset.newLine);
           if (!line) continue;
-          cell.classList.add('commentable');
-          cell.title = 'Click to comment on this line';
-          cell.onclick = () => { if (!window.getSelection()?.toString()) edit(f, row, { line, side: old ? 'old' : 'new', code: cell.querySelector('.code')?.textContent || '' }); };
+          commentOnNumber(cell, () => edit(f, row, { line, side: old ? 'old' : 'new', code: cell.querySelector('.code')?.textContent || '' }));
         }
       }
       showComments(f, view);
@@ -1331,8 +1333,9 @@ function scrollerOf(node) {
 
 // Marks beside the scrollbar where the changes are (green added, red
 // removed, amber both; click one to go there), and ↑ ↓ buttons in the bar
-// that go to the previous and next block of changes, with "2 / 7". Returns
-// a function that removes them again.
+// that go to the previous and next block of changes, with "2 / 7"; the ↑ ↓
+// keys do the same in the diff you are looking at (see navs). Returns a
+// function that removes them again.
 function changeNavigation(view, bar) {
   const clusters = changeClusters(view);
   const nav = el('span', 'change-nav');
@@ -1379,12 +1382,39 @@ function changeNavigation(view, bar) {
     prev.disabled = at <= 0;
     next.disabled = at >= clusters.length - 1;
   };
-  prev.onclick = e => { e.stopPropagation(); go(Math.max(0, index() - 1)); };
-  next.onclick = e => { e.stopPropagation(); go(Math.min(clusters.length - 1, index() + 1)); };
+  // Pressed again while still scrolling: from the change it is going to.
+  let aimed = -1;
+  let aimedAt = 0;
+  const step = d => {
+    const from = Date.now() - aimedAt < 700 ? aimed : index();
+    aimed = Math.max(0, Math.min(clusters.length - 1, from + d));
+    aimedAt = Date.now();
+    go(aimed);
+  };
+  prev.onclick = e => { e.stopPropagation(); step(-1); };
+  next.onclick = e => { e.stopPropagation(); step(1); };
+  // Ctrl+F: the search box in the bar; a line it finds goes to the
+  // upper third of the box.
+  const search = fileSearch(view, bar, row => {
+    const sc = scroller();
+    if (!sc) return;
+    sc.scrollTo({ top: Math.max(0, topOf(row, sc) - covered(sc) - (sc.clientHeight - covered(sc)) / 3), behavior: 'smooth' });
+  });
+  const entry = { view, step, search, count: clusters.length };
+  navs.add(entry);
+  const pick = () => { lastNav = entry; };
+  const box = bar.parentElement || view;
+  box.addEventListener('pointerenter', pick);
+  box.addEventListener('pointerdown', pick);
+  pick();
   const drawRail = () => {
     rail?.remove();
     const sc = scroller();
     if (!sc || !clusters.length) return;
+    // A short diff in a task's Changes card does not scroll itself: the box
+    // that scrolls is the chat, and the marks are not for the whole chat.
+    const card = view.closest('.changes');
+    if (card && !card.contains(sc)) return;
     const parent = sc.parentElement;
     if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
     const sr = sc.getBoundingClientRect();
@@ -1408,25 +1438,202 @@ function changeNavigation(view, bar) {
   };
   let frame = 0;
   const later = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; update(); }); };
-  // The view is in the page only after it is drawn; then the box that
-  // scrolls it is known.
+  // The box that scrolls the view is known only once the view is laid out
+  // (a file row opens with an animation), so it is looked up on each scroll
+  // and size change.
+  const onScroll = e => { if (e.target === document || e.target.contains?.(view)) later(); };
+  document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+  observer = new ResizeObserver(() => { drawRail(); update(); });
+  observer.observe(view);
   requestAnimationFrame(() => {
     const sc = scroller();
-    if (sc) {
-      sc.addEventListener('scroll', later, { passive: true });
-      observer = new ResizeObserver(() => { drawRail(); update(); });
-      observer.observe(sc);
-    }
+    if (sc && sc !== view) observer?.observe(sc);
     drawRail();
     update();
   });
   return () => {
+    search.close(true);
+    navs.delete(entry);
+    if (lastNav === entry) lastNav = null;
+    box.removeEventListener('pointerenter', pick);
+    box.removeEventListener('pointerdown', pick);
     nav.remove();
     rail?.remove();
     observer?.disconnect();
-    scroller()?.removeEventListener('scroll', later);
+    observer = null;
+    document.removeEventListener('scroll', onScroll, { capture: true });
   };
 }
+
+// Ctrl+F in a diff: a search box in its bar. Every match is marked (as CSS
+// highlights, so the code keeps its colours); Enter goes to the next line
+// with one (Shift+Enter the one before), from the last back to the first;
+// Esc closes it. The search stays open in the other views of the file, and
+// the words stay for the next file you search.
+let lastSearch = '';
+let activeSearch = null;
+const MAX_MATCHES = 5000;
+function fileSearch(view, bar, reveal) {
+  let box = null;
+  let input = null;
+  let count = null;
+  let rows = [];
+  let at = -1;
+  let found = new Map();   // row -> its ranges
+  const highlights = () => (window.Highlight && CSS.highlights ? CSS.highlights : null);
+  const paint = () => {
+    const h = highlights();
+    if (!h || activeSearch !== api) return;
+    h.set('diff-search', new Highlight(...[...found.values()].flat()));
+    h.set('diff-search-current', new Highlight(...(found.get(rows[at]) || [])));
+  };
+  const update = () => {
+    count.textContent = !input.value ? '' : rows.length ? `${at < 0 ? '–' : at + 1} / ${rows.length}` : 'No match';
+    count.classList.toggle('none', !!input.value && !rows.length);
+  };
+  // The range from one place to another in the text nodes of a line.
+  const rangeOf = (texts, start, end) => {
+    const r = document.createRange();
+    const place = (pos, isEnd) => {
+      for (const [node, offset] of texts) {
+        if (pos < offset + node.length || (isEnd && pos === offset + node.length)) return [node, pos - offset];
+      }
+      const [node] = texts[texts.length - 1];
+      return [node, node.length];
+    };
+    r.setStart(...place(start, false));
+    r.setEnd(...place(end, true));
+    return r;
+  };
+  const find = () => {
+    const q = input.value;
+    lastSearch = q;
+    rows = [];
+    found = new Map();
+    at = -1;
+    let total = 0;
+    if (q) {
+      const needle = q.toLowerCase();
+      for (const code of view.querySelectorAll('.code')) {
+        if (total >= MAX_MATCHES) break;
+        const row = code.closest('.sbs-row, .diff-line');
+        if (!row || row.classList.contains('hunk')) continue;
+        const texts = [];
+        let text = '';
+        const walker = document.createTreeWalker(code, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) { texts.push([n, text.length]); text += n.data; }
+        const lower = text.toLowerCase();
+        let i = lower.indexOf(needle);
+        if (i < 0) continue;
+        const list = found.get(row) || [];
+        if (!found.has(row)) { found.set(row, list); rows.push(row); }
+        for (; i >= 0 && total < MAX_MATCHES; i = lower.indexOf(needle, i + needle.length), total++) list.push(rangeOf(texts, i, i + needle.length));
+      }
+    }
+    update();
+    paint();
+  };
+  const go = d => {
+    if (!rows.length) return;
+    at = ((at < 0 && d < 0 ? 0 : at) + d + rows.length) % rows.length;
+    reveal(rows[at]);
+    update();
+    paint();
+  };
+  const close = (keep = false) => {
+    if (!box) return;
+    box.remove();
+    box = null;
+    if (!keep) delete bar.dataset.searching;
+    if (activeSearch === api) {
+      activeSearch = null;
+      highlights()?.delete('diff-search');
+      highlights()?.delete('diff-search-current');
+    }
+  };
+  const open = (text = null, focus = true) => {
+    if (activeSearch && activeSearch !== api) activeSearch.close();
+    activeSearch = api;
+    bar.dataset.searching = '1';
+    if (!box) {
+      box = el('span', 'diff-search');
+      input = el('input');
+      input.type = 'text';
+      input.placeholder = 'Find in file';
+      input.spellcheck = false;
+      count = el('span', 'diff-search-count');
+      const shut = el('button', 'diff-search-close', '×');
+      shut.type = 'button';
+      shut.title = 'Close (Esc)';
+      shut.onclick = e => { e.stopPropagation(); close(); };
+      box.append(input, count, shut);
+      box.addEventListener('click', e => e.stopPropagation());
+      input.addEventListener('input', find);
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); go(e.shiftKey ? -1 : 1); }
+        else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+      });
+      bar.insertBefore(box, bar.querySelector('.change-nav'));
+      input.value = lastSearch;
+    }
+    if (text != null) input.value = text;
+    find();
+    if (focus) { input.focus(); input.select(); }
+  };
+  const api = { open, close };
+  // A view of the file opening while the search was open in another one.
+  if (bar.dataset.searching) requestAnimationFrame(() => { if (view.isConnected) open(null, false); });
+  return api;
+}
+
+// The diffs on screen with change navigation, and the one you last pointed
+// at or opened: ↑ ↓ go to its previous and next change. When that one is
+// gone or out of sight, the diff that shows most of itself takes the keys.
+const navs = new Set();
+let lastNav = null;
+function visibleArea(node) {
+  if (!node.isConnected) return 0;
+  const r = node.getBoundingClientRect();
+  const h = Math.min(r.bottom, innerHeight) - Math.max(r.top, 0);
+  const w = Math.min(r.right, innerWidth) - Math.max(r.left, 0);
+  if (!(h > 0 && w > 0 && node.getClientRects().length)) return 0;
+  // Not under something else (the whole-window class diagram, a menu).
+  const top = document.elementFromPoint(Math.max(r.left, 0) + w / 2, Math.max(r.top, 0) + h / 2);
+  return top && (node.contains(top) || top.closest('.file-views')?.contains(node)) ? h * w : 0;
+}
+// The diff you are looking at: the one you last pointed at or opened, else
+// the one that shows most of itself (only when you are not typing).
+function navInSight(typing) {
+  if (lastNav && visibleArea(lastNav.view)) return lastNav;
+  if (typing) return null;
+  let target = null;
+  let best = 0;
+  for (const n of navs) {
+    const area = visibleArea(n.view);
+    if (area > best) { best = area; target = n; }
+  }
+  return target;
+}
+// Ctrl+F (⌘F) searches the diff you are looking at, before the app's own
+// search or the class diagram's.
+document.addEventListener('keydown', e => {
+  if (e.key.toLowerCase() !== 'f' || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+  const typing = e.target.closest?.('input, textarea, select, [contenteditable="true"]') && !e.target.closest('.diff-search');
+  const target = navInSight(typing);
+  if (!target) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  const picked = window.getSelection()?.toString().trim();
+  target.search.open(picked && picked.length < 80 && !picked.includes('\n') ? picked : null);
+}, true);
+document.addEventListener('keydown', e => {
+  if ((e.key !== 'ArrowDown' && e.key !== 'ArrowUp') || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  if (e.defaultPrevented || e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+  const target = navInSight(false);
+  if (!target?.count) return;
+  e.preventDefault();
+  target.step(e.key === 'ArrowDown' ? 1 : -1);
+});
 
 // The views of one file's change: Changes (the diff, made by changesView,
 // where you can comment on lines), Full file (all of it, the changes marked
@@ -1461,7 +1668,9 @@ function fileViews(f, cwd, changesView, comments = null) {
     box.dataset.mode = mode;
     for (const [m, b] of buttons) b.classList.toggle('active', m === mode);
     if (mode === 'changes') {
-      body.replaceChildren(changesView());
+      const view = changesView();
+      body.replaceChildren(view);
+      dropNav = changeNavigation(view, bar);
       return;
     }
     body.replaceChildren(el('div', 'diff-line hunk', 'Reading the file…'));
