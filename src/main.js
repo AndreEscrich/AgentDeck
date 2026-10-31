@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Notification, Menu, protocol, net, nativeImage, systemPreferences } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Notification, Menu, protocol, net, nativeImage, systemPreferences, globalShortcut } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
@@ -66,6 +66,7 @@ const DEFAULT_CONFIG = {
   env: {},                              // extra environment variables for every agent
   notifyWhenDone: true,
   notifyStyle: 'tile',                  // tile: the agent's Hub tile in the corner (toast.js) | system: the system's own
+  notifyKey: 'Control+Alt+Space',       // from any app, opens the agent of the newest notification (empty: none)
   sounds: true,                         // a sound when you start an agent and when one finishes
   updatePopup: true,                    // a card on the Hub asks to update when a new version is out (off: only the title bar's Update button)
   hubAfterSend: true,                   // show the Hub after you send a message
@@ -165,6 +166,29 @@ function appVersion() {
   })();
 }
 
+// The agents with a notification out, the newest last, for the shortcut
+// that opens them (Settings → Notifications; see openNotified).
+const notified = [];
+let keyOpenedAt = 0;
+let openNotified = () => {};
+let notifyKey = '';
+let notifyKeyOk = false;
+function forget(id) {
+  const i = notified.indexOf(id);
+  if (i >= 0) notified.splice(i, 1);
+}
+// Another app can have the key already: then it is not ours (Settings says so).
+function registerNotifyKey() {
+  const key = String(getConfig().notifyKey || '');
+  if (key === notifyKey && (notifyKeyOk || !key)) return;
+  if (notifyKey && notifyKeyOk) globalShortcut.unregister(notifyKey);
+  notifyKey = key;
+  notifyKeyOk = false;
+  if (!key) return;
+  try { notifyKeyOk = globalShortcut.register(key, () => openNotified()); } catch { notifyKeyOk = false; }
+}
+app.on('will-quit', () => globalShortcut.unregisterAll());
+
 function send(channel, ...args) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args);
 }
@@ -216,7 +240,13 @@ function createWindow() {
   // Closing the window with busy agents asks first, then quits the app.
   win.on('close', event => allowStop(event));
   // The taskbar button stops flashing when you come back.
-  win.on('focus', () => { win.flashFrame(false); toast.clear(); lookForUpdate(); });
+  // Coming back yourself empties the notifications; the shortcut that opened
+  // one keeps the others for its next press (see openNotified).
+  win.on('focus', () => {
+    win.flashFrame(false);
+    if (Date.now() - keyOpenedAt > 1500) { notified.length = 0; toast.clear(); }
+    lookForUpdate();
+  });
   // The notifications' window goes with it, or the app would not quit.
   win.on('closed', () => toast.destroy());
   // Links in agent replies open in the normal browser, not inside the app.
@@ -363,6 +393,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('config:get', () => ({ ...getConfig(), home: require('os').homedir() }));
   ipcMain.handle('config:open', () => shell.openPath(configPath));
+  ipcMain.handle('notifyKey:status', () => ({ key: notifyKey, ok: notifyKeyOk }));
   // The Settings screen: its values replace those in config.json; settings
   // it does not show (added by hand) stay.
   ipcMain.handle('config:save', (_e, values) => {
@@ -373,6 +404,7 @@ app.whenReady().then(() => {
       if (key in DEFAULT_CONFIG && typeof value === typeof DEFAULT_CONFIG[key] && Array.isArray(value) === Array.isArray(DEFAULT_CONFIG[key])) next[key] = value;
     }
     fs.writeFileSync(configPath, JSON.stringify(next, null, 2));
+    registerNotifyKey();
     return { ...getConfig(), home: require('os').homedir() };
   });
   ipcMain.handle('app:quit', () => quitNow());
@@ -524,13 +556,35 @@ app.whenReady().then(() => {
     win.focus();
     send('notification:open', id);
   };
-  toast.init({ onOpen: openFrom });
+  const openClicked = id => { notified.length = 0; openFrom(id); };
+  toast.init({ onOpen: openClicked, onDismiss: id => forget(id) });
+  // The shortcut (Ctrl+Alt+Space, from any app): the agent of the newest
+  // notification; pressed again, the one before. Without any, the app comes
+  // to the front. Windows lets only the app with the focus bring a window
+  // forward; on top for a moment, it comes anyway.
+  openNotified = () => {
+    const id = notified.pop();
+    keyOpenedAt = Date.now();
+    if (id) toast.remove(id);
+    const behind = !win.isFocused();
+    if (behind) win.setAlwaysOnTop(true);
+    if (id) openFrom(id);
+    else {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+    }
+    if (behind) win.setAlwaysOnTop(false);
+  };
+  registerNotifyKey();
   // extra: { tile, theme }, the agent's Hub tile for the app's own notification,
   // and focused: whether the page has the focus. After a notification brought
   // the window forward (openFrom), the window could miss losing the focus again
   // and win.isFocused() stayed true, so no notification came; the page knows.
   ipcMain.handle('notify', (_e, id, title, body, extra) => {
     if (!getConfig().notifyWhenDone || (extra ? extra.focused : win.isFocused())) return;
+    forget(id);
+    notified.push(id);
     if (getConfig().notifyStyle !== 'system' && extra?.tile) {
       toast.show({ id, title, body, tile: extra.tile, theme: extra.theme });
       return;
@@ -538,7 +592,7 @@ app.whenReady().then(() => {
     // The app plays its own sounds, so the notification stays silent then.
     const n = new Notification({ title, body, silent: getConfig().sounds !== false });
     shown.add(n);
-    n.on('click', () => openFrom(id));
+    n.on('click', () => openClicked(id));
     n.on('close', () => shown.delete(n));
     // Since Electron 42, macOS can refuse the notification of an app that is
     // only signed for this Mac (make-app.sh): the app's own one comes instead.

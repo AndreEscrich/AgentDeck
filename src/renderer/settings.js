@@ -166,6 +166,12 @@ function openSettings(config, { onSaved } = {}) {
   // system's own notifications, or none.
   const notify = settingsSelect([['tile', 'Agent tile'], ['system', 'System notification'], ['off', 'Off']],
     config.notifyWhenDone === false ? 'off' : config.notifyStyle === 'system' ? 'system' : 'tile');
+  // Ctrl+Alt+Space, from any app, opens the agent of the newest notification.
+  const notifyKey = settingsInput('checkbox', config.notifyKey !== '');
+  const notifyKeyField = settingsField('Open with Ctrl+Alt+Space', 'From any app: opens the agent of the newest notification; press again for the one before', notifyKey);
+  window.deck.notifyKeyStatus?.().then(s => {
+    if (s?.key && !s.ok) notifyKeyField.querySelector('.settings-hint').textContent = 'Another app already uses Ctrl+Alt+Space, so it does nothing here. Close that app (or change its shortcut) and turn this off and on again';
+  }).catch(() => {});
   const sounds = settingsInput('checkbox', config.sounds !== false);
   const updatePopup = settingsInput('checkbox', config.updatePopup !== false);
   const theme = settingsSelect(THEMES, config.theme || 'default');
@@ -272,6 +278,7 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('Short titles', 'Name new agents with a summary of your message, written by the quick-task model (Providers → Quick tasks)', titles),
       settingsField('Suggest follow-ups', 'After a task, the messages you will likely send next, written by the quick-task model. → or a click puts one in the box, Alt+1–3 sends it', followUps),
       settingsField('Notifications', 'When an agent finishes or needs you while the app is in the background: its tile in the corner of the screen, or the system\'s notification', notify),
+      notifyKeyField,
       settingsField('Sounds', 'For everything you and the agents do', sounds),
       settingsField('Update pop-up', 'A card on the Hub asks you to update when a new version is out. Off: only the Update button next to the version in the title bar shows it', updatePopup))]],
     ['branches', 'Branch diff', [section(null,
@@ -410,6 +417,7 @@ function openSettings(config, { onSaved } = {}) {
       suggestFollowUps: followUps.checked,
       notifyWhenDone: notify.value !== 'off',
       notifyStyle: notify.value === 'system' ? 'system' : 'tile',
+      notifyKey: notifyKey.checked ? (config.notifyKey || 'Control+Alt+Space') : '',
       sounds: sounds.checked,
       updatePopup: updatePopup.checked,
       theme: theme.value,

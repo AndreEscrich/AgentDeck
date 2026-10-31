@@ -51,7 +51,7 @@ window.toastHost.onAdd(({ id, body, tile, theme }) => {
   const close = el.querySelector('.tile-remove');
   if (close) {
     close.title = 'Dismiss';
-    close.onclick = e => { e.stopPropagation(); dismiss(toast); };
+    close.onclick = e => { e.stopPropagation(); dismiss(toast); window.toastHost.dismissed(id); };
   }
   box.appendChild(toast);
   // As many as fit on the screen: the oldest make room.
@@ -73,6 +73,10 @@ window.toastHost.onAdd(({ id, body, tile, theme }) => {
     }, 900);
   }
   resize();
+});
+
+window.toastHost.onRemove(id => {
+  for (const t of box.querySelectorAll('.notice')) if (t.dataset.id === id) dismiss(t);
 });
 
 window.toastHost.onClear(() => {

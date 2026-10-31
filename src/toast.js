@@ -62,12 +62,15 @@ function fit(width, height) {
   if (!win.isVisible()) win.showInactive();
 }
 
-// onOpen(id): a click on an agent's tile.
-function init({ onOpen }) {
+// onOpen(id): a click on an agent's tile; onDismiss(id): its × was clicked.
+let dismissed = () => {};
+function init({ onOpen, onDismiss = () => {} }) {
   open = onOpen;
+  dismissed = onDismiss;
   const ours = e => win && !win.isDestroyed() && e.sender === win.webContents;
   ipcMain.on('toast:size', (e, width, height) => { if (ours(e)) fit(width, height); });
   ipcMain.on('toast:open', (e, id) => { if (ours(e)) open(id); });
+  ipcMain.on('toast:dismissed', (e, id) => { if (ours(e)) dismissed(id); });
 }
 
 // item: { id, title, body, tile (the tile's HTML), theme }
@@ -81,9 +84,14 @@ function clear() {
   if (win && !win.isDestroyed()) win.webContents.send('toast:clear');
 }
 
+// One agent's notification goes (the shortcut opened it).
+function remove(id) {
+  if (win && !win.isDestroyed()) win.webContents.send('toast:remove', id);
+}
+
 function destroy() {
   if (win && !win.isDestroyed()) win.destroy();
   win = null;
 }
 
-module.exports = { init, show, clear, destroy };
+module.exports = { init, show, clear, remove, destroy };
