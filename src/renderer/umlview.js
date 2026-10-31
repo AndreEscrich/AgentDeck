@@ -1458,12 +1458,32 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
   const showType = id => {
     const g = elementOf(id);
     if (!g) return false;
-    const r = g.getBoundingClientRect();
+    // The middle of the box itself, in the diagram's own units: its pins and
+    // marks stick out of it, and its outline grows while it is found.
+    const shape = g.querySelector(':scope > .uml-box') || g;
+    const bb = shape.getBBox();
+    const p = new DOMPoint(bb.x + bb.width / 2, bb.y + bb.height / 2).matrixTransform(world.getCTM().inverse().multiply(shape.getCTM()));
+    const wx = p.x;
+    const wy = p.y;
+    // The middle of the part of the diagram you see: in the chat it can be
+    // scrolled partly away, and in the whole window the review peer's
+    // panel can cover its right side.
     const s = svg.getBoundingClientRect();
-    const wx = (r.left + r.width / 2 - s.left - view.x) / view.k;
-    const wy = (r.top + r.height / 2 - s.top - view.y) / view.k;
+    let left = Math.max(s.left, 0);
+    const right0 = Math.min(s.right, innerWidth);
+    let right = right0;
+    const top = Math.max(s.top, 0);
+    const bottom = Math.min(s.bottom, innerHeight);
+    const peer = svg.closest('.uml-full')?.querySelector('.uml-peer.open');
+    if (peer) {
+      const pr = peer.getBoundingClientRect();
+      if (pr.left > left + 200 && pr.height > (bottom - top) / 2) right = Math.min(right, pr.left);
+    }
+    if (right - left < 200) { left = Math.max(s.left, 0); right = right0; }
+    const cx = (left + right) / 2 - s.left;
+    const cy = (top + bottom) / 2 - s.top;
     const k = Math.max(view.k, 1);
-    const to = { x: s.width / 2 - wx * k, y: s.height / 2 - wy * k, k };
+    const to = { x: cx - wx * k, y: cy - wy * k, k };
     const from = { ...view };
     const start = performance.now();
     cancelAnimationFrame(glide);
