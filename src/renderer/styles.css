@@ -1656,7 +1656,7 @@ audio.chat-media { width: 100%; max-width: 420px; height: 40px; background: tran
 .act-swatch { width: 11px; height: 11px; border-radius: 3px; }
 .act-legend span:first-child { margin-right: 4px; }
 .act-legend span:last-child { margin-left: 4px; }
-.act-tip { position: absolute; transform: translate(-50%, calc(-100% - 8px)); pointer-events: none; white-space: pre; z-index: 5;
+.act-tip { position: absolute; pointer-events: none; white-space: pre; z-index: 5;
   font-size: 12px; line-height: 1.4; color: var(--text); background: #2c241c; border: 1px solid #45392c; border-radius: 8px; padding: 6px 9px;
   box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.6); }
 .act-notes { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; color: var(--text-dim); }

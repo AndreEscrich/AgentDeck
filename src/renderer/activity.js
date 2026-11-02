@@ -34,6 +34,41 @@ function actSvg(tag, attrs = {}) {
   return node;
 }
 
+// Puts the chart's tooltip beside the day you point at, its top level with the
+// top of the plot (window coordinates x and top): to the right of x in the
+// chart's left half, to the left of x in its right half. The same rule holds
+// for every day and every tooltip size, so the tooltip does not jump between
+// places as you move along the chart, and it never covers the title row. It
+// also stays inside the part of the window where the chart shows, because the
+// usage card scrolls and so cuts off whatever sticks out of it.
+function placeTip(tip, wrap, x, top) {
+  const box = visibleBox(wrap);
+  const wr = wrap.getBoundingClientRect();
+  const w = tip.offsetWidth;
+  const h = tip.offsetHeight;
+  const beside = x < wr.left + wr.width / 2 ? x + 12 : x - 12 - w;
+  const left = Math.max(box.left + 4, Math.min(box.right - 4 - w, beside));
+  const tipTop = Math.max(box.top + 4, Math.min(box.bottom - 4 - h, top));
+  tip.style.left = `${left - wr.left}px`;
+  tip.style.top = `${tipTop - wr.top}px`;
+}
+
+// The part of the window where the node's content shows: the window, cut down
+// by every ancestor that hides or scrolls what overflows it.
+function visibleBox(node) {
+  const box = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
+  for (let p = node.parentElement; p; p = p.parentElement) {
+    const style = getComputedStyle(p);
+    if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+    const r = p.getBoundingClientRect();
+    box.left = Math.max(box.left, r.left);
+    box.top = Math.max(box.top, r.top);
+    box.right = Math.min(box.right, r.right);
+    box.bottom = Math.min(box.bottom, r.bottom);
+  }
+  return box;
+}
+
 class ActivityPanel {
   // compact: the smaller view in the usage card.
   constructor(box, { compact = false } = {}) {
@@ -273,9 +308,7 @@ class ActivityPanel {
       tip.textContent = `${label} · ${shortNumber(tot)} tokens`
         + [...shown].reverse().filter(k => value(date, k)).map(k => `\n${m.names.get(k)}: ${shortNumber(value(date, k))}${tot ? ` (${Math.round((value(date, k) / tot) * 100)}%)` : ''}`).join('');
       tip.classList.remove('hidden');
-      const wr = wrap.getBoundingClientRect();
-      tip.style.left = `${e.clientX - wr.left}px`;
-      tip.style.top = `${(8 / H) * r.height + r.top - wr.top}px`;
+      placeTip(tip, wrap, e.clientX, r.top + (8 / H) * r.height);
     });
     hit.addEventListener('pointerleave', () => { guide.style.display = 'none'; tip.classList.add('hidden'); });
     svg.appendChild(hit);
