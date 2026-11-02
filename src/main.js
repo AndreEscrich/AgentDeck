@@ -11,6 +11,7 @@ const media = require('./media');
 const jira = require('./jira');
 const connectors = require('./connectors');
 const auth = require('./auth');
+const accounts = require('./accounts');
 const agentList = require('./agentlist');
 const { runDiff } = require('./branchdiff');
 const commands = require('./commands');
@@ -371,10 +372,19 @@ app.whenReady().then(() => {
   }));
   ipcMain.handle('agents:remember', (_e, entries) => agentList.remember(entries));
   ipcMain.handle('agents:list', () => agentList.list());
-  ipcMain.handle('auth:login', () => auth.login(getConfig(), send));
+  // Before a sign-in, the account you are on is saved, so you can switch back
+  // to it (Settings → Account, accounts.js).
+  ipcMain.handle('auth:login', async (_e, email) => {
+    await accounts.remember(getConfig()).catch(() => {});
+    return auth.login(getConfig(), send, typeof email === 'string' ? email : '');
+  });
   ipcMain.handle('auth:input', (_e, text) => auth.input(text));
   ipcMain.handle('auth:cancel', () => auth.cancel());
   ipcMain.handle('auth:status', () => auth.status(getConfig()));
+  accounts.setFile(path.join(app.getPath('userData'), 'claude-accounts.json'));
+  ipcMain.handle('accounts:list', () => accounts.list(getConfig()));
+  ipcMain.handle('accounts:switch', (_e, id) => accounts.switchTo(getConfig(), String(id)));
+  ipcMain.handle('accounts:forget', (_e, id) => accounts.forget(getConfig(), String(id)));
   // Each call names its provider: Claude Code's connectors, or Codex's.
   const connectorsOf = provider => (provider === 'codex' ? connectors.codex : connectors);
   ipcMain.handle('connectors:list', (_e, cwd, provider) => connectorsOf(provider).list(getConfig(), cwd));

@@ -3129,7 +3129,10 @@ window.addEventListener('focus', () => {
   if (authProblem.pending || (waiting && Date.now() - (authProblem.dismissedAt || 0) > 10 * 60 * 1000)) showLoginCard();
 });
 
-function showLoginCard() {
+// From Settings → Account (settings.js) it also adds an account (add) or
+// signs in again with a saved one whose login expired (email); onDone runs
+// after a sign-in that worked.
+function showLoginCard({ add = false, email = '', onDone = null } = {}) {
   if (document.querySelector('.login-modal') || document.querySelector('.quit-modal')) return;
   authProblem.pending = false;
   const overlay = el('div', 'quit-modal login-modal');
@@ -3146,7 +3149,7 @@ function showLoginCard() {
   let stopOutput = null;
   let signingIn = false;
   const close = () => {
-    authProblem.dismissedAt = Date.now();
+    if (!add && !email) authProblem.dismissedAt = Date.now();
     stopOutput?.();
     if (signingIn) window.deck.auth.cancel();
     document.removeEventListener('keydown', onKey, true);
@@ -3171,10 +3174,18 @@ function showLoginCard() {
   };
 
   const intro = () => {
-    title.textContent = 'Sign in to Claude again';
-    text.textContent = 'Claude Code\'s login has expired, so your agents can\'t reach Claude. Sign in to keep them working.';
+    if (add) {
+      title.textContent = 'Add a Claude account';
+      text.textContent = 'Sign in with the other account on the page that opens in your browser. If the page signs you in with the account you are on now, sign out of claude.ai there first. The account you are on now stays in the list, so you can switch back.';
+    } else if (email) {
+      title.textContent = `Sign in with ${email}`;
+      text.textContent = 'The saved login of this account has expired. Sign in with it on the page that opens in your browser.';
+    } else {
+      title.textContent = 'Sign in to Claude again';
+      text.textContent = 'Claude Code\'s login has expired, so your agents can\'t reach Claude. Sign in to keep them working.';
+    }
     extra.replaceChildren();
-    setButtons(['Later', close], ['Sign in', signIn, true]);
+    setButtons([add || email ? 'Cancel' : 'Later', close], ['Sign in', signIn, true]);
   };
 
   const signIn = async () => {
@@ -3216,7 +3227,7 @@ function showLoginCard() {
         extra.appendChild(row);
       }
     });
-    const result = await window.deck.auth.login().catch(err => ({ ok: false, message: err.message }));
+    const result = await window.deck.auth.login(email).catch(err => ({ ok: false, message: err.message }));
     if (!signingIn) return;   // cancelled
     signingIn = false;
     stopOutput?.();
@@ -3230,6 +3241,7 @@ function showLoginCard() {
       setButtons(['Done', close, true]);
       sounds.done?.();
       resumeAuthWaits();
+      onDone?.(status);
     } else {
       title.textContent = 'Sign-in didn\'t finish';
       text.textContent = result.message || 'Claude Code could not sign in.';
@@ -4572,6 +4584,15 @@ async function refreshUsage(only = null) {
       fetchingUsage[p] = false;
     }
   }));
+}
+// Another Claude account (Settings → Account): its limits are not the last
+// account's.
+function claudeAccountChanged() {
+  usage.claude.limits = null;
+  usage.claude.at = 0;
+  window.deck.setProviderLimited('claude', limitedUntil('claude')).catch(() => {});
+  showUsage();
+  refreshUsage('claude');
 }
 setInterval(() => {
   for (const p of ['claude', 'codex']) if (Date.now() - usage[p].at >= USAGE_REFRESH[p]) refreshUsage(p);

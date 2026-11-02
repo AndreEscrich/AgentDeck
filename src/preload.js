@@ -85,11 +85,17 @@ contextBridge.exposeInMainWorld('deck', {
   listAgents: () => ipcRenderer.invoke('agents:list'),
   // Signing Claude Code in again (see auth.js).
   auth: {
-    login: () => ipcRenderer.invoke('auth:login'),
+    login: email => ipcRenderer.invoke('auth:login', email),
     input: text => ipcRenderer.invoke('auth:input', text),
     cancel: () => ipcRenderer.invoke('auth:cancel'),
     status: () => ipcRenderer.invoke('auth:status'),
     onOutput: fn => on('auth:output', fn),
+  },
+  // The saved Claude accounts (see accounts.js).
+  accounts: {
+    list: () => ipcRenderer.invoke('accounts:list'),
+    switchTo: id => ipcRenderer.invoke('accounts:switch', id),
+    forget: id => ipcRenderer.invoke('accounts:forget', id),
   },
   connectors: {
     list: (cwd, provider) => ipcRenderer.invoke('connectors:list', cwd, provider),

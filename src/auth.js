@@ -13,10 +13,10 @@ const { spawnClaude, killTree, childEnv } = require('./platform');
 
 let proc = null;
 
-function login(config, send) {
+function login(config, send, email = '') {
   if (proc) killTree(proc);
   return new Promise(resolve => {
-    const p = spawnClaude(config.claudePath, ['auth', 'login'],
+    const p = spawnClaude(config.claudePath, ['auth', 'login', ...(email ? ['--email', email] : [])],
       { cwd: os.homedir(), env: childEnv(config.env), stdio: ['pipe', 'pipe', 'pipe'] });
     proc = p;
     let out = '';

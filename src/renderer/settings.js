@@ -55,6 +55,85 @@ function settingsList(text) {
   return [...new Set(String(text || '').split(/[\s,]+/).filter(Boolean))];
 }
 
+// Settings → Account: the Claude account Claude Code is signed in with, and
+// the others you signed in with before (src/accounts.js). Switch puts
+// another one's saved login in place; Add signs in with a new one, and the
+// one you are on stays in the list.
+const PLAN_NAMES = { pro: 'Pro', max: 'Max', team: 'Team', enterprise: 'Enterprise' };
+function accountsPanel() {
+  const box = el('div', 'settings-accounts');
+  const list = el('div', 'account-list');
+  const note = el('div', 'settings-hint account-note');
+  const add = el('button', 'account-add', 'Add another account…');
+  add.type = 'button';
+  box.append(list, note, add);
+  const say = text => { note.textContent = text || ''; };
+
+  const render = async () => {
+    let data;
+    try { data = await window.deck.accounts.list(); } catch (err) { say(`Could not read the accounts: ${err?.message || err}`); return; }
+    list.replaceChildren();
+    if (!data.signedIn) list.appendChild(el('div', 'account-empty', 'Claude Code is not signed in.'));
+    add.textContent = data.signedIn ? 'Add another account…' : 'Sign in…';
+    for (const a of data.accounts) {
+      const row = el('div', 'account-row' + (a.current ? ' current' : ''));
+      row.appendChild(el('div', 'account-avatar', (a.name || a.email || '?').trim()[0].toUpperCase()));
+      const who = el('div', 'account-who');
+      who.append(el('div', 'account-email', a.email || a.name || 'Unknown account'),
+        el('div', 'account-org', [a.orgName, PLAN_NAMES[a.plan] || a.plan].filter(Boolean).join(' · ')));
+      row.appendChild(who);
+      if (a.current) {
+        row.appendChild(el('span', 'account-tag', 'Signed in'));
+      } else {
+        const go = el('button', 'account-switch', a.expired ? 'Sign in…' : 'Switch');
+        go.type = 'button';
+        go.title = a.expired ? 'The saved login has expired' : `Use ${a.email} for Claude Code and every agent`;
+        go.onclick = () => (a.expired ? signIn(a.email) : switchTo(a));
+        const forget = el('button', 'account-forget', '×');
+        forget.type = 'button';
+        forget.title = 'Remove from the list (its saved login too)';
+        forget.onclick = async () => {
+          try { await window.deck.accounts.forget(a.id); } catch (err) { say(err?.message || String(err)); }
+          window.uiSound?.('tick');
+          render();
+        };
+        row.append(go, forget);
+      }
+      list.appendChild(row);
+    }
+  };
+
+  const switchTo = async a => {
+    // Running agents use the login Claude Code reads next, so they can end
+    // their task on the other account.
+    const working = [...state.agents.values()].filter(x => !x.removed && BUSY.includes(x.status) && providerOf(x.choice) !== 'codex');
+    if (working.length && !await confirmCard({
+      title: `Switch to ${a.email}?`,
+      text: `${working.length} agent${working.length === 1 ? ' is' : 's are'} working. They may finish their task on the new account.`,
+      agents: working,
+      confirmLabel: 'Switch',
+      stayLabel: 'Cancel',
+    })) return;
+    say('Switching…');
+    try {
+      await window.deck.accounts.switchTo(a.id);
+      const status = await window.deck.auth.status().catch(() => null);
+      say(status?.loggedIn === false ? 'Claude Code does not accept the saved login. Sign in with this account again.' : '');
+      window.uiSound?.('done');
+      toast(`Claude: ${status?.email || a.email}`);
+      claudeAccountChanged();
+    } catch (err) {
+      say(`Could not switch: ${err?.message || err}`);
+    }
+    render();
+  };
+
+  const signIn = email => showLoginCard({ add: !email, email, onDone: () => { claudeAccountChanged(); render(); } });
+  add.onclick = () => signIn('');
+  render();
+  return box;
+}
+
 // Opens the screen. config: the settings now; onSaved(config) after a save.
 function openSettings(config, { onSaved } = {}) {
   if (document.querySelector('.settings-modal')) return;
@@ -247,6 +326,11 @@ function openSettings(config, { onSaved } = {}) {
   };
   // The settings in groups, listed in the bar on the left (see nav below).
   const tabs = [
+    // Not in a settingsField: that is a <label>, and a click on its text
+    // would press the first button in it.
+    ['account', 'Account', [section('Claude',
+      el('div', 'settings-hint account-intro', 'The account Claude Code and every Claude agent use. The accounts you signed in with before stay in the list, so switching back needs no new sign-in.'),
+      accountsPanel())]],
     ['agents', 'Agents', [section(null,
       settingsField('Folder', 'Where a new agent works until you pick one in the Hub', folderRow),
       settingsField('Games folder', 'The folder with one folder per game', gamesRow),
@@ -448,6 +532,8 @@ function openSettings(config, { onSaved } = {}) {
     }
   };
   const onKey = e => {
+    // A card over Settings (signing in, Switch's question) has the keys.
+    if (document.querySelector('.quit-modal')) return;
     if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); }
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopImmediatePropagation(); submit(); }
   };
