@@ -5207,6 +5207,145 @@ function autosize() {
 $('input').addEventListener('input', autosize);
 window.addEventListener('resize', () => requestAnimationFrame(autosize));
 
+// ---------- voice input ----------
+
+// The microphone button next to Send (or Ctrl+Shift+Space, ⌘⇧Space on macOS)
+// listens, and what you say appears in the message box as you speak, where
+// the cursor was. Click it again (or press the keys again) to stop; Enter
+// stops and sends once the last words are in; Esc stops and takes the spoken
+// text out again; typing stops it and keeps the text. It uses the system's
+// own speech recognition (src/voice.js), in the language of Settings → App →
+// Voice language.
+const VOICE_ERRORS = {
+  'speech-denied': `Agent Hub Voice may not use speech recognition. Allow it in ${IS_MAC ? 'System Settings → Privacy & Security → Speech Recognition' : 'the system settings'}, then try again.`,
+  'mic-denied': `Agent Hub Voice may not use the microphone. Allow it in ${IS_MAC ? 'System Settings → Privacy & Security → Microphone' : 'Settings → Privacy → Microphone'}, then try again.`,
+  'no-recognizer': IS_MAC ? 'Speech recognition is not available for this language.' : 'Windows has no speech recognizer. Add one in Settings → Time & language → Speech.',
+  'not-available': 'Speech recognition is not available right now. On macOS it can need an internet connection for some languages.',
+};
+const voice = { on: false, stopping: false, sendAfter: false, view: null, before: '', after: '', original: '', text: '' };
+const voiceSupported = IS_MAC || window.deck.platform === 'win32';
+$('voice').classList.toggle('hidden', !voiceSupported);
+$('voice').title = `Speak your message (${IS_MAC ? '⌘⇧Space' : 'Ctrl+Shift+Space'})`;
+
+function viewKeyNow() {
+  return state.current ? `${state.current.kind}:${state.current.id || ''}` : '';
+}
+
+async function startVoice() {
+  if (voice.on || !voiceSupported) return;
+  const input = $('input');
+  input.focus();
+  voice.on = true;
+  voice.stopping = false;
+  voice.sendAfter = false;
+  voice.view = viewKeyNow();
+  voice.original = input.value;
+  voice.before = input.value.slice(0, input.selectionStart);
+  voice.after = input.value.slice(input.selectionEnd);
+  voice.text = '';
+  $('voice').classList.add('starting');
+  const r = await window.deck.voice.start(state.config?.voiceLanguage || '').catch(err => ({ ok: false, error: err.message }));
+  if (!r.ok) voiceError(r.error);
+}
+
+function stopVoice({ send = false } = {}) {
+  if (!voice.on || voice.stopping) return;
+  voice.stopping = true;
+  voice.sendAfter = send;
+  $('voice').classList.add('stopping');
+  window.deck.voice.stop();
+}
+
+// Esc: the box gets back the text it had before you spoke.
+function cancelVoice() {
+  if (!voice.on) return;
+  window.deck.voice.cancel();
+  if (viewKeyNow() === voice.view) putVoiceText(null);
+  endVoice();
+  sfx('close');
+}
+
+function endVoice() {
+  voice.on = false;
+  voice.stopping = false;
+  const b = $('voice');
+  b.classList.remove('starting', 'listening', 'stopping');
+  b.style.removeProperty('--level');
+}
+
+function voiceError(error) {
+  endVoice();
+  sfx('error');
+  toast(VOICE_ERRORS[error] || `Voice input stopped: ${error}`);
+}
+
+// Puts what was heard between the text before and after the cursor (null:
+// the text from before you spoke), and the cursor after it.
+function putVoiceText(text) {
+  const input = $('input');
+  if (text === null) {
+    input.value = voice.original;
+  } else {
+    const space = (a, b) => (a && b && !/\s$/.test(a) && !/^\s/.test(b) ? ' ' : '');
+    const said = text.trim();
+    input.value = voice.before + space(voice.before, said) + said + space(said, voice.after) + voice.after;
+    const caret = input.value.length - voice.after.length;
+    input.setSelectionRange(caret, caret);
+  }
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+window.deck.voice.onEvent(msg => {
+  if (!voice.on) return;
+  // You went to another agent: what was said belongs to the box you left.
+  if (viewKeyNow() !== voice.view) { window.deck.voice.cancel(); endVoice(); return; }
+  if (msg.error) {
+    if (voice.text) putVoiceText(voice.text);
+    voiceError(msg.error);
+    return;
+  }
+  const b = $('voice');
+  if (msg.ready) {
+    b.classList.remove('starting');
+    b.classList.add('listening');
+    sfx('open');
+  }
+  if (typeof msg.level === 'number') b.style.setProperty('--level', msg.level.toFixed(2));
+  if (typeof msg.text === 'string') {
+    if (msg.text || msg.final) voice.text = msg.text || voice.text;
+    putVoiceText(voice.text);
+  }
+  if (msg.final) {
+    const send = voice.sendAfter;
+    endVoice();
+    sfx('close');
+    if (send && $('input').value.trim()) sendFromComposer();
+  }
+});
+
+$('voice').onclick = () => (voice.on ? stopVoice() : startVoice());
+$('voice').addEventListener('mousedown', e => e.preventDefault());   // the box keeps the focus
+
+document.addEventListener('keydown', e => {
+  if (isMod(e) && e.shiftKey && e.code === 'Space') {
+    if (!voiceSupported || $('composer').classList.contains('hidden') || document.querySelector('.settings-modal, .quit-modal, .uml-full, .lightbox')) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (voice.on) stopVoice(); else startVoice();
+    return;
+  }
+  if (!voice.on) return;
+  if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); cancelVoice(); return; }
+  if (e.target.id !== 'input') return;
+  if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !isMod(e)) { e.preventDefault(); e.stopImmediatePropagation(); stopVoice({ send: true }); return; }
+  // Typing (not just a modifier key) stops listening at once and keeps the
+  // text, so words still on their way don't overwrite what you type.
+  if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete') {
+    window.deck.voice.cancel();
+    endVoice();
+  }
+}, true);
+
 // ---------- link cards in the message box ----------
 
 // A link you type or paste that the chat shows as a card (a Jira ticket,

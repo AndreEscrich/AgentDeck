@@ -91,6 +91,13 @@ contextBridge.exposeInMainWorld('deck', {
     status: () => ipcRenderer.invoke('auth:status'),
     onOutput: fn => on('auth:output', fn),
   },
+  // Voice input for the message box (see voice.js).
+  voice: {
+    start: locale => ipcRenderer.invoke('voice:start', locale),
+    stop: () => ipcRenderer.invoke('voice:stop'),
+    cancel: () => ipcRenderer.invoke('voice:cancel'),
+    onEvent: fn => on('voice:event', fn),
+  },
   // The saved Claude accounts (see accounts.js).
   accounts: {
     list: () => ipcRenderer.invoke('accounts:list'),

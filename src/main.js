@@ -12,6 +12,7 @@ const jira = require('./jira');
 const connectors = require('./connectors');
 const auth = require('./auth');
 const accounts = require('./accounts');
+const voice = require('./voice');
 const agentList = require('./agentlist');
 const { runDiff } = require('./branchdiff');
 const commands = require('./commands');
@@ -70,6 +71,7 @@ const DEFAULT_CONFIG = {
   notifyKey: 'Control+Alt+Space',       // from any app, opens the agent of the newest notification (empty: none)
   sounds: true,                         // a sound when you start an agent and when one finishes
   updatePopup: true,                    // a card on the Hub asks to update when a new version is out (off: only the title bar's Update button)
+  voiceLanguage: '',                    // the language of voice input (the microphone button), such as en-US; empty: the system's
   hubAfterSend: true,                   // show the Hub after you send a message
   summarizeTitles: true,                // title new agents with a short summary of your message
   suggestFollowUps: true,               // after a task, suggest the messages you will likely send next
@@ -211,7 +213,7 @@ const agents = {
   close: id => managerOf(id).close(id),
   contextUsage: id => managerOf(id).contextUsage(id),
   activeCount: () => claudeAgents.activeCount() + codexAgents.activeCount(),
-  closeAll: () => { claudeAgents.closeAll(); codexAgents.closeAll(); reviewPeer.closeAll(); },
+  closeAll: () => { claudeAgents.closeAll(); codexAgents.closeAll(); reviewPeer.closeAll(); voice.cancel(); },
 };
 
 function createWindow() {
@@ -385,6 +387,9 @@ app.whenReady().then(() => {
   ipcMain.handle('accounts:list', () => accounts.list(getConfig()));
   ipcMain.handle('accounts:switch', (_e, id) => accounts.switchTo(getConfig(), String(id)));
   ipcMain.handle('accounts:forget', (_e, id) => accounts.forget(getConfig(), String(id)));
+  ipcMain.handle('voice:start', (_e, locale) => voice.start(locale, send));
+  ipcMain.handle('voice:stop', () => voice.stop());
+  ipcMain.handle('voice:cancel', () => voice.cancel());
   // Each call names its provider: Claude Code's connectors, or Codex's.
   const connectorsOf = provider => (provider === 'codex' ? connectors.codex : connectors);
   ipcMain.handle('connectors:list', (_e, cwd, provider) => connectorsOf(provider).list(getConfig(), cwd));

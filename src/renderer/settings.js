@@ -252,6 +252,9 @@ function openSettings(config, { onSaved } = {}) {
     if (s?.key && !s.ok) notifyKeyField.querySelector('.settings-hint').textContent = 'Another app already uses Ctrl+Alt+Space, so it does nothing here. Close that app (or change its shortcut) and turn this off and on again';
   }).catch(() => {});
   const sounds = settingsInput('checkbox', config.sounds !== false);
+  // The locales Apple's and Windows' speech recognition both know; a value
+  // set by hand in config.json stays listed.
+  const voiceLanguage = settingsSelect([['', 'The system\'s language'], ['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['da-DK', 'Danish'], ['de-DE', 'German'], ['es-ES', 'Spanish (Spain)'], ['es-MX', 'Spanish (Mexico)'], ['fr-FR', 'French'], ['it-IT', 'Italian'], ['pl-PL', 'Polish'], ['pt-BR', 'Portuguese (Brazil)'], ['sv-SE', 'Swedish'], ['nb-NO', 'Norwegian'], ['nl-NL', 'Dutch'], ['ja-JP', 'Japanese'], ['zh-CN', 'Chinese']], config.voiceLanguage || '');
   const updatePopup = settingsInput('checkbox', config.updatePopup !== false);
   const theme = settingsSelect(THEMES, config.theme || 'default');
   // Updates: look on GitHub now instead of waiting for the next look (the
@@ -364,6 +367,7 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('Notifications', 'When an agent finishes or needs you while the app is in the background: its tile in the corner of the screen, or the system\'s notification', notify),
       notifyKeyField,
       settingsField('Sounds', 'For everything you and the agents do', sounds),
+      settingsField('Voice language', `The language you speak to the microphone button next to Send (${IS_MAC ? '⌘⇧Space' : 'Ctrl+Shift+Space'}). ${IS_MAC ? 'macOS' : 'Windows'} turns it into text itself, so nothing is downloaded`, voiceLanguage),
       settingsField('Update pop-up', 'A card on the Hub asks you to update when a new version is out. Off: only the Update button next to the version in the title bar shows it', updatePopup))]],
     ['branches', 'Branch diff', [section(null,
       settingsField('Projects', `The Branches view lists ${(config.svnServer || 'svn+ssh://svn@tactile.build').replace(/\/+$/, '')}/<project>/branches for each one. Separate them with commas. Empty: every project someone committed to in the last year`, svnProjects),
@@ -504,6 +508,7 @@ function openSettings(config, { onSaved } = {}) {
       notifyKey: notifyKey.checked ? (config.notifyKey || 'Control+Alt+Space') : '',
       sounds: sounds.checked,
       updatePopup: updatePopup.checked,
+      voiceLanguage: voiceLanguage.value,
       theme: theme.value,
       curvedScreen: curved.checked,
       stuckAfterSeconds: number(stuckAfter, 30),

@@ -385,6 +385,16 @@ details.thinking pre { font-family: var(--font); color: var(--text-dim); }
 #input:focus { outline: none; border-color: var(--accent); }
 .composer-bar { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; padding: 0 2px 0 4px; }
 #send { padding: 4px 14px; border-radius: 8px; }
+/* The microphone button (voice input, see voice in app.js). While it
+   listens it is red, and a ring around it grows with how loud you speak. */
+.composer-voice { --level: 0; width: 30px; height: 28px; padding: 0; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid var(--border); color: var(--text-dim); flex-shrink: 0; transition: color .15s, background .15s, box-shadow .08s; }
+.composer-voice:hover { color: var(--text); background: var(--bg-hover); }
+.composer-voice.starting { color: var(--err); animation: voice-wait 1s ease-in-out infinite; }
+.composer-voice.listening { color: #fff; background: var(--err); border-color: var(--err);
+  box-shadow: 0 0 0 calc(2px + var(--level) * 6px) color-mix(in srgb, var(--err) 35%, transparent); }
+.composer-voice.stopping { opacity: .6; }
+@keyframes voice-wait { 50% { opacity: .4; } }
 
 /* Model menu */
 .field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--text-dim); }
