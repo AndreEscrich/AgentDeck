@@ -19,6 +19,9 @@ function words(command) {
 
 // Options that write files, run programs or point git elsewhere.
 const UNSAFE = /^(--output|--ext-diff|--textconv|--exec|--upload-pack|--git-dir|--work-tree|--no-index|--namespace|-o.*|-c|-C)(=|$)/;
+// svn's: another diff program or settings (a tunnel is a program too). svn
+// diff also always gets its own diff and never asks for anything.
+const SVN_UNSAFE = /^(--diff-cmd|--config-dir|--config-option)(=|$)/;
 
 function run(cmd, args, cwd) {
   return new Promise(resolve => {
@@ -103,11 +106,11 @@ async function runDiff(cwd, command) {
   const [tool, sub, ...rest] = w;
   const allowed = tool === 'git' ? ['diff', 'show'].includes(sub) : sub === 'diff';
   if (!allowed) return { ok: false, error: `Only git diff, git show and svn diff can be shown here, not "${w.slice(0, 2).join(' ')}".` };
-  const unsafe = rest.find(a => UNSAFE.test(a));
+  const unsafe = rest.find(a => (tool === 'svn' ? SVN_UNSAFE : UNSAFE).test(a));
   if (unsafe) return { ok: false, error: `The option ${unsafe} is not allowed here.` };
   const title = w.join(' ');
   if (tool === 'svn') {
-    const r = await run('svn', ['diff', ...rest], cwd);
+    const r = await run('svn', ['diff', '--internal-diff', '--non-interactive', ...rest], cwd);
     return r.ok ? { ok: true, diff: svnToGit(r.out, await svnPrefix(cwd, rest)), title } : r;
   }
   const args = ['-c', 'core.quotepath=false', sub, '--no-color', '--no-ext-diff', '--no-textconv',
