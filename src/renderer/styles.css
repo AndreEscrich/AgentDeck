@@ -977,7 +977,8 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
 .hub-tile.state-working::before, .hub-tile.state-starting::before { animation-duration: 2.8s; }
 .hub-tile.stale { --glow: transparent; background: #241e18; border-color: #332b24; }
 .hub-tile.stale .tank { filter: grayscale(1) brightness(0.5); transition: filter 0.4s; }
-.hub-tile.stale .tank-icon { opacity: 0; }
+.hub-tile.stale .liquid { transform: scaleY(0.1); transform-origin: 50% 100%; transition: transform 0.4s, height 1.2s cubic-bezier(.3,1.3,.5,1); }
+.hub-tile.stale .tank-icon { opacity: 0; transition: opacity 0.3s; }
 .hub-tile.stale .hub-title, .hub-tile.stale .hub-status, .hub-tile.stale .hub-model { color: var(--text-faint); }
 .hub-tile.stale .hub-status .dot { opacity: 0.5; }
 .tank-stale { display: none; position: absolute; left: 50%; top: 52%; z-index: 3; transform: translate(-50%, -50%) rotate(-10deg); pointer-events: none;
@@ -988,6 +989,8 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
 .hub-tile.stale .tank-stale { display: flex; }
 .hub-tile.state-idle.unread.stale .tank::before { display: none; }
 .hub-tile.stale:hover .tank { filter: none; }
+.hub-tile.stale:hover .liquid { transform: none; }
+.hub-tile.stale:hover .tank-icon { opacity: 1; }
 .hub-tile.stale:hover .tank-stale { opacity: 0; }
 @keyframes glow-breathe {
   0%, 100% { transform: scale(0.97); filter: brightness(0.8); }

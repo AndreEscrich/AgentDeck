@@ -680,7 +680,7 @@ class Hub {
     const stale = this.staleOf(agent);
     entry.stale = stale;
     tile.classList.toggle('stale', stale);
-    parts.liquid.style.height = `${stale ? 10 : entry.level}%`;
+    parts.liquid.style.height = `${entry.level}%`;
     // Waiting for the usage limit to reset (limitOf in app.js): a clock, and when it continues.
     const limited = agent.limited || null;
     tile.classList.toggle('limited', !!limited);
