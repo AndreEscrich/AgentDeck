@@ -285,6 +285,7 @@ function openSettings(config, { onSaved } = {}) {
     }
   };
   const curved = settingsInput('checkbox', config.curvedScreen !== false);
+  const staleAfter = settingsInput('number', config.staleAfterHours ?? 0, { min: 0, step: 1 });
 
   // Branch diff
   const svnProjects = settingsInput('text', svnProjectList(config).join(', '), { placeholder: 'Every project' });
@@ -362,6 +363,7 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('Theme', 'Nostromo: the screens of the ship’s computer in Alien, on an old tube', theme),
       settingsField('Curved screen', 'Nostromo only: the screen has the bulging shape of a tube’s glass, with scanlines that bow with it', curved),
       settingsField('Show the Hub after sending', 'Off: stay in the chat after you send a message', hubAfterSend),
+      settingsField('Stale after', 'Hours. An agent on the Hub that finished longer ago than this is marked as stale: its tank goes grey with a Stale stamp that says how long ago it finished, so the ones you worked with lately stand out. 0: off', staleAfter),
       settingsField('Short titles', 'Name new agents with a summary of your message, written by the quick-task model (Providers → Quick tasks)', titles),
       settingsField('Suggest follow-ups', 'After a task, the messages you will likely send next, written by the quick-task model. → or a click puts one in the box, Alt+1–3 sends it', followUps),
       settingsField('Notifications', 'When an agent finishes or needs you while the app is in the background: its tile in the corner of the screen, or the system\'s notification', notify),
@@ -512,6 +514,7 @@ function openSettings(config, { onSaved } = {}) {
       theme: theme.value,
       curvedScreen: curved.checked,
       stuckAfterSeconds: number(stuckAfter, 30),
+      staleAfterHours: Math.max(0, Number(staleAfter.value)) || 0,
       svnProjects: settingsList(svnProjects.value).map(p => p.replace(/^\/+|\/+$/g, '')).filter(Boolean),
       svnBranchFilter: settingsList(svnBranchFilter.value),
       githubBranches: githubBranches.checked,

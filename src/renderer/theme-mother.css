@@ -176,6 +176,8 @@ pre, code { background: var(--code-bg) !important; border-color: var(--border) !
 .hub-tile.state-idle .tank::after { content: "COMPLETE"; }
 .hub-tile.state-error .tank::after { content: "FAULT"; }
 .hub-tile.state-background .tank::after { content: "STANDBY"; }
+.hub-tile.stale .tank::after { content: "STALE"; }
+.hub-tile.stale .tank-stale { display: none; }
 
 /* Readability: titles glow strongly, long text barely. */
 #view-title, .hub-section-name, .health-label, .drawer-title, .tank::after { text-shadow: var(--glow-strong); }

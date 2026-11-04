@@ -61,6 +61,7 @@ const DEFAULT_CONFIG = {
   // Codex agents too. 100k to 1m, or 'auto' for Claude Code's and Codex's own choice.
   autoCompact: '200k',
   stuckAfterSeconds: 30,                // waiting this long for Unity to be ready marks the agent as stuck
+  staleAfterHours: 0,                   // an agent on the Hub that finished longer ago than this is marked as stale (0: never)
   defaultFolder: '',
   gamesFolder: '',                      // the folder with every game's folder, for Auto game folder (gamefolders.js)
   autoGameFolder: false,                // a new agent whose message is about one game works in that game's folder
