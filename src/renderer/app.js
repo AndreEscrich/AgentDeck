@@ -2900,6 +2900,9 @@ hub.branchOf = repoBranch;
 // "Auto · Sonnet · Med" (what Auto runs right now). The effort is left out
 // when it is the model's default. Fable shows apart, as in the model menu.
 const EFFORT_SHORT = { low: 'Low', medium: 'Med', high: 'High', xhigh: 'XHigh', max: 'Max', ultra: 'Ultra' };
+function staleAfterMs(config) {
+  return Math.max(0, Number(config.staleAfterHours) || 0) * 3600 * 1000;
+}
 hub.modelOf = agent => {
   // A saved session from before models were recorded: nothing to show.
   if (providerOf(agent.choice) === 'codex') {
@@ -5898,6 +5901,8 @@ function showSettings() {
   openSettings(state.config, {
     onSaved: config => {
       state.config = config;
+      hub.staleAfterMs = staleAfterMs(config);
+      refreshHub();
       setProviders(config);
       showUsage();
       refreshUsage();
@@ -6058,6 +6063,7 @@ setInterval(checkStuck, 3000);
 
 (async () => {
   state.config = await window.deck.getConfig();
+  hub.staleAfterMs = staleAfterMs(state.config);
   setProviders(state.config);
   showUsage();
   refreshUsage();
