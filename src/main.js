@@ -53,8 +53,8 @@ const DEFAULT_CONFIG = {
   claudeHelperModel: 'haiku',
   codexHelperModel: 'luna',             // a family (its newest model) or a model id; Luna is Codex's Haiku
   defaultPermissionMode: 'bypassPermissions', // default | acceptEdits | auto | plan | bypassPermissions
-  defaultModel: 'auto',                 // a value from the model menu; "auto" picks Opus, Sonnet or Haiku per task (automodel.js)
-  defaultEffort: '',                    // low | medium | high | xhigh | max; empty: Auto picks it (with the Auto model), else the model's default
+  defaultModel: 'opus',                 // a value from the model menu, "opus" being the latest Opus; "auto" picks Opus, Sonnet or Haiku per task (automodel.js)
+  defaultEffort: 'medium',              // low | medium | high | xhigh | max; empty: Auto picks it (with the Auto model), else the model's default
   defaultFastMode: false,
   // When an agent's conversation reaches this size, Claude Code summarizes it
   // (compacts), so long tasks stop re-reading everything with every step.

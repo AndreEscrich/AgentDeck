@@ -171,11 +171,11 @@ function openSettings(config, { onSaved } = {}) {
   // saved choice that is no longer in it stays listed so it is not lost.
   const modelChoices = menuModels().map(m => [m.value, shortName(m)]);
   if (config.defaultModel && !modelChoices.some(([v]) => v === config.defaultModel)) modelChoices.push([config.defaultModel, shortName(modelByValue(config.defaultModel))]);
-  const model = settingsSelect(modelChoices, config.defaultModel || 'auto');
+  const model = settingsSelect(modelChoices, config.defaultModel || 'opus');
   const reportBtn = el('button', 'settings-btn', 'Open report');
   reportBtn.type = 'button';
   reportBtn.onclick = () => autoReport.open();
-  const effort = settingsSelect(EFFORT_OPTIONS, config.defaultEffort || '');
+  const effort = settingsSelect(EFFORT_OPTIONS, config.defaultEffort ?? 'medium');
   const fast = settingsInput('checkbox', config.defaultFastMode);
   // Providers: Claude Code and Codex, each on or off, and which one new
   // agents start on (the other takes over while its limit is reached).
