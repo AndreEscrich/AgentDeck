@@ -975,6 +975,20 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
 .hub-tile { isolation: isolate; }
 .hub-tile.state-working::before, .hub-tile.state-starting::before, .hub-tile.state-idle::before, .hub-tile.state-error::before { opacity: 1; }
 .hub-tile.state-working::before, .hub-tile.state-starting::before { animation-duration: 2.8s; }
+.hub-tile.stale { --glow: transparent; background: #241e18; border-color: #332b24; }
+.hub-tile.stale .tank { filter: grayscale(1) brightness(0.5); transition: filter 0.4s; }
+.hub-tile.stale .tank-icon { opacity: 0; }
+.hub-tile.stale .hub-title, .hub-tile.stale .hub-status, .hub-tile.stale .hub-model { color: var(--text-faint); }
+.hub-tile.stale .hub-status .dot { opacity: 0.5; }
+.tank-stale { display: none; position: absolute; left: 50%; top: 52%; z-index: 3; transform: translate(-50%, -50%) rotate(-10deg); pointer-events: none;
+  flex-direction: column; align-items: center; padding: 2px 7px 1px; border: 2px solid #a89b88; border-radius: 4px;
+  color: #c7bba8; background: rgba(0, 0, 0, 0.5); font-size: clamp(8px, 4.4cqw, 9.5px); font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; line-height: 1.25;
+  transition: opacity 0.3s; }
+.tank-stale::before { content: "Stale"; font-size: clamp(10px, 5.6cqw, 12px); }
+.hub-tile.stale .tank-stale { display: flex; }
+.hub-tile.state-idle.unread.stale .tank::before { display: none; }
+.hub-tile.stale:hover .tank { filter: none; }
+.hub-tile.stale:hover .tank-stale { opacity: 0; }
 @keyframes glow-breathe {
   0%, 100% { transform: scale(0.97); filter: brightness(0.8); }
   50% { transform: scale(1.03) translateY(2px); filter: brightness(1.25); }

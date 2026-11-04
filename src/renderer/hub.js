@@ -59,6 +59,7 @@ class Hub {
     // Clicking a Group panel (not a tile) points the message box at that Group.
     this.onPickGroup = onPickGroup;
     this.onOpenUnity = null;   // set by the app: open or focus Unity for a folder
+    this.staleAfterMs = 0;
     this.selectedKey = null;
     this.onOpen = onOpen;
     this.onInterrupt = onInterrupt;
@@ -524,7 +525,8 @@ class Hub {
     const ping = el('div', 'tank-ping');
     // The Nostromo theme draws its terrain scan here instead (scanreveal.js).
     const scan = el('canvas', 'tank-scan');
-    tank.append(liquid, bubbles, scan, el('div', 'tank-shine'), icon, ping, badge, burst);
+    const stale = el('div', 'tank-stale');
+    tank.append(liquid, bubbles, scan, el('div', 'tank-shine'), icon, ping, badge, burst, stale);
 
     // Under the tank: the task title, then its status and time.
     const info = el('div', 'hub-info');
@@ -552,7 +554,7 @@ class Hub {
     // The background jobs it waits for circle the tank (paintOrbit).
     const orbit = el('div', 'tank-orbit');
     tile.append(remove, stop, restart, tank, orbit, info);
-    return { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, badge, title, step, statusDot, statusText, timer, model, clash, orbit } };
+    return { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, badge, title, step, statusDot, statusText, timer, model, clash, orbit, stale } };
   }
 
   // The liquid level: low while starting, climbing with the step count while
@@ -675,7 +677,10 @@ class Hub {
     tile.dataset.level = String(entry.level);
     // What kind of task (the Nostromo theme's tank draws a screen per kind).
     tile.dataset.task = window.taskType ? taskType.kindOf(agent) : 'none';
-    parts.liquid.style.height = `${entry.level}%`;
+    const stale = this.staleOf(agent);
+    entry.stale = stale;
+    tile.classList.toggle('stale', stale);
+    parts.liquid.style.height = `${stale ? 10 : entry.level}%`;
     // Waiting for the usage limit to reset (limitOf in app.js): a clock, and when it continues.
     const limited = agent.limited || null;
     tile.classList.toggle('limited', !!limited);
@@ -728,6 +733,12 @@ class Hub {
     } else {
       // Which background jobs a "background" agent waits for.
       parts.statusText.title = agent.status === 'background' && agent.backgroundTasks?.length ? `Waiting for: ${agent.backgroundTasks.join(', ')}` : '';
+    }
+    if (stale) {
+      const ago = Hub.ago(Date.now() - agent.finishedAt);
+      parts.stale.textContent = `${ago} ago`;
+      if (agent.status === 'idle' && !agent.stopped) parts.statusText.textContent = `Stale · ${ago} ago`;
+      parts.statusText.title = `Finished ${ago} ago`;
     }
     this.updateTimer(agent, parts.timer);
     const model = this.modelOf?.(agent) || null;
@@ -1753,6 +1764,12 @@ class Hub {
     }
   }
 
+  staleOf(agent) {
+    if (!this.staleAfterMs || !agent.finishedAt || agent.limited || agent.authWait) return false;
+    if (!['idle', 'error', 'exited'].includes(agent.status)) return false;
+    return Date.now() - agent.finishedAt > this.staleAfterMs;
+  }
+
   // Only the timers change every second.
   tick(agents) {
     for (const agent of agents) {
@@ -1764,6 +1781,13 @@ class Hub {
     if (minute !== this.usageMinute) {
       this.usageMinute = minute;
       this.renderUsage();
+      if (!this.frozen && !this.replaying && !this.drag && !this.holding) {
+        const currentId = this.latest?.[1] ?? null;
+        for (const agent of agents) {
+          const entry = this.tiles.get(agent.id);
+          if (entry && !entry.removing && entry.stale !== this.staleOf(agent)) this.paint(entry, agent, currentId);
+        }
+      }
     }
   }
 
