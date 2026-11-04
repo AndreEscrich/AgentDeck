@@ -208,12 +208,17 @@ const revisions = text => [...String(text).matchAll(/^r(\d+)/gm)].map(m => Numbe
 // (commits, merges, parent); { stage: 'diff', files } with the files that
 // came in since the last one; { stage: 'fetch', done, total } while the C#
 // files are fetched.
-async function branchDiff(config, project, branch, cacheRoot, progress = () => {}) {
+// The branch's url, or { error } for a project or branch that is not allowed.
+function branchUrl(config, project, branch) {
   const listed = projects(config);
-  if (listed.length ? !listed.includes(project) : !/^[^/\\@]+$/.test(project)) return { ok: false, error: `${project || 'No project'} is not in Settings → Branch diff.` };
-  const root = projectUrl(config, project);
-  if (!/^[^/\\]+$/.test(String(branch || ''))) return { ok: false, error: 'No branch.' };
-  const url = `${root}/branches/${encodeURIComponent(branch).replace(/%2B/g, '+')}`;
+  if (listed.length ? !listed.includes(project) : !/^[^/\\@]+$/.test(project)) return { error: `${project || 'No project'} is not in Settings → Branch diff.` };
+  if (!/^[^/\\]+$/.test(String(branch || ''))) return { error: 'No branch.' };
+  return { url: `${projectUrl(config, project)}/branches/${encodeURIComponent(branch).replace(/%2B/g, '+')}` };
+}
+
+async function branchDiff(config, project, branch, cacheRoot, progress = () => {}) {
+  const { url, error } = branchUrl(config, project, branch);
+  if (error) return { ok: false, error };
 
   // The repository's root, and the branch's latest revision.
   const info = await svn(['info', '--xml', url], { timeout: 60000 });
@@ -359,6 +364,49 @@ async function branchDiff(config, project, branch, cacheRoot, progress = () => {
   return { ok: true, diff: text, title: `${branch} (r${base}…r${head})`, cwd, base, head, parent: parentName, notes, commits: own.reverse() };
 }
 
+// What only some of the branch's revisions changed (the commits you pick in
+// the view): resolves with { ok, parts: [{ ids, diff }], notes }. When the
+// picked revisions are all the revisions of the branch between the first and
+// the last (no merge or other commit between them), one part has their
+// changes together; otherwise each revision is a part of its own, because
+// two diffs of one file from different revisions cannot be joined into one.
+async function revisionsDiff(config, project, branch, revs) {
+  const { url, error } = branchUrl(config, project, branch);
+  if (error) return { ok: false, error };
+  const picked = [...new Set((Array.isArray(revs) ? revs : []).map(Number).filter(n => Number.isInteger(n) && n > 0))].sort((a, b) => a - b);
+  if (!picked.length) return { ok: false, error: 'No revision picked.' };
+  if (picked.length > 100) return { ok: false, error: 'Pick 100 revisions or fewer.' };
+  const first = picked[0];
+  const last = picked[picked.length - 1];
+  let together = picked.length === 1;
+  if (!together) {
+    const log = await svn(['log', '-q', '--stop-on-copy', '-r', `${first}:${last}`, `${url}@${last}`], { timeout: 60000 });
+    const inRange = log.ok ? [...log.out.matchAll(/^r(\d+) \|/gm)].map(m => Number(m[1])) : [];
+    together = inRange.length === picked.length && inRange.every(r => picked.includes(r));
+  }
+  const runs = together ? [[first, last]] : picked.map(r => [r, r]);
+  const parts = [];
+  let metaCount = 0;
+  const tooBig = [];
+  for (const [from, to] of runs) {
+    const streamed = await svnDiffStream(['diff', '--ignore-properties', '-r', `${from - 1}:${to}`, `${url}@${to}`], name => {
+      if (/\.meta$/i.test(name)) { metaCount++; return false; }
+      return true;
+    }, name => tooBig.push(name));
+    if (!streamed.ok) return { ok: false, error: streamed.error };
+    parts.push({ ids: together ? picked : [from], diff: streamed.blocks.map(block => svnToGit(block)).join('\n') });
+  }
+  return { ok: true, parts, notes: diffNotes(metaCount, tooBig) };
+}
+
+// The notes for files a diff leaves out.
+function diffNotes(metaCount, tooBig) {
+  const notes = [];
+  if (metaCount) notes.push(`${metaCount} .meta file${metaCount === 1 ? '' : 's'} not shown.`);
+  if (tooBig.length) notes.push(`Too large to show: ${tooBig.slice(0, 6).join(', ')}${tooBig.length > 6 ? ` and ${tooBig.length - 6} more` : ''}.`);
+  return notes;
+}
+
 // svn diff, read as it streams, one file ("Index: path") at a time.
 // want(name) says whether to keep a file; one larger than BIG is dropped and
 // named to tooBig(name). Resolves with { ok, blocks } (svn's own format).
@@ -409,4 +457,4 @@ function sanitize(s) {
   return String(s || '').replace(/[^\w.@-]+/g, '_').slice(0, 80);
 }
 
-module.exports = { listBranches, cachedBranches, branchDiff, projects, DEFAULT_SERVER };
+module.exports = { listBranches, cachedBranches, branchDiff, revisionsDiff, diffNotes, projects, DEFAULT_SERVER };

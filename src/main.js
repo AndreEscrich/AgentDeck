@@ -372,6 +372,9 @@ app.whenReady().then(() => {
   ipcMain.handle('svn:branchDiff', (e, project, branch) => svnBranches.branchDiff(getConfig(), String(project || ''), String(branch || ''), path.join(app.getPath('userData'), 'branch-diffs'), progress => {
     if (!e.sender.isDestroyed()) e.sender.send('svn:branchProgress', String(project || ''), String(branch || ''), progress);
   }));
+  // What only the revisions or commits you picked changed.
+  ipcMain.handle('svn:revisionsDiff', (_e, project, branch, revisions) => svnBranches.revisionsDiff(getConfig(), String(project || ''), String(branch || ''), revisions));
+  ipcMain.handle('github:commitsDiff', (_e, item, shas) => require('./githubbranches').commitsDiff(item, shas, path.join(app.getPath('userData'), 'branch-diffs')));
   ipcMain.handle('agents:remember', (_e, entries) => agentList.remember(entries));
   ipcMain.handle('agents:list', () => agentList.list());
   // Before a sign-in, the account you are on is saved, so you can switch back

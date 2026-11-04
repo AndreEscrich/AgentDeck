@@ -75,6 +75,9 @@ contextBridge.exposeInMainWorld('deck', {
   svnBranchDiff: (project, branch) => ipcRenderer.invoke('svn:branchDiff', project, branch),
   // A GitHub pull request or branch from the list: { kind, project, number, branch }.
   githubBranchDiff: item => ipcRenderer.invoke('github:branchDiff', item),
+  // What only the picked revisions (SVN) or commits (GitHub) changed.
+  svnRevisionsDiff: (project, branch, revisions) => ipcRenderer.invoke('svn:revisionsDiff', project, branch, revisions),
+  githubCommitsDiff: (item, shas) => ipcRenderer.invoke('github:commitsDiff', item, shas),
   // How far a branch's diff has come (see branchDiff's progress).
   onSvnBranchProgress: fn => on('svn:branchProgress', fn),
   // A large parent is not forked: a handoff instead (see handoff.js).

@@ -200,4 +200,50 @@ async function githubDiff(item, cacheRoot, progress = () => {}) {
   return { ok: true, diff: kept.map(k => k.block).join(''), title: `${title} (${from.slice(0, 7)}…${head.slice(0, 7)})`, cwd, parent: base, notes, commits };
 }
 
-module.exports = { listGithub, githubDiff };
+// What only some of its commits changed (the commits you pick in the view):
+// resolves like revisionsDiff in svnbranches.js. The commits are already in
+// the clone, because githubDiff fetched them. When the picked commits are
+// all the commits between the oldest and the newest (no merge or other
+// commit between them), one part has their changes together; otherwise each
+// commit is a part of its own.
+async function commitsDiff(item, shas, cacheRoot) {
+  const repo = String(item?.project || '');
+  if (!NAME.test(repo)) return { ok: false, error: 'No repository.' };
+  const picked = [...new Set((Array.isArray(shas) ? shas : []).map(String).filter(s => /^[0-9a-f]{40}$/.test(s)))];
+  if (!picked.length) return { ok: false, error: 'No commit picked.' };
+  if (picked.length > 100) return { ok: false, error: 'Pick 100 commits or fewer.' };
+  const c = await clone(`https://github.com/${repo}.git`, path.join(cacheRoot, 'packages'));
+  if (!c.ok) return { ok: false, error: c.error };
+  // Oldest first (by when they were committed; the check below makes sure).
+  const order = await git(['rev-list', '--no-walk=sorted', ...picked], { cwd: c.dir });
+  if (!order.ok) return { ok: false, error: order.error };
+  const sorted = order.out.split('\n').filter(Boolean).reverse();
+  const oldest = sorted[0];
+  const newest = sorted[sorted.length - 1];
+  let together = sorted.length === 1;
+  if (!together) {
+    const between = await git(['rev-list', `${oldest}^..${newest}`], { cwd: c.dir });
+    const list = between.ok ? between.out.split('\n').filter(Boolean) : [];
+    together = list.length === sorted.length && list.every(s => sorted.includes(s));
+  }
+  const runs = together ? [[oldest, newest]] : sorted.map(s => [s, s]);
+  const parts = [];
+  let metaCount = 0;
+  const tooBig = [];
+  for (const [from, to] of runs) {
+    const d = await git(['diff', '--no-color', '--no-ext-diff', '-M', `${from}^`, to], { cwd: c.dir, timeout: 600000 });
+    if (!d.ok) return { ok: false, error: d.error };
+    const kept = [];
+    for (const block of d.out.split(/(?=^diff --git )/m)) {
+      if (!block.startsWith('diff --git ')) continue;
+      const rel = /^diff --git a\/\S+ b\/(\S+)/.exec(block)?.[1] || '';
+      if (/\.meta$/i.test(rel)) { metaCount++; continue; }
+      if (block.length > BIG) { tooBig.push(rel); continue; }
+      kept.push(block);
+    }
+    parts.push({ ids: together ? sorted : [from], diff: kept.join('') });
+  }
+  return { ok: true, parts, notes: require('./svnbranches').diffNotes(metaCount, tooBig) };
+}
+
+module.exports = { listGithub, githubDiff, commitsDiff };

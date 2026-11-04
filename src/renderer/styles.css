@@ -2129,6 +2129,16 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .branch-commit-rev { flex-shrink: 0; font-family: var(--mono); color: var(--text-faint); }
 .branch-commit-msg { flex: 1; min-width: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .branch-commit-meta { flex-shrink: 0; color: var(--text-faint); }
+.branch-commit.pickable { cursor: pointer; user-select: none; align-items: center; }
+.branch-commit.pickable:hover .branch-commit-msg { color: var(--accent); }
+.branch-commit-pick { flex-shrink: 0; margin: 0; accent-color: var(--accent); }
+/* Under the commit list: show only the picked commits' changes. */
+.branch-commits-wrap { display: flex; flex-direction: column; gap: 6px; }
+.branch-pick-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; }
+.branch-pick-count { color: var(--text-dim); margin-right: 4px; }
+.branch-pick-bar button { font-size: 12px; padding: 3px 10px; }
+.branch-diff, .branch-part { display: flex; flex-direction: column; gap: 10px; }
+.branch-part + .branch-part { margin-top: 8px; }
 
 /* The Branches view's domains: click one (or more) to see only those. */
 .branch-domains { display: flex; flex-wrap: wrap; gap: 6px; }

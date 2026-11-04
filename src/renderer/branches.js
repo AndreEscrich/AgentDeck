@@ -399,66 +399,170 @@ class BranchesView {
       return;
     }
     for (const n of r.notes || []) box.appendChild(el('div', 'branch-note', n));
-    // The branch's own commits (merges from trunk left out), newest first.
-    if (r.commits?.length) {
-      const list = document.createElement('details');
-      list.className = 'branch-commits';
-      list.appendChild(el('summary', null, `${r.commits.length} commit${r.commits.length === 1 ? '' : 's'} of its own`));
-      for (const c of r.commits) {
-        const row = el('div', 'branch-commit');
-        row.append(
-          el('span', 'branch-commit-rev', commitId(c)),
-          el('span', 'branch-commit-msg', c.message.split('\n')[0] || '(no message)'),
-          el('span', 'branch-commit-meta', [c.author, c.date ? timeAgo(Date.parse(c.date)) : '', `${c.files} file${c.files === 1 ? '' : 's'}`].filter(Boolean).join(' · ')),
-        );
-        row.title = c.message;
-        list.appendChild(row);
-      }
-      box.appendChild(list);
-    }
-    const all = parseUnifiedDiff(r.diff || '');
-    // Unity's .meta files change with every new or moved asset: hidden, counted.
-    const meta = all.filter(f => /\.meta$/i.test(f.path));
-    const files = all.filter(f => !/\.meta$/i.test(f.path));
-    if (!files.length) {
-      box.appendChild(el('div', 'note', meta.length ? `Only .meta files changed (${meta.length}).` : 'No differences.'));
-      return;
-    }
-    // The domains it changed: click one (or several) to see only those.
-    const domains = new Map();
-    for (const f of files) {
-      const d = domainOf(f.path);
-      domains.set(d, (domains.get(d) || 0) + 1);
-    }
-    const picked = new Set();
-    const chips = el('div', 'branch-domains');
-    const slot = el('div', 'branch-card');
-    const draw = () => {
-      chips.replaceChildren();
-      const all = el('button', 'branch-domain' + (picked.size ? '' : ' on'), `All · ${files.length}`);
-      all.type = 'button';
-      all.onclick = () => { picked.clear(); window.uiSound?.('select'); draw(); };
-      chips.appendChild(all);
-      for (const [d, n] of [...domains].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))) {
-        const chip = el('button', 'branch-domain' + (picked.has(d) ? ' on' : ''), `${d} · ${n}`);
-        chip.type = 'button';
-        chip.title = 'Show only this domain; click more to add them';
-        chip.onclick = () => { if (picked.has(d)) picked.delete(d); else picked.add(d); window.uiSound?.('select'); draw(); };
-        chips.appendChild(chip);
-      }
-      const shown = picked.size ? files.filter(f => picked.has(domainOf(f.path))) : files;
-      const title = picked.size ? `${r.title} · ${[...picked].join(', ')}` : r.title;
-      const notes = [];
-      if (shown.length > BRANCH_FILE_LIMIT) notes.push(`${shown.length - BRANCH_FILE_LIMIT} more files not shown: pick a domain`);
-      if (meta.length) notes.push(`${meta.length} .meta file${meta.length === 1 ? '' : 's'} hidden`);
-      // Comments on its lines go to the review peer (there is no agent here).
-      slot.replaceChildren(changesCard(shown.slice(0, BRANCH_FILE_LIMIT), r.cwd, { title, peer: true }));
-      if (notes.length) slot.appendChild(el('div', 'note', notes.join(' · ')));
-    };
-    if (domains.size > 1) box.appendChild(chips);
-    box.appendChild(slot);
-    draw();
+    // Where the diff goes: the whole branch's, or only the picked commits'.
+    const view = el('div', 'branch-diff');
+    // The branch's own commits (merges from trunk left out), newest first,
+    // each with a box: pick some to see only what they changed.
+    if (r.commits?.length) box.appendChild(this.commitPicker(b, key, r, view));
+    box.appendChild(view);
+    showDiff(view, r.diff || '', r.title, r.cwd);
   }
+
+  // The list of the branch's own commits, with a box on each, and a bar that
+  // shows what only the picked ones changed (or the whole branch again).
+  commitPicker(b, key, r, view) {
+    const byId = new Map(r.commits.map(c => [String(c.sha || c.revision), c]));
+    const picked = new Set();
+    let showing = '';   // the picked commits on screen ('' : the whole branch)
+    const list = document.createElement('details');
+    list.className = 'branch-commits';
+    const summary = el('summary', null, `${r.commits.length} commit${r.commits.length === 1 ? '' : 's'} of its own`);
+    list.appendChild(summary);
+    const bar = el('div', 'branch-pick-bar');
+    const count = el('span', 'branch-pick-count');
+    const show = el('button', 'primary', 'Show only these');
+    const whole = el('button', null, 'Show the whole branch');
+    const clear = el('button', null, 'Clear');
+    for (const x of [show, whole, clear]) x.type = 'button';
+    bar.append(count, show, whole, clear);
+    const boxes = [];
+    let lastClicked = -1;
+    const paint = () => {
+      const now = [...picked].sort().join(',');
+      count.textContent = picked.size
+        ? `${picked.size} picked${now === showing ? ' · shown below' : ''}`
+        : (showing ? 'Showing the picked commits below' : 'Tick commits to see only what they changed (shift-click picks a range)');
+      show.classList.toggle('hidden', !picked.size || now === showing);
+      whole.classList.toggle('hidden', !showing);
+      clear.classList.toggle('hidden', !picked.size);
+    };
+    r.commits.forEach((c, i) => {
+      const id = String(c.sha || c.revision);
+      const row = el('label', 'branch-commit pickable');
+      const tick = document.createElement('input');
+      tick.type = 'checkbox';
+      tick.className = 'branch-commit-pick';
+      boxes.push(tick);
+      tick.onclick = e => {
+        // Shift-click: every commit between this one and the one clicked before.
+        if (e.shiftKey && lastClicked >= 0 && lastClicked !== i) {
+          const [lo, hi] = [Math.min(lastClicked, i), Math.max(lastClicked, i)];
+          for (let j = lo; j <= hi; j++) {
+            boxes[j].checked = tick.checked;
+            const other = String(r.commits[j].sha || r.commits[j].revision);
+            if (tick.checked) picked.add(other); else picked.delete(other);
+          }
+        }
+        if (tick.checked) picked.add(id); else picked.delete(id);
+        lastClicked = i;
+        paint();
+      };
+      row.append(
+        tick,
+        el('span', 'branch-commit-rev', commitId(c)),
+        el('span', 'branch-commit-msg', c.message.split('\n')[0] || '(no message)'),
+        el('span', 'branch-commit-meta', [c.author, c.date ? timeAgo(Date.parse(c.date)) : '', `${c.files} file${c.files === 1 ? '' : 's'}`].filter(Boolean).join(' · ')),
+      );
+      row.title = c.message;
+      list.appendChild(row);
+    });
+    show.onclick = async () => {
+      window.uiSound?.('select');
+      const ids = [...picked];
+      const wanted = ids.slice().sort().join(',');
+      showing = wanted;
+      paint();
+      const resultKey = `${key}#${wanted}`;
+      if (!this.results.has(resultKey)) {
+        const p = (b.source === 'github'
+          ? window.deck.githubCommitsDiff({ kind: b.kind, project: b.project, number: b.number, branch: b.branch }, ids)
+          : window.deck.svnRevisionsDiff(b.project, b.name, ids.map(Number))).catch(err => ({ ok: false, error: String(err?.message || err) }));
+        this.results.set(resultKey, p);
+        p.then(x => { if (!x?.ok) this.results.delete(resultKey); });
+      }
+      view.replaceChildren(el('div', 'note', `Reading what ${ids.length === 1 ? 'that commit' : `those ${ids.length} commits`} changed…`));
+      const x = await this.results.get(resultKey);
+      if (showing !== wanted || !view.isConnected) return;   // something else was asked for meanwhile
+      view.replaceChildren();
+      if (!x?.ok) { view.appendChild(el('div', 'note err', x?.error || 'Could not get the diff.')); return; }
+      const label = c => `${commitId(c)} ${c.message.split('\n')[0]}`.trim();
+      const sorted = x.parts.map(part => part.ids.map(id => byId.get(String(id))).filter(Boolean));
+      if (x.parts.length > 1) view.appendChild(el('div', 'branch-note', `Each commit is shown on its own: other commits come between them, so their changes cannot be shown as one diff.`));
+      else if (ids.length > 1) view.appendChild(el('div', 'branch-note', `No other commit comes between them, so their changes are shown together.`));
+      view.appendChild(el('div', 'branch-note', 'The full files and the class diagram are at the branch\'s latest revision.'));
+      for (const n of x.notes || []) view.appendChild(el('div', 'branch-note', n));
+      x.parts.forEach((part, i) => {
+        const cs = sorted[i];
+        const title = cs.length === 1 ? label(cs[0]) : `${commitId(cs[0])}…${commitId(cs[cs.length - 1])} · ${cs.length} commits`;
+        const slot = el('div', 'branch-part');
+        view.appendChild(slot);
+        showDiff(slot, part.diff || '', title, r.cwd);
+      });
+    };
+    whole.onclick = () => {
+      window.uiSound?.('select');
+      showing = '';
+      paint();
+      view.replaceChildren();
+      showDiff(view, r.diff || '', r.title, r.cwd);
+    };
+    clear.onclick = () => {
+      picked.clear();
+      for (const t of boxes) t.checked = false;
+      lastClicked = -1;
+      paint();
+    };
+    paint();
+    const wrap = el('div', 'branch-commits-wrap');
+    wrap.append(list, bar);
+    return wrap;
+  }
+}
+
+// A diff as a Changes card, with a chip per domain it changed: click one (or
+// several) to see only those.
+function showDiff(container, diff, title, cwd) {
+  const all = parseUnifiedDiff(diff);
+  // Unity's .meta files change with every new or moved asset: hidden, counted.
+  const meta = all.filter(f => /\.meta$/i.test(f.path));
+  const files = all.filter(f => !/\.meta$/i.test(f.path));
+  if (!files.length) {
+    container.appendChild(el('div', 'note', `${title ? `${title}: ` : ''}${meta.length ? `only .meta files changed (${meta.length}).` : 'no differences.'}`));
+    return;
+  }
+  const domains = new Map();
+  for (const f of files) {
+    const d = domainOf(f.path);
+    domains.set(d, (domains.get(d) || 0) + 1);
+  }
+  const picked = new Set();
+  const chips = el('div', 'branch-domains');
+  const slot = el('div', 'branch-card');
+  const draw = () => {
+    chips.replaceChildren();
+    const every = el('button', 'branch-domain' + (picked.size ? '' : ' on'), `All · ${files.length}`);
+    every.type = 'button';
+    every.onclick = () => { picked.clear(); window.uiSound?.('select'); draw(); };
+    chips.appendChild(every);
+    for (const [d, n] of [...domains].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))) {
+      const chip = el('button', 'branch-domain' + (picked.has(d) ? ' on' : ''), `${d} · ${n}`);
+      chip.type = 'button';
+      chip.title = 'Show only this domain; click more to add them';
+      chip.onclick = () => { if (picked.has(d)) picked.delete(d); else picked.add(d); window.uiSound?.('select'); draw(); };
+      chips.appendChild(chip);
+    }
+    const shown = picked.size ? files.filter(f => picked.has(domainOf(f.path))) : files;
+    const shownTitle = picked.size ? `${title} · ${[...picked].join(', ')}` : title;
+    const notes = [];
+    if (shown.length > BRANCH_FILE_LIMIT) notes.push(`${shown.length - BRANCH_FILE_LIMIT} more files not shown: pick a domain`);
+    if (meta.length) notes.push(`${meta.length} .meta file${meta.length === 1 ? '' : 's'} hidden`);
+    // Comments on its lines go to the review peer (there is no agent here).
+    slot.replaceChildren(changesCard(shown.slice(0, BRANCH_FILE_LIMIT), cwd, { title: shownTitle, peer: true }));
+    if (notes.length) slot.appendChild(el('div', 'note', notes.join(' · ')));
+  };
+  if (domains.size > 1) container.appendChild(chips);
+  container.appendChild(slot);
+  draw();
 }
 
 window.BranchesView = BranchesView;
