@@ -88,7 +88,8 @@ let win;
 let configPath;
 let groupsPath;
 
-// Your session groups: { groups: [{ id, name, collapsed }], assignments: { sessionId: groupId } }.
+// Your session groups: { groups: [{ id, name, collapsed }], assignments: { sessionId: groupId },
+// defaults: { "<folder>\n<branch>": groupId } } (a folder's default category, see folderDefault in app.js).
 function readGroups() {
   try {
     return JSON.parse(fs.readFileSync(groupsPath, 'utf8'));

@@ -267,8 +267,16 @@ function renderDraftButtons() {
     + (autoGame ? `\nAuto game folder: a message about one game in ${homePath(state.config.gamesFolder)} works in that game's folder instead` : '');
   folder.classList.toggle('danger-text', !d.folder);
   const group = state.groups.groups.find(g => g.id === d.groupId);
-  $('composer-group').textContent = (group ? '# ' + group.name : '# No category') + ' ▾';
-  $('composer-group').title = 'The category the new agent goes into. Category and folder together make its Group.';
+  const groupButton = $('composer-group');
+  groupButton.textContent = (group ? '# ' + group.name : '# No category') + ' ▾';
+  groupButton.title = 'The category the new agent goes into. Category and folder together make its Group.';
+  // A pin when the category is the folder's default (see folderDefault).
+  if (group && d.categoryFrom === 'default') {
+    const pin = el('span', 'default-pin');
+    pin.innerHTML = PIN_ICON;
+    groupButton.prepend(pin, ' ');
+    groupButton.title += `\nThe default category of ${shortPath(d.folder)}${branch ? ` on ${branch.name}` : ''}: picking the folder picks it too.`;
+  }
   // Outline the Hub panel this message box points at. (At startup the Hub
   // does not exist yet; it picks the outline up on its first update.)
   try {
@@ -309,11 +317,12 @@ function chooseFolder() {
   };
   const outside = e => { if (!panel.contains(e.target) && e.target !== $('composer-folder')) close(); };
   const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
-  // A folder picked here starts with no category (a category belongs to the
-  // panel you were on, not to the new folder); pick one after, if you want.
+  // A folder picked here starts with its default category, or with none (a
+  // category belongs to the panel you were on, not to the new folder); pick
+  // one after, if you want.
   const pick = folder => {
     d.folder = folder;
-    d.groupId = null;
+    applyFolderDefault(d);
     setFolderHidden(folder, false);
     close();
     renderDraftButtons();
@@ -337,6 +346,15 @@ function chooseFolder() {
       // The branch its repository is on, like on the folder button.
       const branch = repoBranch(f);
       row.append(el('span', 'folder-name', homePath(f)));
+      // The folder's default category, which picking the folder picks too.
+      const defaultGroup = findGroup(folderDefault(f));
+      if (defaultGroup) {
+        const chip = el('span', 'composer-branch folder-default');
+        chip.innerHTML = PIN_ICON;
+        chip.appendChild(document.createTextNode('# ' + defaultGroup.name));
+        chip.title = `Default category: ${defaultGroup.name}`;
+        row.appendChild(chip);
+      }
       if (branch) {
         const tag = el('span', 'composer-branch folder-branch');
         tag.innerHTML = BRANCH_ICON;
@@ -388,19 +406,52 @@ function chooseGroup() {
   const outside = e => { if (!panel.contains(e.target) && e.target !== $('composer-group')) close(); };
   const pick = groupId => {
     d.groupId = groupId;
+    d.categoryFrom = undefined;
     close();
     renderDraftButtons();
     $('input').focus();
+  };
+  // The pin on a category makes it the default of the draft's folder on its
+  // current branch (see folderDefault), and picks it. The pin of the default
+  // category removes the default.
+  const canPin = folderDefaultKey(d.folder) !== undefined;
+  const branch = canPin ? repoBranch(d.folder) : null;
+  const where = canPin ? `${shortPath(d.folder)}${branch ? ` on ${branch.name}` : ''}` : '';
+  const pinButton = (g, isDefault) => {
+    const pin = el('button', 'group-pin' + (isDefault ? ' on' : ''));
+    pin.innerHTML = PIN_ICON;
+    pin.title = isDefault
+      ? `The default category of ${where}. Click to remove the default.`
+      : `Make this the default category of ${where}: picking the folder picks it too`;
+    pin.onclick = e => {
+      e.stopPropagation();
+      if (isDefault) {
+        sfx('detach');
+        setFolderDefault(d.folder, null);
+        if (d.groupId === g.id) d.categoryFrom = undefined;
+        renderDraftButtons();
+        render();
+        return;
+      }
+      sfx('select');
+      setFolderDefault(d.folder, g.id);
+      pick(g.id);
+      d.categoryFrom = 'default';
+      renderDraftButtons();
+    };
+    return pin;
   };
 
   function render() {
     const q = input.value.trim().toLowerCase();
     list.innerHTML = '';
+    const defaultId = canPin ? folderDefault(d.folder) : null;
     // Only groups that agents in the Hub use, plus the group picked right
-    // now. A group without agents disappears from the list.
+    // now and the folder's default. A group without agents disappears from
+    // the list.
     const exactMatch = state.groups.groups.find(g => g.name.toLowerCase() === q);
     const groups = state.groups.groups
-      .filter(g => inUse.get(g.id) || g.id === d.groupId || g === exactMatch)
+      .filter(g => inUse.get(g.id) || g.id === d.groupId || g.id === defaultId || g === exactMatch)
       .filter(g => !q || g.name.toLowerCase().includes(q))
       .sort((a, b) => (inUse.get(b.id) || 0) - (inUse.get(a.id) || 0));
     if (q && !exactMatch) {
@@ -417,7 +468,8 @@ function chooseGroup() {
     for (const g of groups) {
       const n = inUse.get(g.id) || 0;
       const row = el('div', 'group-panel-item' + (g.id === d.groupId ? ' selected' : ''));
-      row.append(el('span', null, '# ' + g.name), el('span', 'group-panel-count', n ? `${n} agent${n === 1 ? '' : 's'}` : ''));
+      row.append(el('span', 'group-panel-name', '# ' + g.name), el('span', 'group-panel-count', n ? `${n} agent${n === 1 ? '' : 's'}` : ''));
+      if (canPin) row.appendChild(pinButton(g, g.id === defaultId));
       row.onclick = () => { sfx('select'); pick(g.id); };
       list.appendChild(row);
     }
@@ -437,6 +489,58 @@ function chooseGroup() {
   setTimeout(() => document.addEventListener('mousedown', outside, true));
   render();
   input.focus();
+}
+
+// ---------- the default category of a folder ----------
+
+// A folder on a branch can have a default category: picking the folder in the
+// folder menu picks that category too, so the next agent there does not start
+// without one. You set it with the pin in the Category panel. groups.json
+// keeps them as defaults: { "<folder>\n<branch>": groupId }. The key has the
+// branch because you reuse a working copy for another task after you switch
+// its branch, and on the new branch the folder has no default until you pin one.
+//
+// d.categoryFrom === 'default' marks a draft whose category came from its
+// folder's default (or is still waiting for the folder's branch to look it
+// up); a category you pick yourself clears it.
+const PIN_ICON = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5-1.5l1.5-4l4-4"/><path d="M9 15l-4.5 4.5"/><path d="M14.5 4l5.5 5.5"/></svg>';
+
+// The key of a folder's default, or undefined while the folder's branch is
+// not known yet (repoBranch asks for it and answers later).
+function folderDefaultKey(folder) {
+  if (!folder) return undefined;
+  const branch = repoBranch(folder);
+  if (!(repoBranches.get(folder)?.at > 0)) return undefined;
+  return `${folder}\n${branch?.name || ''}`;
+}
+
+function folderDefault(folder) {
+  const key = folderDefaultKey(folder);
+  return key === undefined ? null : findGroup(state.groups.defaults?.[key])?.id || null;
+}
+
+function setFolderDefault(folder, groupId) {
+  const key = folderDefaultKey(folder);
+  if (key === undefined) return;
+  state.groups.defaults = { ...state.groups.defaults };
+  if (groupId) state.groups.defaults[key] = groupId;
+  else delete state.groups.defaults[key];
+  saveGroups();
+}
+
+function applyFolderDefault(d) {
+  d.groupId = folderDefault(d.folder);
+  d.categoryFrom = 'default';
+}
+
+// The folder's branch arrived (or changed): a draft that takes its category
+// from that folder's default looks it up again.
+function reapplyFolderDefault(folder) {
+  const d = state.draft;
+  if (!d || d.folder !== folder || d.categoryFrom !== 'default') return;
+  const before = d.groupId;
+  applyFolderDefault(d);
+  if (d.groupId !== before) renderDraftButtons();
 }
 
 $('composer-folder').onclick = chooseFolder;
@@ -921,6 +1025,7 @@ const hub = new Hub($('hub-view'), {
     const d = ensureDraft();
     d.folder = folder;
     d.groupId = categoryId;
+    d.categoryFrom = undefined;
     setFolderHidden(folder, false);
     renderDraftButtons();
     $('input').focus();
@@ -1019,6 +1124,7 @@ function paletteItems() {
       show('hub');
       const d = ensureDraft();
       d.groupId = g.id;
+      d.categoryFrom = undefined;
       const last = hubItems().filter(i => i.groupId === g.id).sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0))[0];
       if (last?.cwd) { d.folder = last.cwd; setFolderHidden(last.cwd, false); }
       renderDraftButtons();
@@ -1659,7 +1765,8 @@ function repoBranch(cwd) {
         renderDraftButtons();
         state.folderPanelRender?.();
       }
-    }).catch(() => { known.asking = false; known.at = Date.now(); });
+    }).catch(() => { known.asking = false; known.at = Date.now(); })
+      .finally(() => reapplyFolderDefault(cwd));
   }
   return known.branch;
 }
@@ -2064,6 +2171,10 @@ function deleteGroup(groupId) {
   const listed = [...state.agentList.values()].filter(e => e.groupId === groupId).map(e => e.sessionId);
   rememberAgents([...new Set([...left, ...listed])].map(sessionId => ({ sessionId, groupId: null, groupName: null })));
   if (state.groups.lastGroupId === groupId) delete state.groups.lastGroupId;
+  // Folders that had it as their default have none now.
+  for (const [key, gid] of Object.entries(state.groups.defaults || {})) {
+    if (gid === groupId) delete state.groups.defaults[key];
+  }
   saveGroups();
   renderSidebar();
 }
@@ -2544,6 +2655,7 @@ function moveGroupTo(ids, from, groupId, folder) {
   const d = ensureDraft();
   if (d.folder && from && d.folder.toLowerCase() === from.toLowerCase() && (d.groupId || null) === (groupId || null)) {
     d.folder = folder;
+    d.categoryFrom = undefined;
     renderDraftButtons();
   }
   refreshHub();
