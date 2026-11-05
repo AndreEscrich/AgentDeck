@@ -105,6 +105,13 @@ function stripGroupNotes(text) {
   return String(text).replace(/^(\s*<(group-notes|handoff)\b[^>]*>[\s\S]*?<\/\2>)+\s*/, '');
 }
 
+// An Excel file's sheets that went with your message (see sheetNote in
+// attachments.js) are for the agent: the chat shows the line that names the
+// file, not the data.
+function stripAttachedData(text) {
+  return String(text).replace(/\n?<spreadsheet\b[^>]*>[\s\S]*?<\/spreadsheet>/g, '');
+}
+
 // An attached image at full size; Esc or a click closes it.
 function openImageOverlay(src) {
   const box = el('div', 'lightbox');
@@ -1656,7 +1663,7 @@ class Transcript {
     const texts = (synthetic ? []
       : typeof content === 'string' ? [content]
       : content.filter(b => b.type === 'text').map(b => b.text))
-      .map(stripGroupNotes).filter(t => t.trim());
+      .map(t => stripAttachedData(stripGroupNotes(t))).filter(t => t.trim());
     if (texts.length) {
       // Your message starts a new turn.
       this.finishTurn();

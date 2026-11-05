@@ -1772,6 +1772,10 @@ details.other-files details.change-file > summary { padding-left: 12px; }
 .attach-chip.loading::after { content: ""; position: absolute; inset: 22px; border-radius: 50%; border: 2px solid var(--text-dim); border-right-color: transparent;
   animation: spin 0.8s linear infinite; }
 .attach-chip.error { border-color: var(--err); }
+/* An Excel file: a green sheet with its name. */
+.attach-chip.sheet { background: #1d6f42 linear-gradient(rgba(255, 255, 255, 0.14) 1px, transparent 1px) 0 0 / 100% 12px; }
+.attach-sheet-name { position: absolute; left: 5px; right: 5px; top: 6px; font-size: 10px; font-weight: 600; line-height: 1.25; color: #fff;
+  overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .attach-badge { position: absolute; left: 4px; bottom: 4px; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 4px;
   background: rgba(0, 0, 0, 0.7); color: #fff; }
 .attach-remove { position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; padding: 0; border-radius: 50%; border: none;
@@ -1779,7 +1783,7 @@ details.other-files details.change-file > summary { padding-left: 12px; }
 .attach-chip:hover .attach-remove { opacity: 1; }
 /* While you drag files over the window: the box shows where they go. */
 .composer-box.drag-over { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.25); }
-.composer-box.drag-over::after { content: "Drop images, videos or sounds for the agent"; position: absolute; inset: 0; z-index: 3;
+.composer-box.drag-over::after { content: "Drop images, videos, sounds or Excel files for the agent"; position: absolute; inset: 0; z-index: 3;
   display: flex; align-items: center; justify-content: center; border-radius: inherit; font-size: 14px; font-weight: 600;
   color: var(--text); background: rgba(30, 24, 18, 0.88); border: 2px dashed var(--accent); pointer-events: none; }
 .composer-flash { position: absolute; left: 12px; right: 12px; bottom: calc(100% + 8px); padding: 7px 10px; border-radius: 8px; font-size: 12.5px;

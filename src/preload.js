@@ -131,6 +131,7 @@ contextBridge.exposeInMainWorld('deck', {
   sendMessage: (id, text, images) => ipcRenderer.invoke('agent:send', id, text, images),
   // Where a dropped file is on disk (Electron no longer puts it on the File).
   photoshopPicture: (file, maxSide) => ipcRenderer.invoke('media:photoshop', file, maxSide),
+  readSpreadsheet: file => ipcRenderer.invoke('media:spreadsheet', file),
   pathForFile: file => { try { return webUtils.getPathForFile(file) || null; } catch { return null; } },
   setModel: (id, choice) => ipcRenderer.invoke('agent:setModel', id, choice),
   listModels: () => ipcRenderer.invoke('models:list'),

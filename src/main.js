@@ -348,6 +348,8 @@ app.whenReady().then(() => {
     const p = require('./photoshop').preview(file, Math.min(Number(maxSide) || 2048, 4096));
     return p && { type: p.type, data: p.data.toString('base64'), width: p.width, height: p.height };
   });
+  // An Excel file you attach: its sheets as CSV text (see spreadsheet.js).
+  ipcMain.handle('media:spreadsheet', (_e, file) => require('./spreadsheet').read(file));
   ipcMain.handle('media:find', (_e, cwd, name) => media.findMedia(cwd, name).catch(() => null));
   ipcMain.handle('media:before', (_e, cwd, file, snap) => media.mediaBefore(cwd, file, snap, path.join(app.getPath('userData'), 'media-before')).catch(() => null));
   ipcMain.handle('jira:issue', (_e, key) => jira.issue(key));

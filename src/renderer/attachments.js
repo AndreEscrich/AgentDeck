@@ -9,7 +9,9 @@
 // the waveform. Photoshop files (psd, psb) go as their flattened image, made
 // by the app (src/photoshop.js), and by their path even without one. The
 // message also names each file's path, so the agent can work with the file
-// itself.
+// itself. Excel files (xlsx, xlsm) go as their sheets in CSV text, read by
+// the app (src/spreadsheet.js), between <spreadsheet> tags that the chat
+// does not show (see stripAttachedData in render.js).
 //
 // Each view (the Hub, every agent, every saved session) has its own list,
 // like the text in the message box.
@@ -21,6 +23,9 @@ const IMAGE_FILE = /\.(png|jpe?g|gif|webp|bmp|heic|tiff?|tga|psd|psb)$/i;
 // from the app's preview of the file (src/photoshop.js).
 const PHOTOSHOP_FILE = /\.(psd|psb)$/i;
 const VIDEO_FILE = /\.(mp4|mov|m4v|webm|avi|mkv)$/i;
+const SHEET_FILE = /\.(xlsx|xlsm)$/i;
+// How much of an Excel file's text goes with the message (about 15,000 tokens).
+const SHEET_LIMIT = 60000;
 const AUDIO_FILE = /\.(wav|mp3|ogg|oga|flac|m4a|aac|aiff?|opus)$/i;
 // Larger sound files are attached without reading them (no waveform or length).
 const AUDIO_READ_LIMIT = 200 * 1024 * 1024;
@@ -29,6 +34,7 @@ function kindOfFile(file) {
   if (file.type.startsWith('image/') || IMAGE_FILE.test(file.name)) return 'image';
   if (file.type.startsWith('video/') || VIDEO_FILE.test(file.name)) return 'video';
   if (file.type.startsWith('audio/') || AUDIO_FILE.test(file.name)) return 'audio';
+  if (SHEET_FILE.test(file.name)) return 'sheet';
   return null;
 }
 
@@ -128,6 +134,27 @@ async function readAudio(file) {
   return { images: [], thumb: canvas.toDataURL('image/png'), duration: buffer.duration, sampleRate: buffer.sampleRate, channels: buffer.numberOfChannels };
 }
 
+// An Excel file: its sheets, read by the app from the file on disk.
+async function readSheet(file, filePath) {
+  if (!filePath) throw new Error('Excel files can only be attached from a folder, not pasted.');
+  const r = await window.deck.readSpreadsheet(filePath);
+  if (!r?.ok) throw new Error(r?.error || 'Could not read this file.');
+  return { images: [], sheets: r.sheets };
+}
+
+// What the agent gets for an Excel file: its path, then each sheet as CSV.
+function sheetNote(a) {
+  const head = `Attached Excel file: ${a.path}`;
+  if (a.error || !a.sheets) return `${head} (the app could not read it: ${a.error || 'unknown error'}; work with the file itself)`;
+  const parts = a.sheets.map(s => {
+    const size = `${s.rows} row${s.rows === 1 ? '' : 's'} × ${s.cols} column${s.cols === 1 ? '' : 's'}`;
+    const cut = s.shown < s.rows ? `; only the first ${s.shown} rows fit here, read the file for the rest` : '';
+    return `Sheet "${s.name}"${s.hidden ? ' (hidden)' : ''} (${size}${cut}):\n${s.csv}`;
+  });
+  return `${head} (${a.sheets.length} sheet${a.sheets.length === 1 ? '' : 's'}). The app read it as CSV: values as Excel last saved them (formula results, not formulas), dates as YYYY-MM-DD.\n`
+    + `<spreadsheet file="${a.name.replace(/"/g, "'")}">\n${parts.join('\n\n')}\n</spreadsheet>`;
+}
+
 function channelsText(n) {
   return n === 1 ? 'mono' : n === 2 ? 'stereo' : `${n} channels`;
 }
@@ -147,7 +174,7 @@ class Attachments {
   }
 
   // Adds dropped or pasted files to the current view. Files that are not an
-  // image, a video or a sound are skipped (and named in the returned list).
+  // image, a video, a sound or an Excel file are skipped (and named in the returned list).
   add(files) {
     const key = this.key();
     const list = this.lists.get(key) || [];
@@ -155,8 +182,8 @@ class Attachments {
     for (const file of files) {
       const kind = kindOfFile(file);
       if (!kind) { skipped.push(file.name); continue; }
-      const item = { id: this.nextId++, kind, name: file.name || ({ image: 'Pasted image', video: 'Video', audio: 'Sound' })[kind], path: window.deck.pathForFile?.(file) || null, images: [], thumb: null, ready: null };
-      item.ready = ({ image: readImage, video: readVideo, audio: readAudio })[kind](file, item.path)
+      const item = { id: this.nextId++, kind, name: file.name || ({ image: 'Pasted image', video: 'Video', audio: 'Sound', sheet: 'Spreadsheet' })[kind], path: window.deck.pathForFile?.(file) || null, images: [], thumb: null, ready: null };
+      item.ready = ({ image: readImage, video: readVideo, audio: readAudio, sheet: readSheet })[kind](file, item.path)
         .then(r => Object.assign(item, r, { done: true }))
         .catch(err => { item.error = err?.message || 'Could not read this file.'; })
         .finally(() => this.render());
@@ -196,6 +223,10 @@ class Attachments {
         images.push(...a.images.map(({ mediaType, data }) => ({ mediaType, data })));
         continue;
       }
+      if (a.kind === 'sheet') {
+        if (a.path) lines.push(sheetNote(a));
+        continue;
+      }
       if (a.error || (a.kind !== 'audio' && !a.images.length)) continue;
       if (a.kind === 'image') {
         lines.push(`Attached image: ${a.path || a.name}`);
@@ -215,7 +246,7 @@ class Attachments {
     this.row.textContent = '';
     this.row.classList.toggle('hidden', !list.length);
     for (const a of list) {
-      const reading = !a.thumb && !a.error && !(a.kind === 'audio' && a.done);
+      const reading = !a.thumb && !a.error && !((a.kind === 'audio' || a.kind === 'sheet') && a.done);
       const chip = el('div', `attach-chip ${a.kind}` + (a.error ? ' error' : '') + (reading ? ' loading' : ''));
       chip.title = a.error ? `${a.name}: ${a.error}` : a.path || a.name;
       if (a.thumb) {
@@ -226,6 +257,14 @@ class Attachments {
       }
       if (a.kind === 'video') chip.appendChild(el('span', 'attach-badge', a.duration ? `▶ ${formatClock(a.duration)}` : '▶'));
       if (a.kind === 'audio') chip.appendChild(el('span', 'attach-badge', a.duration ? `♪ ${formatClock(a.duration)}` : '♪'));
+      if (a.kind === 'sheet') {
+        // A small sheet: the file's name over a grid, and how many sheets.
+        chip.appendChild(el('span', 'attach-sheet-name', a.name.replace(/\.(xlsx|xlsm)$/i, '')));
+        if (a.sheets) {
+          chip.appendChild(el('span', 'attach-badge', `${a.sheets.length} sheet${a.sheets.length === 1 ? '' : 's'}`));
+          chip.title = `${a.path}\n${a.sheets.map(s => `${s.name}: ${s.rows} rows × ${s.cols} columns${s.shown < s.rows ? ` (first ${s.shown} rows go with the message)` : ''}`).join('\n')}`;
+        }
+      }
       if (a.error) chip.appendChild(el('span', 'attach-badge', '!'));
       const remove = el('button', 'attach-remove', '✕');
       remove.type = 'button';
