@@ -2457,6 +2457,19 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .folder-row .folder-branch { margin-left: auto; max-width: 50%; }
 .folder-row .folder-name + .folder-remove { margin-left: auto; }
 
+/* A folder's default category (see folderDefault in app.js): a chip before
+   the branch in the folder menu, a pin on the category button, and a pin on
+   each row of the Category panel that sets or removes the default. */
+.folder-row .folder-default { margin-left: auto; flex-shrink: 1; min-width: 0; max-width: 35%; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.folder-row .folder-default + .folder-branch { margin-left: 6px; }
+.default-pin { display: inline-flex; vertical-align: -1px; color: var(--accent); }
+.group-panel-item { align-items: center; }
+.group-panel-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-pin { flex-shrink: 0; display: inline-flex; align-items: center; border: none; background: none; padding: 0 2px; color: var(--text-faint); opacity: 0; }
+.group-pin svg { width: 13px; height: 13px; }
+.group-panel-item:hover .group-pin, .group-pin.on { opacity: 1; }
+.group-pin.on, .group-pin:hover { color: var(--accent); background: none; }
+
 /* A category panel dragged over another repository: that container lights up. */
 .hub-repo.drop-target { border-color: var(--accent) !important; box-shadow: 0 0 0 2px var(--accent), 0 14px 30px -14px rgba(0, 0, 0, 0.95) !important; }
 .hub-repo.drop-target .hub-repo-head::after { content: "Drop to move the group here"; margin-left: auto; font-size: 12px; color: var(--accent); }
