@@ -5,11 +5,23 @@
 // agents are there. The data comes from Claude Code's session files
 // (src/activity.js), each API answer counted once.
 
-// Categories in the charts, in this fixed order (the dark steps of the
-// default categorical palette, checked with the dataviz validator against the
-// panel: CVD separation, lightness band, 3:1 contrast). More than five fold
-// into "Other", a neutral grey.
-const CATEGORY_COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181'];
+// Categories in the charts, in this fixed order. The first eight are the dark
+// steps of the default categorical palette (checked with the dataviz
+// validator against the panel). I picked the other 22 by computer, one at a
+// time: each one is the colour, inside the same lightness band and with at
+// least 3:1 contrast on the panel, that is furthest (in OKLab) from every
+// colour before it and from the two greys below. So the further down the
+// list, the more a colour looks like an earlier one: about the first 16 are
+// easy to tell apart, and some of the last ones are close to an earlier
+// colour of the same hue. The tooltip and the legend name every category, so
+// you can still tell those apart. More than 30 categories fold into "Other",
+// a neutral grey.
+const CATEGORY_COLORS = [
+  '#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767',
+  '#904aaa', '#5d54dc', '#36a0b8', '#8870b2', '#ca2352', '#b4398b', '#4269be', '#bc77a0',
+  '#d13116', '#a269d1', '#6b74fd', '#b06a4c', '#ab619a', '#b54d72', '#7190ce', '#845a94',
+  '#4d6fe3', '#70a240', '#3c83c2', '#259b93', '#b44e32', '#ce6f83',
+];
 const OTHER_COLOR = '#6f6a62';
 // Agents without a category: always a neutral light brown (deliberately low
 // in colour, like "Other"; the 2px gaps and the legend keep it apart from
@@ -112,7 +124,7 @@ class ActivityPanel {
       || (s.fromHub ? { key: 'none', name: 'No category' } : { key: 'outside', name: 'Outside Agent Hub' });
   }
 
-  // Colors follow the category, not its place in the chosen range: the five
+  // Colors follow the category, not its place in the chosen range: the 30
   // categories with the most tokens overall keep their color, the rest are
   // "Other" (grey).
   categoryColors() {
