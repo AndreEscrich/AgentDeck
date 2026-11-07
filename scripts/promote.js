@@ -10,6 +10,7 @@
 // Afterwards, quit and reopen Agent Hub to use the new version.
 
 const { execFileSync, spawnSync } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 
 const DEV = path.resolve(__dirname, '..');
@@ -37,6 +38,41 @@ for (const line of git(DEV, 'worktree', 'list', '--porcelain').split(/\r?\n/)) {
 }
 if (!stable) fail('No folder has the master branch checked out.');
 
+// The packages in package-lock.json, without the app's own version number,
+// which changes with every release.
+const packagesAt = rev => {
+  try {
+    const lock = JSON.parse(git(stable, 'show', `${rev}:package-lock.json`));
+    const packages = { ...lock.packages };
+    if (packages['']) packages[''] = { ...packages[''], version: undefined };
+    return packages;
+  } catch {
+    return null;
+  }
+};
+
+// Checked before anything changes, so the same command can run again once
+// the cause is gone.
+try {
+  execFileSync('git', ['-C', DEV, 'merge-base', '--is-ancestor', 'master', 'dev']);
+} catch {
+  fail('master has commits that dev does not (a pull request merged on GitHub?). Merge master into dev first: git merge master');
+}
+// npm ci deletes node_modules first and stops at the first file it can't
+// delete: on Windows, Electron's, while Agent Hub runs from it. The app then
+// has neither its packages nor all of Electron, and does not start again.
+if (JSON.stringify(packagesAt('HEAD')) !== JSON.stringify(packagesAt('dev'))) {
+  const exe = path.join(stable, 'node_modules', 'electron', 'dist', 'electron.exe');
+  if (process.platform === 'win32' && fs.existsSync(exe)) {
+    // A running program can be renamed but not opened for writing.
+    try {
+      fs.closeSync(fs.openSync(exe, 'r+'));
+    } catch {
+      fail('This release installs new packages in the stable copy, which Agent Hub is running from. Quit Agent Hub, then run this again.');
+    }
+  }
+}
+
 if (version) {
   npm(DEV, 'version', version, '--no-git-tag-version');
   execFileSync('git', ['-C', DEV, 'commit', '-qam', `Release v${version}`]);
@@ -54,18 +90,6 @@ if (oldHead === newHead) {
   console.log(git(stable, 'log', '--oneline', `${oldHead}..${newHead}`));
 }
 
-// The packages in package-lock.json, without the app's own version number,
-// which changes with every release.
-const packagesAt = rev => {
-  try {
-    const lock = JSON.parse(git(stable, 'show', `${rev}:package-lock.json`));
-    const packages = { ...lock.packages };
-    if (packages['']) packages[''] = { ...packages[''], version: undefined };
-    return packages;
-  } catch {
-    return null;
-  }
-};
 const before = packagesAt(oldHead);
 const after = packagesAt(newHead);
 const packagesChanged = JSON.stringify(before) !== JSON.stringify(after);
