@@ -2,7 +2,7 @@
 // Claude Code's own commands, so agents get exactly what this panel shows:
 //
 //   claude mcp list          every connector and its status
-//   claude mcp login <name>  sign in (opens the sign-in page in your browser)
+//   claude mcp login <name>  sign in (in a terminal window; it opens the sign-in page in your browser)
 //   claude mcp add …         add your own connector by URL (user scope)
 //   claude mcp remove …      remove a connector you added
 //
@@ -12,7 +12,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawnClaude, spawnCodex, killTree, childEnv } = require('./platform');
+const { spawnClaude, claudeInTerminal, spawnCodex, killTree, childEnv } = require('./platform');
 
 // Runs a `claude mcp …` command and resolves with { code, out }.
 function run(config, args, { cwd = os.homedir(), timeout = 60000 } = {}) {
@@ -82,43 +82,20 @@ function cached() {
   return lastList;
 }
 
-// Signing in waits for you to finish in the browser (up to 5 minutes).
-// cancelLogin() stops a sign-in that is still waiting.
-const logins = new Map();   // connector id -> process
-function login(config, id) {
-  return new Promise(resolve => {
-    const proc = spawnClaude(config.claudePath, ['mcp', 'login', id],
-      { cwd: os.homedir(), env: childEnv(config.env), stdio: ['ignore', 'pipe', 'pipe'] });
-    logins.set(id, proc);
-    let out = '';
-    // Without a terminal, Claude Code only prints the sign-in page's address
-    // and waits: the app opens it in your browser.
-    let opened = false;
-    const onData = d => {
-      out += d;
-      const url = !opened && /https:\/\/\S*authori[sz]e\S*/.exec(out)?.[0];
-      if (url) {
-        opened = true;
-        require('electron').shell.openExternal(url);
-      }
-    };
-    proc.stdout.on('data', onData);
-    proc.stderr.on('data', onData);
-    const timer = setTimeout(() => killTree(proc), 5 * 60 * 1000);
-    const done = code => {
-      clearTimeout(timer);
-      logins.delete(id);
-      resolve({ ok: code === 0, message: out.trim().split('\n').slice(-3).join('\n') });
-    };
-    proc.on('error', () => done(-1));
-    proc.on('close', done);
-  });
+// Signing in: claude mcp login only works in a terminal (without one it
+// stops at once, and the browser's sign-in then has nothing to come back
+// to), so it runs in a terminal window of its own. Claude Code opens the
+// sign-in page in your browser; the window closes when you are signed in
+// (on Windows the promise waits for that), and the panel then sees the
+// connector as connected.
+async function login(config, id) {
+  const started = await claudeInTerminal(config.claudePath, ['mcp', 'login', id],
+    { env: childEnv(config.env), title: `Sign in to ${id}` });
+  return started ? { ok: true } : { ok: false, message: 'Could not open a terminal window for the sign-in.' };
 }
 
-function cancelLogin(id) {
-  const proc = logins.get(id);
-  if (proc) killTree(proc);
-}
+// The sign-in's terminal window is yours to close.
+function cancelLogin() {}
 
 // Adds a connector by URL for all your folders (user scope). header is an
 // optional "Name: value" line, for connectors that take an API key.

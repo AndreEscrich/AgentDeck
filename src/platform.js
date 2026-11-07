@@ -238,4 +238,29 @@ function childEnv(extra) {
   return env;
 }
 
-module.exports = { isWin, findClaude, claudeInfo, spawnClaude, findCodex, spawnCodex, killTree, childEnv };
+// Runs claude in a terminal window of its own, for a command that only works
+// in a terminal (claude mcp login: without one it stops at once). On Windows
+// the process ends when the window closes; on macOS (Terminal) and Linux
+// right away. Resolves with false when no terminal could be started.
+function claudeInTerminal(configuredPath, args, { env, title = 'Claude Code' } = {}) {
+  const { command, prefix } = claudeCommand(findClaude(configuredPath));
+  const words = [command, ...prefix, ...args];
+  return new Promise(resolve => {
+    let proc;
+    if (isWin) {
+      // start opens a console window; /wait keeps cmd until it closes.
+      const quoted = words.map(w => `"${String(w).replace(/"/g, '')}"`).join(' ');
+      proc = spawn('cmd.exe', ['/d', '/s', '/c', `"start "${title.replace(/"/g, '')}" /wait ${quoted}"`],
+        { env, windowsVerbatimArguments: true, windowsHide: true, stdio: 'ignore' });
+    } else {
+      const sh = words.map(w => `'${String(w).replace(/'/g, `'\\''`)}'`).join(' ');
+      proc = process.platform === 'darwin'
+        ? spawn('osascript', ['-e', 'tell application "Terminal" to activate', '-e', `tell application "Terminal" to do script "${sh.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`], { env, stdio: 'ignore' })
+        : spawn('x-terminal-emulator', ['-e', 'sh', '-c', sh], { env, stdio: 'ignore', detached: true });
+    }
+    proc.on('error', () => resolve(false));
+    proc.on('close', code => resolve(code === 0 || isWin));
+  });
+}
+
+module.exports = { isWin, findClaude, claudeInfo, spawnClaude, claudeInTerminal, findCodex, spawnCodex, killTree, childEnv };
