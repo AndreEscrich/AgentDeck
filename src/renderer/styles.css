@@ -664,6 +664,9 @@ details.change-file > summary:hover .review-tick { opacity: 1; }
 .uml-swatch.edge-implements, .uml-swatch.edge-uses { border-top-style: dashed; }
 .uml-swatch.edge-uses { border-top-color: var(--text-faint); }
 .uml-swatch.edge-fresh { border-top-color: var(--accent); }
+.uml-swatch.edge-reads { border-top-style: dashed; border-top-color: var(--text-dim); }
+.uml-swatch.edge-writes { border-top-style: dashed; border-top-color: #e58a5c; border-top-width: 3px; }
+.uml-swatch.edge-runs-on { border-top-style: dotted; border-top-color: #8fb0ff; }
 
 .uml-node { cursor: pointer; transition: opacity 0.15s; }
 .uml-node.dim { opacity: 0.3; }
@@ -2044,6 +2047,10 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .uml-svg.moving path, .uml-svg.moving rect, .uml-svg.moving line { shape-rendering: optimizeSpeed; }
 .uml-svg.moving text { text-rendering: optimizeSpeed; }
 .uml-edge.uses.fresh path { stroke: var(--accent); stroke-width: 2.1; }
+/* A system's arrows (TypeScript ECS, typescript.js): what it writes stands
+   out, what it runs on is dotted. */
+.uml-edge.writes path { stroke: #e58a5c; stroke-width: 2.2; }
+.uml-edge.runs-on path { stroke: #8fb0ff; stroke-dasharray: 2 4; }
 .uml-marker-arrow { stroke: var(--text-dim); stroke-width: 1.8; }
 @keyframes uml-flow { to { stroke-dashoffset: 20; } }
 @media (prefers-reduced-motion: reduce) { .uml-edge.uses path { animation: none; } }

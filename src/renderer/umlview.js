@@ -55,7 +55,11 @@ function textWidth(text, kind) {
 }
 
 const CHANGE_SIGN = { new: '+', mod: '~', del: '−' };
-const KIND_WORDS = { interface: 'interface', enum: 'enum', struct: 'struct', class: 'class', type: 'type', module: 'functions of' };
+const KIND_WORDS = { interface: 'interface', enum: 'enum', struct: 'struct', class: 'class', type: 'type', module: 'functions of',
+  system: 'system', component: 'component', resource: 'resource', event: 'event', data: 'data asset' };
+// Arrows that say a type depends on another (the ECS's say how: a system
+// reads, writes or runs on a component, resource or event; typescript.js).
+const USE_KINDS = new Set(['uses', 'reads', 'writes', 'runs-on']);
 
 // "Refresh()", "Count: int", "Load(string, int): Task", for the tooltips.
 function memberLabel(m) {
@@ -284,12 +288,14 @@ function drawEdge(a, b, edge, slots) {
     const dy = Math.max(30, Math.abs(ty - sy) / 2) * (down ? 1 : -1);
     d = `M${sx},${sy} C${sx},${sy + dy} ${tx},${ty - dy} ${tx},${ty}`;
   }
-  const g = svgEl('g', { class: `uml-edge ${edge.kind}${edge.fresh ? ' fresh' : ''}`, 'data-from': edge.from, 'data-to': edge.to });
+  const use = USE_KINDS.has(edge.kind);
+  // reads, writes and runs-on look like uses, with a look of their own on top.
+  const g = svgEl('g', { class: `uml-edge ${use && edge.kind !== 'uses' ? 'uses ' : ''}${edge.kind}${edge.fresh ? ' fresh' : ''}`, 'data-from': edge.from, 'data-to': edge.to });
   // The arrowhead is at the start, on the type that depends on the other:
   // the arrow points from what is used to what uses it (the markers turn
   // round there, see auto-start-reverse).
-  g.appendChild(svgEl('path', { d, 'marker-start': `url(#uml-${edge.kind === 'uses' ? 'arrow' : 'triangle'}${edge.fresh ? '-fresh' : ''})` }));
-  const words = { inherits: 'inherits from', implements: 'implements', uses: 'uses' };
+  g.appendChild(svgEl('path', { d, 'marker-start': `url(#uml-${use ? 'arrow' : 'triangle'}${edge.fresh ? '-fresh' : ''})` }));
+  const words = { inherits: 'inherits from', implements: 'implements', uses: 'uses', reads: 'reads', writes: 'writes', 'runs-on': 'runs on' };
   g.appendChild(svgEl('title', {}, `${edge.fromName} ${words[edge.kind]} ${edge.toName}${edge.fresh ? ' (new in this task)' : ''}`));
   return g;
 }
@@ -383,11 +389,13 @@ function fitLabel(text, width) {
 //   has an "API" tag, the interface stands on a row of its own at the bottom
 //   of its namespace (where the other domains come in), and arrows into it
 //   from other namespaces stand out.
+// In TypeScript the role comes with the type (typescript.js: a feature's
+// <feature>.di.ts and index.ts).
 function isComposer(n) {
-  return /Composer$/.test(n.name) || (n.bases || []).some(b => /SystemComposer$/.test(b));
+  return n.role === 'composer' || /Composer$/.test(n.name) || (n.bases || []).some(b => /SystemComposer$/.test(b));
 }
 function isFacade(n) {
-  return /Facade$/.test(n.name);
+  return n.role === 'facade' || /Facade$/.test(n.name);
 }
 
 // Draws the diagram into container. Returns { fit, zoom, svg, width,
@@ -1242,7 +1250,7 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
   // times as much to draw); the arrowheads still tell "uses" from
   // "implements", and the arrows you light up are dashed and flow.
   const FLOW_LIMIT = 40;
-  const flowing = edges.filter(e => e.kind === 'uses').length <= FLOW_LIMIT;
+  const flowing = edges.filter(e => USE_KINDS.has(e.kind)).length <= FLOW_LIMIT;
   const edgeLayer = svgEl('g', { class: flowing ? 'uml-edges flow' : 'uml-edges' });
   // A large diagram: pointing at a box changes only what it is linked to
   // (see pointerover), so the window does not draw everything again.
@@ -1506,8 +1514,9 @@ function drawUml(container, model, { onOpen, onToggle, collapsed = new Set(), vi
   return { fit, zoom, svg, width: maxW, height: totalH, order: readingOrder, elementOf, view, collapsedKeyOf, showType };
 }
 
-// The legend under the diagram. packages: some types are from a package.
-function umlLegend(packages = false) {
+// The legend under the diagram. packages: some types are from a package;
+// ecs: it has a system's reads, writes or runs-on arrows.
+function umlLegend(packages = false, ecs = false) {
   const legend = el('div', 'uml-legend');
   const item = (cls, text) => {
     const i = el('span', 'uml-legend-item');
@@ -1520,6 +1529,11 @@ function umlLegend(packages = false) {
   item('edge-inherits', 'Inherits');
   item('edge-implements', 'Implements');
   item('edge-uses', 'Uses');
+  if (ecs) {
+    item('edge-reads', 'Reads');
+    item('edge-writes', 'Writes');
+    item('edge-runs-on', 'Runs on');
+  }
   item('edge-fresh', 'New dependency');
   item('role-composer', 'Composer');
   item('role-facade', 'Facade (API)');
@@ -1845,7 +1859,7 @@ function umlPanel(fullModel, { files = [], comments = null, onFull = null, full 
     tools.appendChild(b);
     return b;
   };
-  panel.append(stage, tools, umlLegend(model.nodes.some(n => packageOf(n.file))));
+  panel.append(stage, tools, umlLegend(model.nodes.some(n => packageOf(n.file)), (model.edges || []).some(e => USE_KINDS.has(e.kind) && e.kind !== 'uses')));
   let api = null;
   button('−', 'Zoom out', () => api?.zoom(1 / 1.25));
   button('+', 'Zoom in', () => api?.zoom(1.25));
@@ -2015,7 +2029,7 @@ function typeSearch(model, onPick) {
   const types = model.nodes.map(n => ({ id: n.id, name: n.name, lower: n.name.toLowerCase(), caps: n.name.replace(/[^A-Z0-9]/g, '').toLowerCase(), node: n }));
   let found = [];
   let chosen = 0;
-  const KINDS = { class: 'C', interface: 'I', struct: 'S', enum: 'E', record: 'R', type: 'T', module: 'F' };
+  const KINDS = { class: 'C', interface: 'I', struct: 'S', enum: 'E', record: 'R', type: 'T', module: 'F', system: 'S', component: 'K', resource: 'R', event: 'V', data: 'D' };
   const match = text => {
     const q = text.trim().toLowerCase();
     if (!q) return [];
@@ -2310,7 +2324,7 @@ function reviewPeer(files, cwd, onLayout, { typeOf = () => null, onFinding = nul
   // Draws one turn: the question, the steps, and the answer (as Markdown).
   // A type as the diagram draws it (its status colour and kind), a click
   // goes to it in the diagram and opens its diff at the finding.
-  const KINDS = { class: 'C', interface: 'I', struct: 'S', enum: 'E', record: 'R', type: 'T', module: 'F' };
+  const KINDS = { class: 'C', interface: 'I', struct: 'S', enum: 'E', record: 'R', type: 'T', module: 'F', system: 'S', component: 'K', resource: 'R', event: 'V', data: 'D' };
   const chip = (f, node) => {
     const c = el(node ? 'button' : 'span', `uml-peer-chip status-${node?.status || 'none'}`);
     if (node) {
