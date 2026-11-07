@@ -191,4 +191,20 @@ async function findMedia(cwd, name, { limitMs = 4000 } = {}) {
   return best ? best.path : null;
 }
 
-module.exports = { registerProtocol, recentMedia, kindOf, mediaBefore, findMedia };
+// An image's bytes for the window, which cannot read the pixels of what
+// media:// shows it (another origin): the image review (imagereview.js)
+// draws your marks onto it. Resolves with { mediaType, data (base64) } or null.
+const PICTURE_TYPE = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml', avif: 'image/avif', ico: 'image/x-icon' };
+async function pictureData(file, cacheDir) {
+  if (typeof file !== 'string' || kindOf(file) !== 'image' || !path.isAbsolute(file) || !fs.existsSync(file)) return null;
+  const source = CONVERT.has(extensionOf(file)) ? await convertedPreview(file, cacheDir) : file;
+  if (!source) return null;
+  try {
+    if (fs.statSync(source).size > 60 * 1024 * 1024) return null;
+    return { mediaType: PICTURE_TYPE[extensionOf(source)] || 'image/png', data: fs.readFileSync(source).toString('base64') };
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { registerProtocol, recentMedia, kindOf, mediaBefore, findMedia, pictureData };

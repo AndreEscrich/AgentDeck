@@ -364,6 +364,7 @@ app.whenReady().then(() => {
   // An Excel file you attach: its sheets as CSV text (see spreadsheet.js).
   ipcMain.handle('media:spreadsheet', (_e, file) => require('./spreadsheet').read(file));
   ipcMain.handle('media:find', (_e, cwd, name) => media.findMedia(cwd, name).catch(() => null));
+  ipcMain.handle('media:picture', (_e, file) => media.pictureData(file, path.join(app.getPath('userData'), 'media-previews')));
   ipcMain.handle('media:before', (_e, cwd, file, snap) => media.mediaBefore(cwd, file, snap, path.join(app.getPath('userData'), 'media-before')).catch(() => null));
   ipcMain.handle('jira:issue', (_e, key) => jira.issue(key));
   ipcMain.handle('gdoc:title', (_e, url) => require('./gdocs').title(url));

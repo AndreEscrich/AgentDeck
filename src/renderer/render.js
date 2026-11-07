@@ -244,8 +244,10 @@ function mediaElement(file, caption, cwd) {
     node = document.createElement('img');
     node.src = mediaUrl(file);
     node.alt = caption || name;
-    node.title = 'Click to see it at full size';
-    node.onclick = () => openLightbox(node.dataset.path);
+    // A click opens it large, to review: draw on it and write notes for
+    // the agent (imagereview.js).
+    node.title = 'Click to review it: draw on it and write what should change';
+    node.onclick = () => (window.openImageReview ? openImageReview(node.dataset.path) : openLightbox(node.dataset.path));
   }
   let searched = false;
   node.addEventListener('error', async () => {

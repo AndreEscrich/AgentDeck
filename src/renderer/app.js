@@ -4038,6 +4038,18 @@ function addTicketPost(agent, turn, answer) {
 // "Send comments to the agent" in the review puts them into the message
 // box of the chat the review was opened from, so you can add to them
 // before you press ↩.
+// An image review (imagereview.js): the image as you marked it is attached,
+// and the notes go into the message box, like review comments.
+window.addEventListener('image-review', e => {
+  attachments.add([e.detail.file]);
+  const input = $('input');
+  input.value = [input.value.trim(), e.detail.text].filter(Boolean).join('\n\n');
+  autosize();
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+  sfx('pick');
+});
+
 window.addEventListener('review-comments', e => {
   const input = $('input');
   input.value = [input.value.trim(), e.detail.text].filter(Boolean).join('\n\n');
@@ -5353,7 +5365,7 @@ $('voice').addEventListener('mousedown', e => e.preventDefault());   // the box 
 
 document.addEventListener('keydown', e => {
   if (isMod(e) && e.shiftKey && e.code === 'Space') {
-    if (!voiceSupported || $('composer').classList.contains('hidden') || document.querySelector('.settings-modal, .quit-modal, .uml-full, .lightbox')) return;
+    if (!voiceSupported || $('composer').classList.contains('hidden') || document.querySelector('.settings-modal, .quit-modal, .uml-full, .lightbox, .image-review')) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     if (voice.on) stopVoice(); else startVoice();
@@ -5955,7 +5967,7 @@ document.addEventListener('keydown', e => {
   // Enter in the Hub, with no text field active: open the next agent that needs you.
   const typing = e.target.closest?.('input, textarea, select, [contenteditable="true"]');
   if (e.key === 'Enter' && !e.shiftKey && !isMod(e) && !e.altKey && !typing && state.current?.kind === 'hub'
-      && !document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .uml-full, .settings-modal')) {
+      && !document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .image-review, .uml-full, .settings-modal')) {
     e.preventDefault();
     if (!reviewNext()) openKeyAgent();
   }
@@ -5964,7 +5976,7 @@ document.addEventListener('keydown', e => {
   // selected group instead (⇧Tab the previous one).
   if (e.key === 'Tab' && !isMod(e) && !e.altKey && !e.target.closest?.('.settings-modal')) {
     e.preventDefault();
-    if (!document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .uml-full')) {
+    if (!document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .image-review, .uml-full')) {
       if (state.current?.kind === 'hub' && !reviewQueue().length && hub.moveKeyAgent(e.shiftKey ? -1 : 1)) return;
       checkNext();
     }
@@ -5973,7 +5985,7 @@ document.addEventListener('keydown', e => {
   // selected group, ↑ ↓ another group (see hub.moveKeyAgent).
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) && !isMod(e) && !e.altKey && !e.shiftKey
       && state.current?.kind === 'hub' && (!typing || (e.target.id === 'input' && !e.target.value))
-      && !document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .uml-full, .settings-modal, .quit-modal, .slash-menu, .usage-rail.open')) {
+      && !document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .image-review, .uml-full, .settings-modal, .quit-modal, .slash-menu, .usage-rail.open')) {
     const moved = e.key === 'ArrowLeft' ? hub.moveKeyAgent(-1) : e.key === 'ArrowRight' ? hub.moveKeyAgent(1)
       : hub.moveKeyGroup(e.key === 'ArrowUp' ? -1 : 1);
     if (moved) e.preventDefault();
@@ -5997,7 +6009,7 @@ document.addEventListener('keydown', e => {
 // panel, the review view). This runs before those close themselves, so the
 // handler above knows not to go back to the Hub as well.
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') e.popupWasOpen = !!document.querySelector('.model-menu:not(.hidden), .group-panel, .uml-full, .uml-detail, .lightbox, .settings-modal, .quit-modal');
+  if (e.key === 'Escape') e.popupWasOpen = !!document.querySelector('.model-menu:not(.hidden), .group-panel, .uml-full, .uml-detail, .lightbox, .image-review, .settings-modal, .quit-modal');
 }, true);
 
 // ---------- history drawer ----------
@@ -6040,7 +6052,7 @@ window.addEventListener('focus', () => focusInput());
 function focusInput() {
   const active = document.activeElement;
   if (active && active !== $('input') && active.matches?.('input, textarea, select, [contenteditable="true"]')) return;
-  if (document.querySelector('.quit-modal, .settings-modal, .group-panel, .model-menu:not(.hidden), .lightbox, .uml-full, .uml-detail, .usage-rail.open')) return;
+  if (document.querySelector('.quit-modal, .settings-modal, .group-panel, .model-menu:not(.hidden), .lightbox, .image-review, .uml-full, .uml-detail, .usage-rail.open')) return;
   if ($('composer').classList.contains('hidden')) return;
   $('input').focus();
 }
