@@ -91,8 +91,19 @@ function login(config, id) {
       { cwd: os.homedir(), env: childEnv(config.env), stdio: ['ignore', 'pipe', 'pipe'] });
     logins.set(id, proc);
     let out = '';
-    proc.stdout.on('data', d => { out += d; });
-    proc.stderr.on('data', d => { out += d; });
+    // Without a terminal, Claude Code only prints the sign-in page's address
+    // and waits: the app opens it in your browser.
+    let opened = false;
+    const onData = d => {
+      out += d;
+      const url = !opened && /https:\/\/\S*authori[sz]e\S*/.exec(out)?.[0];
+      if (url) {
+        opened = true;
+        require('electron').shell.openExternal(url);
+      }
+    };
+    proc.stdout.on('data', onData);
+    proc.stderr.on('data', onData);
     const timer = setTimeout(() => killTree(proc), 5 * 60 * 1000);
     const done = code => {
       clearTimeout(timer);
