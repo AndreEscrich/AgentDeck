@@ -193,6 +193,19 @@ function registerNotifyKey() {
 }
 app.on('will-quit', () => globalShortcut.unregisterAll());
 
+// The class diagram's model of a change's C# and TypeScript files together
+// (csharp.js, typescript.js; TypeScript's parser loads only when needed).
+async function codeModel(cwd, files) {
+  const list = Array.isArray(files) ? files : [];
+  const tsFiles = list.filter(f => /\.[cm]?tsx?$/i.test(f?.path || ''));
+  const [cs, tsm] = await Promise.all([
+    csharp.model(cwd, list.filter(f => !tsFiles.includes(f))),
+    tsFiles.length ? require('./typescript').model(cwd, tsFiles) : null,
+  ]);
+  if (!tsm) return cs;
+  return { nodes: [...cs.nodes, ...tsm.nodes], edges: [...cs.edges, ...tsm.edges], testsLeftOut: cs.testsLeftOut + tsm.testsLeftOut };
+}
+
 function send(channel, ...args) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args);
 }
@@ -473,7 +486,7 @@ app.whenReady().then(() => {
   ipcMain.handle('fs:existing', (_e, paths) => (Array.isArray(paths) ? paths : []).filter(p => typeof p === 'string' && fs.existsSync(p)));
   // The namespace of C# files, for their titles in the Changes card: the
   // first "namespace X" line in the first 256 KB, or null.
-  ipcMain.handle('cs:model', (_e, cwd, files) => csharp.model(cwd, files));
+  ipcMain.handle('cs:model', (_e, cwd, files) => codeModel(cwd, files));
   ipcMain.handle('clipboard:write', (_e, text) => { require('electron').clipboard.writeText(String(text ?? '')); return true; });
   ipcMain.handle('assets:describe', (_e, cwd, file) => require('./unityassets').describeAsset(cwd, file).catch(err => ({ error: err.message })));
   ipcMain.handle('slash:list', (_e, cwd) => require('./slashcommands').list(cwd));

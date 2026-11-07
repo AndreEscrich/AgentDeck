@@ -1,5 +1,5 @@
-// The class diagram of a task's C# changes (the model comes from
-// src/csharp.js): one box per type the task added, changed or removed, with
+// The class diagram of a task's C# and TypeScript changes (the model comes
+// from src/csharp.js and src/typescript.js): one box per type the task added, changed or removed, with
 // just its name, in a box per namespace, and arrows for how the types depend
 // on each other. The lower levels stand on top: a type stands below the types
 // it uses (its arrows point up), and a namespace below the namespaces it
@@ -55,7 +55,7 @@ function textWidth(text, kind) {
 }
 
 const CHANGE_SIGN = { new: '+', mod: '~', del: '−' };
-const KIND_WORDS = { interface: 'interface', enum: 'enum', struct: 'struct', class: 'class' };
+const KIND_WORDS = { interface: 'interface', enum: 'enum', struct: 'struct', class: 'class', type: 'type', module: 'functions of' };
 
 // "Refresh()", "Count: int", "Load(string, int): Task", for the tooltips.
 function memberLabel(m) {
@@ -2015,7 +2015,7 @@ function typeSearch(model, onPick) {
   const types = model.nodes.map(n => ({ id: n.id, name: n.name, lower: n.name.toLowerCase(), caps: n.name.replace(/[^A-Z0-9]/g, '').toLowerCase(), node: n }));
   let found = [];
   let chosen = 0;
-  const KINDS = { class: 'C', interface: 'I', struct: 'S', enum: 'E', record: 'R' };
+  const KINDS = { class: 'C', interface: 'I', struct: 'S', enum: 'E', record: 'R', type: 'T', module: 'F' };
   const match = text => {
     const q = text.trim().toLowerCase();
     if (!q) return [];
@@ -2310,7 +2310,7 @@ function reviewPeer(files, cwd, onLayout, { typeOf = () => null, onFinding = nul
   // Draws one turn: the question, the steps, and the answer (as Markdown).
   // A type as the diagram draws it (its status colour and kind), a click
   // goes to it in the diagram and opens its diff at the finding.
-  const KINDS = { class: 'C', interface: 'I', struct: 'S', enum: 'E', record: 'R' };
+  const KINDS = { class: 'C', interface: 'I', struct: 'S', enum: 'E', record: 'R', type: 'T', module: 'F' };
   const chip = (f, node) => {
     const c = el(node ? 'button' : 'span', `uml-peer-chip status-${node?.status || 'none'}`);
     if (node) {

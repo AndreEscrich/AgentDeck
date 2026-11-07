@@ -173,10 +173,11 @@ async function githubDiff(item, cacheRoot, progress = () => {}) {
   }
   progress({ stage: 'diff', files: kept.map(k => k.rel), base: from.slice(0, 7), parent: base });
 
-  // Its changed C# files at its head, for the diagram and the full-file views.
+  // Its changed C# and TypeScript files at its head, for the diagram and the full-file views.
   const cwd = path.join(cacheRoot, 'github', repo.replace(/[^\w.-]+/g, '_'), `${String(pull ? item.number : item.branch).replace(/[^\w.-]+/g, '_')}@${head.slice(0, 12)}`);
-  const marker = path.join(cwd, '.agenthub-complete');
-  const cs = kept.filter(k => /\.cs$/i.test(k.rel) && !/^deleted file mode/m.test(k.block));
+  // (-ts: earlier versions fetched only the C# files.)
+  const marker = path.join(cwd, '.agenthub-complete-ts');
+  const cs = kept.filter(k => /\.(cs|[cm]?tsx?)$/i.test(k.rel) && !/^deleted file mode/m.test(k.block));
   if (fs.existsSync(marker)) progress({ stage: 'fetch', done: 0, total: 0 });
   else {
     fs.mkdirSync(cwd, { recursive: true });

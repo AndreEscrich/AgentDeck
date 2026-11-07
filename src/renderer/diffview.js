@@ -123,7 +123,11 @@ const CS_FILE = /\.cs$/i;
 // csharp.js, which also knows a test by its NUnit attributes).
 const TEST_PATH = /(^|[\\/])(tests?|unittests?|editmodetests?|playmodetests?|integrationtests?|[\w.]+\.tests?)[\\/]/i;
 const TEST_NAME = /Tests\.cs$/;   // BoardTests.cs, not Contests.cs
-const isTestPath = p => TEST_PATH.test(p) || TEST_NAME.test(p);
+// TypeScript's (see typescript.js): Foo.test.ts, Foo.spec.tsx, __tests__.
+const TS_TEST = /(^|[\\/])(__tests__|e2e)[\\/]|\.(test|spec)\.[cm]?tsx?$/i;
+const isTestPath = p => TEST_PATH.test(p) || TEST_NAME.test(p) || TS_TEST.test(p);
+// The files the class diagram reads: C# (csharp.js) and TypeScript (typescript.js).
+const DIAGRAM_FILE = /\.(cs|[cm]?tsx?)$/i;
 const NAMESPACE_LINE = /^[+\- ]?[ \t]*namespace[ \t]+([A-Za-z_][\w.]*)/;
 
 // The namespace the file has now: a removed line only counts for a deleted
@@ -364,8 +368,8 @@ function revealOnRightClick(node, f, cwd) {
   });
 }
 
-// The class diagram of the C# changes (see umlview.js; the types come from
-// src/csharp.js). The card is one container for the task's changes, with
+// The class diagram of the C# and TypeScript changes (see umlview.js; the
+// types come from src/csharp.js and src/typescript.js). The card is one container for the task's changes, with
 // Diagram | Files in its title: Diagram is the class diagram (where it
 // starts, with the whole card widened to most of the window), Files the list
 // of files. While the C# is read the card says so; when the changes declare
@@ -376,7 +380,7 @@ function revealOnRightClick(node, f, cwd) {
 // deleted), grouped by the namespace the diff shows, else by folder.
 function umlWaiting(csFiles) {
   const root = el('div', 'uml-waiting');
-  root.appendChild(el('div', 'uml-waiting-head', `Drawing the class diagram · ${csFiles.length} C# file${csFiles.length === 1 ? '' : 's'}…`));
+  root.appendChild(el('div', 'uml-waiting-head', `Drawing the class diagram · ${csFiles.length} code file${csFiles.length === 1 ? '' : 's'}…`));
   const groups = new Map();
   for (const f of csFiles) {
     const parts = f.path.split('/');
@@ -394,7 +398,7 @@ function umlWaiting(csFiles) {
     box.appendChild(el('div', 'uml-waiting-title', `${key || '(no folder)'} · ${list.length}`));
     const boxes = el('div', 'uml-waiting-boxes');
     for (const f of list.slice(0, MAX_BOXES)) {
-      boxes.appendChild(el('span', `uml-waiting-box ${f.status}`, f.path.split('/').pop().replace(/\.cs$/i, '')));
+      boxes.appendChild(el('span', `uml-waiting-box ${f.status}`, f.path.split('/').pop().replace(DIAGRAM_FILE, '')));
     }
     if (list.length > MAX_BOXES) boxes.appendChild(el('span', 'uml-waiting-more', `+${list.length - MAX_BOXES}`));
     box.appendChild(boxes);
@@ -410,16 +414,16 @@ function addDiagram(card, head, files, cwd, comments, { review = false } = {}) {
   // Temporary helpers stay out of the diagram, also the ones that only may
   // be temporary (TempProbe, AtlasTemp), and so do unit tests: it shows the
   // structure of the work. The Files list still has them.
-  const csFiles = files.filter(f => CS_FILE.test(f.path) && f.status !== 'bin' && !isTestPath(f.path)
+  const csFiles = files.filter(f => DIAGRAM_FILE.test(f.path) && f.status !== 'bin' && !isTestPath(f.path)
     && !(window.isTempFile?.(f.path) || window.maybeTempFile?.(f.path)));
-  const testCount = files.filter(f => CS_FILE.test(f.path) && isTestPath(f.path)).length;
+  const testCount = files.filter(f => DIAGRAM_FILE.test(f.path) && isTestPath(f.path)).length;
   if (!csFiles.length || !window.deck?.csModel || !window.umlPanel) return;
   const switcher = el('div', 'changes-switch');
   const diagramBtn = el('button', 'active', 'Diagram…');
   const filesBtn = el('button', null, `Files · ${files.length}`);
   for (const b of [diagramBtn, filesBtn]) b.type = 'button';
   diagramBtn.disabled = true;
-  diagramBtn.title = 'Reading the C# changes…';
+  diagramBtn.title = 'Reading the code changes…';
   switcher.append(diagramBtn, filesBtn);
   head.insertBefore(switcher, head.querySelector('.comments-send'));
   // Until the diagram is ready: a line that says so instead of the files
@@ -460,7 +464,7 @@ function addDiagram(card, head, files, cwd, comments, { review = false } = {}) {
     diagramBtn.disabled = false;
     diagramBtn.textContent = changed.length > 1 ? `Diagram · ${changed.length} types` : 'Diagram';
     const tests = testCount + (model.testsLeftOut || 0);
-    diagramBtn.title = 'Class diagram of the C# changes: the changed types and how they depend on each other'
+    diagramBtn.title = 'Class diagram of the code changes: the changed types and how they depend on each other'
       + (tests ? ` (${tests} unit test file${tests === 1 ? '' : 's'} left out; they are under Files)` : '');
     const setView = diagram => {
       card.classList.toggle('show-diagram', diagram);
@@ -744,7 +748,7 @@ function sessionPanel(cwd) {
     stats.replaceChildren(el('span', null, `${files.length} file${files.length === 1 ? '' : 's'}`), el('span', 'plus', ` +${add}`), el('span', 'minus', ` −${del}`));
     root.classList.toggle('empty', !files.length);
     const comments = lineComments(files, cwd);
-    const csFiles = files.filter(f => CS_FILE.test(f.path) && f.status !== 'bin' && !isTestPath(f.path)
+    const csFiles = files.filter(f => DIAGRAM_FILE.test(f.path) && f.status !== 'bin' && !isTestPath(f.path)
       && !(window.isTempFile?.(f.path) || window.maybeTempFile?.(f.path)));
     const code = files.filter(f => isCodeFile(f.path));
     const other = files.filter(f => !isCodeFile(f.path));

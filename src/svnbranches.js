@@ -322,7 +322,7 @@ async function branchDiff(config, project, branch, cacheRoot, progress = () => {
     const toFetch = [];
     for (const block of text.split(/(?=^diff --git )/m)) {
       const rel = /^diff --git a\/(.+?) b\//.exec(block)?.[1];
-      if (!rel || !/\.cs$/i.test(rel)) continue;
+      if (!rel || !/\.(cs|[cm]?tsx?)$/i.test(rel)) continue;
       if (/^deleted file mode/m.test(block)) continue;   // its old lines are all in the diff
       if (/^new file mode/m.test(block)) {
         const body = block.slice(block.indexOf('\n@@') + 1).split('\n').filter(l => l.startsWith('+') && !l.startsWith('+++')).map(l => l.slice(1));

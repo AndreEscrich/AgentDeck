@@ -625,4 +625,4 @@ async function model(cwd, files) {
   };
 }
 
-module.exports = { model, parseFile, blank, isTestFile };
+module.exports = { model, parseFile, blank, isTestFile, diffLines };
