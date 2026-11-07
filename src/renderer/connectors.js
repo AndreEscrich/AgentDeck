@@ -14,6 +14,10 @@
 // the connector to Codex and signs in. With one provider on, it shows only
 // that one's list, without tabs.
 //
+// All | Tactile: the Tactile tab shows only Tactile's own connectors (on a
+// tactilews.com address, or with Tactile in the name), so you need not
+// search for them among the rest. The dialog remembers the tab.
+//
 // The dialog is built once; only the list and the status lines are drawn
 // again, so the search field keeps what you type while a check runs.
 
@@ -42,6 +46,11 @@ function avatarColor(name) {
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
+// Tactile's own: on a tactilews.com address, or named after Tactile.
+function isTactile(c) {
+  return /(^|\.)tactilews\.com$/i.test(hostOf(c.target)) || /tactile/i.test(c.name);
+}
+
 function hostOf(target) {
   const m = String(target).match(/^https?:\/\/([^/\s]+)/i);
   return m ? m[1] : String(target).replace(/\s*\((HTTP|SSE|stdio)\)\s*$/i, '');
@@ -53,6 +62,8 @@ class ConnectorsDialog {
   constructor({ folder }) {
     this.folder = folder;
     this.provider = 'claude';     // the tab on screen
+    this.scope = 'all';           // all | tactile (see isTactile)
+    try { if (localStorage.getItem('connectorsScope') === 'tactile') this.scope = 'tactile'; } catch { /* all */ }
     this.lists = { claude: null, codex: null };
     this.checking = { claude: false, codex: false };
     this.signingIn = { claude: new Set(), codex: new Set() };   // connector ids waiting for you in the browser
@@ -88,6 +99,18 @@ class ConnectorsDialog {
       this.tabs.appendChild(b);
     }
 
+    // All | Tactile, for every provider.
+    this.scopes = el('div', 'conn-tabs conn-scopes');
+    this.scopeButtons = {};
+    for (const [scope, label] of [['all', 'All'], ['tactile', 'Tactile']]) {
+      const b = el('button', 'conn-tab', label);
+      b.type = 'button';
+      b.title = scope === 'tactile' ? 'Only Tactile\'s own connectors' : 'Every connector';
+      b.onclick = () => this.showScope(scope);
+      this.scopeButtons[scope] = b;
+      this.scopes.appendChild(b);
+    }
+
     this.search = document.createElement('input');
     this.search.type = 'search';
     this.search.className = 'conn-search';
@@ -105,7 +128,9 @@ class ConnectorsDialog {
     this.browse.onclick = () => window.open(BROWSE[this.provider].url, '_blank');
     this.footer.append(add, this.browse);
 
-    dialog.append(head, this.tabs, this.search, this.summary, this.message, this.listEl, this.footer);
+    const tabRow = el('div', 'conn-tab-row');
+    tabRow.append(this.tabs, this.scopes);
+    dialog.append(head, tabRow, this.search, this.summary, this.message, this.listEl, this.footer);
     this.overlay.appendChild(dialog);
     // A click outside the dialog, or Esc, closes it.
     this.overlay.addEventListener('mousedown', e => { if (e.target === this.overlay) this.close(); });
@@ -248,8 +273,19 @@ class ConnectorsDialog {
     await this.refresh();
   }
 
+  showScope(scope) {
+    if (scope !== this.scope) window.uiSound?.('tick');
+    this.scope = scope;
+    try { localStorage.setItem('connectorsScope', scope); } catch { /* not important */ }
+    this.renderList();
+  }
+
   renderList() {
-    const list = this.list || [];
+    const all = this.list || [];
+    const tactile = this.scope === 'tactile';
+    const list = tactile ? all.filter(isTactile) : all;
+    for (const [s, b] of Object.entries(this.scopeButtons)) b.classList.toggle('on', s === this.scope);
+    this.scopeButtons.tactile.textContent = this.list ? `Tactile · ${all.filter(isTactile).length}` : 'Tactile';
     const count = s => list.filter(c => c.status === s).length;
     const parts = [];
     if (count('connected')) parts.push(`${count('connected')} connected`);
@@ -272,7 +308,7 @@ class ConnectorsDialog {
     if (!matches.length) {
       // While the check runs, the list is the one from the last check: a
       // connector added since then is not in it yet.
-      const none = q ? `No connector matches "${this.search.value.trim()}"` : 'No connectors';
+      const none = q ? `No ${tactile ? 'Tactile ' : ''}connector matches "${this.search.value.trim()}"` : tactile ? 'No Tactile connectors' : 'No connectors';
       this.listEl.appendChild(el('div', 'conn-empty', !this.list ? 'Checking your connectors…' : checking ? `${none} yet. Still checking your connectors…` : `${none}.`));
     }
   }

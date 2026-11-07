@@ -2855,6 +2855,8 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
   color: #9fd8e8; border: 1px solid rgba(159, 216, 232, 0.35); }
 .conn-tabs { display: flex; gap: 4px; margin: 0 0 12px; padding: 3px; border-radius: 10px; background: rgba(0, 0, 0, 0.25); align-self: flex-start; }
 .conn-tabs.hidden { display: none; }
+.conn-tab-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
+.conn-scopes { margin-left: auto; }
 .conn-tab { padding: 5px 16px; border-radius: 8px; border: none; background: transparent; color: var(--text-dim); font-weight: 600; cursor: pointer; }
 .conn-tab:hover { color: var(--text); }
 .conn-tab.on { background: var(--bg-elev, #2a221b); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); }
