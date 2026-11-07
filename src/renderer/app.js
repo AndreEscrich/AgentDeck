@@ -4567,9 +4567,30 @@ function showUsage() {
     codex: providerOn('codex') ? { ...usage.codex } : null,
     tokens: usage.tokens,
     tasks: usage.tasks,
+    createArt: createArtBudget,
   });
 }
+
+// Your Tactile Create Art budget (createart.js), when the tactile-create-art
+// connector is signed in: when the app opens, every 5 minutes, and after a
+// task (it may have generated images).
+let createArtBudget = null;
+let fetchingArt = false;
+async function refreshCreateArt() {
+  if (fetchingArt || !window.deck.fetchCreateArtBudget) return;
+  fetchingArt = true;
+  try {
+    const b = await window.deck.fetchCreateArtBudget();
+    // A failed check keeps the numbers it had.
+    if (!b?.error || !createArtBudget?.limitUsd) createArtBudget = b ? { ...b, at: Date.now() } : null;
+  } catch { /* the last numbers stay */ } finally {
+    fetchingArt = false;
+  }
+  showUsage();
+}
 showUsage();
+refreshCreateArt();
+setInterval(refreshCreateArt, 5 * 60 * 1000);
 
 // The limits also come without an agent: when the app opens, and after that
 // when no agent has reported them for a while (Claude: 15 minutes, since a
@@ -4616,6 +4637,7 @@ function noteUsage(msg) {
     usage.tokens += totalTokens(msg.usage || {});
     usage.tasks++;
     autoReport.noteCost(msg.total_cost_usd);
+    if (createArtBudget) setTimeout(refreshCreateArt, 3000);
   } else {
     return;
   }

@@ -444,6 +444,8 @@ app.whenReady().then(() => {
   ipcMain.handle('app:quit', () => quitNow());
   ipcMain.handle('usage:fetch', () => (getConfig().claudeEnabled === false ? null : fetchUsage(getConfig())));
   ipcMain.handle('codex:usage', () => (getConfig().codexEnabled ? fetchCodexUsage(getConfig()) : null));
+  // The Tactile Create Art budget (createart.js): numbers only, never the sign-in.
+  ipcMain.handle('createart:budget', () => require('./createart').budget());
   ipcMain.handle('providers:limited', (_e, provider, untilMs) => setProviderLimited(provider, untilMs));
   ipcMain.handle('app:version', () => appVersion());
   ipcMain.handle('update:latest', () => latestUpdate);

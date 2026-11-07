@@ -72,7 +72,17 @@ const MILESTONE_PROMPT = [
   'Keep each one to a single line, write them only for tasks with several parts, and not in your final message.',
 ].join(' ');
 
-const SYSTEM_PROMPT = `${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}\n\n${RUN_PROMPT}\n\n${MILESTONE_PROMPT}`;
+// Tactile Create Art (the tactile-create-art connector) spends real money
+// from the user's monthly budget: the same rules Tactile Create gives its
+// own agents, shorter.
+const ART_PROMPT = [
+  'If you have the Tactile Create Art tools (the tactile-create-art connector), every generation costs money from the user\'s monthly Create Art budget.',
+  'One image the user asked for is fine to make; before a 3D model, a video, a retexture or more than four images, say which provider you will use and roughly what it costs, and wait for a yes (unless the user already said to go ahead in this conversation).',
+  'If a generation call times out, the job is still running: check it with get_generation_job instead of running it again, and never repeat a paid generation that failed without saying so first.',
+  'When only the surface of a 3D model is wrong, retexture it instead of generating it again. After paid generations, say what they cost when the tool tells you.',
+].join(' ');
+
+const SYSTEM_PROMPT = `${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}\n\n${RUN_PROMPT}\n\n${MILESTONE_PROMPT}\n\n${ART_PROMPT}`;
 
 // 'auto', or the size in tokens when it is between 100k and 1M (false otherwise).
 function compactTokens(value) {

@@ -266,12 +266,42 @@ class Hub {
       const age = Date.now() - (data.at || 0);
       if (age > 10 * 60 * 1000) box.appendChild(el('div', 'usage-note', `as of ${Hub.ago(age)} ago`));
     }
+    this.renderCreateArt(box, u?.createArt);
     const tokens = u?.tokens || 0;
     const since = el('div', 'usage-since');
     since.append(el('span', 'usage-label', 'Since Agent Hub opened'),
       el('span', 'usage-big', tokens ? `${formatTokens(tokens)} tokens` : '—'),
       el('span', 'usage-note', `${u?.tasks || 0} task${u?.tasks === 1 ? '' : 's'}`));
     box.appendChild(since);
+  }
+
+  // The Tactile Create Art budget (the tactile-create-art connector), when
+  // it is signed in: this month's spend of its dollar limit.
+  renderCreateArt(box, art) {
+    if (!art) return;
+    box.appendChild(el('div', 'usage-provider create-art', 'Tactile Create Art'));
+    if (art.expired) {
+      box.appendChild(el('div', 'usage-note', 'Its sign-in ran out. An agent that uses Create Art renews it, or Connectors → Connect.'));
+      return;
+    }
+    if (art.error) {
+      box.appendChild(el('div', 'usage-note', `Budget unavailable: ${art.error}.`));
+      return;
+    }
+    const usd = n => `$${(Math.round(n * 100) / 100).toFixed(n >= 100 || Number.isInteger(n) ? 0 : 2)}`;
+    const pct = art.limitUsd > 0 ? Math.max(0, Math.min(100, Math.round((art.spentUsd / art.limitUsd) * 100))) : 100;
+    const level = pct >= 90 ? 'high' : pct >= 70 ? 'mid' : 'low';
+    const meter = el('div', `usage-meter ${level}`);
+    const top = el('div', 'usage-row');
+    top.append(el('span', 'usage-label', 'This month'), el('span', 'usage-pct', `${usd(art.spentUsd)} of ${usd(art.limitUsd)}`));
+    const bar = el('div', 'usage-bar');
+    const fill = el('div', 'usage-fill');
+    fill.style.width = `${pct}%`;
+    bar.appendChild(fill);
+    const reset = art.resetsAt ? new Date(art.resetsAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }) : null;
+    meter.append(top, bar, el('div', 'usage-note', `Image and 3D generation${reset ? ` · resets ${reset}` : ''} · approximate, from the providers' prices`));
+    box.appendChild(meter);
+    if (art.spentUsd >= art.limitUsd) box.appendChild(el('div', 'usage-warn', 'Budget used up: Create Art generates nothing until it resets'));
   }
 
   // The tab shows each provider's session and week as two small upright
