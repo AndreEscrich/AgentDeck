@@ -44,18 +44,24 @@ function ownConnectors(cwd) {
 
 // One line of `claude mcp list` looks like
 //   "claude.ai Notion: https://mcp.notion.com/mcp - ! Needs authentication"
-// The name can contain spaces; the status follows the last " - ".
+// The name can contain spaces; the status follows the last " - ". Its mark
+// depends on where Claude Code runs: ✔ and ✘ in a terminal, √ and × when
+// the app was started from the Start Menu (no terminal settings), so the
+// words decide first.
 function parseList(text, cwd) {
   const own = ownConnectors(cwd);
   const list = [];
   for (const line of text.split('\n')) {
-    const m = line.match(/^(.+?): (.+) - ([✔✘!⏸?]|✓|✗)\s*(.*)$/u);
+    const m = line.match(/^(.+?): (.+) - ([✔✘!⏸?√×]|✓|✗)\s*(.*)$/u);
     if (!m) continue;
     const [, id, target, mark, rest] = m;
-    const status = /✔|✓/.test(mark) ? 'connected'
+    const status = /^Connected\b/.test(rest) ? 'connected'
+      : /^Needs authentication\b/.test(rest) ? 'auth'
+      : /^Failed\b/.test(rest) ? 'failed'
+      : /✔|✓|√/.test(mark) ? 'connected'
       : mark === '!' ? 'auth'
       : mark === '⏸' ? 'pending'
-      : /✘|✗/.test(mark) ? 'failed' : 'unknown';
+      : /✘|✗|×/.test(mark) ? 'failed' : 'unknown';
     const fromAccount = id.startsWith('claude.ai ');
     list.push({
       id,                                             // the name Claude Code uses
