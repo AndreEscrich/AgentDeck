@@ -270,7 +270,10 @@ class ConnectorsDialog {
       for (const c of items) this.listEl.appendChild(this.row(c));
     }
     if (!matches.length) {
-      this.listEl.appendChild(el('div', 'conn-empty', this.list ? (q ? `No connector matches "${this.search.value.trim()}".` : 'No connectors.') : 'Checking your connectors…'));
+      // While the check runs, the list is the one from the last check: a
+      // connector added since then is not in it yet.
+      const none = q ? `No connector matches "${this.search.value.trim()}"` : 'No connectors';
+      this.listEl.appendChild(el('div', 'conn-empty', !this.list ? 'Checking your connectors…' : checking ? `${none} yet. Still checking your connectors…` : `${none}.`));
     }
   }
 
