@@ -1268,6 +1268,7 @@ class Transcript {
     this.turn = null;               // the turn in progress
     this.prompts = [];              // your messages: { el, text }, in order
     this.createPromptPin(container);
+    this.createTurnNav(container);
   }
 
   // ---------- which message the output on screen answers ----------
@@ -1293,7 +1294,7 @@ class Transcript {
     this.pinBar = bar;
     container.insertBefore(this.pin, this.root);
     let frame = 0;
-    const later = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; this.updatePromptPin(); }); };
+    const later = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; this.updatePromptPin(); this.updateTurnNav(); }); };
     container.addEventListener('scroll', later, { passive: true });
     // Wide content can appear without a scroll (a class diagram opening).
     window.addEventListener('resize', later);
@@ -1403,6 +1404,76 @@ class Transcript {
     if (!this.pinCovers()) return;
     this.pin.classList.add('tucked');
     if (this.pinCovers()) this.pin.classList.add('hidden-over');
+  }
+
+  // ---------- going from one of your messages to the next ----------
+
+  // Buttons at the bottom right of the chat: ▲ and ▼ go to your previous or
+  // next message, so a long answer is skipped in one click, and ⤓, there once
+  // you have scrolled up, goes back to the bottom. They show only when the
+  // chat is longer than the window.
+  createTurnNav(container) {
+    this.nav = el('div', 'turn-nav');
+    const box = el('div', 'turn-nav-box');
+    const pair = el('div', 'turn-nav-pair');
+    const button = (parent, cls, path) => {
+      const b = el('button', 'turn-nav-btn ' + cls);
+      b.type = 'button';
+      b.innerHTML = `<svg viewBox="0 0 16 16" aria-hidden="true">${path}</svg>`;
+      parent.appendChild(b);
+      return b;
+    };
+    this.navUp = button(pair, 'up', '<path d="M3.5 10l4.5-4.5 4.5 4.5"/>');
+    this.navDown = button(pair, 'down', '<path d="M3.5 6l4.5 4.5 4.5-4.5"/>');
+    this.navBottom = button(box, 'bottom', '<path d="M3.5 5l4.5 4.5 4.5-4.5M3.5 13h9"/>');
+    this.navBottom.title = 'Back to the bottom';
+    box.prepend(pair);
+    this.navUp.onclick = () => { this.updateTurnNav(); this.goToPrompt(this.navUpIndex); };
+    this.navDown.onclick = () => { this.updateTurnNav(); this.goToPrompt(this.navDownIndex); };
+    this.navBottom.onclick = () => {
+      this.navGoal = null;
+      this.scroller.scrollTo({ top: this.scroller.scrollHeight, behavior: 'smooth' });
+    };
+    this.nav.appendChild(box);
+    container.insertBefore(this.nav, this.root);
+  }
+
+  // Which of your messages ▲ and ▼ lead to: the last one above the top of
+  // the window, and the first one below it. While a click's scroll is still
+  // on its way, they count from the message it goes to, so clicking again
+  // right away moves one message further.
+  updateTurnNav() {
+    const s = this.scroller;
+    const n = this.prompts.length;
+    const longer = s.scrollHeight > s.clientHeight + 4;
+    this.nav.classList.toggle('show', longer && n > 0);
+    if (!longer || !n) return;
+    const top = s.getBoundingClientRect().top;
+    let above = -1;
+    let below = n;
+    for (let i = 0; i < n; i++) {
+      const y = this.prompts[i].el.getBoundingClientRect().top;
+      if (y < top - 8) above = i;
+      if (y > top + 40) { below = i; break; }
+    }
+    const goal = this.navGoal;
+    this.navUpIndex = goal != null ? goal - 1 : above;
+    this.navDownIndex = goal != null ? goal + 1 : below;
+    this.navUp.disabled = this.navUpIndex < 0;
+    this.navDown.disabled = this.navDownIndex >= n;
+    this.navUp.title = this.navUp.disabled ? 'No earlier message of yours' : `Your previous message (${this.navUpIndex + 1} of ${n})`;
+    this.navDown.title = this.navDown.disabled ? 'No later message of yours' : `Your next message (${this.navDownIndex + 1} of ${n})`;
+    this.nav.classList.toggle('away', s.scrollHeight - s.scrollTop - s.clientHeight > 80);
+  }
+
+  goToPrompt(index) {
+    const prompt = this.prompts[index];
+    if (!prompt) return;
+    this.navGoal = index;
+    clearTimeout(this.navGoalTimer);
+    this.navGoalTimer = setTimeout(() => { this.navGoal = null; this.updateTurnNav(); }, 700);
+    const top = this.scroller.scrollTop + prompt.el.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top - 12;
+    this.scroller.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
   }
 
   // Keep the view pinned to the bottom only when the person has not scrolled up.
