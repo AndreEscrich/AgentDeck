@@ -6002,6 +6002,19 @@ document.addEventListener('keydown', e => {
       checkNext();
     }
   }
+  // In a chat, Page Up and Page Down press the ▲ and ▼ buttons: your previous
+  // and next message (see Transcript.createTurnNav), also from the message box.
+  if ((e.key === 'PageUp' || e.key === 'PageDown') && !isMod(e) && !e.altKey && !e.shiftKey
+      && ['agent', 'history'].includes(state.current?.kind)
+      && !document.querySelector('.lightbox, .image-review, .uml-full, .settings-modal, .quit-modal, .slash-menu, .usage-rail.open')) {
+    const transcript = state.current.kind === 'agent' ? state.agents.get(state.current.id)?.transcript : state.history.get(state.current.id)?.transcript;
+    transcript?.updateTurnNav();
+    const button = e.key === 'PageUp' ? transcript?.navUp : transcript?.navDown;
+    if (button && transcript.nav.classList.contains('show') && !button.disabled) {
+      e.preventDefault();
+      button.click();
+    }
+  }
   // In the Hub, with the message box empty: ← → choose an agent of the
   // selected group, ↑ ↓ another group (see hub.moveKeyAgent).
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) && !isMod(e) && !e.altKey && !e.shiftKey
