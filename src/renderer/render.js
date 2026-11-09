@@ -753,9 +753,17 @@ function addShellRun(root, cwd) {
 
 // "You asked" cards standing beside the message box (Transcript.placePin)
 // go back to their chats: when another agent's card takes the place, or the
-// view changes (app.js show()). keep: a card to leave where it is.
-function homePinBars(keep = null) {
-  for (const bar of document.querySelectorAll('#composer .prompt-pin-bar')) {
+// view changes (app.js show()). keep: a card to leave where it is. The ▲ ▼
+// buttons beside the box (Transcript.placeTurnNav) go back the same way;
+// only: 'pins' or 'navs' to move back only those.
+function homePinBars(keep = null, only = null) {
+  for (const nav of only === 'pins' ? [] : document.querySelectorAll('#composer > .turn-nav-box')) {
+    if (nav === keep) continue;
+    nav.classList.remove('nav-beside');
+    for (const p of ['left', 'top']) nav.style.removeProperty(p);
+    nav._home?.appendChild(nav);
+  }
+  for (const bar of only === 'navs' ? [] : document.querySelectorAll('#composer .prompt-pin-bar')) {
     if (bar === keep) continue;
     bar.classList.remove('pin-beside');
     for (const p of ['left', 'top', 'width', 'visibility']) bar.style.removeProperty(p);
@@ -1331,7 +1339,7 @@ class Transcript {
     const room = this.roomBeside();
     if (room < 170) return clear();
     const b = box.getBoundingClientRect();
-    homePinBars(bar);
+    homePinBars(bar, 'pins');
     const width = Math.min(room, 360);
     bar._home = this.pin;
     if (bar.parentNode !== composer) composer.appendChild(bar);
@@ -1408,10 +1416,12 @@ class Transcript {
 
   // ---------- going from one of your messages to the next ----------
 
-  // Buttons at the bottom right of the chat: ▲ and ▼ go to your previous or
-  // next message, so a long answer is skipped in one click, and ⤓, there once
-  // you have scrolled up, goes back to the bottom. They show only when the
-  // chat is longer than the window.
+  // Buttons beside the message box, to its right: ▲ and ▼ go to your
+  // previous or next message, so a long answer is skipped in one click, and
+  // ⤓, there once you have scrolled up, goes back to the bottom. They show
+  // only when the chat is longer than the window. Without room beside the
+  // box (a narrow window) they stay at the bottom right of the chat (see
+  // placeTurnNav).
   createTurnNav(container) {
     this.nav = el('div', 'turn-nav');
     const box = el('div', 'turn-nav-box');
@@ -1435,7 +1445,37 @@ class Transcript {
       this.scroller.scrollTo({ top: this.scroller.scrollHeight, behavior: 'smooth' });
     };
     this.nav.appendChild(box);
+    this.navBox = box;
     container.insertBefore(this.nav, this.root);
+  }
+
+  // Like the "You asked" card (placePin), the buttons then live in the
+  // message box's footer, because the chat's scroll area ends above the box
+  // and would cut them off. Their bottom is level with the box's, 12 pixels
+  // to its right. homePinBars puts them back in their chat when the view
+  // changes.
+  placeTurnNav() {
+    const nav = this.navBox;
+    const composer = document.getElementById('composer');
+    const box = composer?.querySelector('.composer-box');
+    const home = () => {
+      if (nav.parentNode !== this.nav) this.nav.appendChild(nav);
+      nav.classList.remove('nav-beside');
+      for (const p of ['left', 'top']) nav.style.removeProperty(p);
+    };
+    if (!box || !box.offsetParent || !this.scroller.offsetParent) return home();
+    const b = box.getBoundingClientRect();
+    const room = this.scroller.getBoundingClientRect().right - b.right - 16;
+    if (room < 34 + 24) return home();
+    nav._home = this.nav;
+    if (nav.parentNode !== composer) {
+      homePinBars(nav, 'navs');
+      composer.appendChild(nav);
+    }
+    nav.classList.add('nav-beside');
+    const c = composer.getBoundingClientRect();
+    nav.style.left = `${b.right + 12 - c.left}px`;
+    nav.style.top = `${b.bottom - c.top - nav.offsetHeight}px`;
   }
 
   // Which of your messages ▲ and ▼ lead to: the last one above the top of
@@ -1447,7 +1487,8 @@ class Transcript {
     const n = this.prompts.length;
     const longer = s.scrollHeight > s.clientHeight + 4;
     this.nav.classList.toggle('show', longer && n > 0);
-    if (!longer || !n) return;
+    this.navBox.classList.toggle('show', longer && n > 0);
+    if (!longer || !n) return this.placeTurnNav();
     const top = s.getBoundingClientRect().top;
     let above = -1;
     let below = n;
@@ -1463,7 +1504,11 @@ class Transcript {
     this.navDown.disabled = this.navDownIndex >= n;
     this.navUp.title = this.navUp.disabled ? 'No earlier message of yours' : `Your previous message (${this.navUpIndex + 1} of ${n})`;
     this.navDown.title = this.navDown.disabled ? 'No later message of yours' : `Your next message (${this.navDownIndex + 1} of ${n})`;
-    this.nav.classList.toggle('away', s.scrollHeight - s.scrollTop - s.clientHeight > 80);
+    const away = s.scrollHeight - s.scrollTop - s.clientHeight > 80;
+    this.nav.classList.toggle('away', away);
+    this.navBox.classList.toggle('away', away);
+    // Placed last: ⤓ coming or going changes their height.
+    this.placeTurnNav();
   }
 
   goToPrompt(index) {

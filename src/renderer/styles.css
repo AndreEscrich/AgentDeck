@@ -1561,7 +1561,9 @@ audio.chat-media { width: 100%; max-width: 420px; height: 40px; background: tran
 .turn-nav { position: sticky; top: 0; height: 0; z-index: 6; }
 .turn-nav-box { position: absolute; right: 18px; top: calc(100cqh - 16px); transform: translateY(-100%);
   display: flex; flex-direction: column; align-items: center; gap: 8px; opacity: 0; pointer-events: none; transition: opacity 0.18s; }
-.turn-nav.show .turn-nav-box { opacity: 1; pointer-events: auto; }
+.turn-nav-box.show { opacity: 1; pointer-events: auto; }
+/* Beside the message box, to its right (Transcript.placeTurnNav). */
+#composer > .turn-nav-box.nav-beside { right: auto; transform: none; z-index: 6; }
 .turn-nav-pair, .turn-nav-btn.bottom { border: 1px solid var(--border); background: rgba(34, 28, 22, 0.92);
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); }
 .turn-nav-pair { display: flex; flex-direction: column; border-radius: 18px; overflow: hidden; }
@@ -1572,7 +1574,7 @@ audio.chat-media { width: 100%; max-width: 420px; height: 40px; background: tran
 .turn-nav-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.07); color: var(--text); }
 .turn-nav-btn:disabled { opacity: 0.3; cursor: default; }
 .turn-nav-btn.bottom { display: none; width: 34px; height: 34px; border-radius: 50%; color: var(--accent); }
-.turn-nav.away .turn-nav-btn.bottom { display: flex; }
+.turn-nav-box.away .turn-nav-btn.bottom { display: flex; }
 .turn-nav-btn.bottom:hover { border-color: var(--text-faint); background: rgba(44, 36, 29, 0.95); }
 
 /* Hub: clicking a Group panel points the message box at it; that panel is outlined */
