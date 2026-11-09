@@ -1545,7 +1545,7 @@ audio.chat-media { width: 100%; max-width: 420px; height: 40px; background: tran
 /* With room beside the chat, the message sits in the left margin as a card,
    so it never covers the chat (the right edge is for the next-agent hint).
    Narrower windows keep the bar at the top. */
-.chat { container-type: inline-size; }
+.chat { container-type: size; }
 @container (min-width: 1160px) {
   .prompt-pin-bar { left: 16px; right: auto; top: 20px; transform: translateX(-8px);
     width: calc((100cqw - var(--chat-width)) / 2 + 24px - 48px);
@@ -1553,6 +1553,27 @@ audio.chat-media { width: 100%; max-width: 420px; height: 40px; background: tran
   .prompt-pin.show .prompt-pin-bar { transform: none; }
   .prompt-pin-text { font-size: 12.5px; -webkit-line-clamp: 10; }
 }
+
+/* Buttons at the bottom right of the chat: your previous and next message,
+   and back to the bottom (Transcript.createTurnNav). The box sticks to the
+   top of the chat with no height, and the buttons hang from it at the
+   chat's height, so they stay in the corner while the chat scrolls. */
+.turn-nav { position: sticky; top: 0; height: 0; z-index: 6; }
+.turn-nav-box { position: absolute; right: 18px; top: calc(100cqh - 16px); transform: translateY(-100%);
+  display: flex; flex-direction: column; align-items: center; gap: 8px; opacity: 0; pointer-events: none; transition: opacity 0.18s; }
+.turn-nav.show .turn-nav-box { opacity: 1; pointer-events: auto; }
+.turn-nav-pair, .turn-nav-btn.bottom { border: 1px solid var(--border); background: rgba(34, 28, 22, 0.92);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); }
+.turn-nav-pair { display: flex; flex-direction: column; border-radius: 18px; overflow: hidden; }
+.turn-nav-btn { width: 34px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 0; background: transparent; color: var(--text-dim); }
+.turn-nav-pair .turn-nav-btn + .turn-nav-btn { border-top: 1px solid var(--border); }
+.turn-nav-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.turn-nav-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.07); color: var(--text); }
+.turn-nav-btn:disabled { opacity: 0.3; cursor: default; }
+.turn-nav-btn.bottom { display: none; width: 34px; height: 34px; border-radius: 50%; color: var(--accent); }
+.turn-nav.away .turn-nav-btn.bottom { display: flex; }
+.turn-nav-btn.bottom:hover { border-color: var(--text-faint); background: rgba(44, 36, 29, 0.95); }
 
 /* Hub: clicking a Group panel points the message box at it; that panel is outlined */
 .hub-section { cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s; }

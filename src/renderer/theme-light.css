@@ -93,6 +93,9 @@
 .conn-footer, .conn-form { border-top-color: #e8e1d7; }
 .prompt-pin-bar { background: rgba(255, 255, 255, 0.94); box-shadow: 0 8px 22px -8px rgba(60, 40, 20, 0.28); }
 .prompt-pin-bar:hover { background: #ffffff; }
+.turn-nav-pair, .turn-nav-btn.bottom { background: rgba(255, 255, 255, 0.94); box-shadow: 0 8px 22px -8px rgba(60, 40, 20, 0.28); }
+.turn-nav-btn:hover:not(:disabled) { background: rgba(60, 40, 20, 0.06); }
+.turn-nav-btn.bottom:hover { background: #ffffff; }
 
 /* Jira cards */
 .jira-status { background: #e8eaf0; color: #3f4556; }
@@ -148,7 +151,8 @@ details.change-file > summary:hover { background: #f1ebe3; }
 .hub-tile:hover { border-color: #b9ab99; }
 .tank, .zoom-ghost { background: #e9ecef; border-color: #d3cbbf; }
 .liquid::before, .liquid::after { background: #e9ecef; }
-.hub-health, .composer-box, .prompt-pin-bar { border-color: #d8cfc3; }
+.hub-health, .composer-box, .prompt-pin-bar, .turn-nav-pair, .turn-nav-btn.bottom { border-color: #d8cfc3; }
+.turn-nav-pair .turn-nav-btn + .turn-nav-btn { border-top-color: #d8cfc3; }
 .msg-user { border: 1px solid #e0d8cc; }
 .msg-user .gdoc-card, .msg-user .jira-card { background: rgba(255, 255, 255, 0.6); }
 .slash-menu { background: #ffffff; border-color: #d8cfc3; box-shadow: 0 16px 40px -12px rgba(60, 40, 20, 0.35); }

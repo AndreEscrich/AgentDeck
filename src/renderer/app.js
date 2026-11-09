@@ -541,13 +541,33 @@ function renderContextMeter() {
 function revealLatest(view, transcript) {
   const turnEl = transcript?.lastFinished?.el;
   if (!view || !turnEl) return scrollToBottom(view);
-  view.revealing = true;
-  const place = () => {
+  settleScroll(view, () => {
     view.scrollTop = Math.max(0, view.scrollTop + turnEl.getBoundingClientRect().top - view.getBoundingClientRect().top - 16);
-  };
-  // A hidden view loses its scroll position, and its height is only final in
-  // the next frame, so the place is set again then, and once more after the
-  // opening animation, unless you scrolled in the meantime.
+  });
+}
+
+// Leaving a chat (for the Hub, another agent, History) remembers where you
+// were in it, so that coming back finds the same spot (see placeChat).
+function saveChatPlace() {
+  const cur = state.current;
+  const view = cur?.kind === 'agent' ? state.agents.get(cur.id)?.view : cur?.kind === 'history' ? state.history.get(cur.id)?.view : null;
+  if (!view || view.classList.contains('hidden')) return;
+  view.place = { top: view.scrollTop, away: view.scrollHeight - view.scrollTop - view.clientHeight > 80 };
+}
+
+// Opening a chat again puts it where you left it, when you had scrolled up
+// in it; otherwise it starts at the bottom.
+function placeChat(view) {
+  const saved = view?.place;
+  if (!saved?.away) return scrollToBottom(view);
+  settleScroll(view, () => { view.scrollTop = saved.top; });
+}
+
+// A hidden view loses its scroll position, and its height is only final in
+// the next frame, so place() runs now, again then, and once more after the
+// opening animation, unless you scrolled in the meantime.
+function settleScroll(view, place) {
+  view.revealing = true;
   let moved = false;
   const stop = () => {
     moved = true;
@@ -662,6 +682,7 @@ function show(kind, id) {
   // A "You asked" card beside the message box belongs to the chat that was on screen.
   window.homePinBars?.();
   saveInputDraft();
+  saveChatPlace();
   state.current = { kind, id };
   requestAnimationFrame(updateNextHint);
   // Close selected floats over the Hub only.
@@ -687,8 +708,8 @@ function show(kind, id) {
     loadSession(a.view, a.sessionId, a.cwd, a.transcript);
     playSessionWhenOpen(a);
     // Finished while you were not looking: show its output from the start.
-    if (a.unread && a.status === 'idle') revealLatest(a.view, a.transcript);
-    else scrollToBottom(a.view);
+    if (a.unread && a.status === 'idle' && !a.view.place?.away) revealLatest(a.view, a.transcript);
+    else placeChat(a.view);
     a.unread = false;
     setHeader(headerTitle(a), a.cwd, a);
     composerPicker.setLocked(providerOf(a.choice));
@@ -708,7 +729,7 @@ function show(kind, id) {
     const h = state.history.get(id);
     h.view.classList.remove('hidden');
     loadSession(h.view, h.session.id, h.cwd || h.session.cwd, h.transcript);
-    scrollToBottom(h.view);
+    placeChat(h.view);
     const listed = state.parked.get(id) || state.agentList.get(id);
     setHeader(agentName({ sessionId: h.session.id, latestTitle: listed?.latestTitle, title: h.session.title }), h.cwd || h.session.cwd, null, findGroup(groupOf(h.session.id))?.name || null);
     composerPicker.setLocked(providerOf(h.choice));
@@ -5979,6 +6000,19 @@ document.addEventListener('keydown', e => {
     if (!document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .image-review, .uml-full')) {
       if (state.current?.kind === 'hub' && !reviewQueue().length && hub.moveKeyAgent(e.shiftKey ? -1 : 1)) return;
       checkNext();
+    }
+  }
+  // In a chat, Page Up and Page Down press the ▲ and ▼ buttons: your previous
+  // and next message (see Transcript.createTurnNav), also from the message box.
+  if ((e.key === 'PageUp' || e.key === 'PageDown') && !isMod(e) && !e.altKey && !e.shiftKey
+      && ['agent', 'history'].includes(state.current?.kind)
+      && !document.querySelector('.lightbox, .image-review, .uml-full, .settings-modal, .quit-modal, .slash-menu, .usage-rail.open')) {
+    const transcript = state.current.kind === 'agent' ? state.agents.get(state.current.id)?.transcript : state.history.get(state.current.id)?.transcript;
+    transcript?.updateTurnNav();
+    const button = e.key === 'PageUp' ? transcript?.navUp : transcript?.navDown;
+    if (button && transcript.nav.classList.contains('show') && !button.disabled) {
+      e.preventDefault();
+      button.click();
     }
   }
   // In the Hub, with the message box empty: ← → choose an agent of the
