@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('deck', {
   fetchCodexUsage: () => ipcRenderer.invoke('codex:usage'),
   // { spentUsd, limitUsd, resetsAt } of Tactile Create Art, { expired }, { error } or null.
   fetchCreateArtBudget: () => ipcRenderer.invoke('createart:budget'),
+  // Signs in to Create Art for the budget (adds the connector when needed).
+  connectCreateArt: () => ipcRenderer.invoke('createart:connect'),
   setProviderLimited: (provider, untilMs) => ipcRenderer.invoke('providers:limited', provider, untilMs),
   repoOf: cwd => ipcRenderer.invoke('repo:of', cwd),
   // The branch its repository is on: { vcs: 'git' | 'svn', name } or null.

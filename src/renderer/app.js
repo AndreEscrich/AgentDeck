@@ -4624,6 +4624,17 @@ async function refreshCreateArt() {
 showUsage();
 refreshCreateArt();
 setInterval(refreshCreateArt, 5 * 60 * 1000);
+// After the card's Sign in button: checks every 5 seconds, for 5 minutes,
+// until the budget comes.
+let artSignInTimer = null;
+window.watchCreateArtSignIn = () => {
+  clearInterval(artSignInTimer);
+  const until = Date.now() + 5 * 60 * 1000;
+  artSignInTimer = setInterval(async () => {
+    await refreshCreateArt();
+    if (createArtBudget?.limitUsd != null || Date.now() > until) clearInterval(artSignInTimer);
+  }, 5000);
+};
 
 // The limits also come without an agent: when the app opens, and after that
 // when no agent has reported them for a while (Claude: 15 minutes, since a

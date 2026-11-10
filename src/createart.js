@@ -8,6 +8,13 @@
 // this process and goes only to createart.tactilews.com. It is never
 // renewed here: Claude Code renews it when an agent uses the connector, and
 // a renewal here would make Claude Code's copy stale.
+//
+// A Create Art connector from your claude.ai account keeps its sign-in on
+// Anthropic's servers, where the app cannot read it. Then the card offers a
+// sign-in of its own (connect): a Create Art connector in Claude Code
+// (tactile-create-art, user scope), signed in with claude mcp login. Claude
+// Code then lists only that one, not the claude.ai one with the same
+// address, so agents do not get Create Art's tools twice.
 
 const { execFile } = require('child_process');
 const fs = require('fs');
@@ -15,6 +22,43 @@ const os = require('os');
 const path = require('path');
 
 const BUDGET_URL = 'https://createart.tactilews.com/api/rate-limit';
+const MCP_URL = 'https://createart.tactilews.com/mcp';
+const NAME = 'tactile-create-art';
+const isCreateArt = url => /^https:\/\/createart\.tactilews\.com\//.test(url || '');
+
+// Claude Code's own settings (~/.claude.json): the connectors you added
+// (mcpServers) and the claude.ai connectors it has connected.
+function claudeJson() {
+  try { return JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude.json'), 'utf8')); } catch { return {}; }
+}
+
+// The name of a Create Art connector you added in Claude Code, or null.
+function ownConnector() {
+  const servers = claudeJson().mcpServers || {};
+  return Object.keys(servers).find(name => isCreateArt(servers[name]?.url)) || null;
+}
+
+// Without a sign-in the app can read: { signIn: 'add' } when Create Art is a
+// claude.ai connector only, { signIn: 'login' } when your own connector is
+// not signed in yet; null when there is no Create Art connector.
+function missingSignIn() {
+  if (ownConnector()) return { signIn: 'login' };
+  const account = claudeJson().claudeAiMcpEverConnected;
+  return Array.isArray(account) && account.some(n => /create\s*art/i.test(n)) ? { signIn: 'add' } : null;
+}
+
+// The card's Sign in button: adds the connector when it is not there, then
+// signs in in a terminal window (see connectors.login).
+async function connect(config) {
+  const connectors = require('./connectors');
+  let name = ownConnector();
+  if (!name) {
+    const added = await connectors.add(config, { name: NAME, url: MCP_URL, transport: 'http' });
+    if (!added.ok) return { ok: false, message: added.message || 'Could not add the connector.' };
+    name = NAME;
+  }
+  return connectors.login(config, name);
+}
 
 function credentials() {
   return new Promise(resolve => {
@@ -34,8 +78,9 @@ function credentials() {
 // else { spentUsd, limitUsd, resetsAt }.
 async function budget() {
   const creds = await credentials();
-  const entry = Object.entries(creds?.mcpOAuth || {}).find(([key, v]) => key.startsWith('tactile-create-art|') || /createart\.tactilews\.com/.test(v?.serverUrl || ''))?.[1];
-  if (!entry?.accessToken) return null;
+  const own = ownConnector();
+  const entry = Object.entries(creds?.mcpOAuth || {}).find(([key, v]) => key.startsWith(`${NAME}|`) || (own && key.startsWith(`${own}|`)) || isCreateArt(v?.serverUrl))?.[1];
+  if (!entry?.accessToken) return missingSignIn();
   if (entry.expiresAt && entry.expiresAt < Date.now()) return { expired: true };
   try {
     const res = await fetch(BUDGET_URL, {
@@ -53,4 +98,4 @@ async function budget() {
   }
 }
 
-module.exports = { budget };
+module.exports = { budget, connect };
