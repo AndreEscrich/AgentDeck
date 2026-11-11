@@ -2586,7 +2586,19 @@ async function restartInNewFolder(agent) {
   agent.sessionId = null;
   agent.status = 'starting';
   agent.snapshot = null;
+  agent.snapshotHeld = false;
+  agent.taskTurns = null;
   agent.mediaSince = null;
+  // The chat reads the agent's edits against its folder: with the old one,
+  // no edit in the new folder counted as the agent's, and the task's
+  // Changes card came out empty.
+  agent.transcript.cwd = agent.cwd;
+  checkUnityBridge(agent.cwd);
+  // The agent's Changes card compared with the old folder's snapshot: it
+  // starts again with the first task in the new folder.
+  const s = sessionState(agent.view);
+  s.panel?.el.closest('.session-dock')?.remove();
+  Object.assign(s, { started: false, snap: null, paths: new Set(), edits: new Map(), own: null, shared: new Set(), files: [], tasks: [], panel: null, pending: [] });
   clearClashes(agent);
   refreshHub();
   await window.deck.startAgent({
@@ -3895,6 +3907,9 @@ async function sendToAgent(agent, text, images = []) {
   }
   if (!agent.snapshot) {
     agent.snapshotAt = Date.now() - 1000;
+    // The folder of this snapshot: a category moved while the agent works
+    // moves the agent as soon as it is done, before its card is made.
+    agent.snapshotCwd = agent.cwd;
     const [snap] = await Promise.all([snapshotInTime(agent.cwd), loadSession(agent.view, agent.sessionId, agent.cwd, agent.transcript)]);
     agent.snapshot = snap;
     // The project as it was before the agent's first task: its Changes card
@@ -4905,7 +4920,11 @@ window.deck.onEvent((id, msg) => {
     }) : Promise.resolve();
     const since = a.snapshotAt;
     const turns = a.taskTurns;
-    evidence.then(() => window.deck.gitChanges(a.cwd, snap))
+    // The folder the snapshot was taken in, not the one the agent moves to
+    // when it is done (moveWhenDone): compared with another checkout, the
+    // card listed the differences between the two checkouts.
+    const cwd = a.snapshotCwd || a.cwd;
+    evidence.then(() => window.deck.gitChanges(cwd, snap))
       .then(diff => a.transcript.showGitChanges(turn, diff, snap.kind === 'folder', {
         otherEdit: rel => editedByOther(a, rel, since),
         ownOnly: f => ownDiff(a, turns, f),

@@ -280,6 +280,11 @@ async function otherChanges(cwd, snap) {
 }
 
 async function folderChanges(cwd, snap) {
+  // A snapshot of another folder (an agent moved to another checkout) would
+  // record this folder into that folder's repository and compare the two.
+  try {
+    if (fs.readFileSync(path.join(snap.dir, 'folder.txt'), 'utf8').trim() !== cwd) return null;
+  } catch { /* made before folder.txt was kept */ }
   const tree = await withLock(snap.dir, () => recordTree(snap.dir, cwd));
   if (!tree) return null;
   const parts = [];
