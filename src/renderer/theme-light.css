@@ -101,6 +101,7 @@
 .jira-status { background: #e8eaf0; color: #3f4556; }
 .jira-status[data-category="indeterminate"] { background: #dbe7fb; color: #1d4f9e; }
 .jira-status[data-category="done"] { background: #d9f1e3; color: #1d6b40; }
+.pm-card .jira-key { color: #c25e14; }
 .msg-user .jira-card { background: rgba(255, 255, 255, 0.6); }
 
 /* Activity */

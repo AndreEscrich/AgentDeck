@@ -347,6 +347,45 @@ function jiraCard(href, key) {
   return a;
 }
 
+// ---------- Tactile PM tasks ----------
+
+// A Tactile PM task link: pm.tactilews.com/pm/items/KEY, or a board or
+// list link with the task's key in its address (?task=KEY, …/KEY).
+function pmKeyOf(href) {
+  let url;
+  try { url = new URL(href); } catch { return null; }
+  if (!/^pm(-[\w-]+)?\.tactilews\.com$/i.test(url.hostname)) return null;
+  const KEY = /^[A-Z][A-Z0-9]{1,9}-\d+$/;
+  const fromPath = url.pathname.split('/').map(p => decodeURIComponent(p)).filter(p => KEY.test(p)).pop();
+  if (fromPath) return fromPath;
+  for (const v of url.searchParams.values()) if (KEY.test(v)) return v;
+  return null;
+}
+
+// A Tactile PM link as a task card, like a Jira ticket: the PM mark, key,
+// title and status. The title and status come from PM (see src/pmtasks.js,
+// a few seconds the first time); until then the card shows the key alone
+// and still opens the task.
+function pmCard(href, key) {
+  const a = document.createElement('a');
+  a.className = 'jira-card pm-card';
+  a.href = href;
+  a.title = `Open ${key} in Tactile PM`;
+  const logo = el('span', 'jira-logo');
+  logo.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14"><rect x="0.5" y="0.5" width="15" height="15" rx="3.5" fill="#f08a3c"/><rect x="3" y="3.5" width="2.6" height="9" rx="1" fill="#fff"/><rect x="6.7" y="3.5" width="2.6" height="6" rx="1" fill="#fff"/><rect x="10.4" y="3.5" width="2.6" height="4" rx="1" fill="#fff"/></svg>';
+  const summary = el('span', 'jira-summary');
+  const status = el('span', 'jira-status');
+  a.append(logo, el('span', 'jira-key', key), summary, status);
+  window.deck?.pmTask?.(key).then(task => {
+    if (!task) return;
+    summary.textContent = task.title;
+    status.textContent = task.status;
+    status.dataset.category = task.category;
+    a.title = `${task.type ? task.type + ' ' : ''}${key}: ${task.title}\n${task.status} · open in Tactile PM`;
+  }).catch(() => {});
+  return a;
+}
+
 // ---------- Google Sheets, Docs, Slides and Forms links ----------
 
 // What a docs.google.com link points to: { kind, label, color, where }, or
@@ -584,7 +623,8 @@ function slackCard(href, sl, text) {
   return a;
 }
 
-// Every link opens in your browser; Jira ticket links become ticket cards,
+// Every link opens in your browser; Jira ticket and Tactile PM task links
+// become ticket cards,
 // Google Sheets, Docs, Slides and Forms links become file cards, GitHub
 // links become cards with their title and state, and Slack links message cards.
 function decorateLinks(root) {
@@ -595,6 +635,8 @@ function decorateLinks(root) {
     a.target = '_blank';
     const key = jiraKeyOf(href);
     if (key) { a.replaceWith(jiraCard(href, key)); continue; }
+    const pm = pmKeyOf(href);
+    if (pm) { a.replaceWith(pmCard(href, pm)); continue; }
     const doc = gdocOf(href);
     if (doc) { a.replaceWith(gdocCard(href, doc, a.textContent)); continue; }
     const gh = githubOf(href);

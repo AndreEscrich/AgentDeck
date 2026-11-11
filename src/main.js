@@ -2,7 +2,8 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Notification, Menu, protocol
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
-const { AgentManager, fetchModels, summarizeTitle, rateTask, pickGame, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited } = require('./agents');
+const pmTasks = require('./pmtasks');
+const { AgentManager, fetchModels, summarizeTitle, rateTask, pickGame, readPmTasks, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited } = require('./agents');
 const { CodexManager, fetchCodexModels, fetchCodexUsage, listCodexThreads, loadCodexThread } = require('./codex');
 const { listSessions, loadTranscript, PROJECTS_DIR } = require('./sessions');
 const git = require('./git');
@@ -367,6 +368,9 @@ app.whenReady().then(() => {
   ipcMain.handle('media:picture', (_e, file) => media.pictureData(file, path.join(app.getPath('userData'), 'media-previews')));
   ipcMain.handle('media:before', (_e, cwd, file, snap) => media.mediaBefore(cwd, file, snap, path.join(app.getPath('userData'), 'media-before')).catch(() => null));
   ipcMain.handle('jira:issue', (_e, key) => jira.issue(key));
+  // Tactile PM task cards (pmtasks.js), read with the PM connector by Haiku.
+  pmTasks.setup(path.join(app.getPath('userData'), 'pm-tasks.json'), keys => readPmTasks(getConfig(), keys));
+  ipcMain.handle('pm:task', (_e, key) => pmTasks.task(key));
   ipcMain.handle('gdoc:title', (_e, url) => require('./gdocs').title(url));
   ipcMain.handle('github:lookup', (_e, what) => require('./github').lookup(what));
   ipcMain.handle('jira:details', (_e, key) => jira.details(key));

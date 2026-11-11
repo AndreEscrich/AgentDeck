@@ -120,6 +120,8 @@ contextBridge.exposeInMainWorld('deck', {
     remove: (spec, provider) => ipcRenderer.invoke('connectors:remove', spec, provider),
   },
   jiraIssue: key => ipcRenderer.invoke('jira:issue', key),
+  // A Tactile PM task for its card: { key, title, status, category, type } or null.
+  pmTask: key => ipcRenderer.invoke('pm:task', key),
   gdocTitle: url => ipcRenderer.invoke('gdoc:title', url),
   githubLookup: what => ipcRenderer.invoke('github:lookup', what),
   jiraDetails: key => ipcRenderer.invoke('jira:details', key),

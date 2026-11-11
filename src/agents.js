@@ -676,4 +676,52 @@ function pickGame(config, question, { task = null } = {}) {
   });
 }
 
-module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, rateTask, pickGame, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited, compactTokens, SYSTEM_PROMPT, EDIT_PROMPT };
+// Tactile PM tasks for the task cards in the chat (pmtasks.js): Haiku reads
+// each key with the Tactile PM connector's pm_get_task, its tools loaded on
+// demand, and the tasks are taken from the tool's own answers (not from what
+// Haiku writes afterwards), so titles come as PM has them. Resolves with
+// { KEY: task JSON } for the tasks it could read ({} when it failed).
+const PM_GET_TASK = ['mcp__claude_ai_Tactile_PM__pm_get_task', 'mcp__tactile-pm__pm_get_task', 'mcp__tactile_pm__pm_get_task'];
+function readPmTasks(config, keys) {
+  return new Promise(resolve => {
+    const proc = spawnClaude(config.claudePath,
+      ['-p', '--model', 'haiku', '--output-format', 'stream-json', '--verbose', '--no-session-persistence',
+        '--tools', 'ToolSearch', '--allowedTools', ['ToolSearch', ...PM_GET_TASK].join(',')],
+      { cwd: os.tmpdir(), env: { ...childEnv(config.env), ENABLE_TOOL_SEARCH: 'true' }, stdio: ['pipe', 'pipe', 'ignore'] });
+    helperProcesses.add(proc);
+    const tasks = {};
+    let buffer = '';
+    const timer = setTimeout(() => { killTree(proc); }, 30000 + keys.length * 5000);
+    const take = text => {
+      try {
+        const t = JSON.parse(text);
+        if (t && typeof t.key === 'string' && keys.includes(t.key)) tasks[t.key] = t;
+      } catch { /* an error message, not a task */ }
+    };
+    proc.stdout.on('data', d => {
+      buffer += d;
+      let nl;
+      while ((nl = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, nl);
+        buffer = buffer.slice(nl + 1);
+        let msg;
+        try { msg = JSON.parse(line); } catch { continue; }
+        if (msg.type !== 'user' || !Array.isArray(msg.message?.content)) continue;
+        for (const block of msg.message.content) {
+          if (block.type !== 'tool_result') continue;
+          if (typeof block.content === 'string') take(block.content);
+          else for (const c of block.content || []) if (c.type === 'text') take(c.text);
+        }
+      }
+    });
+    proc.on('error', () => resolve({}));
+    proc.on('close', () => {
+      clearTimeout(timer);
+      helperProcesses.delete(proc);
+      resolve(tasks);
+    });
+    proc.stdin.end(`Call the Tactile PM tool pm_get_task once for each of these task keys (find the tool with ToolSearch first): ${keys.join(', ')}. Then reply with only: done`);
+  });
+}
+
+module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, rateTask, pickGame, readPmTasks, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited, compactTokens, SYSTEM_PROMPT, EDIT_PROMPT };

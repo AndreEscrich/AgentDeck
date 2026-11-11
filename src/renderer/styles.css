@@ -1597,6 +1597,9 @@ audio.chat-media { width: 100%; max-width: 420px; height: 40px; background: tran
   padding: 1px 6px; border-radius: 4px; background: #3a3d4e; color: #c9ccd8; }
 .jira-status[data-category="indeterminate"] { background: #0c3a75; color: #8fb8f6; }
 .jira-status[data-category="done"] { background: #1c4d33; color: #7ee2a8; }
+/* Tactile PM task cards (pmCard): Jira's card in PM's orange. */
+.pm-card:hover { border-color: #f08a3c; }
+.pm-card .jira-key { color: #f5a26a; }
 .msg-user a, .note a, pre a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .msg-user .jira-card { background: rgba(0, 0, 0, 0.2); }
 
