@@ -2259,6 +2259,49 @@ class Transcript {
     });
   }
 
+  // True when a command or script that writes names this file through a
+  // template: a Python f-string, a JS template or a shell variable the app
+  // cannot fill in (a loop's). edit(f"{d}/{d}Facade.cs") in a loop over the
+  // board names names MergeDiggingSideBoardFacade.cs, but never as that
+  // text. Each {…}, ${…} or $name is a hole for one part of a name, so it
+  // reads as */*Facade.cs, and what fills a hole has to be made of words
+  // the same script holds ("MergeDiggingSideBoard", "Client"): another
+  // agent's MergeGame/MergeGameFacade.cs does not count. The template needs
+  // an extension, and a folder or at least 3 letters of the name of its own
+  // ("{name}.cs" alone matches any file).
+  templateNamed(turn, rel) {
+    const file = rel.replace(/\\/g, '/');
+    turn.templateWords = turn.templateWords || new Map();   // evidence text -> { patterns, words }
+    const HOLE = /\$\{[^{}]*\}|\{[^{}]*\}|\$[A-Za-z_]\w*|%[sd]/g;
+    const escape = s => s.replace(/[.+?^${}()|[\]\\*]/g, '\\$&');
+    return writingEvidence(turn).some(text => {
+      let found = turn.templateWords.get(text);
+      if (!found) {
+        const patterns = text.replace(/\\/g, '/').replace(/\{\{|\}\}/g, '').split(/[\s'"`;|&()<>,=[\]]+/)
+          .filter(w => w.length < 300 && /\.[A-Za-z]\w{0,11}$/.test(w) && w.search(HOLE) >= 0 && !/[*{}$]/.test(w.replace(HOLE, '')))
+          .map(w => w.replace(/^\.\//, ''))
+          .filter(w => {
+            const parts = w.replace(HOLE, '').split('/');
+            return parts.pop().replace(/\.[^.]*$/, '').length >= 3 || parts.some(p => /[A-Za-z]/.test(p));
+          })
+          .map(w => new RegExp(`(?:^|/)${w.split(HOLE).map(escape).join('([^/]*)')}$`, 'i'));
+        const words = new Set(text.split(/[^A-Za-z0-9_-]+/).filter(x => x.length >= 3).map(x => x.toLowerCase()));
+        found = { patterns, words };
+        turn.templateWords.set(text, found);
+      }
+      // "mergediggingsideboardclient" is "mergediggingsideboard" + "client".
+      const madeOfWords = s => {
+        const ok = [true];
+        for (let i = 1; i <= s.length; i++) ok[i] = [...Array(i).keys()].some(j => ok[j] && found.words.has(s.slice(j, i)));
+        return ok[s.length];
+      };
+      return found.patterns.some(re => {
+        const m = re.exec(file);
+        return !!m && m.slice(1).every(hole => !hole || madeOfWords(hole.toLowerCase()));
+      });
+    });
+  }
+
   // Like agentTouched, for an image or video found in the folder: the agent
   // named it in a command or a tool's input, or a tool's result named it.
   agentMadeMedia(turn, file) {
@@ -2362,12 +2405,22 @@ class Transcript {
     // folder while this agent worked. Only files the agent touched stay, and
     // a file another agent edited meanwhile only when this agent edited it too.
     const own = f => this.agentEdited(turn, f.path) || (f.from && this.agentEdited(turn, f.from));
-    let files = pairMoves(parseUnifiedDiff(diffText)).filter(f => !isTempFile(f.path) && (own(f) || (!otherEdit?.(f.path)
+    const parsed = pairMoves(parseUnifiedDiff(diffText));
+    let files = parsed.filter(f => !isTempFile(f.path) && (own(f) || (!otherEdit?.(f.path)
       && (this.agentTouched(turn, f.path) || (f.from && this.agentTouched(turn, f.from))
       || (addedOrRemovedBinary(f) && this.folderTouched(turn, f.path))
       || (f.status === 'del' && this.folderNamed(turn, f.path))
       || this.patternNamed(turn, f.path) || (f.from && this.patternNamed(turn, f.from))
+      || this.templateNamed(turn, f.path) || (f.from && this.templateNamed(turn, f.from))
       || (f.from && this.folderNamed(turn, f.from))))));
+    // Unity makes the .meta file of a file the agent added (and an agent
+    // that removes a file often leaves its .meta to Unity): no command
+    // names it, and it goes with its file.
+    const kept = new Map(files.map(f => [f.path.toLowerCase(), f]));
+    for (const f of parsed) {
+      const owner = /\.meta$/i.test(f.path) && !kept.has(f.path.toLowerCase()) && kept.get(f.path.slice(0, -5).toLowerCase());
+      if (owner && owner.status === f.status && (f.status === 'new' || f.status === 'del') && !otherEdit?.(f.path)) files.push(f);
+    }
     // In a file both agents changed, the other agent's lines are left out:
     // the file shows only what this agent's edits did (when they still undo
     // from the file; else the whole diff, as before).
