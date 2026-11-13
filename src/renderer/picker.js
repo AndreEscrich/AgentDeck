@@ -90,14 +90,26 @@ function menuModels() {
 }
 const isFable = m => /^fable/i.test(m.displayName || '') || m.value === 'fable';
 
-// A model's name without its version ("Opus", not "Opus 5.5") when it is the
-// family's alias, which always runs the newest version; a pinned older
-// version keeps its number ("Opus 4.8").
+// A model's name with its version: "Opus 5.5" for the alias "opus" (Claude
+// Code's list names the version the alias runs now), "Opus 4.8" for a
+// pinned older one.
 function shortName(model) {
   if (model.provider === 'codex') return model.displayName;
-  const name = model.displayName.replace(/\s*\(recommended\)/i, '');
-  return /^(fable|opus|sonnet|haiku)$/i.test(model.value || '') ? name.replace(/\s+[\d.]+$/, '') : name;
+  return model.displayName.replace(/\s*\(recommended\)/i, '');
 }
+
+// A model id as Claude Code reports it in its answers ("claude-fable-5-2",
+// "claude-haiku-4-5-20251001", "claude-opus-5-5[1m]") as its name with the
+// version ("Fable 5.2"); null for an id that is not a Claude model.
+function modelName(id) {
+  if (!id) return null;
+  const clean = String(id).replace(/\[[^\]]*\]$/, '');
+  const known = sharedModels.find(m => m.value === clean && /\d/.test(m.displayName || ''));
+  if (known) return shortName(known);
+  const m = /^claude-(fable|opus|sonnet|haiku)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/i.exec(clean);
+  return m ? `${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()} ${m[2]}${m[3] ? `.${m[3]}` : ''}` : null;
+}
+const familyOf = value => (/(fable|opus|sonnet|haiku)/i.exec(value || '') || [])[1]?.toLowerCase() || null;
 
 class ModelPicker {
   // onChange(value) runs after the person changes something in the menu.
@@ -140,6 +152,14 @@ class ModelPicker {
     this.renderButton();
   }
 
+  // The model the agent on screen actually runs ("Fable 5.1": an agent that
+  // started before Fable 5.2 came keeps 5.1 until it starts again), shown
+  // on the button instead of the chosen model's name; null when not known.
+  setActual(name) {
+    this.actual = name || null;
+    this.renderButton();
+  }
+
   setValue(value) {
     this.value = { provider: 'claude', model: 'default', effort: '', fastMode: false, ...value };
     if (!this.value.model) this.value.model = this.value.provider === 'codex' ? 'auto' : 'default';
@@ -148,11 +168,12 @@ class ModelPicker {
   }
 
   renderButton() {
-    const parts = [shortName(this.model) + (this.value.model === 'auto' && this.resolved ? ` → ${this.resolved}` : '')];
+    const auto = this.value.model === 'auto';
+    const parts = [(!auto && this.actual) || shortName(this.model) + (auto && this.resolved ? ` → ${this.resolved}` : '')];
     if (bothOn() || providerOf(this.value) === 'codex') parts.unshift(PROVIDER_NAMES[providerOf(this.value)]);
     if (this.value.effort) parts.push(EFFORT_NAMES[this.value.effort] || this.value.effort);
     this.button.textContent = parts.join(' · ') + (this.value.fastMode ? ' ⚡' : '') + ' ▾';
-    this.button.title = this.model.description || '';
+    this.button.title = (!auto && this.actual && this.actual !== shortName(this.model) ? `Runs on ${this.actual} (it started before ${shortName(this.model)} came; it moves to it when it starts again or you pick it again). ` : '') + (this.model.description || '');
   }
 
   open() {

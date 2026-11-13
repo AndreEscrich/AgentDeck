@@ -53,7 +53,20 @@ function cliModel(agent) {
 // The name of Auto's smallest model, for the notes about its picks.
 const smallModel = agent => (providerOf(agent.choice) === 'codex' ? 'Luna' : 'Haiku');
 // What a model is called in the notes: "Opus", "Sol".
-const pickName = agent => (providerOf(agent.choice) === 'codex' ? FAMILY_NAMES[cliModel(agent)] || cliModel(agent) : autoModel.nameOf(cliModel(agent)));
+const pickName = agent => (providerOf(agent.choice) === 'codex' ? FAMILY_NAMES[cliModel(agent)] || cliModel(agent) : runningName(agent) || autoModel.nameOf(cliModel(agent)));
+// The Claude model the agent runs, with its version ("Sonnet 5.5"): the one
+// its last answer came from (agent.actualModel), when that is of the family
+// it should run now (after a change of model, the next answer tells);
+// else the version Claude Code's list gives for the choice.
+function runningName(agent) {
+  if (providerOf(agent.choice) === 'codex') return null;
+  const want = cliModel(agent);
+  if (!want || want === 'default') return modelName(agent.actualModel);
+  const actual = modelName(agent.actualModel);
+  if (actual && familyOf(actual) === familyOf(want)) return actual;
+  const m = sharedModels.find(x => x.value === want);
+  return m ? shortName(m) : null;
+}
 // The effort: its choice, or with Auto and Effort "Auto" the one Auto
 // picked for it (agent.autoEffort; '' is the model's default).
 function cliEffort(agent) {
@@ -72,6 +85,7 @@ function autoPickName(agent) {
 function showAutoPick(agent) {
   if (state.current?.kind !== 'agent' || state.current.id !== agent.id) return;
   composerPicker.setResolved(agent.choice?.model === 'auto' && agent.autoLevel ? autoPickName(agent) : null);
+  composerPicker.setActual(agent.choice?.model !== 'auto' ? runningName(agent) : null);
 }
 // Haiku's rating: its level (or null), and its cost goes into the Auto report.
 function rated(r) {
@@ -87,7 +101,7 @@ async function settleAuto(agent, rating) {
   const before = JSON.stringify(cliChoice(agent));
   agent.autoLevel = autoModel.startLevel(agent.autoRules, haiku, agent.autoText);
   agent.autoEffort = autoModel.effortFor(agent.autoLevel, autoModel.score(agent.autoRules, haiku));
-  if (JSON.stringify(cliChoice(agent)) !== before) window.deck.setModel(agent.id, cliChoice(agent));
+  if (JSON.stringify(cliChoice(agent)) !== before) (agent.actualModel = null, window.deck.setModel(agent.id, cliChoice(agent)));
   const easy = autoModel.combine(agent.autoRules, haiku) === 1;
   const why = easy && agent.autoLevel > 1 ? `it rates easy, but it asks for work, which is too much for ${smallModel(agent)}` : haiku ? `the quick-task model rated it ${haiku} of 3` : 'from your message';
   agent.transcript.note(`Auto picked ${autoPickName(agent)} (${why}).`);
@@ -157,7 +171,7 @@ const composerPicker = new ModelPicker($('composer-picker'), {
         a.autoLevel = isVisual ? 3 : autoModel.startLevel(autoModel.rules(text), null, text);
         a.autoEffort = autoModel.effortFor(a.autoLevel, autoModel.rules(text), { visual: isVisual });
       }
-      window.deck.setModel(a.id, cliChoice(a));
+      (a.actualModel = null, window.deck.setModel(a.id, cliChoice(a)));
       showAutoPick(a);
       a.transcript.note(`Switched to ${composerPicker.button.textContent.replace(' ▾', '')} from the next message on.`);
     } else if (cur?.kind === 'history') {
@@ -715,6 +729,7 @@ function show(kind, id) {
     composerPicker.setLocked(providerOf(a.choice));
     composerPicker.setValue(a.choice || defaultChoice());
     composerPicker.setResolved(null);
+    composerPicker.setActual(null);
     showAutoPick(a);
     composerModePicker.setValue(a.mode || defaultMode());
     $('input').placeholder = DEFAULT_PLACEHOLDER;
@@ -735,6 +750,7 @@ function show(kind, id) {
     composerPicker.setLocked(providerOf(h.choice));
     composerPicker.setValue(h.choice || defaultChoice());
     composerPicker.setResolved(null);
+    composerPicker.setActual(null);
     composerModePicker.setValue(h.mode || defaultMode());
     $('input').placeholder = 'Send a message to continue this session…';
     $('input').focus();
@@ -746,6 +762,7 @@ function show(kind, id) {
     composerPicker.setLocked(null);
     composerPicker.setValue(d.choice);
     composerPicker.setResolved(null);
+    composerPicker.setActual(null);
     composerModePicker.setValue(d.mode);
     renderDraftButtons();
     $('input').placeholder = HUB_PLACEHOLDER;
@@ -1876,6 +1893,7 @@ async function openParked(sessionId) {
     h.mode = h.mode || p.mode;
     composerPicker.setValue(h.choice || defaultChoice());
     composerPicker.setResolved(null);
+    composerPicker.setActual(null);
     composerModePicker.setValue(h.mode || defaultMode());
   }
   return h?.view;
@@ -2955,13 +2973,13 @@ hub.modelOf = agent => {
   const short = effort ? ` · ${EFFORT_SHORT[effort] || effort}` : '';
   const long = effort ? ` at ${(EFFORT_NAMES[effort] || effort).toLowerCase()} effort` : '';
   if (value === 'auto') {
-    const picked = autoModel.nameOf(cliModel(agent));
+    const picked = runningName(agent) || autoModel.nameOf(cliModel(agent));
     const by = effort && !agent.choice.effort ? 'Auto picked' : 'Auto picked the model';
     return { label: `Auto · ${picked}${short}`, auto: true, title: `${by}: ${picked}${long} for this task (it can change with your next message)` };
   }
   if (value === 'default') return { label: `Default${short}`, title: `Claude Code's default model${long}` };
   const m = modelByValue(value);
-  const name = m ? shortName(m) : value;
+  const name = runningName(agent) || (m ? shortName(m) : value);
   return { label: name + short, fable: /^fable/i.test(name), title: `Runs on ${name}${long}` };
 };
 $('composer-unity').onclick = () => openUnity($('composer-unity').dataset.cwd);
@@ -3849,7 +3867,7 @@ async function sendToAgent(agent, text, images = []) {
     agent.autoLevel = level;
     agent.autoEffort = effort;
     if (JSON.stringify(cliChoice(agent)) !== before) {
-      window.deck.setModel(agent.id, cliChoice(agent));
+      (agent.actualModel = null, window.deck.setModel(agent.id, cliChoice(agent)));
       const why = autoModel.visual(rateText) ? `visual work: ${autoModel.visual(rateText)}`
         : current === 1 && level > 1 && !autoModel.haikuFits(rateText) ? `it asks for work, which is too much for ${smallModel(agent)}` : haiku ? `the quick-task model rated this ${haiku} of 3` : autoModel.stepUp(lastStatus, rateText) ? 'the last try did not work' : 'from your message';
       agent.transcript.note(`Auto switched to ${autoPickName(agent)} for this (${why}).`);
@@ -4869,6 +4887,15 @@ window.deck.onEvent((id, msg) => {
   if (isAuthFailure(msg)) { noteAuthWait(a); noteAuthProblem(); }
   if (msg.type === 'system' && msg.subtype === 'compact_boundary') afterCompact(a);
   if (msg.type === 'assistant') { noteClashes(a, msg.message); taskType.noteMessage(a, msg.message); }
+  // The model the agent's answers come from (not its sub-agents'), with its
+  // version: the model button and the tile show it (runningName).
+  const answeredBy = msg.type === 'assistant' && !msg.parent_tool_use_id ? msg.message?.model
+    : msg.type === 'system' && msg.subtype === 'init' ? msg.model : null;
+  if (answeredBy && modelName(answeredBy) && answeredBy !== a.actualModel) {
+    a.actualModel = answeredBy;
+    showAutoPick(a);
+    refreshHub();
+  }
   if (msg.type === 'user' && Array.isArray(msg.message?.content) && msg.message.content.some(b => b?.type === 'tool_result' && b.is_error)) taskType.noteError(a);
   if (msg.type === 'result') clearClashes(a);
   // A finished turn of an Auto agent goes into the Auto report (autoreport.js).
