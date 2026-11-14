@@ -14,10 +14,12 @@ const os = require('os');
 const path = require('path');
 const { randomUUID } = require('crypto');
 const { spawnCodex, killTree, childEnv } = require('./platform');
-const { SYSTEM_PROMPT, EDIT_PROMPT, compactTokens } = require('./agents');
+const { SYSTEM_PROMPT, EDIT_PROMPT, READ_TOOLS_PROMPT, compactTokens } = require('./agents');
 
 // Codex edits files with its own patch tool, not Claude Code's Edit.
-const CODEX_EDIT_PROMPT = 'To change an existing file, edit the lines that change with apply_patch instead of writing the whole file again from a shell command, so its line endings and encoding stay as they are.';
+// Codex has no Read or Grep tools: rg, and bounded reads of a file.
+const CODEX_READ_TOOLS_PROMPT = 'Search with rg and read bounded ranges of a file (sed -n "40,80p" file), never whole-file dumps; keep shell commands simple and single-purpose.';
+const CODEX_EDIT_PROMPT ='To change an existing file, edit the lines that change with apply_patch instead of writing the whole file again from a shell command, so its line endings and encoding stay as they are.';
 
 // Your global Claude Code instructions (~/.claude/CLAUDE.md) also apply to
 // Codex agents; a project's CLAUDE.md is read by Codex itself
@@ -26,7 +28,7 @@ const CODEX_EDIT_PROMPT = 'To change an existing file, edit the lines that chang
 function developerInstructions(config, cwd) {
   let global = '';
   try { global = fs.readFileSync(path.join(os.homedir(), '.claude', 'CLAUDE.md'), 'utf8').trim(); } catch { /* none */ }
-  const base = [SYSTEM_PROMPT.replace(EDIT_PROMPT, CODEX_EDIT_PROMPT), require('./knowledge').knowledgePrompt(config, cwd)].filter(Boolean).join('\n\n');
+  const base = [SYSTEM_PROMPT.replace(EDIT_PROMPT, CODEX_EDIT_PROMPT).replace(READ_TOOLS_PROMPT, CODEX_READ_TOOLS_PROMPT), require('./knowledge').knowledgePrompt(config, cwd)].filter(Boolean).join('\n\n');
   return global ? `${base}\n\nThe user's own instructions for every project (written for Claude Code, they apply to you too):\n\n${global}` : base;
 }
 

@@ -42,6 +42,21 @@ const CHANGES_PROMPT = [
 // encoding, which reviewers then see as every line changed.
 const EDIT_PROMPT = 'To change an existing file, edit the lines that change (the Edit tool) instead of writing the whole file again, so its line endings and encoding stay as they are.';
 
+// How to work without waste (Tactile Create's "efficiency contract"): every
+// step re-reads the whole conversation, so what the agent reads and writes
+// it pays for again and again. READ_TOOLS_PROMPT is Claude Code's; Codex
+// gets its own (codex.js).
+const READ_TOOLS_PROMPT = 'Read and search with the Read, Grep and Glob tools, not with cat, sed or find in a shell.';
+const EFFICIENCY_PROMPT = [
+  'Work efficiently:',
+  '- Make the smallest correct change: do what the task asks and stop. No new abstractions, events, error handling or refactors it did not ask for; three similar lines are better than a premature helper.',
+  '- Read narrowly: find the symbol first, then read just the lines around it, not whole files or folders "to be safe".',
+  '- Do not read a file again that you already read in this conversation, unless it changed since (you edited it, or something else may have).',
+  '- Run independent reads and searches in parallel, not one at a time.',
+  `- ${READ_TOOLS_PROMPT}`,
+  '- When the change is made and checked, report briefly and end the turn.',
+].join('\n');
+
 // Diffs the user asks for (a branch, a commit) are drawn by Agent Hub from
 // a command, so the agent does not write them out (see branchdiff.js).
 const DIFF_PROMPT = [
@@ -82,7 +97,7 @@ const ART_PROMPT = [
   'When only the surface of a 3D model is wrong, retexture it instead of generating it again. After paid generations, say what they cost when the tool tells you.',
 ].join(' ');
 
-const SYSTEM_PROMPT = `${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}\n\n${RUN_PROMPT}\n\n${MILESTONE_PROMPT}\n\n${ART_PROMPT}`;
+const SYSTEM_PROMPT = `${EFFICIENCY_PROMPT}\n\n${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}\n\n${RUN_PROMPT}\n\n${MILESTONE_PROMPT}\n\n${ART_PROMPT}`;
 
 // 'auto', or the size in tokens when it is between 100k and 1M (false otherwise).
 function compactTokens(value) {
@@ -731,4 +746,4 @@ function readPmTasks(config, keys) {
   });
 }
 
-module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, rateTask, pickGame, readPmTasks, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited, compactTokens, SYSTEM_PROMPT, EDIT_PROMPT };
+module.exports = { AgentManager, fetchModels, findClaude, summarizeTitle, rateTask, pickGame, readPmTasks, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited, compactTokens, SYSTEM_PROMPT, EDIT_PROMPT, READ_TOOLS_PROMPT };
