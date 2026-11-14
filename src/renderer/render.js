@@ -1660,6 +1660,47 @@ class Transcript {
     this.pinned(() => turn.skills.appendChild(chip));
   }
 
+  // The checks Agent Hub runs on a turn's code before it counts as done
+  // (verifyTurn in app.js, src/verify.js): a card under the answer, first
+  // saying what runs, then each check with ✓ or ✗ (its errors folded under
+  // it) and what happens next. Returns { show(result, { attempt, max,
+  // giveUp }), remove() }.
+  verifyCard(turn, level) {
+    const card = el('div', 'verify-card running');
+    const head = el('div', 'verify-head');
+    head.append(el('span', 'verify-spinner'), el('span', 'verify-title', level === 'tests' ? 'Checking: compile, then tests…' : 'Checking: compile…'));
+    card.appendChild(head);
+    this.pinned(() => (turn?.el || this.ensureTurn().el).appendChild(card));
+    const NAMES = { compile: 'Compile', tests: 'Tests' };
+    return {
+      remove: () => card.remove(),
+      show: (result, { attempt = 0, max = 3, giveUp = false } = {}) => this.pinned(() => {
+        card.classList.remove('running');
+        card.classList.add(result.blocked ? 'blocked' : result.ok ? 'passed' : 'failed');
+        head.textContent = '';
+        const KIND = { unity: 'Unity', gameengine: 'Game Engine', typescript: 'TypeScript' };
+        head.append(
+          el('span', 'verify-mark', result.blocked ? '⚠' : result.ok ? '✓' : '✗'),
+          el('span', 'verify-title', result.blocked ? 'Not checked' : result.ok ? 'Checks passed' : 'Checks failed'),
+          el('span', 'verify-kind', KIND[result.kind] || ''),
+        );
+        for (const g of result.gates || []) {
+          const row = el(g.details ? 'details' : 'div', `verify-gate ${g.ok ? 'ok' : 'bad'}`);
+          const line = el(g.details ? 'summary' : 'div', 'verify-gate-line');
+          line.append(el('span', 'verify-gate-mark', g.ok ? '✓' : '✗'), el('span', 'verify-gate-name', NAMES[g.name] || g.name), el('span', 'verify-gate-summary', g.summary || ''));
+          row.appendChild(line);
+          if (g.details) row.appendChild(el('pre', 'verify-gate-details', g.details));
+          card.appendChild(row);
+        }
+        const next = result.blocked ? result.blocked
+          : result.ok ? null
+            : giveUp ? `Still failing after ${max} rounds: over to you.`
+              : `Sent to the agent to fix (round ${attempt} of ${max}); Agent Hub checks again when it finishes.`;
+        if (next) card.appendChild(el('div', 'verify-next', next));
+      }),
+    };
+  }
+
   // Tactile knowledge the agent looked up in this task (src/knowledge.js):
   // a row under the steps with the entries it read in full (solid, linking
   // to the Cortex page) and the ones its searches found (outlined), the
@@ -1934,7 +1975,8 @@ class Transcript {
       // Your message starts a new turn.
       this.finishTurn();
       const bubbles = texts.map(t => {
-        const b = el('div', 'msg-user');
+        // Agent Hub's own message when its checks failed (verifyTurn in app.js).
+        const b = el('div', /^Agent Hub checked your changes/.test(t) ? 'msg-user from-app' : 'msg-user');
         b.appendChild(withCommandChips(t));
         return decorateLinks(b);
       });

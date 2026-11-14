@@ -131,6 +131,10 @@ contextBridge.exposeInMainWorld('deck', {
   findMedia: (cwd, name) => ipcRenderer.invoke('media:find', cwd, name),
   // An image's bytes ({ mediaType, data } in base64), for the image review.
   pictureData: file => ipcRenderer.invoke('media:picture', file),
+  // Checks an agent's work in cwd at a level (compile | tests): { ok, blocked, kind, gates } (verify.js).
+  verify: (cwd, level) => ipcRenderer.invoke('verify:run', cwd, level),
+  // What can be checked in cwd: 'unity' | 'gameengine' | 'typescript' | null.
+  verifyKind: cwd => ipcRenderer.invoke('verify:detect', cwd),
   mediaBefore: (cwd, file, snap) => ipcRenderer.invoke('media:before', cwd, file, snap),
   listSessions: () => ipcRenderer.invoke('sessions:list'),
   loadTranscript: file => ipcRenderer.invoke('sessions:load', file),

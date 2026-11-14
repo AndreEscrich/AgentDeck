@@ -180,6 +180,7 @@ function openSettings(config, { onSaved } = {}) {
   gamesRow.append(gamesFolder, pickGames);
   const autoGame = settingsInput('checkbox', config.autoGameFolder);
   const knowledgeOn = settingsInput('checkbox', config.knowledge !== false);
+  const verifyLevel = settingsSelect(VERIFY_LEVELS.map(l => [l.value, l.label]), config.verifyLevel || 'off');
   const knowledgeSkip = settingsText(knowledgeSkipText(config.knowledgeSkip), 'MergeTavern: conveyor belts, match-3');
   const mode = settingsSelect(PERMISSION_MODES.map(m => [m.value, m.label]), config.defaultPermissionMode || 'bypassPermissions');
   // The same choices as the model menu (Auto, Opus, Sonnet, Haiku, Fable); a
@@ -351,6 +352,7 @@ function openSettings(config, { onSaved } = {}) {
       el('div', 'settings-hint account-intro', 'The account Claude Code and every Claude agent use. The accounts you signed in with before stay in the list, so switching back needs no new sign-in.'),
       accountsPanel())]],
     ['agents', 'Agents', [section(null,
+      settingsField('Checks before done', 'After a turn that changed code, Agent Hub checks it before it counts as done, and sends failures back to the agent to fix (three rounds at most). Unity: it compiles in the open Editor, and with tests runs the EditMode tests. Game Engine: gameengine check, and gameengine test. TypeScript: tsc, and npm test. Each agent can change its own under ⚙ in the message box', verifyLevel),
       settingsField('Tactile knowledge', 'Agents look up Tactile\'s conventions and examples in Tactile Cortex (the Games Knowledge Database, and lessons from earlier agent sessions) before non-trivial game code. Needs the Tactile Cortex connector (Connectors → Tactile)', knowledgeOn),
       settingsField('Knowledge to skip', 'Per project, what its agents leave out of what they find: one line each, the project\'s folder name, a colon, then the topics. For example: MergeTavern: conveyor belts, match-3', knowledgeSkip),
       settingsField('Folder', 'Where a new agent works until you pick one in the Hub', folderRow),
@@ -519,6 +521,7 @@ function openSettings(config, { onSaved } = {}) {
       claudeHelperModel: claudeHelperModel.value,
       codexHelperModel: codexHelperModel.value,
       autoCompact: compact.value,
+      verifyLevel: verifyLevel.value,
       knowledge: knowledgeOn.checked,
       knowledgeSkip: parseKnowledgeSkip(knowledgeSkip.value),
       hubAfterSend: hubAfterSend.checked,

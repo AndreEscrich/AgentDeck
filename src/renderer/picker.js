@@ -345,6 +345,83 @@ class ModePicker {
   }
 }
 
+// Verification after a turn that changed code (src/verify.js): Agent Hub
+// compiles it, and with Tests also runs the tests, before the work counts as
+// done; failures go back to the agent to fix.
+const VERIFY_LEVELS = [
+  { value: 'off', label: 'No checks', short: 'No checks', description: 'The agent says when it is done' },
+  { value: 'compile', label: 'Compile', short: 'Compile', description: 'Agent Hub compiles the project after each turn that changed code' },
+  { value: 'tests', label: 'Compile + tests', short: 'Tests', description: 'Agent Hub compiles it and runs its tests (Unity: EditMode)' },
+];
+
+class VerifyPicker {
+  constructor(anchor, { onChange, openUp = true } = {}) {
+    this.onChange = onChange;
+    this.value = 'off';
+    this.root = el('div', 'model-picker');
+    this.button = el('button', 'model-btn');
+    this.button.type = 'button';
+    this.menu = el('div', 'model-menu hidden' + (openUp ? ' up' : ' down'));
+    this.root.append(this.button, this.menu);
+    anchor.appendChild(this.root);
+    this.button.onclick = e => {
+      e.stopPropagation();
+      this.menu.classList.contains('hidden') ? this.open() : this.close();
+    };
+    this.menu.onclick = e => e.stopPropagation();
+    document.addEventListener('click', () => this.close());
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') this.close(); });
+    pickers.push(this);
+    this.renderButton();
+  }
+
+  get level() {
+    return VERIFY_LEVELS.find(l => l.value === this.value) || VERIFY_LEVELS[0];
+  }
+
+  setValue(value) {
+    this.value = VERIFY_LEVELS.some(l => l.value === value) ? value : 'off';
+    this.renderButton();
+    if (!this.menu.classList.contains('hidden')) this.renderMenu();
+  }
+
+  renderButton() {
+    this.button.textContent = `✓ ${this.level.short} ▾`;
+    this.button.title = `Checks before the work counts as done: ${this.level.label}. ${this.level.description}`;
+  }
+
+  open() {
+    for (const p of pickers) if (p !== this) p.close();
+    this.renderMenu();
+    this.menu.classList.remove('hidden');
+    window.uiSound?.('tick');
+  }
+
+  close() {
+    if (!this.menu.classList.contains('hidden')) window.uiSound?.('tickDown');
+    this.menu.classList.add('hidden');
+  }
+
+  renderMenu() {
+    this.menu.innerHTML = '';
+    this.menu.appendChild(el('div', 'menu-label', 'Checks before done'));
+    for (const l of VERIFY_LEVELS) {
+      const selected = l.value === this.value;
+      const row = el('div', 'menu-item' + (selected ? ' selected' : ''));
+      const text = el('div', 'menu-text');
+      text.append(el('div', 'menu-name', l.label), el('div', 'menu-desc', l.description));
+      row.append(text, el('span', 'menu-check', selected ? '✓' : ''));
+      row.onclick = () => {
+        this.setValue(l.value);
+        this.close();
+        window.uiSound?.('select');
+        this.onChange?.(l.value);
+      };
+      this.menu.appendChild(row);
+    }
+  }
+}
+
 // Loads the account's model lists once and updates every picker on screen.
 async function loadModels() {
   const [models, codex] = await Promise.all([

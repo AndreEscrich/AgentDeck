@@ -206,6 +206,31 @@ const composerModePicker = new ModePicker($('composer-mode-picker'), {
   },
 });
 
+// The checks before an agent's work counts as done (src/verify.js; see
+// verifyTurn): an agent's own level, else Settings → Agents → Checks.
+function defaultVerify() {
+  return state.config.verifyLevel || 'off';
+}
+function verifyLevelOf(a) {
+  return a?.verify || defaultVerify();
+}
+const composerVerifyPicker = new VerifyPicker($('composer-verify-picker'), {
+  onChange: level => {
+    const cur = state.current;
+    if (cur?.kind === 'agent') {
+      const a = state.agents.get(cur.id);
+      a.verify = level;
+      a.transcript.note(`Checks before done: ${composerVerifyPicker.level.label}.`);
+      saveHub();
+    } else if (cur?.kind === 'history') {
+      state.history.get(cur.id).verify = level;
+    } else if (cur?.kind === 'hub') {
+      ensureDraft().verify = level;
+    }
+    renderSettingsButton();
+  },
+});
+
 // ---------- new agent ----------
 
 // A new agent starts as an empty chat (a "draft"). Its folder, group,
@@ -473,6 +498,7 @@ function settingsDiffer() {
   const c = composerPicker.value;
   const d = defaultChoice();
   return composerModePicker.value !== defaultMode()
+    || composerVerifyPicker.value !== defaultVerify()
     || providerOf(c) !== providerOf(d)
     || (c.model || 'default') !== (d.model || 'default')
     || (c.effort || '') !== (d.effort || '')
@@ -482,7 +508,7 @@ function settingsDiffer() {
 function renderSettingsButton() {
   const btn = $('composer-settings-btn');
   const open = !$('composer-settings').classList.contains('hidden');
-  const summary = `${composerModePicker.mode.short} · ${composerPicker.button.textContent.replace(' ▾', '')}`;
+  const summary = `${composerModePicker.mode.short} · ${composerPicker.button.textContent.replace(' ▾', '')} · ✓ ${composerVerifyPicker.level.short}`;
   btn.textContent = !open && settingsDiffer() ? `⚙ ${summary}` : '⚙';
   btn.title = `${open ? 'Hide' : 'Show'} permissions and model (${summary})`;
   btn.classList.toggle('active', open);
@@ -732,6 +758,7 @@ function show(kind, id) {
     composerPicker.setActual(null);
     showAutoPick(a);
     composerModePicker.setValue(a.mode || defaultMode());
+    composerVerifyPicker.setValue(verifyLevelOf(a));
     $('input').placeholder = DEFAULT_PLACEHOLDER;
     renderFollowUps();
     $('input').focus();
@@ -752,6 +779,7 @@ function show(kind, id) {
     composerPicker.setResolved(null);
     composerPicker.setActual(null);
     composerModePicker.setValue(h.mode || defaultMode());
+    composerVerifyPicker.setValue(verifyLevelOf(h));
     $('input').placeholder = 'Send a message to continue this session…';
     $('input').focus();
   } else {
@@ -764,6 +792,7 @@ function show(kind, id) {
     composerPicker.setResolved(null);
     composerPicker.setActual(null);
     composerModePicker.setValue(d.mode);
+    composerVerifyPicker.setValue(verifyLevelOf(d));
     renderDraftButtons();
     $('input').placeholder = HUB_PLACEHOLDER;
     renderBroadcast();
@@ -1304,7 +1333,7 @@ async function sendToHubItem(id, text, images = []) {
     if (!session) return false;
     const h = await loadHistory(session);
     const p = state.parked.get(sessionId);
-    await startAgent({ cwd: h.cwd || session.cwd, prompt: text, permissionMode: h.mode || p?.mode, choice: h.choice || p?.choice, resume: h, images });
+    await startAgent({ cwd: h.cwd || session.cwd, prompt: text, permissionMode: h.mode || p?.mode, verify: h.verify || p?.verify, choice: h.choice || p?.choice, resume: h, images });
     return true;
   }
   const a = state.agents.get(id);
@@ -1510,6 +1539,7 @@ function hubInfo(a) {
     autoLevel: a.autoLevel || undefined,
     autoEffort: a.autoEffort || undefined,
     mode: a.mode,
+    verify: a.verify || undefined,
     lastTurn: a.transcript?.lastTurn ? { durationMs: a.transcript.lastTurn.durationMs, usage: a.transcript.lastTurn.usage } : a.lastTurn || null,
     // Finished while you were not looking, and not opened since.
     unread: !!a.unread,
@@ -1891,10 +1921,12 @@ async function openParked(sessionId) {
     h.autoLevel = h.autoLevel || p.autoLevel;
     h.autoEffort = h.autoEffort || p.autoEffort;
     h.mode = h.mode || p.mode;
+    h.verify = h.verify || p.verify;
     composerPicker.setValue(h.choice || defaultChoice());
     composerPicker.setResolved(null);
     composerPicker.setActual(null);
     composerModePicker.setValue(h.mode || defaultMode());
+    composerVerifyPicker.setValue(verifyLevelOf(h));
   }
   return h?.view;
 }
@@ -2856,7 +2888,7 @@ async function resumeInterrupted() {
     if (!session?.file) continue;
     try {
       const h = await loadHistory({ ...session, title: p.title || session.title });
-      await startAgent({ cwd: h.cwd || session.cwd || p.cwd, prompt: RESUME_PROMPT, permissionMode: p.mode, choice: p.choice, resume: h });
+      await startAgent({ cwd: h.cwd || session.cwd || p.cwd, prompt: RESUME_PROMPT, permissionMode: p.mode, verify: p.verify, choice: p.choice, resume: h });
     } catch (err) {
       console.error('Could not continue', p.title, err);
     }
@@ -3619,7 +3651,7 @@ async function startFrom(forkFrom, note = flashComposerNote) {
 // note(text) and resolves with any of { prompt, forkFrom, preamble,
 // handoffFrom, cwd, folderNote } to use instead of the ones passed in.
 // folderNote: why the agent works in cwd (Auto game folder), shown in the chat.
-async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId, fromRect, forkFrom, preamble = '', handoffFrom = null, images = [], ticket = null, rewindAt, prepare = null, folderNote = null }) {
+async function startAgent({ cwd, prompt, permissionMode, verify, choice, resume, groupId, fromRect, forkFrom, preamble = '', handoffFrom = null, images = [], ticket = null, rewindAt, prepare = null, folderNote = null }) {
   const title = resume ? resume.session.title : prompt.split('\n')[0].slice(0, 80);
   choice = choice || defaultChoice();
   // An older Codex choice: no model is Auto, a newest model id its family.
@@ -3645,7 +3677,7 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
   }
 
   transcript.onUpdate = refreshHub;
-  const agent = { id, title, cwd, status: 'starting', sessionId: resume?.session.id || null, view, transcript, unread: false, choice, mode: permissionMode,
+  const agent = { id, title, cwd, status: 'starting', sessionId: resume?.session.id || null, view, transcript, unread: false, choice, mode: permissionMode, verify,
     // A resumed session stays in its group. A new one goes to the group picked in the form.
     groupId: resume ? groupOf(resume.session.id) : groupId || null };
   state.agents.set(id, agent);
@@ -3983,7 +4015,7 @@ async function rewindTo(transcript, index, text, { undoFiles, files = [] } = {})
 
   if (hist) {
     transcript.truncateAt(index);
-    await startAgent({ cwd, prompt: text, permissionMode: hist.mode, choice: hist.choice, resume: hist, rewindAt: at });
+    await startAgent({ cwd, prompt: text, permissionMode: hist.mode, verify: hist.verify, choice: hist.choice, resume: hist, rewindAt: at });
     return;
   }
 
@@ -4975,29 +5007,110 @@ window.deck.onEvent((id, msg) => {
   const limitHit = isLimitHit(msg);
   if (limitHit) noteLimitHit(a, msg);
   if (msg.type === 'result' && a.status !== 'background') {
-    notifyAbout(a, msg.is_error ? 'error' : 'idle', limitHit ? `Usage limit reached: continues at ${new Date(a.limited.resetAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : a.authWait ? 'Signed out: continues after you sign in' : msg.is_error ? 'Stopped with an error' : 'Finished and waiting for you');
-    if (playSounds()) {
-      if (!msg.is_error) sounds.done();
-      else if (!a.stopping && !limitHit && !a.authWait) sounds.error();
-    }
-    // Stopped before it was done: you pressed Stop, or it ended with an
-    // error (not the usage limit or a sign-in, which continue by themselves).
-    // Its tile and message box offer Restart (see restartAgent).
-    a.stopped = !!a.stopping || (!!msg.is_error && !limitHit && !a.authWait);
-    // The next queued message goes out now, unless you stopped the task.
-    if (a.queue?.length) {
-      if (a.stopping) {
-        a.queueHeld = true;
-        renderQueue(a);
-      } else {
-        setTimeout(() => sendQueued(a), 400);
-      }
-    }
-    a.stopping = false;
+    // A turn that changed code is checked first (verifyTurn); the task is
+    // done, with its notification, sound and the next queued message, when
+    // the checks pass or give up.
+    const turn = a.transcript.lastFinished;
+    if (!limitHit && wantsVerification(a, turn, msg)) verifyTurn(a, turn, msg);
+    else finishTask(a, msg, { limitHit });
   }
   // The context meter: after each task, and at most every 5 seconds while working.
   if (msg.type === 'result' || (msg.type === 'assistant' && Date.now() - (a.contextAt || 0) > 5000)) updateContext(a);
 });
+
+// The end of a task: its notification and sound, Restart for a task that was
+// stopped, and the next queued message. note: what the notification says
+// instead of the usual.
+function finishTask(a, msg, { limitHit = false, note = null } = {}) {
+  notifyAbout(a, msg.is_error ? 'error' : 'idle', note || (limitHit ? `Usage limit reached: continues at ${new Date(a.limited.resetAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : a.authWait ? 'Signed out: continues after you sign in' : msg.is_error ? 'Stopped with an error' : 'Finished and waiting for you'));
+  if (playSounds()) {
+    if (!msg.is_error) sounds.done();
+    else if (!a.stopping && !limitHit && !a.authWait) sounds.error();
+  }
+  // Stopped before it was done: you pressed Stop, or it ended with an
+  // error (not the usage limit or a sign-in, which continue by themselves).
+  // Its tile and message box offer Restart (see restartAgent).
+  a.stopped = !!a.stopping || (!!msg.is_error && !limitHit && !a.authWait);
+  // The next queued message goes out now, unless you stopped the task.
+  if (a.queue?.length) {
+    if (a.stopping) {
+      a.queueHeld = true;
+      renderQueue(a);
+    } else {
+      setTimeout(() => sendQueued(a), 400);
+    }
+  }
+  a.stopping = false;
+}
+
+// ---------- checks before done ----------
+
+// After a turn that changed code, Agent Hub checks the work itself before
+// it counts as done (src/verify.js), at the agent's level (verifyLevelOf):
+// it compiles the project, and with Tests runs its tests. A card in the chat
+// shows the checks. When they fail, the errors go back to the agent as a
+// message, to fix; after three failed rounds in a row the task stops there,
+// blocked, and you are told. Your own next message starts the count again.
+// Not checked: a turn that ended with an error or that you stopped, a plan,
+// and a turn that changed no code (or a project with nothing to check).
+const VERIFY_ATTEMPTS = 3;
+const CODE_FILE = /\.(cs|asmdef|asmref|ts|tsx|mts|cts|js|jsx|mjs|cjs)$/i;
+
+function wantsVerification(a, turn, msg) {
+  if (verifyLevelOf(a) === 'off' || msg.is_error || a.stopping || a.mode === 'plan' || !a.cwd || !turn) return false;
+  return [...(turn.changes?.keys() || [])].some(p => CODE_FILE.test(p));
+}
+
+async function verifyTurn(a, turn, msg) {
+  const level = verifyLevelOf(a);
+  a.verifying = true;
+  const card = a.transcript.verifyCard(turn, level);
+  a.transcript.liveStep = level === 'tests' ? 'Checking: compile and tests' : 'Checking: compile';
+  refreshHub();
+  let result;
+  try {
+    result = await window.deck.verify(a.cwd, level);
+  } catch (err) {
+    result = { blocked: `The checks could not run: ${err?.message || err}`, gates: [] };
+  }
+  a.verifying = false;
+  if (!result.kind && !result.blocked) {
+    // Nothing in this project to check.
+    card.remove();
+    finishTask(a, msg);
+    return;
+  }
+  const failed = !result.ok && !result.blocked;
+  const attempt = failed ? (a.verifyAttempts = (a.verifyAttempts || 0) + 1) : 0;
+  if (!failed) a.verifyAttempts = 0;
+  const giveUp = failed && attempt >= VERIFY_ATTEMPTS;
+  card.show(result, { attempt, max: VERIFY_ATTEMPTS, giveUp });
+  refreshHub();
+  if (!failed) {
+    finishTask(a, msg, { note: result.blocked ? 'Finished: not checked (see the chat)' : 'Finished and checked' });
+    return;
+  }
+  if (giveUp) {
+    a.verifyAttempts = 0;
+    finishTask(a, { ...msg, is_error: true }, { note: `Checks still fail after ${VERIFY_ATTEMPTS} rounds: needs you` });
+    return;
+  }
+  // Back to the agent, with what failed.
+  const failing = result.gates.filter(g => !g.ok);
+  const text = [
+    `Agent Hub checked your changes and they do not pass yet (round ${attempt} of ${VERIFY_ATTEMPTS}):`,
+    '',
+    ...failing.map(g => `${g.name === 'tests' ? 'Tests' : 'Compile'}: ${g.summary}${g.details ? `\n${g.details}` : ''}`),
+    '',
+    'Fix these, then finish your turn: Agent Hub checks again by itself.',
+  ].join('\n');
+  // Shown as Agent Hub's, not yours (render.js knows it by its first words):
+  // it is not one of your prompts, so the agent's title and "You asked" stay yours.
+  a.transcript.add({ type: 'user', message: { role: 'user', content: text } });
+  if (['idle', 'background'].includes(a.status)) a.status = 'working';
+  refreshHub();
+  await sendToAgent(a, text);
+}
 
 window.deck.onStatus((id, status) => {
   const a = state.agents.get(id);
@@ -5144,7 +5257,7 @@ window.deck.onExit((id, { code, stderr }) => {
   // Its process ended with an error, or in the middle of a task: Restart continues it.
   if (!a.removed && a.sessionId) state.parked.set(a.sessionId, { ...hubInfo(a), stopped: code !== 0 || !!a.stopped || a.wasBusy });
   const session = { id: a.sessionId || id, title: a.title, cwd: a.cwd, file: null, updatedAt: Date.now() };
-  state.history.set(session.id, { session, view: a.view, transcript: a.transcript, cwd: a.cwd, choice: a.choice, mode: a.mode, autoLevel: a.autoLevel, autoEffort: a.autoEffort });
+  state.history.set(session.id, { session, view: a.view, transcript: a.transcript, cwd: a.cwd, choice: a.choice, mode: a.mode, verify: a.verify, autoLevel: a.autoLevel, autoEffort: a.autoEffort });
   if (state.current?.kind === 'agent' && state.current.id === id) show('history', session.id);
   loadSessions();
 });
@@ -5236,7 +5349,7 @@ async function sendFromComposer() {
       return { prompt, ...(await startFrom(forkFrom, note)) };
     };
     if (playSounds()) sounds.created();
-    await startAgent({ cwd, prompt: text, permissionMode: d.mode, choice: d.choice, groupId: d.groupId, fromRect, images, ticket, prepare, folderNote: quickGame ? gameNote(quickGame) : null });
+    await startAgent({ cwd, prompt: text, permissionMode: d.mode, verify: d.verify, choice: d.choice, groupId: d.groupId, fromRect, images, ticket, prepare, folderNote: quickGame ? gameNote(quickGame) : null });
   } else if (state.current.kind === 'agent') {
     const a = state.agents.get(state.current.id);
     if (QUEUE_WHILE.includes(a.status)) {
@@ -5254,6 +5367,8 @@ async function sendFromComposer() {
     [...a.view.querySelectorAll('.msg-user')].pop()?.classList.add('just-sent');
     notePrompt(a, text);
     afterSend(a, true);
+    // Your message starts the checks' rounds again (verifyTurn).
+    a.verifyAttempts = 0;
     await sendToAgent(a, text, images);
   } else if (state.current.kind === 'history') {
     const h = state.history.get(state.current.id);
@@ -5265,7 +5380,7 @@ async function sendFromComposer() {
       return;
     }
     if (playSounds()) sounds.created();
-    await startAgent({ cwd, prompt: text, permissionMode: h.mode, choice: h.choice, resume: h, images });
+    await startAgent({ cwd, prompt: text, permissionMode: h.mode, verify: h.verify, choice: h.choice, resume: h, images });
   }
 }
 
@@ -5972,7 +6087,7 @@ async function restartAgent(id) {
   sfx('sent');
   try {
     const h = await loadHistory({ ...saved, title: p.title || saved.title });
-    await startAgent({ cwd: h.cwd || saved.cwd || p.cwd, prompt: RESTART_PROMPT, permissionMode: p.mode, choice: p.choice, resume: h });
+    await startAgent({ cwd: h.cwd || saved.cwd || p.cwd, prompt: RESTART_PROMPT, permissionMode: p.mode, verify: p.verify, choice: p.choice, resume: h });
     // The tile keeps the title of the task it continues.
     const a = [...state.agents.values()].find(x => x.sessionId === sessionId || x.view === h.view);
     if (a && p.latestTitle) { a.latestTitle = p.latestTitle; a.latestPrompt = p.latestPrompt; refreshHub(); }
