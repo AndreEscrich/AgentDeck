@@ -61,6 +61,13 @@ const DEFAULT_CONFIG = {
   // (compacts), so long tasks stop re-reading everything with every step.
   // Codex agents too. 100k to 1m, or 'auto' for Claude Code's and Codex's own choice.
   autoCompact: '200k',
+  // Agents look up Tactile's conventions and examples in Cortex (knowledge.js),
+  // leaving out, per project (a folder of the agent's path), what it does not use.
+  knowledge: true,
+  knowledgeSkip: {
+    MergeTavern: 'conveyor belts, match-3 matching, procedural mesh generation, 3D characters and 3D cameras',
+    MergeTavern2: 'conveyor belts, match-3 matching, procedural mesh generation, 3D characters and 3D cameras',
+  },
   stuckAfterSeconds: 30,                // waiting this long for Unity to be ready marks the agent as stuck
   staleAfterHours: 0,                   // an agent on the Hub that finished longer ago than this is marked as stale (0: never)
   defaultFolder: '',

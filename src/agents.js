@@ -117,7 +117,8 @@ class AgentManager {
       '--permission-prompt-tool', 'stdio',
       // Without this flag the CLI refuses a later switch to bypass mode.
       '--allow-dangerously-skip-permissions',
-      '--append-system-prompt', SYSTEM_PROMPT,
+      // Tactile's knowledge in Cortex, with what this project skips (knowledge.js).
+      '--append-system-prompt', [SYSTEM_PROMPT, require('./knowledge').knowledgePrompt(config, cwd)].filter(Boolean).join('\n\n'),
     ];
     // "auto" is the app's own (automodel.js picks a real model before this);
     // if one ever slips through, Claude Code uses its default.

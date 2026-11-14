@@ -41,6 +41,19 @@ function settingsInput(type, value, attrs = {}) {
   return input;
 }
 
+// "Project: topics" lines (Settings → Agents → Knowledge to skip) and back.
+function knowledgeSkipText(skips) {
+  return Object.entries(skips && typeof skips === 'object' ? skips : {}).map(([project, topics]) => `${project}: ${topics}`).join('\n');
+}
+function parseKnowledgeSkip(text) {
+  const skips = {};
+  for (const line of String(text || '').split('\n')) {
+    const m = /^\s*([^:]+?)\s*:\s*(.+?)\s*$/.exec(line);
+    if (m) skips[m[1]] = m[2];
+  }
+  return skips;
+}
+
 function settingsText(value, placeholder) {
   const area = document.createElement('textarea');
   area.rows = 3;
@@ -166,6 +179,8 @@ function openSettings(config, { onSaved } = {}) {
   const gamesRow = el('div', 'settings-inline');
   gamesRow.append(gamesFolder, pickGames);
   const autoGame = settingsInput('checkbox', config.autoGameFolder);
+  const knowledgeOn = settingsInput('checkbox', config.knowledge !== false);
+  const knowledgeSkip = settingsText(knowledgeSkipText(config.knowledgeSkip), 'MergeTavern: conveyor belts, match-3');
   const mode = settingsSelect(PERMISSION_MODES.map(m => [m.value, m.label]), config.defaultPermissionMode || 'bypassPermissions');
   // The same choices as the model menu (Auto, Opus, Sonnet, Haiku, Fable); a
   // saved choice that is no longer in it stays listed so it is not lost.
@@ -336,6 +351,8 @@ function openSettings(config, { onSaved } = {}) {
       el('div', 'settings-hint account-intro', 'The account Claude Code and every Claude agent use. The accounts you signed in with before stay in the list, so switching back needs no new sign-in.'),
       accountsPanel())]],
     ['agents', 'Agents', [section(null,
+      settingsField('Tactile knowledge', 'Agents look up Tactile\'s conventions and examples in Tactile Cortex (the Games Knowledge Database, and lessons from earlier agent sessions) before non-trivial game code. Needs the Tactile Cortex connector (Connectors → Tactile)', knowledgeOn),
+      settingsField('Knowledge to skip', 'Per project, what its agents leave out of what they find: one line each, the project\'s folder name, a colon, then the topics. For example: MergeTavern: conveyor belts, match-3', knowledgeSkip),
       settingsField('Folder', 'Where a new agent works until you pick one in the Hub', folderRow),
       settingsField('Games folder', 'The folder with one folder per game', gamesRow),
       settingsField('Auto game folder', 'A new agent whose message is about one game (by any of its names, or a PM task about it) works in that game\'s folder, for that agent only. About no game or several: the folder you picked', autoGame),
@@ -502,6 +519,8 @@ function openSettings(config, { onSaved } = {}) {
       claudeHelperModel: claudeHelperModel.value,
       codexHelperModel: codexHelperModel.value,
       autoCompact: compact.value,
+      knowledge: knowledgeOn.checked,
+      knowledgeSkip: parseKnowledgeSkip(knowledgeSkip.value),
       hubAfterSend: hubAfterSend.checked,
       summarizeTitles: titles.checked,
       suggestFollowUps: followUps.checked,
