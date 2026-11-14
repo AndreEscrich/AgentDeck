@@ -63,8 +63,9 @@ const DEFAULT_CONFIG = {
   autoCompact: '200k',
   // Agents look up Tactile's conventions and examples in Cortex (knowledge.js),
   // leaving out, per project (a folder of the agent's path), what it does not use.
-  // After a turn that changed code, Agent Hub checks it before it counts as
-  // done (verify.js): off | compile | tests. Each agent can change its own.
+  // After a turn that changed a Unity project's C#, Agent Hub compiles it in
+  // the open Editor before it counts as done (verify.js): off | compile |
+  // tests (and the EditMode tests). Each agent can change its own.
   verifyLevel: 'compile',
   knowledge: true,
   knowledgeSkip: {
@@ -376,7 +377,7 @@ app.whenReady().then(() => {
   ipcMain.handle('media:spreadsheet', (_e, file) => require('./spreadsheet').read(file));
   ipcMain.handle('media:find', (_e, cwd, name) => media.findMedia(cwd, name).catch(() => null));
   ipcMain.handle('media:picture', (_e, file) => media.pictureData(file, path.join(app.getPath('userData'), 'media-previews')));
-  // Checking an agent's work after a turn that changed code (verify.js).
+  // Checking an agent's work in a Unity project after a turn that changed its C# (verify.js).
   ipcMain.handle('verify:run', (_e, cwd, level) => require('./verify').run(getConfig(), cwd, level));
   ipcMain.handle('verify:detect', (_e, cwd) => require('./verify').detect(cwd)?.kind || null);
   ipcMain.handle('media:before', (_e, cwd, file, snap) => media.mediaBefore(cwd, file, snap, path.join(app.getPath('userData'), 'media-before')).catch(() => null));

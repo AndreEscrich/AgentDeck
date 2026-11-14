@@ -345,13 +345,14 @@ class ModePicker {
   }
 }
 
-// Verification after a turn that changed code (src/verify.js): Agent Hub
-// compiles it, and with Tests also runs the tests, before the work counts as
-// done; failures go back to the agent to fix.
+// Checks after a turn that changed a Unity project's C# (src/verify.js):
+// Agent Hub compiles it in the open Editor, and with Tests also runs the
+// EditMode tests, before the work counts as done; failures go back to the
+// agent to fix.
 const VERIFY_LEVELS = [
   { value: 'off', label: 'No checks', short: 'No checks', description: 'The agent says when it is done' },
-  { value: 'compile', label: 'Compile', short: 'Compile', description: 'Agent Hub compiles the project after each turn that changed code' },
-  { value: 'tests', label: 'Compile + tests', short: 'Tests', description: 'Agent Hub compiles it and runs its tests (Unity: EditMode)' },
+  { value: 'compile', label: 'Compile', short: 'Compile', description: 'Agent Hub compiles in the Unity Editor after each turn that changed C#' },
+  { value: 'tests', label: 'Compile + tests', short: 'Tests', description: 'Agent Hub compiles in the Unity Editor and runs the EditMode tests' },
 ];
 
 class VerifyPicker {

@@ -5045,16 +5045,18 @@ function finishTask(a, msg, { limitHit = false, note = null } = {}) {
 
 // ---------- checks before done ----------
 
-// After a turn that changed code, Agent Hub checks the work itself before
-// it counts as done (src/verify.js), at the agent's level (verifyLevelOf):
-// it compiles the project, and with Tests runs its tests. A card in the chat
+// After a turn that changed a Unity project's C#, Agent Hub checks the work
+// itself before it counts as done (src/verify.js), at the agent's level
+// (verifyLevelOf): it compiles in the open Editor, and with Tests runs the
+// EditMode tests. A card in the chat
 // shows the checks. When they fail, the errors go back to the agent as a
 // message, to fix; after three failed rounds in a row the task stops there,
 // blocked, and you are told. Your own next message starts the count again.
 // Not checked: a turn that ended with an error or that you stopped, a plan,
-// and a turn that changed no code (or a project with nothing to check).
+// and a turn that changed no C# (or a folder that is not a Unity project).
 const VERIFY_ATTEMPTS = 3;
-const CODE_FILE = /\.(cs|asmdef|asmref|ts|tsx|mts|cts|js|jsx|mjs|cjs)$/i;
+// What Unity compiles: C# and assembly definitions.
+const CODE_FILE = /\.(cs|asmdef|asmref)$/i;
 
 function wantsVerification(a, turn, msg) {
   if (verifyLevelOf(a) === 'off' || msg.is_error || a.stopping || a.mode === 'plan' || !a.cwd || !turn) return false;

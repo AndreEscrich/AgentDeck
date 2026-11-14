@@ -352,7 +352,7 @@ function openSettings(config, { onSaved } = {}) {
       el('div', 'settings-hint account-intro', 'The account Claude Code and every Claude agent use. The accounts you signed in with before stay in the list, so switching back needs no new sign-in.'),
       accountsPanel())]],
     ['agents', 'Agents', [section(null,
-      settingsField('Checks before done', 'After a turn that changed code, Agent Hub checks it before it counts as done, and sends failures back to the agent to fix (three rounds at most). Unity: it compiles in the open Editor, and with tests runs the EditMode tests. Game Engine: gameengine check, and gameengine test. TypeScript: tsc, and npm test. Each agent can change its own under ⚙ in the message box', verifyLevel),
+      settingsField('Checks before done', 'In a Unity project, after a turn that changed C#, Agent Hub compiles it in the open Editor (through the Unity bridge of the project), and with tests runs the EditMode tests, before the work counts as done; failures go back to the agent to fix (three rounds at most). Each agent can change its own under ⚙ in the message box', verifyLevel),
       settingsField('Tactile knowledge', 'Agents look up Tactile\'s conventions and examples in Tactile Cortex (the Games Knowledge Database, and lessons from earlier agent sessions) before non-trivial game code. Needs the Tactile Cortex connector (Connectors → Tactile)', knowledgeOn),
       settingsField('Knowledge to skip', 'Per project, what its agents leave out of what they find: one line each, the project\'s folder name, a colon, then the topics. For example: MergeTavern: conveyor belts, match-3', knowledgeSkip),
       settingsField('Folder', 'Where a new agent works until you pick one in the Hub', folderRow),

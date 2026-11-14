@@ -1678,11 +1678,10 @@ class Transcript {
         card.classList.remove('running');
         card.classList.add(result.blocked ? 'blocked' : result.ok ? 'passed' : 'failed');
         head.textContent = '';
-        const KIND = { unity: 'Unity', gameengine: 'Game Engine', typescript: 'TypeScript' };
         head.append(
           el('span', 'verify-mark', result.blocked ? '⚠' : result.ok ? '✓' : '✗'),
           el('span', 'verify-title', result.blocked ? 'Not checked' : result.ok ? 'Checks passed' : 'Checks failed'),
-          el('span', 'verify-kind', KIND[result.kind] || ''),
+          el('span', 'verify-kind', result.kind === 'unity' ? 'Unity' : ''),
         );
         for (const g of result.gates || []) {
           const row = el(g.details ? 'details' : 'div', `verify-gate ${g.ok ? 'ok' : 'bad'}`);
