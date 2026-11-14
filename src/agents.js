@@ -106,6 +106,11 @@ class AgentManager {
   start({ id: wantedId, cwd, resumeId, forkSession, resumeSessionAt, permissionMode, model, effort, fastMode, title }) {
     const config = this.getConfig();
     const id = typeof wantedId === 'string' && /^[\w-]{8,64}$/.test(wantedId) && !this.agents.has(wantedId) ? wantedId : randomUUID();
+    // The helper's Cortex tools are named after the connector (the Connectors
+    // list knows it once it has been checked; else the usual claude.ai name).
+    const knowledge = require('./knowledge');
+    const cortex = (require('./connectors').cached() || []).find(c => /\bcortex\b/i.test(c.id) && c.status === 'connected')?.id;
+    const retriever = knowledge.retrieverAgents(config, cwd, cortex);
     const args = [
       '-p',
       '--input-format', 'stream-json',
@@ -117,8 +122,9 @@ class AgentManager {
       '--permission-prompt-tool', 'stdio',
       // Without this flag the CLI refuses a later switch to bypass mode.
       '--allow-dangerously-skip-permissions',
-      // Tactile's knowledge in Cortex, with what this project skips (knowledge.js).
-      '--append-system-prompt', [SYSTEM_PROMPT, require('./knowledge').knowledgePrompt(config, cwd)].filter(Boolean).join('\n\n'),
+      // Tactile's knowledge in Cortex, through its knowledge-retriever helper (knowledge.js).
+      '--append-system-prompt', [SYSTEM_PROMPT, knowledge.knowledgePrompt(config, cwd, { helper: !!retriever })].filter(Boolean).join('\n\n'),
+      ...(retriever ? ['--agents', JSON.stringify(retriever)] : []),
     ];
     // "auto" is the app's own (automodel.js picks a real model before this);
     // if one ever slips through, Claude Code uses its default.

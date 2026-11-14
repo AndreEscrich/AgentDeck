@@ -986,6 +986,10 @@ function parsePastedDiff(text) {
 // Tactile Cortex connector's tools.
 const KNOWLEDGE_COLLECTIONS = { 'games-knowledge-database': 'Games Knowledge Database', 'agent-experience-knowledge': 'Agent Experience Knowledge' };
 const CORTEX_TOOL = /^mcp__.*cortex.*__(search_content|get_page)$/i;
+// The knowledge-retriever helper agent (src/knowledge.js) looking it up for the agent.
+function knowledgeHelper(name, input = {}) {
+  return (name === 'Agent' || name === 'Task') && input.subagent_type === 'knowledge-retriever';
+}
 function knowledgeSearch(name, input = {}) {
   return CORTEX_TOOL.test(name) && /search_content$/.test(name) && !!KNOWLEDGE_COLLECTIONS[input.collectionKey];
 }
@@ -1000,7 +1004,7 @@ function knowledgeCollectionOf(url) {
 function stepPhrase(name, input = {}) {
   const base = p => String(p || '').split(/[\\/]/).pop();
   const words = s => s.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
-  if (knowledgeSearch(name, input)) return 'Looking up Tactile knowledge';
+  if (knowledgeSearch(name, input) || knowledgeHelper(name, input)) return 'Looking up Tactile knowledge';
   switch (name) {
     case 'Bash':
     case 'PowerShell': {
@@ -1664,7 +1668,22 @@ class Transcript {
     const k = turn.knowledgeLog ||= { searches: [], entries: new Map(), weak: new Map() };
     let data = null;
     try { data = JSON.parse(resultText(block.content)); } catch { /* not JSON */ }
-    if (/search_content$/.test(tool.name)) {
+    if (knowledgeHelper(tool.name, tool.input)) {
+      // The helper's report ends with its KNOWLEDGE-USED list:
+      // "- read | games-knowledge-database | <title> | <url>".
+      if (block.is_error) return;
+      const text = resultText(block.content);
+      k.searches.push(`Asked the knowledge helper: ${tool.input.description || 'Tactile knowledge'}`);
+      const at = text.lastIndexOf('KNOWLEDGE-USED');
+      for (const line of at < 0 ? [] : text.slice(at).split('\n')) {
+        const m = /^\s*[-*]\s*(read|found)\s*\|\s*([\w-]+)\s*\|\s*(.+?)\s*\|\s*<?(https?:\/\/[^\s>]+)>?\s*$/i.exec(line);
+        if (!m) continue;
+        const id = /\/([a-f0-9]{24})(?:\/|$)/.exec(m[4])?.[1] || m[4];
+        const entry = k.entries.get(id) || { title: m[3], url: m[4], collection: KNOWLEDGE_COLLECTIONS[m[2]] ? m[2] : knowledgeCollectionOf(m[4]), read: false };
+        entry.read = entry.read || m[1].toLowerCase() === 'read';
+        k.entries.set(id, entry);
+      }
+    } else if (/search_content$/.test(tool.name)) {
       if (!knowledgeSearch(tool.name, tool.input)) return;
       k.searches.push(`${KNOWLEDGE_COLLECTIONS[tool.input.collectionKey]}: ${tool.input.query || ''}`);
       // The good hits (a score of 0.5 or more, at most four); the rest are
@@ -1828,8 +1847,18 @@ class Transcript {
     // message continues from (see editPrompt).
     if (msg.type === 'assistant' && msg.uuid) this.lastAssistant = { uuid: msg.uuid, session: msg.session_id || null };
     switch (msg.type) {
-      case 'user': return this.addUser(msg.message, msg.tool_use_result, msg.isSynthetic || msg.isMeta);
-      case 'assistant': return this.addAssistant(msg.message);
+      case 'user':
+        // A helper agent's own messages (the agent's instructions to it, the
+        // results of its tools) are steps of the task, not messages of yours:
+        // only their tool results count, to finish its tool cards.
+        if (msg.parent_tool_use_id) {
+          for (const block of Array.isArray(msg.message?.content) ? msg.message.content : []) {
+            if (block.type === 'tool_result') this.fillTool(block, msg.tool_use_result);
+          }
+          return;
+        }
+        return this.addUser(msg.message, msg.tool_use_result, msg.isSynthetic || msg.isMeta);
+      case 'assistant': return this.addAssistant(msg.message, { helper: !!msg.parent_tool_use_id });
       case 'stream_event': return this.addStreamEvent(msg.event);
       case 'result': return this.finishTurn(msg);
       case 'system':
@@ -2027,7 +2056,8 @@ class Transcript {
     this.onUpdate?.();
   }
 
-  addAssistant(message) {
+  // helper: a helper agent's message (see add): its text is a step, never the answer.
+  addAssistant(message, { helper = false } = {}) {
     const turn = this.ensureTurn();
     // One API call can arrive as several messages with the same id and usage.
     if (message.usage && message.id) {
@@ -2045,6 +2075,7 @@ class Transcript {
         const rest = this.addMilestones(turn, block.text);
         if (!rest.trim()) continue;
         const node = markdown(rest, this.cwd);
+        if (helper) { this.addStep(node, block.text.split('\n')[0].slice(0, 120)); continue; }
         turn.pendingText.push(node);
         // Everything the agent said during the task (for the group's notes:
         // what failed and what worked is often said along the way).
@@ -2150,7 +2181,7 @@ class Transcript {
   }
 
   toolCard(block) {
-    const d = el('details', knowledgeSearch(block.name, block.input) ? 'tool knowledge-tool' : 'tool');
+    const d = el('details', knowledgeSearch(block.name, block.input) || knowledgeHelper(block.name, block.input) ? 'tool knowledge-tool' : 'tool');
     const summary = el('summary');
     summary.append(
       el('span', 'tool-name', block.name),
@@ -2176,7 +2207,7 @@ class Transcript {
     if (block.is_error) out.style.color = 'var(--err)';
     tool.card.appendChild(out);
     if (!block.is_error) this.recordChange(tool, toolUseResult);
-    if (this.turn && CORTEX_TOOL.test(tool.name)) this.noteKnowledge(this.turn, tool, block);
+    if (this.turn && (CORTEX_TOOL.test(tool.name) || knowledgeHelper(tool.name, tool.input))) this.noteKnowledge(this.turn, tool, block);
     // A tool that makes a file on its own (a Unity recorder, a screenshot
     // tool) often only names the file in its result. Shell output is left
     // out: an `ls` there would list other agents' files too.
