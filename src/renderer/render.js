@@ -981,11 +981,26 @@ function parsePastedDiff(text) {
   return files.filter(f => f.path && f.lines.some(([k]) => k === 'add' || k === 'del'));
 }
 
+// Tactile's knowledge in Cortex (the knowledge rule in src/knowledge.js):
+// a search in one of its two collections, or a page read from it, with the
+// Tactile Cortex connector's tools.
+const KNOWLEDGE_COLLECTIONS = { 'games-knowledge-database': 'Games Knowledge Database', 'agent-experience-knowledge': 'Agent Experience Knowledge' };
+const CORTEX_TOOL = /^mcp__.*cortex.*__(search_content|get_page)$/i;
+function knowledgeSearch(name, input = {}) {
+  return CORTEX_TOOL.test(name) && /search_content$/.test(name) && !!KNOWLEDGE_COLLECTIONS[input.collectionKey];
+}
+// The collection a Cortex page address is in, or null.
+function knowledgeCollectionOf(url) {
+  const key = /cortex\.[^/]+\/([\w-]+)\//.exec(String(url || ''))?.[1];
+  return KNOWLEDGE_COLLECTIONS[key] ? key : null;
+}
+
 // What an agent is doing, in plain words, for its Hub tile: "Editing
 // SpawnerRig.cs", "Waiting for Unity", or the description it gave a command.
 function stepPhrase(name, input = {}) {
   const base = p => String(p || '').split(/[\\/]/).pop();
   const words = s => s.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+  if (knowledgeSearch(name, input)) return 'Looking up Tactile knowledge';
   switch (name) {
     case 'Bash':
     case 'PowerShell': {
@@ -1606,6 +1621,8 @@ class Transcript {
       body: el('div', 'steps-body'),
       live: el('div', 'turn-live'),
       skills: el('div', 'turn-skills'),
+      // Tactile knowledge it looked up (see noteKnowledge).
+      knowledge: el('div', 'turn-knowledge'),
       answer: el('div', 'turn-answer'),
       skillNames: new Set(),
       stepCount: 0,
@@ -1616,7 +1633,7 @@ class Transcript {
     turn.summary.append(el('span', 'steps-spinner'), el('span', 'steps-text', 'Working…'));
     turn.steps.append(turn.summary, turn.body);
     turn.progress.open = true;
-    turn.el.append(turn.progress, turn.steps, turn.live, turn.skills, turn.answer);
+    turn.el.append(turn.progress, turn.steps, turn.live, turn.skills, turn.knowledge, turn.answer);
     this.turn = turn;
     this.append(turn.el);
     return turn;
@@ -1637,6 +1654,66 @@ class Transcript {
     const chip = el('span', 'skill-chip', short);
     chip.title = name;
     this.pinned(() => turn.skills.appendChild(chip));
+  }
+
+  // Tactile knowledge the agent looked up in this task (src/knowledge.js):
+  // a row under the steps with the entries it read in full (solid, linking
+  // to the Cortex page) and the ones its searches found (outlined), the
+  // searches in the row's tooltip. Each result adds to it as it comes.
+  noteKnowledge(turn, tool, block) {
+    const k = turn.knowledgeLog ||= { searches: [], entries: new Map(), weak: new Map() };
+    let data = null;
+    try { data = JSON.parse(resultText(block.content)); } catch { /* not JSON */ }
+    if (/search_content$/.test(tool.name)) {
+      if (!knowledgeSearch(tool.name, tool.input)) return;
+      k.searches.push(`${KNOWLEDGE_COLLECTIONS[tool.input.collectionKey]}: ${tool.input.query || ''}`);
+      // The good hits (a score of 0.5 or more, at most four); the rest are
+      // counted (their titles in the tooltip): they are seldom what it used.
+      const results = Array.isArray(data?.results) ? data.results : [];
+      results.forEach((r, i) => {
+        if (k.entries.has(r.pageId)) return;
+        if (i < 4 && (r.score ?? 1) >= 0.5) k.entries.set(r.pageId, { title: r.pageTitle, url: r.url, collection: tool.input.collectionKey, read: false });
+        else (k.weak ||= new Map()).set(r.pageId, r.pageTitle);
+      });
+    } else {
+      // A page it read: one of the knowledge's when its address is in one of
+      // the two collections, or a search of them found it.
+      const id = tool.input.pageId || tool.input.id || data?.contentId;
+      const url = data?.url || k.entries.get(id)?.url;
+      const collection = knowledgeCollectionOf(url) || k.entries.get(id)?.collection;
+      if (!collection || block.is_error) return;
+      const entry = k.entries.get(id) || { title: data?.title, url, collection };
+      entry.title = data?.title || entry.title || 'Knowledge entry';
+      entry.read = true;
+      k.entries.set(id, entry);
+    }
+    this.renderKnowledge(turn);
+  }
+
+  renderKnowledge(turn) {
+    const k = turn.knowledgeLog;
+    if (!k?.searches.length && !k?.entries.size) return;
+    const row = turn.knowledge;
+    this.pinned(() => {
+      row.textContent = '';
+      const label = el('span', 'knowledge-label', '📚 Tactile knowledge');
+      label.title = k.searches.length ? `Searched:\n${k.searches.join('\n')}` : '';
+      row.appendChild(label);
+      const entries = [...k.entries.values()].sort((a, b) => Number(b.read) - Number(a.read));
+      for (const e of entries) {
+        const chip = el(e.url ? 'a' : 'span', `knowledge-chip${e.read ? ' read' : ''}${e.collection === 'agent-experience-knowledge' ? ' experience' : ''}`, e.title || 'Knowledge entry');
+        if (e.url) { chip.href = e.url; chip.target = '_blank'; }
+        chip.title = `${e.read ? 'Read in full' : 'Found by its search'} · ${KNOWLEDGE_COLLECTIONS[e.collection] || 'Cortex'}${e.collection === 'agent-experience-knowledge' ? ' (lessons from earlier agent sessions)' : ''}${e.url ? '\nClick to open it in Cortex' : ''}`;
+        row.appendChild(chip);
+      }
+      const weak = [...(k.weak || new Map())].filter(([id]) => !k.entries.has(id)).map(([, title]) => title);
+      if (weak.length) {
+        const more = el('span', 'knowledge-none', `+${weak.length} weaker hit${weak.length === 1 ? '' : 's'}`);
+        more.title = weak.join('\n');
+        row.appendChild(more);
+      }
+      if (!entries.length && !weak.length) row.appendChild(el('span', 'knowledge-none', `${k.searches.length} search${k.searches.length === 1 ? '' : 'es'}, nothing found`));
+    });
   }
 
   // A message that starts with /name runs that skill. The CLI does not report
@@ -2073,7 +2150,7 @@ class Transcript {
   }
 
   toolCard(block) {
-    const d = el('details', 'tool');
+    const d = el('details', knowledgeSearch(block.name, block.input) ? 'tool knowledge-tool' : 'tool');
     const summary = el('summary');
     summary.append(
       el('span', 'tool-name', block.name),
@@ -2099,6 +2176,7 @@ class Transcript {
     if (block.is_error) out.style.color = 'var(--err)';
     tool.card.appendChild(out);
     if (!block.is_error) this.recordChange(tool, toolUseResult);
+    if (this.turn && CORTEX_TOOL.test(tool.name)) this.noteKnowledge(this.turn, tool, block);
     // A tool that makes a file on its own (a Unity recorder, a screenshot
     // tool) often only names the file in its result. Shell output is left
     // out: an `ls` there would list other agents' files too.
