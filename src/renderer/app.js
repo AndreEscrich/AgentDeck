@@ -3972,7 +3972,33 @@ async function sendToAgent(agent, text, images = []) {
       s.snap = snap || null;
     }
   }
-  await window.deck.sendMessage(agent.id, text, images);
+  await window.deck.sendMessage(agent.id, withChecks(agent, text), images);
+}
+
+// What an agent at Compile + screenshots is told with each message (the
+// chat leaves it out, see stripChecks in render.js): Tactile Create's
+// "verification contract" for screenshots, as text the agent writes instead
+// of tools. Not with a slash command, which must stay as it is.
+const FENCE = '`'.repeat(3);
+const SCREENSHOT_CHECKS = [
+  '<agenthub-checks>',
+  'Agent Hub checks this task with screenshots before it counts as done. When the task changes what the game shows (UI, the board, effects, animation, layout):',
+  '1. Before you change anything, write the scenarios that show the change, as a block (one line each, a short id and what the screenshot must show):',
+  FENCE + 'agenthub-scenarios',
+  '- <id>: <what the screenshot must show>',
+  FENCE,
+  '2. Do the work. Then prove each scenario with Unity screenshots (unity_take_screenshot: the Game View in Play Mode, or a cameraName without Play Mode). Look at each one: when it does not clearly show the scenario (wrong, ambiguous, too small, cluttered), fix the work or the framing and take it again. A focused test scene or setup that shows only what changed is fine; when the change also matters in the real game, prove it there too.',
+  '3. Agent Hub numbers your screenshots 1, 2, 3… in the order you take them in this task. End your final answer with a block that names the screenshots that prove each scenario (only good ones):',
+  FENCE + 'agenthub-evidence',
+  '- <id>: <screenshot numbers>',
+  FENCE,
+  'When the task changes nothing visible, write only "- none: <why>" in the agenthub-evidence block. Exit Play Mode when you are done and leave the Editor open.',
+  '</agenthub-checks>',
+].join('\n');
+
+function withChecks(agent, text) {
+  if (verifyLevelOf(agent) !== 'screenshots' || isSlashCommand(text) || /<agenthub-checks>/.test(text)) return text;
+  return `${text}\n\n${SCREENSHOT_CHECKS}`;
 }
 
 // ---------- going back to one of your messages ----------
@@ -5059,15 +5085,20 @@ const VERIFY_ATTEMPTS = 3;
 const CODE_FILE = /\.(cs|asmdef|asmref)$/i;
 
 function wantsVerification(a, turn, msg) {
-  if (verifyLevelOf(a) === 'off' || msg.is_error || a.stopping || a.mode === 'plan' || !a.cwd || !turn) return false;
-  return [...(turn.changes?.keys() || [])].some(p => CODE_FILE.test(p));
+  const level = verifyLevelOf(a);
+  if (level === 'off' || msg.is_error || a.stopping || a.mode === 'plan' || !a.cwd || !turn) return false;
+  const changed = [...(turn.changes?.keys() || [])];
+  // With screenshots, also a change that is not C# (a prefab, a sprite) or a
+  // task that declared scenarios: what shows is what counts.
+  if (level === 'screenshots') return changed.length > 0 || !!a.transcript.proof?.scenarios?.length;
+  return changed.some(p => CODE_FILE.test(p));
 }
 
 async function verifyTurn(a, turn, msg) {
   const level = verifyLevelOf(a);
   a.verifying = true;
   const card = a.transcript.verifyCard(turn, level);
-  a.transcript.liveStep = level === 'tests' ? 'Checking: compile and tests' : 'Checking: compile';
+  a.transcript.liveStep = level === 'tests' ? 'Checking: compile and tests' : level === 'screenshots' ? 'Checking: compile and screenshots' : 'Checking: compile';
   refreshHub();
   let result;
   try {
@@ -5081,6 +5112,17 @@ async function verifyTurn(a, turn, msg) {
     card.remove();
     finishTask(a, msg);
     return;
+  }
+  if (level === 'screenshots' && result.kind === 'unity' && !result.blocked && result.ok) {
+    const { gate, proof } = a.transcript.visualGate();
+    for (const p of proof) {
+      for (const shot of p.shots) {
+        const kept = a.transcript.proof.shots[shot.n - 1];
+        if (!kept.path) kept.path = await window.deck.verifyShot(a.id, shot.n, kept.data, kept.mediaType).catch(() => null);
+        shot.path = kept.path;
+      }
+    }
+    result = { ...result, gates: [...result.gates, gate], proof, ok: gate.ok };
   }
   const failed = !result.ok && !result.blocked;
   const attempt = failed ? (a.verifyAttempts = (a.verifyAttempts || 0) + 1) : 0;
@@ -5102,7 +5144,7 @@ async function verifyTurn(a, turn, msg) {
   const text = [
     `Agent Hub checked your changes and they do not pass yet (round ${attempt} of ${VERIFY_ATTEMPTS}):`,
     '',
-    ...failing.map(g => `${g.name === 'tests' ? 'Tests' : 'Compile'}: ${g.summary}${g.details ? `\n${g.details}` : ''}`),
+    ...failing.map(g => `${{ tests: 'Tests', screenshots: 'Screenshots' }[g.name] || 'Compile'}: ${g.summary}${g.details ? `\n${g.details}` : ''}`),
     '',
     'Fix these, then finish your turn: Agent Hub checks again by itself.',
   ].join('\n');

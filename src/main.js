@@ -380,6 +380,20 @@ app.whenReady().then(() => {
   // Checking an agent's work in a Unity project after a turn that changed its C# (verify.js).
   ipcMain.handle('verify:run', (_e, cwd, level) => require('./verify').run(getConfig(), cwd, level));
   ipcMain.handle('verify:detect', (_e, cwd) => require('./verify').detect(cwd)?.kind || null);
+  // A screenshot an agent took as proof (Compile + screenshots), saved so the
+  // chat's card and the image review can open it: its path, or null.
+  ipcMain.handle('verify:shot', (_e, agentId, n, base64, mediaType) => {
+    if (typeof base64 !== 'string' || !/^[\w-]{1,64}$/.test(String(agentId)) || !Number.isInteger(n)) return null;
+    const dir = path.join(app.getPath('userData'), 'verify-shots', agentId);
+    const file = path.join(dir, `${Date.now()}-${n}.${/jpe?g/.test(mediaType || '') ? 'jpg' : 'png'}`);
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(file, Buffer.from(base64, 'base64'));
+      return file;
+    } catch {
+      return null;
+    }
+  });
   ipcMain.handle('media:before', (_e, cwd, file, snap) => media.mediaBefore(cwd, file, snap, path.join(app.getPath('userData'), 'media-before')).catch(() => null));
   ipcMain.handle('jira:issue', (_e, key) => jira.issue(key));
   // Tactile PM task cards (pmtasks.js), read with the PM connector by Haiku.

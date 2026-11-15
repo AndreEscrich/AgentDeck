@@ -353,6 +353,7 @@ const VERIFY_LEVELS = [
   { value: 'off', label: 'No checks', short: 'No checks', description: 'The agent says when it is done' },
   { value: 'compile', label: 'Compile', short: 'Compile', description: 'Agent Hub compiles in the Unity Editor after each turn that changed C#' },
   { value: 'tests', label: 'Compile + tests', short: 'Tests', description: 'Agent Hub compiles in the Unity Editor and runs the EditMode tests' },
+  { value: 'screenshots', label: 'Compile + screenshots', short: 'Screenshots', description: 'Agent Hub compiles it, and the agent proves each visible change with Game View screenshots you can review' },
 ];
 
 class VerifyPicker {

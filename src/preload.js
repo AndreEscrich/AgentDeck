@@ -135,6 +135,8 @@ contextBridge.exposeInMainWorld('deck', {
   verify: (cwd, level) => ipcRenderer.invoke('verify:run', cwd, level),
   // 'unity' when cwd is a Unity project with the Unity bridge, else null.
   verifyKind: cwd => ipcRenderer.invoke('verify:detect', cwd),
+  // Saves a proof screenshot (base64) of an agent; resolves with its path.
+  verifyShot: (agentId, n, base64, mediaType) => ipcRenderer.invoke('verify:shot', agentId, n, base64, mediaType),
   mediaBefore: (cwd, file, snap) => ipcRenderer.invoke('media:before', cwd, file, snap),
   listSessions: () => ipcRenderer.invoke('sessions:list'),
   loadTranscript: file => ipcRenderer.invoke('sessions:load', file),

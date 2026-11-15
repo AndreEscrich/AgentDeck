@@ -141,7 +141,9 @@ async function unityGates(root, level) {
 const running = new Map();   // root -> promise
 
 async function run(config, cwd, level) {
-  if (level !== 'compile' && level !== 'tests') return { ok: true, gates: [] };
+  // Screenshots: the compile here; the screenshots are the window's to check
+  // (the agent's stream has them, see visualGate in render.js).
+  if (!['compile', 'tests', 'screenshots'].includes(level)) return { ok: true, gates: [] };
   const info = detect(cwd);
   if (!info) return { ok: true, kind: null, gates: [] };
   const previous = running.get(info.root) || Promise.resolve();

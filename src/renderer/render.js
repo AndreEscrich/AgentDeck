@@ -108,6 +108,27 @@ function stripGroupNotes(text) {
 // An Excel file's sheets that went with your message (see sheetNote in
 // attachments.js) are for the agent: the chat shows the line that names the
 // file, not the data.
+// "- board-wobble: Pieces next to a merge wobble" lines -> [[id, text]].
+function parseProofLines(text) {
+  const out = [];
+  for (const line of String(text || '').split('\n')) {
+    const m = /^\s*[-*]?\s*([\w.-]+)\s*:\s*(.+?)\s*$/.exec(line);
+    if (m) out.push([m[1], m[2]]);
+  }
+  return out;
+}
+// The last ```name block in a text, or null.
+function proofBlock(text, name) {
+  const all = [...String(text || '').matchAll(new RegExp('```' + name + '[^\\n]*\\n([\\s\\S]*?)```', 'g'))];
+  return all.length ? all[all.length - 1][1] : null;
+}
+
+// The instructions Agent Hub adds to your message for Compile + screenshots
+// (SCREENSHOT_CHECKS in app.js) are for the agent.
+function stripChecks(text) {
+  return String(text).replace(/\n*<agenthub-checks>[\s\S]*?<\/agenthub-checks>\s*/g, '');
+}
+
 function stripAttachedData(text) {
   return String(text).replace(/\n?<spreadsheet\b[^>]*>[\s\S]*?<\/spreadsheet>/g, '');
 }
@@ -869,6 +890,19 @@ function markdown(text, cwd) {
     }
   }
   // ```agenthub-diff blocks: Agent Hub runs the command and shows the diff.
+  // The scenarios an agent will prove with screenshots, and which of its
+  // screenshots prove each (Compile + screenshots, see visualGate).
+  for (const code of div.querySelectorAll('pre > code.language-agenthub-scenarios, pre > code.language-agenthub-evidence')) {
+    const scenarios = code.classList.contains('language-agenthub-scenarios');
+    const box = el('div', `proof-box ${scenarios ? 'scenarios' : 'evidence'}`);
+    box.appendChild(el('div', 'proof-box-title', scenarios ? '📷 Scenarios to prove' : '📷 Proof'));
+    for (const [id, text] of parseProofLines(code.textContent)) {
+      const row = el('div', 'proof-box-row');
+      row.append(el('span', 'proof-box-id', id), el('span', 'proof-box-text', scenarios ? text : text.split(/[\s,]+/).filter(Boolean).map(n => (/^\d+$/.test(n) ? `Screenshot ${n}` : n)).join(', ')));
+      box.appendChild(row);
+    }
+    code.parentElement.replaceWith(box);
+  }
   for (const code of div.querySelectorAll('pre > code.language-agenthub-diff')) {
     code.parentElement.replaceWith(diffBlock(code.textContent.trim(), cwd));
   }
@@ -1333,6 +1367,9 @@ class Transcript {
     this.cwd = cwd || null;
     this.seen = new Set();          // content blocks already drawn
     this.tools = new Map();         // tool_use id -> { card, name, input }
+    // Proof for Compile + screenshots, for the task since your last message
+    // (visualGate): the screenshots it took, its scenarios and its evidence.
+    this.proof = { shots: [], scenarios: null, evidence: null };
     this.draft = null;              // text streaming in before the full message arrives
     this.turn = null;               // the turn in progress
     this.prompts = [];              // your messages: { el, text }, in order
@@ -1660,6 +1697,33 @@ class Transcript {
     this.pinned(() => turn.skills.appendChild(chip));
   }
 
+  // Compile + screenshots: every scenario the agent declared has at least one
+  // of the task's screenshots as its evidence, or the agent said the task
+  // changes nothing visible ("none: why"). Returns a gate { name, ok,
+  // summary, details } and the proof: [{ id, text, shots: [{ n, data }] }].
+  visualGate() {
+    const { shots, scenarios, evidence } = this.proof;
+    const none = (evidence || []).find(([id]) => id.toLowerCase() === 'none');
+    if (none) return { gate: { name: 'screenshots', ok: true, summary: `Nothing visible to prove: ${none[1]}`, details: '' }, proof: [] };
+    if (!scenarios?.length) {
+      return { gate: { name: 'screenshots', ok: false, summary: 'No scenarios were declared', details: 'Write the scenarios that show the change in an agenthub-scenarios block, prove each with a Unity screenshot (unity_take_screenshot), and list the screenshots in an agenthub-evidence block. If the task changes nothing visible, write "none: <why>" in the agenthub-evidence block.' }, proof: [] };
+    }
+    const byId = new Map((evidence || []).map(([id, list]) => [id, String(list).split(/[\s,]+/).map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= shots.length)]));
+    const proof = scenarios.map(([id, text]) => ({ id, text, shots: (byId.get(id) || []).map(n => ({ n, ...shots[n - 1] })) }));
+    const missing = proof.filter(p => !p.shots.length);
+    return {
+      gate: missing.length
+        ? { name: 'screenshots', ok: false, summary: `${missing.length} of ${proof.length} scenario${proof.length === 1 ? '' : 's'} without a screenshot`, details: [
+          ...missing.map(p => `${p.id}: ${p.text}`),
+          '',
+          shots.length ? `Screenshots taken in this task: 1 to ${shots.length}.` : 'No screenshots were taken in this task.',
+          'Prove each with unity_take_screenshot (the Game View in Play Mode, or a cameraName without it), look at it, and list it in the agenthub-evidence block.',
+        ].join('\n') }
+        : { name: 'screenshots', ok: true, summary: `${proof.length} scenario${proof.length === 1 ? '' : 's'} proven with screenshots`, details: '' },
+      proof,
+    };
+  }
+
   // The checks Agent Hub runs on a turn's code before it counts as done
   // (verifyTurn in app.js, src/verify.js): a card under the answer, first
   // saying what runs, then each check with ✓ or ✗ (its errors folded under
@@ -1668,10 +1732,10 @@ class Transcript {
   verifyCard(turn, level) {
     const card = el('div', 'verify-card running');
     const head = el('div', 'verify-head');
-    head.append(el('span', 'verify-spinner'), el('span', 'verify-title', level === 'tests' ? 'Checking: compile, then tests…' : 'Checking: compile…'));
+    head.append(el('span', 'verify-spinner'), el('span', 'verify-title', level === 'tests' ? 'Checking: compile, then tests…' : level === 'screenshots' ? 'Checking: compile, then the screenshots…' : 'Checking: compile…'));
     card.appendChild(head);
     this.pinned(() => (turn?.el || this.ensureTurn().el).appendChild(card));
-    const NAMES = { compile: 'Compile', tests: 'Tests' };
+    const NAMES = { compile: 'Compile', tests: 'Tests', screenshots: 'Screenshots' };
     return {
       remove: () => card.remove(),
       show: (result, { attempt = 0, max = 3, giveUp = false } = {}) => this.pinned(() => {
@@ -1689,6 +1753,21 @@ class Transcript {
           line.append(el('span', 'verify-gate-mark', g.ok ? '✓' : '✗'), el('span', 'verify-gate-name', NAMES[g.name] || g.name), el('span', 'verify-gate-summary', g.summary || ''));
           row.appendChild(line);
           if (g.details) row.appendChild(el('pre', 'verify-gate-details', g.details));
+          card.appendChild(row);
+        }
+        for (const p of result.proof || []) {
+          const row = el('div', 'verify-proof');
+          row.appendChild(el('div', 'verify-proof-title', `${p.id}: ${p.text}`));
+          const strip = el('div', 'verify-proof-shots');
+          for (const shot of p.shots) {
+            const img = document.createElement('img');
+            img.src = shot.path ? mediaUrl(shot.path) : `data:${shot.mediaType};base64,${shot.data}`;
+            img.alt = `Screenshot ${shot.n}`;
+            img.title = shot.path ? `Screenshot ${shot.n}: click to review it (draw on it and write what should change)` : `Screenshot ${shot.n}`;
+            img.onclick = () => (shot.path && window.openImageReview ? openImageReview(shot.path) : openImageOverlay(img.src));
+            strip.appendChild(img);
+          }
+          row.appendChild(strip);
           card.appendChild(row);
         }
         const next = result.blocked ? result.blocked
@@ -1969,10 +2048,12 @@ class Transcript {
     const texts = (synthetic ? []
       : typeof content === 'string' ? [content]
       : content.filter(b => b.type === 'text').map(b => b.text))
-      .map(t => stripAttachedData(stripGroupNotes(t))).filter(t => t.trim());
+      .map(t => stripChecks(stripAttachedData(stripGroupNotes(t)))).filter(t => t.trim());
     if (texts.length) {
-      // Your message starts a new turn.
+      // Your message starts a new turn, and a new task's proof (not Agent
+      // Hub's own message about its checks: the task goes on).
       this.finishTurn();
+      if (!texts.some(t => /^Agent Hub checked your changes/.test(t))) this.proof = { shots: [], scenarios: null, evidence: null };
       const bubbles = texts.map(t => {
         // Agent Hub's own message when its checks failed (verifyTurn in app.js).
         const b = el('div', /^Agent Hub checked your changes/.test(t) ? 'msg-user from-app' : 'msg-user');
@@ -2117,6 +2198,10 @@ class Transcript {
         if (!rest.trim()) continue;
         const node = markdown(rest, this.cwd);
         if (helper) { this.addStep(node, block.text.split('\n')[0].slice(0, 120)); continue; }
+        const scenarios = proofBlock(block.text, 'agenthub-scenarios');
+        const evidence = proofBlock(block.text, 'agenthub-evidence');
+        if (scenarios) this.proof.scenarios = parseProofLines(scenarios);
+        if (evidence) this.proof.evidence = parseProofLines(evidence);
         turn.pendingText.push(node);
         // Everything the agent said during the task (for the group's notes:
         // what failed and what worked is often said along the way).
@@ -2249,6 +2334,22 @@ class Transcript {
     tool.card.appendChild(out);
     if (!block.is_error) this.recordChange(tool, toolUseResult);
     if (this.turn && (CORTEX_TOOL.test(tool.name) || knowledgeHelper(tool.name, tool.input))) this.noteKnowledge(this.turn, tool, block);
+    // A Unity screenshot is proof the agent can name by its number.
+    if (!block.is_error && /unity_take_screenshot$/.test(tool.name) && Array.isArray(block.content)) {
+      for (const c of block.content) {
+        if (c.type !== 'image' || c.source?.type !== 'base64') continue;
+        this.proof.shots.push({ data: c.source.data, mediaType: c.source.media_type || 'image/png', path: null });
+        const n = this.proof.shots.length;
+        const shot = el('div', 'proof-shot');
+        const img = document.createElement('img');
+        img.src = `data:${c.source.media_type || 'image/png'};base64,${c.source.data}`;
+        img.alt = `Screenshot ${n}`;
+        img.onclick = () => openImageOverlay(img.src);
+        shot.append(el('span', 'proof-shot-label', `Screenshot ${n}`), img);
+        tool.card.appendChild(shot);
+        tool.card.querySelector('.tool-arg').textContent = `Screenshot ${n} · ${tool.card.querySelector('.tool-arg').textContent}`;
+      }
+    }
     // A tool that makes a file on its own (a Unity recorder, a screenshot
     // tool) often only names the file in its result. Shell output is left
     // out: an `ls` there would list other agents' files too.
