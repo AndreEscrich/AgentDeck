@@ -99,6 +99,24 @@ const ART_PROMPT = [
 
 const SYSTEM_PROMPT = `${EFFICIENCY_PROMPT}\n\n${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}\n\n${RUN_PROMPT}\n\n${MILESTONE_PROMPT}\n\n${ART_PROMPT}`;
 
+// The Unity bridge of the project an agent works in (com.tactilegames.unity-mcp,
+// Library/McpServer), wherever in the repository it works: a project's
+// .mcp.json is only read in the folder it is in (MergeTavern2/Unity), and
+// only once it is approved, so an agent at the repository's root had no Unity
+// tools (no recompile, no screenshots). Given here, with the project's path,
+// it needs neither. Not when the agent's own folder's .mcp.json has it.
+function unityBridgeArgs(cwd) {
+  const fs = require('fs');
+  const path = require('path');
+  const root = require('./setupcheck').unityRoot(cwd);
+  const server = root && path.join(root, 'Library', 'McpServer', 'index.js');
+  if (!server || !fs.existsSync(server)) return [];
+  try {
+    if (JSON.parse(fs.readFileSync(path.join(cwd, '.mcp.json'), 'utf8'))?.mcpServers?.unity && path.resolve(cwd) === path.resolve(root)) return [];
+  } catch { /* no .mcp.json here */ }
+  return ['--mcp-config', JSON.stringify({ mcpServers: { unity: { command: 'node', args: [server], env: { UNITY_PROJECT_PATH: root } } } })];
+}
+
 // 'auto', or the size in tokens when it is between 100k and 1M (false otherwise).
 function compactTokens(value) {
   if (value === 'auto') return 'auto';
@@ -140,6 +158,7 @@ class AgentManager {
       // Tactile's knowledge in Cortex, through its knowledge-retriever helper (knowledge.js).
       '--append-system-prompt', [SYSTEM_PROMPT, knowledge.knowledgePrompt(config, cwd, { helper: !!retriever })].filter(Boolean).join('\n\n'),
       ...(retriever ? ['--agents', JSON.stringify(retriever)] : []),
+      ...unityBridgeArgs(cwd),
     ];
     // "auto" is the app's own (automodel.js picks a real model before this);
     // if one ever slips through, Claude Code uses its default.
