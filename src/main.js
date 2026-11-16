@@ -412,7 +412,8 @@ app.whenReady().then(() => {
   ipcMain.handle('pm:task', (_e, key) => pmTasks.task(key));
   ipcMain.handle('pm:seed', (_e, list) => pmTasks.seed(list));
   // A ticket run's Approve button: the subtask moves to Done in PM.
-  ipcMain.handle('pm:done', (_e, keys) => setPmTasksDone(getConfig(), (Array.isArray(keys) ? keys : [keys]).filter(k => /^[A-Z][A-Z0-9]{1,9}-\d+$/.test(k))));
+  const pmKey = k => typeof k === 'string' && /^[A-Z][A-Z0-9]{1,9}-\d+$/.test(k);
+  ipcMain.handle('pm:done', (_e, keys, parent) => setPmTasksDone(getConfig(), (Array.isArray(keys) ? keys : [keys]).filter(pmKey), pmKey(parent) ? parent : ''));
   ipcMain.handle('gdoc:title', (_e, url) => require('./gdocs').title(url));
   ipcMain.handle('github:lookup', (_e, what) => require('./github').lookup(what));
   ipcMain.handle('jira:details', (_e, key) => jira.details(key));

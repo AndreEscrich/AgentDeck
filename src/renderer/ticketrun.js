@@ -230,7 +230,7 @@ const ticketRuns = (() => {
     sub.state = 'approving';
     renderBars(sub);
     refreshHub();
-    const moved = await window.deck.pmDone([sub.key]).catch(() => ({}));
+    const moved = await window.deck.pmDone([sub.key], run.key).catch(() => ({}));
     sub.state = moved?.[sub.key] ? 'approved' : 'review';
     sub.approveFailed = !moved?.[sub.key];
     if (sub.state === 'approved') agent.laneApproved = true;

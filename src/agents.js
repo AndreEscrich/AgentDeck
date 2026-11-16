@@ -944,10 +944,13 @@ function readPmTasks(config, keys) {
 
 // Moves Tactile PM tasks to their project's Done column, for the Approve
 // button of a ticket run's subtasks (ticketrun.js). Haiku does it with the PM
-// connector, like readPmTasks. Resolves with { KEY: true | false }.
+// connector, like readPmTasks. A ticket run's subtasks are PM subtasks, which
+// only pm_update_subtask changes (pm_update_task refuses them), so with the
+// parent ticket's key Haiku finds them with pm_list_subtasks. Resolves with
+// { KEY: true | false }.
 const PM_SERVERS = ['mcp__claude_ai_Tactile_PM__', 'mcp__tactile-pm__', 'mcp__tactile_pm__'];
-const PM_DONE_TOOLS = PM_SERVERS.flatMap(s => ['pm_get_task', 'pm_list_statuses', 'pm_update_task'].map(t => s + t));
-function setPmTasksDone(config, keys) {
+const PM_DONE_TOOLS = PM_SERVERS.flatMap(s => ['pm_get_task', 'pm_list_subtasks', 'pm_list_statuses', 'pm_update_task', 'pm_update_subtask'].map(t => s + t));
+function setPmTasksDone(config, keys, parent = '') {
   return new Promise(resolve => {
     const proc = spawnClaude(config.claudePath,
       ['-p', '--model', 'haiku', '--output-format', 'json', '--no-session-persistence',
@@ -970,9 +973,15 @@ function setPmTasksDone(config, keys) {
         resolve({});
       }
     });
+    const how = parent
+      ? `They are subtasks of ${parent}. Find the PM tools with ToolSearch. List the subtasks of ${parent} with pm_list_subtasks to get each one's id; `
+        + `find the Done status of the project with pm_list_statuses (the status whose lifecycleCategory is done); `
+        + `then change each subtask's status with pm_update_subtask (projectId: the project's key, subtaskId: its id, statusId: the Done status). `
+        + 'If one of them turns out to be a normal task rather than a subtask, use pm_update_task with statusSystemKey "done" instead. '
+      : 'Find the PM tools with ToolSearch. For each task: read it with pm_get_task; then change it with pm_update_task and statusSystemKey "done". '
+        + 'If pm_get_task says it is a subtask, or the update refuses it, read its parent task\'s subtasks with pm_list_subtasks and change it with pm_update_subtask (statusId: the Done status from pm_list_statuses). ';
     proc.stdin.end(`Move each of these Tactile PM tasks to its project's Done column: ${keys.join(', ')}. `
-      + 'Find the PM tools with ToolSearch. For each task: read it with pm_get_task; find the Done status of its project with pm_list_statuses if you need its id; '
-      + 'then change the task with pm_update_task. Change nothing else. '
+      + how + 'Change nothing else. '
       + 'Do not touch any other task. Reply with only a JSON object from each of these keys to true (moved) or false (not moved), in the form {"<key>": true}.');
   });
 }
