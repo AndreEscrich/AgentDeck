@@ -61,8 +61,11 @@ const ticketRuns = (() => {
     const paragraphs = [
       `${sub.key} ${sub.title}`,
       next ? 'Your previous subtask is done. This is your next one.' : `This is your subtask of ${run.key}${run.title ? ` (${run.title})` : ''}.`,
-      sub.description && `Description: ${sub.description}`,
+      sub.description && `Description (the briefing's summary): ${sub.description}`,
       sub.notes && `From the briefing: ${sub.notes}`,
+      // The briefing's summary can leave out what matters (a video link,
+      // steps to reproduce, a comment), so the agent reads the subtask itself.
+      `Start by reading ${sub.key} in full with pm_get_task (find the Tactile PM tools with ToolSearch): its description, comments and attachments. Where they say more than the summary above, they are what counts.`,
       `Work only on ${sub.key}. Other agents are working on other subtasks of ${run.key} in this folder at the same time:\n`
         + '- When a file you want to change is being changed by one of them, Agent Hub makes you wait until it is free. If you are told a file is in use, do the parts that do not need it first.\n'
         + '- Do not undo, revert or reformat changes you did not make for this subtask.',
