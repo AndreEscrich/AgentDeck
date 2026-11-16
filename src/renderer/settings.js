@@ -255,6 +255,7 @@ function openSettings(config, { onSaved } = {}) {
 
   // The app
   const hubAfterSend = settingsInput('checkbox', config.hubAfterSend !== false);
+  const tabOpensNext = settingsInput('checkbox', config.tabOpensNext !== false);
   const titles = settingsInput('checkbox', config.summarizeTitles !== false);
   const followUps = settingsInput('checkbox', config.suggestFollowUps !== false);
   // The agent's Hub tile in the corner of the screen (toast.js), the
@@ -427,6 +428,7 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('Theme', 'Nostromo: the screens of the ship’s computer in Alien, on an old tube', theme),
       settingsField('Curved screen', 'Nostromo only: the screen has the bulging shape of a tube’s glass, with scanlines that bow with it', curved),
       settingsField('Show the Hub after sending', 'Off: stay in the chat after you send a message', hubAfterSend),
+      settingsField('Tab opens the next agent', 'Tab jumps to the next agent that finished or needs you. Off: Tab never opens an agent (in the Hub it still chooses the next agent of the group), the Tab hints are hidden, and ↩ in the Hub still opens the next agent to check', tabOpensNext),
       settingsField('Stale after', 'Hours. An agent on the Hub that finished longer ago than this is marked as stale: its tank goes grey with a Stale stamp that says how long ago it finished, so the ones you worked with lately stand out. 0: off', staleAfter),
       settingsField('Short titles', 'Name new agents with a summary of your message, written by the quick-task model (Providers → Quick tasks)', titles),
       settingsField('Suggest follow-ups', 'After a task, the messages you will likely send next, written by the quick-task model. → or a click puts one in the box, Alt+1–3 sends it', followUps),
@@ -572,6 +574,7 @@ function openSettings(config, { onSaved } = {}) {
       knowledge: knowledgeOn.checked,
       knowledgeSkip: parseKnowledgeSkip(knowledgeSkip.value),
       hubAfterSend: hubAfterSend.checked,
+      tabOpensNext: tabOpensNext.checked,
       summarizeTitles: titles.checked,
       suggestFollowUps: followUps.checked,
       notifyWhenDone: notify.value !== 'off',
