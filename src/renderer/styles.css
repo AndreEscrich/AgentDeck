@@ -3411,22 +3411,58 @@ button.uml-peer-chip:hover { background: color-mix(in srgb, var(--chip, var(--ac
 .ticket-approve.approved { border-color: rgba(76, 175, 122, 0.5); }
 .ticket-approve.approved .ticket-approve-label { color: var(--ok); }
 
-/* A ticket run booting up: while the briefing reads the ticket, its box is a
-   wide tank that fills with the briefing's steps (hub.js runBox). */
-.hub-run-boot { display: none; flex-direction: column; gap: 6px; cursor: pointer; }
+/* A ticket run booting up (hub.js bootUp): while the briefing reads the
+   ticket, the box itself powers on: its border lights up and breathes, a scan
+   line sweeps down it, and faded agents take shape inside, one after another,
+   their tanks filling a little as the briefing works. When its plan arrives
+   they dissolve and the real agents take their place. */
+.hub-run { position: relative; }
+.hub-run-boot { display: none; flex-direction: column; gap: 8px; cursor: pointer; }
 .hub-run.booting .hub-run-boot { display: flex; }
-.hub-run.booting { min-width: 360px; }
-.hub-run-tank { position: relative; height: 92px; border-radius: 12px 12px 18px 18px; overflow: hidden;
-  background: #0f1016; border: 2px solid #2c2f3d; box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.6); }
-.hub-run-liquid { position: absolute; left: 0; right: 0; bottom: 0; height: 12%;
-  background: linear-gradient(#7fa8f0, #3d6bc4); transition: height 1.2s cubic-bezier(.3,1.3,.5,1);
-  animation: run-boot-glow 2.4s ease-in-out infinite; }
-.hub-run.needs-you .hub-run-liquid { background: linear-gradient(#f09a75, #c4562f); }
+.hub-run.booting { min-width: 360px; overflow: hidden; border-style: solid; border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+  animation: run-breathe 2.6s ease-in-out infinite; }
+@keyframes run-breathe {
+  50% { box-shadow: 0 0 18px -4px color-mix(in srgb, var(--accent) 55%, transparent), inset 0 0 22px -10px color-mix(in srgb, var(--accent) 60%, transparent); } }
+.hub-run-scan { display: none; position: absolute; left: 0; right: 0; top: 0; height: 38px; pointer-events: none;
+  background: linear-gradient(transparent, color-mix(in srgb, var(--accent) 16%, transparent) 70%, color-mix(in srgb, var(--accent) 40%, transparent));
+  animation: run-scan 2.2s cubic-bezier(.45,0,.55,1) infinite; }
+.hub-run.booting .hub-run-scan { display: block; }
+@keyframes run-scan { from { transform: translateY(-40px); } to { transform: translateY(var(--scan-to, 260px)); } }
+.hub-run-ghosts { display: flex; gap: 10px; min-height: 0; }
+.hub-run-ghosts:empty { display: none; }
+.hub-ghost-tile { --c1: #7fa8f0; --c2: #3d6bc4; flex: 1 1 0; min-width: 0; max-width: 240px; container-type: inline-size;
+  display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 16px;
+  background: rgba(51, 42, 33, 0.35); border: 1px dashed rgba(127, 168, 240, 0.55); opacity: 0.5; }
+.hub-ghost-tile .tank { opacity: 0.75; }
+.hub-ghost-tile.forming { animation: ghost-form 1.6s cubic-bezier(.2,.8,.3,1) both; }
+@keyframes ghost-form {
+  0% { opacity: 0; transform: scale(0.82); filter: blur(6px); border-color: transparent; }
+  45% { opacity: 0.85; filter: blur(1px); border-color: rgba(127, 168, 240, 0.9); box-shadow: 0 0 22px -6px rgba(127, 168, 240, 0.8); }
+  100% { opacity: 0.5; transform: scale(1); filter: blur(0); } }
+.ghost-line { height: 9px; border-radius: 5px; background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 30%, rgba(255, 255, 255, 0.16) 50%, rgba(255, 255, 255, 0.05) 70%);
+  background-size: 300% 100%; animation: ghost-shimmer 1.8s linear infinite; }
+.ghost-line.short { width: 60%; }
+@keyframes ghost-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.hub-run-ghosts.dissolving .hub-ghost-tile { animation: ghost-dissolve 0.45s ease-in forwards; }
+@keyframes ghost-dissolve { to { opacity: 0; transform: scale(1.06); filter: blur(4px); } }
+.hub-run.needs-you .hub-ghost-tile { --c1: #f09a75; --c2: #c4562f; border-color: rgba(240, 154, 117, 0.6); }
 .hub-run.needs-you { animation: attention 1.4s ease-in-out infinite; }
-@keyframes run-boot-glow { 50% { filter: brightness(1.25); } }
 .hub-run-boot-line { display: flex; gap: 10px; font-size: 12px; color: var(--text-dim); min-width: 0; }
 .hub-run-boot-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hub-run-boot-timer { flex-shrink: 0; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+/* The ticket on its way in (flyTicket): the box waits dimmed, then powers on. */
+.hub-run.arriving { opacity: 0.35; }
+.hub-run.powering { animation: run-power 1.2s cubic-bezier(.2,.8,.3,1); }
+@keyframes run-power {
+  0% { opacity: 0.35; box-shadow: 0 0 0 0 transparent; }
+  25% { opacity: 1; box-shadow: 0 0 0 2px var(--accent), 0 0 34px -2px color-mix(in srgb, var(--accent) 70%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; } }
+.ticket-ghost { position: fixed; z-index: 60; overflow: hidden; pointer-events: none;
+  background: #221c16; border: 2px solid var(--accent); box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.9); }
+.ticket-face { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px;
+  padding: 6px 14px 6px 22px; opacity: 0; border-left: 3px dashed color-mix(in srgb, var(--accent) 70%, transparent); }
+.ticket-face-key { font-weight: 700; color: var(--accent); letter-spacing: 0.03em; white-space: nowrap; }
+.ticket-face-sub { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; }
 .hub-run.has-briefing .hub-run-head { cursor: pointer; }
 .hub-run.has-briefing .hub-run-head:hover .hub-run-title { color: var(--text); text-decoration: underline; }
 /* A finished subtask waiting for your approval: a purple tank and an Approve button. */

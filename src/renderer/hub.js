@@ -80,6 +80,7 @@ class Hub {
     // them (see broadcast in app.js).
     this.selected = new Set();
     this.arrivals = new Map();       // agent id -> where its message box was, for the morph animation
+    this.runArrivals = new Map();    // ticket run id -> where its message box was, for flyTicket
 
     this.root = el('div', 'hub');
     // Shown when Tab has agents to check: the key, how many, and the first one.
@@ -1023,16 +1024,15 @@ class Hub {
         box.el.classList.toggle('has-briefing', !!b);
         const needsYou = booting && (b.status === 'waiting' || info.planMissing);
         box.el.classList.toggle('needs-you', needsYou);
-        if (booting) {
-          const steps = b.transcript?.stepCount || 0;
-          box.liquid.style.height = `${Math.min(92, 18 + steps * 9)}%`;
-          box.bootText.textContent = b.status === 'waiting' ? 'Briefing · needs you'
-            : info.planMissing ? 'Briefing · waiting for the subtask list (click to ask for it)'
-            : `Briefing · ${b.transcript?.activity || 'reading the ticket…'}`;
-          const started = b.transcript?.turnStartedAt;
-          box.bootTimer.textContent = started ? formatDuration(Date.now() - started) : '';
-        }
+        if (booting) this.bootUp(box, b, info);
+        else if (box.ghosts.childElementCount && !box.dissolving) this.dissolveGhosts(box);
         box.el.style.flexGrow = String(Math.max(box.tiles, booting ? 3 : 1));
+        // The ticket flies in from the message box (expectRunArrival).
+        const arrival = this.runArrivals.get(runId);
+        if (arrival) {
+          this.runArrivals.delete(runId);
+          this.flyTicket(box, arrival);
+        }
       }
     }
 
@@ -1352,21 +1352,22 @@ class Hub {
       const title = el('span', 'hub-run-title');
       const progress = el('span', 'hub-run-progress');
       head.append(key, title, progress);
-      // While the briefing reads the ticket, the box boots up: a wide tank
-      // that fills with its steps, what it is doing, and a timer.
+      // While the briefing reads the ticket, the box itself boots up (its
+      // border traces in, a scan line sweeps it) and faded agents take shape
+      // inside it, one after another as the briefing works: it is briefing
+      // the agents the run will start. Under them, what it is doing and a
+      // timer (see bootUp).
       const boot = el('div', 'hub-run-boot');
-      const tank = el('div', 'hub-run-tank');
-      const liquid = el('div', 'hub-run-liquid');
-      tank.appendChild(liquid);
+      const ghosts = el('div', 'hub-run-ghosts');
       const bootLine = el('div', 'hub-run-boot-line');
       const bootText = el('span', 'hub-run-boot-text');
       const bootTimer = el('span', 'hub-run-boot-timer');
       bootLine.append(bootText, bootTimer);
-      boot.append(tank, bootLine);
+      boot.append(ghosts, bootLine);
       const grid = el('div', 'hub-run-grid');
-      el_.append(head, boot, grid);
+      el_.append(head, boot, grid, el('div', 'hub-run-scan'));
       sec.grid.appendChild(el_);
-      box = { el: el_, key, title, progress, grid, boot, liquid, bootText, bootTimer, tiles: 0, order: Infinity, briefing: null };
+      box = { el: el_, key, title, progress, grid, boot, ghosts, bootText, bootTimer, tiles: 0, order: Infinity, briefing: null };
       // The header (and the booting box) open the briefing's chat: its plan.
       const openBriefing = e => {
         if (!box.briefing) return;
@@ -1975,6 +1976,92 @@ class Hub {
   // message box at rect (with the typed text) instead of springing in.
   expectArrival(agentId, rect, text) {
     this.arrivals.set(agentId, { rect, text });
+  }
+
+  // A ticket run started from the message box (ticketrun.js): its ticket
+  // flies from there into the run's box when the box is drawn.
+  expectRunArrival(runId, rect, key, text) {
+    this.runArrivals.set(runId, { rect, key, text });
+  }
+
+  // The message box lifts and turns into a ticket (⑂ KEY) while its text
+  // fades, flies to the run's box with the same moves as a new agent's tank
+  // (morph), and drops into it; the box then powers on.
+  async flyTicket(box, { rect: from, key, text }) {
+    const target = box.el;
+    target.classList.add('arriving');
+    await this.whenStill(target);
+    if (!target.offsetParent || !from) {
+      target.classList.remove('arriving');
+      return;
+    }
+    target.scrollIntoView({ block: 'nearest' });
+    const r = target.getBoundingClientRect();
+    const card = { width: 210, height: 58 };
+    const to = { left: r.left + (r.width - card.width) / 2, top: r.top + Math.min(r.height / 2, 70) - card.height / 2, ...card };
+    const ghost = el('div', 'ticket-ghost');
+    const label = el('div', 'morph-text', text || '');
+    const face = el('div', 'ticket-face');
+    face.append(el('span', 'ticket-face-key', `⑂ ${key || 'Ticket'}`), el('span', 'ticket-face-sub', 'Ticket run'));
+    ghost.append(label, face);
+    Object.assign(ghost.style, { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px` });
+    document.body.appendChild(ghost);
+    const lift = { left: from.left + (from.width - card.width) / 2, top: Math.max(to.top + 40, from.top - card.height - 40) };
+    const place = p => ({ left: `${p.left}px`, top: `${p.top}px`, width: `${p.width}px`, height: `${p.height}px` });
+    const duration = 950;
+    const flight = ghost.animate([
+      { ...place(from), borderRadius: '12px', easing: 'cubic-bezier(.3,0,.2,1)' },
+      { ...place({ ...lift, ...card }), borderRadius: '10px', offset: 0.38, easing: 'cubic-bezier(.55,0,.25,1)' },
+      { ...place(to), borderRadius: '10px' },
+    ], { duration, fill: 'forwards' });
+    label.animate([{ opacity: 1 }, { opacity: 0, offset: 0.3 }, { opacity: 0 }], { duration, fill: 'forwards' });
+    face.animate([{ opacity: 0 }, { opacity: 0, offset: 0.22 }, { opacity: 1, offset: 0.4 }, { opacity: 1 }], { duration, fill: 'forwards' });
+    await flight.finished.catch(() => {});
+    // Into the box: the ticket drops in and the box powers on.
+    target.classList.remove('arriving');
+    this.replay(target, 'powering', 1200);
+    this.onLanded?.(null);
+    await ghost.animate([
+      { transform: 'scale(1)', opacity: 1 },
+      { transform: 'scale(0.55) translateY(14px)', opacity: 0 },
+    ], { duration: 320, fill: 'forwards', easing: 'cubic-bezier(.5,0,.75,0)' }).finished.catch(() => {});
+    ghost.remove();
+  }
+
+  // The booting box: one faded agent takes shape when the briefing starts,
+  // and one more every few of its steps (at most four), each filling a
+  // little as it goes on. They stand for the agents the briefing prepares;
+  // the real ones take their place when its plan arrives (dissolveGhosts).
+  bootUp(box, briefing, info) {
+    const steps = briefing.transcript?.stepCount || 0;
+    const want = Math.min(4, 1 + Math.floor(steps / 4));
+    while (box.ghosts.childElementCount < want) {
+      const ghost = el('div', 'hub-ghost-tile forming');
+      const tank = el('div', 'tank');
+      tank.appendChild(el('div', 'liquid'));
+      ghost.append(tank, el('div', 'ghost-line'), el('div', 'ghost-line short'));
+      box.ghosts.appendChild(ghost);
+      setTimeout(() => ghost.classList.remove('forming'), 1600);
+    }
+    [...box.ghosts.children].forEach((ghost, i) => {
+      ghost.querySelector('.liquid').style.height = `${Math.max(10, Math.min(64, (steps - i * 4) * 7))}%`;
+    });
+    box.bootText.textContent = briefing.status === 'waiting' ? 'Briefing · needs you'
+      : info.planMissing ? 'Briefing · waiting for the subtask list (click to ask for it)'
+      : `Briefing the agents · ${briefing.transcript?.activity || 'reading the ticket…'}`;
+    const started = briefing.transcript?.turnStartedAt;
+    box.bootTimer.textContent = started ? formatDuration(Date.now() - started) : '';
+  }
+
+  // The briefing is done: the faded agents dissolve as the real ones arrive.
+  dissolveGhosts(box) {
+    box.dissolving = true;
+    box.ghosts.classList.add('dissolving');
+    setTimeout(() => {
+      box.ghosts.textContent = '';
+      box.ghosts.classList.remove('dissolving');
+      box.dissolving = false;
+    }, 500);
   }
 
   // The message box lifts, shrinks to the size of a tank while the text fades

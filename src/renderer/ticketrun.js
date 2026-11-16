@@ -105,7 +105,8 @@ const ticketRuns = (() => {
     }
   }
 
-  async function start(key, text) {
+  // fromRect: where the message box was, for the ticket's flight into the run's box.
+  async function start(key, text, fromRect = null) {
     const d = ensureDraft();
     if (!d.folder) {
       flashComposerNote('Pick a folder for the ticket run first.');
@@ -132,6 +133,7 @@ const ticketRuns = (() => {
     });
     run.briefing = [...state.agents.values()].find(a => a.lane === lane) || null;
     if (run.briefing) run.briefing.title = `${key} · briefing`;
+    if (fromRect) hub.expectRunArrival(run.id, fromRect, key, text);
     refreshHub();
     await started;
   }
@@ -334,9 +336,10 @@ const ticketRuns = (() => {
       const key = button.dataset.key;
       const text = input.value.trim();
       if (!key) return;
+      const fromRect = document.querySelector('.composer-box')?.getBoundingClientRect() || null;
       input.value = '';
       input.dispatchEvent(new Event('input'));
-      start(key, text);
+      start(key, text, fromRect);
     };
   }
 
