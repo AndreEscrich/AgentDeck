@@ -41,13 +41,16 @@ const ticketRuns = (() => {
       '',
       `You are the briefing agent of a ticket run in Agent Hub: after you, several agents will work on the subtasks of the Tactile PM ticket ${key} at the same time. Each of them starts as a copy of this conversation, so what you read and find here is what they know.`,
       '',
-      '1. Read the ticket with pm_get_task and its subtasks with pm_list_subtasks (find the Tactile PM tools with ToolSearch). Read the descriptions and comments that matter.',
+      '1. Read the ticket with pm_get_task and its subtasks with pm_list_subtasks (find the Tactile PM tools with ToolSearch). Read the descriptions and comments that matter. Find out who the user is in PM with pm_whoami, so you can tell which subtasks are assigned to them.',
       '2. Read the code and assets the ticket is about, so the area is understood: the classes, prefabs and data involved, and how they fit together. Do not change any file.',
       '3. End your answer with the ticket and every subtask, in the ticket\'s order, in a block like this one (the language must be agenthub-subtasks, the content valid JSON):',
       '',
       '```agenthub-subtasks',
       '{"ticket": {"key": "ABC-1", "title": "the ticket\'s title"},',
-      ' "subtasks": [{"key": "ABC-2", "title": "the subtask\'s title", "description": "its description, short", "notes": "what you found that matters for it: files, classes, pitfalls"}]}',
+      ' "subtasks": [{"key": "ABC-2", "title": "the subtask\'s title", "description": "its description, short", "notes": "what you found that matters for it: files, classes, pitfalls",',
+      '   "status": "its status in PM", "done": false, "assignee": "who it is assigned to, or empty", "mine": true}]}',
+      '',
+      '"done" is true when the subtask is Done, closed or resolved. "mine" is true when it is assigned to the user, false when it is assigned to someone else, and null when it has no assignee. Subtasks that are done or someone else\'s are skipped by the run, so you do not need to read code for them.',
       '```',
       '',
       `The user's message: ${text}`,
@@ -76,7 +79,13 @@ const ticketRuns = (() => {
       const data = JSON.parse(m[1]);
       const subtasks = (Array.isArray(data) ? data : data.subtasks || [])
         .filter(s => s && typeof s.key === 'string' && /^[A-Z][A-Z0-9]{1,9}-\d+$/.test(s.key))
-        .map(s => ({ key: s.key, title: String(s.title || ''), description: String(s.description || ''), notes: String(s.notes || '') }));
+        .map(s => ({
+          key: s.key, title: String(s.title || ''), description: String(s.description || ''), notes: String(s.notes || ''),
+          status: String(s.status || ''), assignee: String(s.assignee || ''),
+          // A subtask that is done, or assigned to someone else, is skipped.
+          done: s.done === true || /^(done|closed|resolved|released|complete|cancel)/i.test(String(s.status || '')),
+          othersAssigned: s.mine === false && !!String(s.assignee || '').trim(),
+        }));
       return subtasks.length ? { ticket: data.ticket || null, subtasks } : null;
     } catch {
       return null;
@@ -140,12 +149,23 @@ const ticketRuns = (() => {
       return;
     }
     run.title = plan.ticket?.title || '';
-    run.subtasks = plan.subtasks.map(s => ({ ...s, state: 'queued', agentId: null }));
-    run.queue = [...run.subtasks];
+    // Done subtasks and other people's stay out; unassigned ones are free work.
+    run.subtasks = plan.subtasks.map(s => ({ ...s, state: s.done || s.othersAssigned ? 'skipped' : 'queued', agentId: null }));
+    run.queue = run.subtasks.filter(s => s.state === 'queued');
+    const skipped = run.subtasks.filter(s => s.state === 'skipped');
+    if (skipped.length) {
+      agent.transcript.note(`Skipped ${skipped.length} subtask${skipped.length === 1 ? '' : 's'}: ${skipped.map(s => `${s.key} (${s.done ? s.status || 'done' : `assigned to ${s.assignee}`})`).join(', ')}.`);
+    }
+    if (!run.queue.length) {
+      run.status = 'done';
+      agent.transcript.note('Every subtask of this ticket is done or assigned to someone else, so no agents start.');
+      refreshHub();
+      return;
+    }
     const max = Math.max(1, Number(state.config.maxTicketAgents) || 5);
     const workers = Math.min(max, run.queue.length);
     run.status = 'running';
-    agent.transcript.note(`Ticket run: ${run.subtasks.length} subtasks on ${workers} agent${workers === 1 ? '' : 's'} at once (Settings → Ticket runs). Each one starts as a copy of this briefing.`);
+    agent.transcript.note(`Ticket run: ${run.queue.length} subtask${run.queue.length === 1 ? '' : 's'} on ${workers} agent${workers === 1 ? '' : 's'} at once (Settings → Ticket runs). Each one starts as a copy of this briefing.`);
     const forkFrom = { sessionId: agent.sessionId, title: agent.title, provider: 'claude' };
     for (let i = 0; i < workers; i++) {
       const sub = run.queue.shift();
@@ -220,10 +240,11 @@ const ticketRuns = (() => {
   function progressOf(run) {
     if (run.status === 'briefing') return 'briefing…';
     const count = st => run.subtasks.filter(s => s.state === st).length;
-    const parts = [`${count('approved') + count('review')}/${run.subtasks.length} done`];
+    const parts = [`${count('approved') + count('review')}/${run.subtasks.length - count('skipped')} done`];
     if (count('review')) parts.push(`${count('review')} to approve`);
     if (count('queued')) parts.push(`${count('queued')} waiting`);
     if (count('failed')) parts.push(`${count('failed')} failed`);
+    if (count('skipped')) parts.push(`${count('skipped')} skipped`);
     return parts.join(' · ');
   }
 
