@@ -2082,18 +2082,8 @@ class Transcript {
     this.fromSubagent = !!msg.parent_tool_use_id;
     this.parentTool = msg.parent_tool_use_id || null;
     switch (msg.type) {
-      case 'user':
-        // A helper agent's own messages (the agent's instructions to it, the
-        // results of its tools) are steps of the task, not messages of yours:
-        // only their tool results count, to finish its tool cards.
-        if (msg.parent_tool_use_id) {
-          for (const block of Array.isArray(msg.message?.content) ? msg.message.content : []) {
-            if (block.type === 'tool_result') this.fillTool(block, msg.tool_use_result);
-          }
-          return;
-        }
-        return this.addUser(msg.message, msg.tool_use_result, msg.isSynthetic || msg.isMeta);
-      case 'assistant': return this.addAssistant(msg.message, { helper: !!msg.parent_tool_use_id });
+      case 'user': return this.addUser(msg.message, msg.tool_use_result, msg.isSynthetic || msg.isMeta);
+      case 'assistant': return this.addAssistant(msg.message);
       case 'stream_event': return this.addStreamEvent(msg.event);
       case 'result': return this.finishTurn(msg);
       case 'system':
@@ -2297,8 +2287,7 @@ class Transcript {
     this.onUpdate?.();
   }
 
-  // helper: a helper agent's message (see add): its text is a step, never the answer.
-  addAssistant(message, { helper = false } = {}) {
+  addAssistant(message) {
     const turn = this.ensureTurn();
     // One API call can arrive as several messages with the same id and usage.
     if (message.usage && message.id) {
@@ -2320,7 +2309,6 @@ class Transcript {
         const rest = this.addMilestones(turn, block.text);
         if (!rest.trim()) continue;
         const node = markdown(rest, this.cwd);
-        if (helper) { this.addStep(node, block.text.split('\n')[0].slice(0, 120)); continue; }
         const scenarios = proofBlock(block.text, 'agenthub-scenarios');
         const evidence = proofBlock(block.text, 'agenthub-evidence');
         if (scenarios) this.proof.scenarios = parseProofLines(scenarios);
@@ -2346,7 +2334,7 @@ class Transcript {
         // Text before a tool call was a note to itself, not the answer.
         turn.pendingText = [];
         turn.stepCount++;
-        if (block.name === 'Agent' || block.name === 'Task') this.addAgentCall(turn, message.id, block);
+        if ((block.name === 'Agent' || block.name === 'Task') && !knowledgeHelper(block.name, block.input)) this.addAgentCall(turn, message.id, block);
         else this.addStep(this.toolCard(block), `${block.name} · ${toolSummary(block.name, block.input)}`);
         this.liveStep = stepPhrase(block.name, block.input);
         if (block.name === 'TodoWrite' && Array.isArray(block.input?.todos)) this.showPlan(turn, block.input.todos);
