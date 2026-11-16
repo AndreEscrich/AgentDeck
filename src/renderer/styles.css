@@ -1304,12 +1304,27 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
 /* Under the message box: which agent a new agent continues from */
 .composer-fork { font-size: 12px; color: var(--text-faint); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ⚙ in the message box: shows or hides the permission and model menus */
-.composer-settings { display: contents; }
-.composer-settings.hidden { display: none !important; }
+/* The ⋮ chip next to Send and its panel: how the agent runs (permissions,
+   model, checks before done, pipeline), one labelled row each. */
+.composer-settings-wrap { position: relative; display: inline-flex; }
+#composer-settings-btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 4px 7px; border-radius: 6px; }
 #composer-settings-btn.active { color: var(--text); background: var(--bg-hover); }
 #composer-settings-btn.changed { color: var(--busy); }
-#composer-settings-btn { font-size: 15px; line-height: 1; padding: 4px 7px; }
+.settings-kebab { font-size: 16px; line-height: 1; font-weight: 700; }
+.settings-summary { font-size: 12px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.settings-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--err); flex-shrink: 0; }
+.composer-settings { position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 30; width: 330px;
+  display: flex; flex-direction: column; padding: 6px 8px; color: var(--text);
+  background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.45); }
+.composer-settings.hidden { display: none !important; }
+.settings-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 2px 4px 6px; border-bottom: 1px solid var(--border); }
+.settings-row.hidden { display: none; }
+.settings-label { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.settings-row .model-btn { white-space: nowrap; }
+.composer-settings .model-menu { left: auto; right: 0; }
+.composer-settings .pipeline-panel { left: auto; right: 0; }
+.settings-reset { align-self: flex-start; margin-top: 4px; border: none; background: none; padding: 4px 6px; font-size: 12px; color: var(--text-faint); }
+.settings-reset:hover { color: var(--text); background: var(--bg-hover); border-radius: 6px; }
 
 /* Context meter next to the Send button */
 .composer-right { display: flex; align-items: center; gap: 8px; }
@@ -2231,7 +2246,6 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .composer-bar { gap: 8px; }
 .composer-pickers { flex: 1 1 auto; min-width: 0; }
 .composer-pickers > .model-btn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 1; max-width: 40%; }
-.composer-pickers > #composer-settings-btn { flex-shrink: 0; }
 /* The permission and model buttons ("Bypass", "Opus 5.5 · Medium") stay on
    one line at their own size, so they never spill over Send: the folder and
    category give up room for them. */

@@ -85,16 +85,19 @@
           <div class="composer-pickers">
             <button id="composer-folder" class="model-btn hidden" type="button"></button>
             <button id="composer-group" class="model-btn hidden" type="button"></button>
-            <button id="composer-pipeline" class="model-btn composer-pipeline hidden" type="button"></button>
             <span id="composer-fork" class="composer-fork hidden"></span>
-            <button id="composer-settings-btn" class="model-btn" type="button"></button>
-            <span id="composer-settings" class="composer-settings hidden">
-              <div id="composer-mode-picker"></div>
-              <div id="composer-picker"></div>
-              <div id="composer-verify-picker"></div>
-            </span>
           </div>
           <div class="composer-right">
+            <span class="composer-settings-wrap">
+              <button id="composer-settings-btn" class="model-btn" type="button"></button>
+              <div id="composer-settings" class="composer-settings hidden">
+                <div class="settings-row"><span class="settings-label">Permissions</span><div id="composer-mode-picker"></div></div>
+                <div class="settings-row"><span class="settings-label">Model</span><div id="composer-picker"></div></div>
+                <div class="settings-row"><span class="settings-label">Checks before done</span><div id="composer-verify-picker"></div></div>
+                <div class="settings-row hidden" id="composer-pipeline-row"><span class="settings-label">Pipeline</span><button id="composer-pipeline" class="model-btn composer-pipeline" type="button"></button></div>
+                <button id="composer-settings-reset" class="settings-reset" type="button">Reset to defaults</button>
+              </div>
+            </span>
             <div id="context-meter" class="context-meter hidden"></div>
             <button id="composer-unity" class="composer-unity hidden" type="button"></button>
             <button id="composer-tsvn" class="composer-unity hidden" type="button"></button>

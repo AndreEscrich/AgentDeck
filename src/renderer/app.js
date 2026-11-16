@@ -384,7 +384,7 @@ function rememberPipeline(sessionId, profile) {
 function renderPipelineButton() {
   const button = $('composer-pipeline');
   const startsAgent = !['agent', 'history', 'branches'].includes(state.current?.kind);
-  button.classList.toggle('hidden', !pipelineEnabled() || !startsAgent);
+  $('composer-pipeline-row').classList.toggle('hidden', !pipelineEnabled() || !startsAgent);
   if (!pipelineEnabled()) return;
   const d = ensureDraft();
   const codex = providerOf(startChoice(d.choice)) === 'codex';
@@ -425,7 +425,7 @@ function choosePipeline() {
     sfx(id ? 'select' : 'tickDown');
     close();
     renderPipelineButton();
-    $('input').focus();
+    renderSettingsButton();
   };
   const render = () => {
     list.innerHTML = '';
@@ -628,37 +628,80 @@ function makeChatView() {
 
 // ---------- settings button ----------
 
-// Permissions and model are almost always the defaults (bypass, latest Opus,
-// medium effort), so their menus sit behind a ⚙ button. When the settings on
-// screen differ from the defaults, the button names them.
-function settingsDiffer() {
-  const c = composerPicker.value;
-  const d = defaultChoice();
-  return composerModePicker.value !== defaultMode()
-    || composerVerifyPicker.value !== defaultVerify()
-    || providerOf(c) !== providerOf(d)
-    || (c.model || 'default') !== (d.model || 'default')
-    || (c.effort || '') !== (d.effort || '')
-    || !!c.fastMode !== !!d.fastMode;
+// How the agent runs (permissions, model, checks before done, pipeline) is
+// almost always the defaults, so those menus sit in a panel behind the ⋮
+// chip next to Send. The chip names only what differs from the defaults
+// ("Plan · Sonnet · ✓ Tests"); a red dot means the agent bypasses permissions.
+
+// The pipeline profile the next agent from the Hub runs ('' for none).
+function shownPipeline() {
+  return ['agent', 'history', 'branches'].includes(state.current?.kind) ? '' : draftPipeline(ensureDraft());
 }
 
 function renderSettingsButton() {
   const btn = $('composer-settings-btn');
   const open = !$('composer-settings').classList.contains('hidden');
-  const summary = `${composerModePicker.mode.short} · ${composerPicker.button.textContent.replace(' ▾', '')} · ✓ ${composerVerifyPicker.level.short}`;
-  btn.textContent = !open && settingsDiffer() ? `⚙ ${summary}` : '⚙';
-  btn.title = `${open ? 'Hide' : 'Show'} permissions and model (${summary})`;
+  const c = composerPicker.value;
+  const d = composerPicker.locked ? defaultChoice(composerPicker.locked) : defaultChoice();
+  const model = composerPicker.button.textContent.replace(' ▾', '');
+  const modelDiffers = providerOf(c) !== providerOf(d) || (c.model || 'default') !== (d.model || 'default')
+    || (c.effort || '') !== (d.effort || '') || !!c.fastMode !== !!d.fastMode;
+  const pipeline = shownPipeline();
+  const changed = [
+    composerModePicker.value !== defaultMode() ? composerModePicker.mode.short : '',
+    modelDiffers ? model : '',
+    composerVerifyPicker.value !== defaultVerify() ? `✓ ${composerVerifyPicker.level.short}` : '',
+    pipeline ? `⛓ ${pipelineProfileName(pipeline)}` : '',
+  ].filter(Boolean);
+  btn.replaceChildren();
+  if (composerModePicker.mode.value === 'bypassPermissions') btn.appendChild(el('span', 'settings-dot'));
+  if (changed.length) btn.appendChild(el('span', 'settings-summary', changed.join(' · ')));
+  btn.appendChild(el('span', 'settings-kebab', '⋮'));
+  btn.title = `Permissions: ${composerModePicker.mode.label}\nModel: ${model}\nChecks before done: ${composerVerifyPicker.level.label}`
+    + (pipelineEnabled() && !['agent', 'history'].includes(state.current?.kind) ? `\nPipeline: ${pipeline ? pipelineProfileName(pipeline) : 'none'}` : '');
   btn.classList.toggle('active', open);
-  btn.classList.toggle('changed', settingsDiffer());
+  btn.classList.toggle('changed', changed.length > 0);
 }
 
+// The panel closes on a click outside it, or on Escape (a menu open inside
+// it closes first).
 function setSettingsOpen(open) {
   $('composer-settings').classList.toggle('hidden', !open);
-  try { localStorage.setItem('composerSettingsOpen', open ? '1' : '0'); } catch { /* not important */ }
+  if (open) renderPipelineButton();
   renderSettingsButton();
 }
 
-$('composer-settings-btn').onclick = () => setSettingsOpen($('composer-settings').classList.contains('hidden'));
+$('composer-settings-btn').onclick = () => {
+  const open = $('composer-settings').classList.contains('hidden');
+  sfx(open ? 'tick' : 'tickDown');
+  setSettingsOpen(open);
+};
+document.addEventListener('mousedown', e => {
+  if ($('composer-settings').classList.contains('hidden') || e.target.closest('.composer-settings-wrap')) return;
+  setSettingsOpen(false);
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || $('composer-settings').classList.contains('hidden')) return;
+  if (document.querySelector('.composer-settings .model-menu:not(.hidden), .pipeline-panel')) return;
+  setSettingsOpen(false);
+});
+
+// Reset to defaults: each menu back to its default, as if picked by hand.
+$('composer-settings-reset').onclick = () => {
+  composerModePicker.setValue(defaultMode());
+  composerModePicker.onChange?.(composerModePicker.value);
+  composerPicker.setValue(composerPicker.locked ? defaultChoice(composerPicker.locked) : defaultChoice());
+  composerPicker.onChange?.(composerPicker.value);
+  composerVerifyPicker.setValue(defaultVerify());
+  composerVerifyPicker.onChange?.(composerVerifyPicker.value);
+  if (state.current?.kind === 'hub' && ensureDraft().pipeline) {
+    ensureDraft().pipeline = '';
+    try { localStorage.setItem('pipelineProfile', ''); } catch { /* not important */ }
+    renderPipelineButton();
+  }
+  sfx('tickDown');
+  renderSettingsButton();
+};
 
 // ---------- context meter ----------
 
@@ -6562,7 +6605,7 @@ setInterval(checkStuck, 3000);
   }).catch(() => {});
   window.deck.latestUpdate().then(showUpdate).catch(() => {});
   loadModels().then(renderSettingsButton);
-  try { setSettingsOpen(localStorage.getItem('composerSettingsOpen') === '1'); } catch { setSettingsOpen(false); }
+  setSettingsOpen(false);
   state.groups = { groups: [], assignments: {}, ...(await window.deck.getGroups()) };
   loadHub();
   await loadAgentList();
