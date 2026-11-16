@@ -89,6 +89,7 @@ const DEFAULT_CONFIG = {
   updatePopup: true,                    // a card on the Hub asks to update when a new version is out (off: only the title bar's Update button)
   voiceLanguage: '',                    // the language of voice input (the microphone button), such as en-US; empty: the system's
   hubAfterSend: true,                   // show the Hub after you send a message
+  tabOpensNext: true,                   // Tab opens the next agent to check (off: Tab only chooses agents in the Hub)
   summarizeTitles: true,                // title new agents with a short summary of your message
   suggestFollowUps: true,               // after a task, suggest the messages you will likely send next
   svnServer: 'svn+ssh://svn@tactile.build',   // the Branches view reads <svnServer>/<project>/branches

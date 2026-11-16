@@ -1050,6 +1050,11 @@ async function checkNext() {
   }
 }
 
+// Settings → App → "Tab opens the next agent".
+function tabOpensNext() {
+  return state.config?.tabOpensNext !== false;
+}
+
 // The chat element of an agent or saved session on screen.
 function viewOf(cur) {
   if (cur?.kind === 'agent') return state.agents.get(cur.id)?.view || null;
@@ -1630,7 +1635,8 @@ function updateNextHint() {
     $('main').appendChild(hint);
   }
   const cur = state.current;
-  const queue = reviewQueue().filter(i => i.id !== hubIdOf(cur));
+  // With Tab not opening agents (Settings), there is no Tab hint to show.
+  const queue = tabOpensNext() ? reviewQueue().filter(i => i.id !== hubIdOf(cur)) : [];
   const next = queue[0];
   const colorOf = i => NEXT_COLORS[i.status === 'waiting' && i.attention === 'question' ? 'question' : i.status] || NEXT_COLORS.idle;
   // In the Hub, the header says that Tab starts going through them.
@@ -6401,12 +6407,15 @@ document.addEventListener('keydown', e => {
   }
   // Tab never moves the focus around the app; it opens the next agent to
   // check. In the Hub with none to check, it chooses the next agent of the
-  // selected group instead (⇧Tab the previous one).
+  // selected group instead (⇧Tab the previous one). With "tabOpensNext" off
+  // in Settings, Tab never opens an agent: in the Hub it always chooses the
+  // next agent of the group, elsewhere it does nothing.
   if (e.key === 'Tab' && !isMod(e) && !e.altKey && !e.target.closest?.('.settings-modal')) {
     e.preventDefault();
     if (!document.querySelector('.group-panel, .model-menu:not(.hidden), .lightbox, .image-review, .uml-full')) {
-      if (state.current?.kind === 'hub' && !reviewQueue().length && hub.moveKeyAgent(e.shiftKey ? -1 : 1)) return;
-      checkNext();
+      const opensNext = tabOpensNext();
+      if (state.current?.kind === 'hub' && (!opensNext || !reviewQueue().length) && hub.moveKeyAgent(e.shiftKey ? -1 : 1)) return;
+      if (opensNext) checkNext();
     }
   }
   // In a chat, Page Up and Page Down press the ▲ and ▼ buttons: your previous
