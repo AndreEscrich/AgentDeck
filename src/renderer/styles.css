@@ -1304,27 +1304,21 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
 /* Under the message box: which agent a new agent continues from */
 .composer-fork { font-size: 12px; color: var(--text-faint); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* The ⋮ chip next to Send and its panel: how the agent runs (permissions,
-   model, checks before done, pipeline), one labelled row each. */
-.composer-settings-wrap { position: relative; display: inline-flex; }
-#composer-settings-btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 4px 7px; border-radius: 6px; }
-#composer-settings-btn.active { color: var(--text); background: var(--bg-hover); }
-#composer-settings-btn.changed { color: var(--busy); }
-.settings-kebab { font-size: 16px; line-height: 1; font-weight: 700; }
-.settings-summary { font-size: 12px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
-.settings-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--err); flex-shrink: 0; }
-.composer-settings { position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 30; width: 330px;
-  display: flex; flex-direction: column; padding: 6px 8px; color: var(--text);
-  background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.45); }
-.composer-settings.hidden { display: none !important; }
-.settings-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 2px 4px 6px; border-bottom: 1px solid var(--border); }
-.settings-row.hidden { display: none; }
-.settings-label { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
-.settings-row .model-btn { white-space: nowrap; }
-.composer-settings .model-menu { left: auto; right: 0; }
-.composer-settings .pipeline-panel { left: auto; right: 0; }
-.settings-reset { align-self: flex-start; margin-top: 4px; border: none; background: none; padding: 4px 6px; font-size: 12px; color: var(--text-faint); }
-.settings-reset:hover { color: var(--text); background: var(--bg-hover); border-radius: 6px; }
+/* How the agent runs (placeComposerSide in app.js): a panel left of the
+   message box, one labelled option a row; in a narrow window, a row of
+   options in the bar under the text field. A value off its default is lit. */
+.composer-side { display: flex; gap: 2px; }
+.composer-side.beside { position: absolute; z-index: 6; flex-direction: column; gap: 2px; padding: 8px;
+  background: #2a221b; border: 1px solid #3d3329; border-radius: 14px; }
+.side-row { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.side-row.hidden { display: none; }
+.side-label { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); padding: 4px 6px 0; }
+.composer-side.beside .side-row + .side-row { border-top: 1px solid #3d3329; margin-top: 2px; padding-top: 2px; }
+.composer-side .model-btn { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.composer-side .side-row.changed .model-btn { color: var(--busy); }
+.composer-side.inline { flex-shrink: 0; align-items: center; }
+.composer-side.inline .side-label { display: none; }
+.composer-side.inline .model-picker { flex-shrink: 0; }
 
 /* Context meter next to the Send button */
 .composer-right { display: flex; align-items: center; gap: 8px; }

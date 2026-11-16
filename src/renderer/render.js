@@ -1605,7 +1605,10 @@ class Transcript {
     bar.style.width = `${width}px`;
     const c = composer.getBoundingClientRect();
     bar.style.left = `${b.left - 16 - width - c.left}px`;
-    bar.style.top = `${b.bottom - c.top - bar.offsetHeight}px`;
+    // The options panel (placeComposerSide) stands there too: the bar goes on top of it.
+    const side = composer.querySelector(':scope > .composer-side.beside');
+    const bottom = side ? side.getBoundingClientRect().top - 10 : b.bottom;
+    bar.style.top = `${bottom - c.top - bar.offsetHeight}px`;
     return true;
   }
 

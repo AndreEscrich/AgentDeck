@@ -626,12 +626,13 @@ function makeChatView() {
   return view;
 }
 
-// ---------- settings button ----------
+// ---------- the options panel ----------
 
-// How the agent runs (permissions, model, checks before done, pipeline) is
-// almost always the defaults, so those menus sit in a panel behind the ⋮
-// chip next to Send. The chip names only what differs from the defaults
-// ("Plan · Sonnet · ✓ Tests"); a red dot means the agent bypasses permissions.
+// How the agent runs (model, checks before done, pipeline) sits in a panel
+// to the left of the message box, every option in view. Permissions are not
+// in it: agents get Settings' default (Bypass). A value that differs from
+// the default is lit. Without room on the left (a narrow window) the panel
+// sits in the bar under the text field instead, its options in a row.
 
 // The pipeline profile the next agent from the Hub runs ('' for none).
 function shownPipeline() {
@@ -639,69 +640,43 @@ function shownPipeline() {
 }
 
 function renderSettingsButton() {
-  const btn = $('composer-settings-btn');
-  const open = !$('composer-settings').classList.contains('hidden');
   const c = composerPicker.value;
   const d = composerPicker.locked ? defaultChoice(composerPicker.locked) : defaultChoice();
-  const model = composerPicker.button.textContent.replace(' ▾', '');
   const modelDiffers = providerOf(c) !== providerOf(d) || (c.model || 'default') !== (d.model || 'default')
     || (c.effort || '') !== (d.effort || '') || !!c.fastMode !== !!d.fastMode;
-  const pipeline = shownPipeline();
-  const changed = [
-    composerModePicker.value !== defaultMode() ? composerModePicker.mode.short : '',
-    modelDiffers ? model : '',
-    composerVerifyPicker.value !== defaultVerify() ? `✓ ${composerVerifyPicker.level.short}` : '',
-    pipeline ? `⛓ ${pipelineProfileName(pipeline)}` : '',
-  ].filter(Boolean);
-  btn.replaceChildren();
-  if (composerModePicker.mode.value === 'bypassPermissions') btn.appendChild(el('span', 'settings-dot'));
-  if (changed.length) btn.appendChild(el('span', 'settings-summary', changed.join(' · ')));
-  btn.appendChild(el('span', 'settings-kebab', '⋮'));
-  btn.title = `Permissions: ${composerModePicker.mode.label}\nModel: ${model}\nChecks before done: ${composerVerifyPicker.level.label}`
-    + (pipelineEnabled() && !['agent', 'history'].includes(state.current?.kind) ? `\nPipeline: ${pipeline ? pipelineProfileName(pipeline) : 'none'}` : '');
-  btn.classList.toggle('active', open);
-  btn.classList.toggle('changed', changed.length > 0);
+  $('composer-model-row').classList.toggle('changed', modelDiffers);
+  $('composer-verify-row').classList.toggle('changed', composerVerifyPicker.value !== defaultVerify());
+  $('composer-pipeline-row').classList.toggle('changed', !!shownPipeline());
+  placeComposerSide();
 }
 
-// The panel closes on a click outside it, or on Escape (a menu open inside
-// it closes first).
-function setSettingsOpen(open) {
-  $('composer-settings').classList.toggle('hidden', !open);
-  if (open) renderPipelineButton();
-  renderSettingsButton();
-}
-
-$('composer-settings-btn').onclick = () => {
-  const open = $('composer-settings').classList.contains('hidden');
-  sfx(open ? 'tick' : 'tickDown');
-  setSettingsOpen(open);
-};
-document.addEventListener('mousedown', e => {
-  if ($('composer-settings').classList.contains('hidden') || e.target.closest('.composer-settings-wrap')) return;
-  setSettingsOpen(false);
-});
-document.addEventListener('keydown', e => {
-  if (e.key !== 'Escape' || $('composer-settings').classList.contains('hidden')) return;
-  if (document.querySelector('.composer-settings .model-menu:not(.hidden), .pipeline-panel')) return;
-  setSettingsOpen(false);
-});
-
-// Reset to defaults: each menu back to its default, as if picked by hand.
-$('composer-settings-reset').onclick = () => {
-  composerModePicker.setValue(defaultMode());
-  composerModePicker.onChange?.(composerModePicker.value);
-  composerPicker.setValue(composerPicker.locked ? defaultChoice(composerPicker.locked) : defaultChoice());
-  composerPicker.onChange?.(composerPicker.value);
-  composerVerifyPicker.setValue(defaultVerify());
-  composerVerifyPicker.onChange?.(composerVerifyPicker.value);
-  if (state.current?.kind === 'hub' && ensureDraft().pipeline) {
-    ensureDraft().pipeline = '';
-    try { localStorage.setItem('pipelineProfile', ''); } catch { /* not important */ }
-    renderPipelineButton();
+const SIDE_WIDTH = 210;
+function placeComposerSide() {
+  const side = $('composer-side');
+  const composer = $('composer');
+  const box = composer.querySelector('.composer-box');
+  const views = $('views').getBoundingClientRect();
+  if (composer.classList.contains('hidden') || !box.offsetParent) return;
+  const b = box.getBoundingClientRect();
+  const beside = b.left - views.left - 32 >= SIDE_WIDTH + 16;
+  if (beside) {
+    if (side.parentNode !== composer) composer.appendChild(side);
+    side.classList.add('beside');
+    side.classList.remove('inline');
+    const c = composer.getBoundingClientRect();
+    side.style.width = `${SIDE_WIDTH}px`;
+    side.style.left = `${b.left - 16 - SIDE_WIDTH - c.left}px`;
+    side.style.top = `${b.bottom - c.top - side.offsetHeight}px`;
+  } else {
+    const pickers = composer.querySelector('.composer-pickers');
+    if (side.parentNode !== pickers) pickers.appendChild(side);
+    side.classList.remove('beside');
+    side.classList.add('inline');
+    for (const p of ['left', 'top', 'width']) side.style.removeProperty(p);
   }
-  sfx('tickDown');
-  renderSettingsButton();
-};
+}
+window.addEventListener('resize', () => placeComposerSide());
+new ResizeObserver(() => placeComposerSide()).observe(document.querySelector('#composer .composer-box'));
 
 // ---------- context meter ----------
 
@@ -6637,7 +6612,7 @@ setInterval(checkStuck, 3000);
   }).catch(() => {});
   window.deck.latestUpdate().then(showUpdate).catch(() => {});
   loadModels().then(renderSettingsButton);
-  setSettingsOpen(false);
+  placeComposerSide();
   state.groups = { groups: [], assignments: {}, ...(await window.deck.getGroups()) };
   loadHub();
   await loadAgentList();
