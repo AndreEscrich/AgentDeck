@@ -1410,6 +1410,16 @@ audio.chat-media { width: 100%; max-width: 420px; height: 40px; background: tran
 .lightbox img { max-width: 92vw; max-height: 86vh; object-fit: contain;
   background: repeating-conic-gradient(#342b22 0% 25%, #2a231c 0% 50%) 0 0 / 16px 16px; }
 .lightbox-path { font: 12px var(--mono); color: var(--text-dim); }
+/* ‹ › beside a large image, to show the one before or after (imageStepButtons
+   in render.js). The backdrop is dark in every theme, so the colours are fixed. */
+.image-step { flex: none; width: 40px; height: 64px; padding: 0; display: grid; place-items: center;
+  font-size: 30px; line-height: 1; color: #eee; background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 8px; cursor: pointer; }
+.image-step:hover:not(:disabled) { background: rgba(255, 255, 255, 0.18); }
+.image-step:disabled { opacity: 0.25; cursor: default; }
+.lightbox .image-step { position: absolute; top: 50%; transform: translateY(-50%); }
+.lightbox .image-step.prev { left: 16px; }
+.lightbox .image-step.next { right: 16px; }
 
 /* An image under review (imagereview.js): the image with your marks, the
    numbered notes beside it, and a note's box where you let go of a mark. */
@@ -1420,6 +1430,8 @@ audio.chat-media { width: 100%; max-width: 420px; height: 40px; background: tran
 .image-review-hint { color: var(--text-dim); font-size: 12px; white-space: nowrap; }
 .image-review-main { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; gap: 16px; }
 .image-review-stage { position: relative; display: inline-flex; max-width: 100%; max-height: 100%; }
+.image-review-stage.sizing { visibility: hidden; }
+.image-review-count { color: var(--text-dim); font: 12px var(--mono); white-space: nowrap; }
 .image-review-stage img { display: block; user-select: none;
   background: repeating-conic-gradient(rgba(255, 255, 255, 0.06) 0 25%, transparent 0 50%) 0 0 / 16px 16px; }
 .image-review-stage img.pixelated { image-rendering: pixelated; }

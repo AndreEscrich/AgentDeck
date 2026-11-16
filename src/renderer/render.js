@@ -133,18 +133,72 @@ function stripAttachedData(text) {
   return String(text).replace(/\n?<spreadsheet\b[^>]*>[\s\S]*?<\/spreadsheet>/g, '');
 }
 
-// An attached image at full size; Esc or a click closes it.
-function openImageOverlay(src) {
+// An attached image at full size; Esc or a click closes it. all: the
+// pictures it was shown among; when there are more of them, ← and → (or the
+// ‹ › buttons at the sides) show the one before or after.
+function openImageOverlay(src, all = [src]) {
   const box = el('div', 'lightbox');
   const img = document.createElement('img');
-  img.src = src;
+  const counter = el('div', 'lightbox-path');
+  let index = Math.max(0, all.indexOf(src));
+  const steps = imageStepButtons(delta => show(index + delta));
+  const show = i => {
+    if (i < 0 || i >= all.length) return;
+    index = i;
+    img.src = all[index];
+    counter.textContent = `${index + 1} / ${all.length}`;
+    steps.update(index, all.length);
+  };
   box.appendChild(img);
+  if (all.length > 1) box.append(counter, steps.prev, steps.next);
+  show(index);
   const close = () => { window.uiSound?.('tickDown'); box.remove(); document.removeEventListener('keydown', onKey, true); };
-  const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
-  box.onclick = close;
+  const onKey = e => {
+    if (e.key === 'Escape') { e.stopPropagation(); close(); }
+    else if (imageStepKey(e)) { e.preventDefault(); e.stopPropagation(); show(index + imageStepKey(e)); }
+  };
+  // A click on ‹ or › (also on one that is disabled) does not close it.
+  box.onclick = e => { if (!e.target.closest('.image-step')) close(); };
   document.addEventListener('keydown', onKey, true);
   document.body.appendChild(box);
   window.uiSound?.('tick');
+}
+
+// The ‹ and › buttons beside a large image, to show the one before (go(-1))
+// or after (go(1)). update(index, count) disables ‹ on the first image and
+// › on the last.
+function imageStepButtons(go) {
+  const make = (cls, text, title, delta) => {
+    const b = el('button', `image-step ${cls}`, text);
+    b.type = 'button';
+    b.title = title;
+    b.onclick = e => { e.stopPropagation(); go(delta); };
+    return b;
+  };
+  const prev = make('prev', '‹', 'Previous image (←)', -1);
+  const next = make('next', '›', 'Next image (→)', 1);
+  const update = (index, count) => {
+    prev.disabled = index <= 0;
+    next.disabled = index >= count - 1;
+  };
+  return { prev, next, update };
+}
+
+// -1 for ←, 1 for →, 0 for any other key or when a modifier key is held
+// (Alt+← goes back to the Hub, see app.js).
+function imageStepKey(e) {
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return 0;
+  return e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
+}
+
+// The images in the same message as this one, in order, each once: the ones
+// ← and → step through in the large view. An agent's message is its answer
+// (the text and the card of new or changed images); an image in its steps
+// goes with the whole turn.
+function messageImagePaths(node) {
+  const message = node.closest('.turn-answer, .turn, .msg-user') || node.parentNode || node;
+  const paths = [...message.querySelectorAll('img.chat-media')].map(n => n.dataset.path).filter(Boolean);
+  return [...new Set(paths)];
 }
 
 // Full size on click; Esc or another click closes it.
@@ -268,7 +322,7 @@ function mediaElement(file, caption, cwd) {
     // A click opens it large, to review: draw on it and write notes for
     // the agent (imagereview.js).
     node.title = 'Click to review it: draw on it and write what should change';
-    node.onclick = () => (window.openImageReview ? openImageReview(node.dataset.path) : openLightbox(node.dataset.path));
+    node.onclick = () => (window.openImageReview ? openImageReview(node.dataset.path, messageImagePaths(node)) : openLightbox(node.dataset.path));
   }
   let searched = false;
   node.addEventListener('error', async () => {
@@ -1774,7 +1828,9 @@ class Transcript {
             img.src = shot.path ? mediaUrl(shot.path) : `data:${shot.mediaType};base64,${shot.data}`;
             img.alt = `Screenshot ${shot.n}`;
             img.title = shot.path ? `Screenshot ${shot.n}: click to review it (draw on it and write what should change)` : `Screenshot ${shot.n}`;
-            img.onclick = () => (shot.path && window.openImageReview ? openImageReview(shot.path) : openImageOverlay(img.src));
+            img.onclick = () => (shot.path && window.openImageReview
+              ? openImageReview(shot.path, p.shots.filter(s => s.path).map(s => s.path))
+              : openImageOverlay(img.src, [...strip.querySelectorAll('img')].map(i => i.src)));
             strip.appendChild(img);
           }
           row.appendChild(strip);
@@ -2177,7 +2233,7 @@ class Transcript {
           const img = document.createElement('img');
           img.src = `data:${p.source.media_type};base64,${p.source.data}`;
           img.alt = 'Attached image';
-          img.onclick = () => openImageOverlay(img.src);
+          img.onclick = () => openImageOverlay(img.src, [...row.querySelectorAll('img')].map(i => i.src));
           row.appendChild(img);
         }
         bubbles[bubbles.length - 1].appendChild(row);
@@ -2459,7 +2515,7 @@ class Transcript {
         const img = document.createElement('img');
         img.src = `data:${c.source.media_type || 'image/png'};base64,${c.source.data}`;
         img.alt = `Screenshot ${n}`;
-        img.onclick = () => openImageOverlay(img.src);
+        img.onclick = () => openImageOverlay(img.src, [...(img.closest('.turn') || shot).querySelectorAll('.proof-shot img')].map(i => i.src));
         shot.append(el('span', 'proof-shot-label', `Screenshot ${n}`), img);
         tool.card.appendChild(shot);
         tool.card.querySelector('.tool-arg').textContent = `Screenshot ${n} · ${tool.card.querySelector('.tool-arg').textContent}`;
