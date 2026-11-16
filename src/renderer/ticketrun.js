@@ -20,7 +20,11 @@
 // 4. Each worker posts a comment on its subtask in PM. Under each finished
 //    subtask, the chat has an Approve button that moves it to Done.
 //
-// The run lives in this window (not saved yet). Its agents go into the
+// Runs are saved (localStorage "ticketRuns", see save and load) with the
+// session of the briefing and of each worker, so after a restart the agents,
+// running again or parked on the Hub, are back in their run's box with their
+// subtasks (laneOfSession), and the run goes on with its waiting subtasks
+// (resumeRuns). Runs older than 30 days are dropped. Its agents go into the
 // category picked under the message box, like any new agent, and stand
 // together in a box of that Group's panel (hub.js runBox), with the ticket
 // and the run's progress in the box's header. The briefing starts as a fork
@@ -118,7 +122,7 @@ const ticketRuns = (() => {
       return;
     }
     const run = {
-      id: crypto.randomUUID(),
+      id: crypto.randomUUID(), createdAt: Date.now(),
       key, title: '', cwd: d.folder, groupId: d.groupId || null,
       choice: d.choice, mode: d.mode,
       status: 'briefing', briefing: null,
@@ -138,7 +142,69 @@ const ticketRuns = (() => {
     await started;
   }
 
-  const subOf = (run, agent) => run.subtasks.find(s => s.agentId === agent.id);
+  // A worker's subtask: by the key its lane names (after a restart the agent
+  // has another id), else by the agent.
+  const subOf = (run, agent) => run.subtasks.find(s => (agent?.lane?.subtask ? s.key === agent.lane.subtask : s.agentId === agent?.id));
+
+  // ---------- saved runs ----------
+
+  const KEEP_DAYS = 30;
+  const sessionOf = id => (id && state.agents.get(id)?.sessionId) || null;
+
+  function save() {
+    const list = [];
+    for (const run of runs.values()) {
+      if (run.test) continue;
+      run.briefingSession = run.briefing?.sessionId || run.briefingSession || null;
+      for (const s of run.subtasks) s.sessionId = sessionOf(s.agentId) || s.sessionId || null;
+      list.push({
+        id: run.id, key: run.key, title: run.title, cwd: run.cwd, groupId: run.groupId, choice: run.choice, mode: run.mode,
+        status: run.status, forkFrom: run.forkFrom, briefingSession: run.briefingSession, createdAt: run.createdAt || Date.now(),
+        subtasks: run.subtasks.map(({ bars, agentId, approveFailed, ...s }) => s),
+      });
+    }
+    try { localStorage.setItem('ticketRuns', JSON.stringify(list)); } catch { /* kept for this window */ }
+  }
+
+  function load() {
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem('ticketRuns') || '[]'); } catch { /* none */ }
+    const since = Date.now() - KEEP_DAYS * 24 * 3600 * 1000;
+    for (const r of list) {
+      if (!r?.id || (r.createdAt || 0) < since) continue;
+      const subtasks = (r.subtasks || []).map(s => ({ ...s, state: s.state === 'approving' ? 'review' : s.state, agentId: null }));
+      runs.set(r.id, { ...r, subtasks, briefing: null });
+    }
+  }
+
+  // The lane of a saved session (a run's briefing or one of its workers), so
+  // an agent that runs again, or is parked on the Hub, is part of its run.
+  function laneOfSession(sessionId) {
+    if (!sessionId) return null;
+    for (const run of runs.values()) {
+      if ((run.briefing?.sessionId || run.briefingSession) === sessionId) return { runId: run.id, role: 'briefing' };
+      const sub = run.subtasks.find(s => (sessionOf(s.agentId) || s.sessionId) === sessionId);
+      if (sub) return { runId: run.id, role: 'worker', subtask: sub.key };
+    }
+    return null;
+  }
+
+  // An agent that runs again on a run's saved session (app.js startAgent).
+  function attach(agent) {
+    const run = agent?.lane && runs.get(agent.lane.runId);
+    if (!run) return;
+    if (agent.lane.role === 'briefing') run.briefing = agent;
+    else {
+      const sub = subOf(run, agent);
+      if (sub) { sub.agentId = agent.id; agent.laneApproved = sub.state === 'approved'; }
+    }
+  }
+
+  // After a restart: runs that were going on start the subtasks that waited
+  // (agents that were working continue by themselves, see resumeInterrupted).
+  function resumeRuns() {
+    for (const run of runs.values()) if (run.status === 'running') schedule(run);
+  }
 
   // Two subtasks overlap when the briefing expects them to change a file in
   // common (by path, or by name when one path is written differently).
@@ -172,6 +238,7 @@ const ticketRuns = (() => {
       run.status = 'done';
       toast?.(`${run.key}: every subtask is done. Approve them on their tiles in the Hub.`);
     }
+    save();
     refreshHub();
   }
 
@@ -210,6 +277,7 @@ const ticketRuns = (() => {
     if (!todo.length) {
       run.status = 'done';
       agent.transcript.note('Every subtask of this ticket is done or assigned to someone else, so no agents start.');
+      save();
       refreshHub();
       return;
     }
@@ -223,7 +291,9 @@ const ticketRuns = (() => {
   // Approves a finished subtask: it moves to Done in PM. From the Approve
   // button on its tile (hub.js) or under its answer in the chat.
   async function approve(agentId) {
-    const agent = state.agents.get(agentId);
+    // A parked tile (after a restart) has the id "p:" + its session.
+    const agent = state.agents.get(agentId)
+      || (String(agentId).startsWith('p:') ? { id: agentId, lane: laneOfSession(String(agentId).slice(2)) } : null);
     const run = agent?.lane && runs.get(agent.lane.runId);
     const sub = run && subOf(run, agent);
     if (!sub || sub.state !== 'review') return;
@@ -234,6 +304,7 @@ const ticketRuns = (() => {
     sub.state = moved?.[sub.key] ? 'approved' : 'review';
     sub.approveFailed = !moved?.[sub.key];
     if (sub.state === 'approved') agent.laneApproved = true;
+    save();
     renderBars(sub);
     refreshHub();
   }
@@ -355,7 +426,7 @@ const ticketRuns = (() => {
     };
   }
 
-  return { keyIn, start, onResult, infoOf, ticketOf, laneState, approve, renderButton, wire, parsePlan, runs };
+  return { keyIn, start, onResult, infoOf, ticketOf, laneState, save, load, laneOfSession, attach, resumeRuns, approve, renderButton, wire, parsePlan, runs };
 })();
 
 window.ticketRuns = ticketRuns;

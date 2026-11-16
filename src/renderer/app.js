@@ -962,6 +962,7 @@ function show(kind, id) {
     composerPicker.setActual(null);
     composerModePicker.setValue(h.mode || defaultMode());
     composerVerifyPicker.setValue(verifyLevelOf(h));
+    renderChatTicket({ view: h.view, lane: ticketRuns.laneOfSession(h.session.id) });
     $('input').placeholder = 'Send a message to continue this session…';
     $('input').focus();
   } else {
@@ -1763,6 +1764,8 @@ function parkedItem(p) {
     finishedAt: p.finishedAt || 0,
     unread: !!p.unread,
     stopped: !!p.stopped,
+    // Part of a ticket run (ticketrun.js): it stays in the run's box.
+    lane: ticketRuns.laneOfSession(p.sessionId),
     transcript: { stepCount: 0, tokens: p.lastTurn?.usage || null, turnStartedAt: null, lastTurn: p.lastTurn },
   };
 }
@@ -2075,6 +2078,7 @@ function saveHub({ now = false } = {}) {
   const live = new Set(list.map(p => p.sessionId));
   for (const p of state.parked.values()) if (!live.has(p.sessionId)) list.push(p);
   try { localStorage.setItem('hubAgents', JSON.stringify(list)); } catch { /* not important */ }
+  ticketRuns.save();
   syncAgentList(list, { now });
 }
 
@@ -2082,6 +2086,8 @@ function loadHub() {
   try {
     for (const p of JSON.parse(localStorage.getItem('hubAgents') || '[]')) state.parked.set(p.sessionId, p);
   } catch { /* start with an empty Hub */ }
+  // Ticket runs (ticketrun.js), so their agents stand in their run's box again.
+  ticketRuns.load();
 }
 
 // Opens the session of an agent that is not running; your next message there resumes it.
@@ -3925,7 +3931,9 @@ async function startAgent({ cwd, prompt, permissionMode, verify, choice, resume,
   }
   if (ticket) agent.ticket = ticket;
   // An agent of a ticket run (ticketrun.js): the run names it after its subtask.
-  if (lane) agent.lane = lane;
+  // One that runs again on a run's saved session is part of that run again.
+  if (!lane && resume?.session?.id) lane = ticketRuns.laneOfSession(resume.session.id);
+  if (lane) { agent.lane = lane; if (resume) ticketRuns.attach(agent); }
   if (!resume && !lane) summarizeTitle(agent, prompt);
   // What kind of task it is (the Nostromo theme's tank shows it, see tasktype.js).
   if (!resume) taskType.start(agent, prompt);
@@ -6648,5 +6656,5 @@ setInterval(checkStuck, 3000);
   }
   await loadSessions();
   show('hub');
-  resumeInterrupted();
+  resumeInterrupted().then(() => ticketRuns.resumeRuns());
 })();

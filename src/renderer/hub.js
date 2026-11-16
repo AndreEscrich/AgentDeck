@@ -745,7 +745,7 @@ class Hub {
       parts.title.after(ticketCard);
     } else if (!ticket && ticketCard) ticketCard.remove();
     // A ticket run's approved subtask: its tile gets smaller (ticketrun.js).
-    tile.classList.toggle('lane-approved', !!agent.laneApproved);
+    tile.classList.toggle('lane-approved', !!agent.laneApproved || laneState === 'approved');
     // Thinking (no tool running): slow bubbles that gather at the surface.
     tile.classList.toggle('thinking', agent.status === 'working' && agent.transcript?.liveStep === 'Thinking…');
     tile.classList.toggle('unread', !!agent.unread);
