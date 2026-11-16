@@ -280,6 +280,28 @@ class Hub {
   renderCreateArt(box, art) {
     if (!art) return;
     box.appendChild(el('div', 'usage-provider create-art', 'Tactile Create Art'));
+    if (art.signIn) {
+      box.appendChild(el('div', 'usage-note', art.signIn === 'add'
+        ? 'Your Create Art connector comes from claude.ai, which keeps its sign-in where Agent Hub cannot read it. Sign in to Create Art in Claude Code once to see your budget here; agents then use that connector (the same tools).'
+        : 'Sign in to the Create Art connector to see your budget here.'));
+      const go = el('button', 'usage-signin', 'Sign in to Create Art…');
+      go.type = 'button';
+      go.onclick = async () => {
+        go.disabled = true;
+        go.textContent = 'Opening the sign-in…';
+        const r = await window.deck.connectCreateArt().catch(err => ({ ok: false, message: String(err?.message || err) }));
+        if (!r?.ok) {
+          go.disabled = false;
+          go.textContent = 'Sign in to Create Art…';
+          box.appendChild(el('div', 'usage-warn', r?.message || 'Could not start the sign-in.'));
+          return;
+        }
+        go.textContent = 'Finish the sign-in in your browser…';
+        window.watchCreateArtSignIn?.();
+      };
+      box.appendChild(go);
+      return;
+    }
     if (art.expired) {
       box.appendChild(el('div', 'usage-note', 'Its sign-in ran out. An agent that uses Create Art renews it, or Connectors → Connect.'));
       return;

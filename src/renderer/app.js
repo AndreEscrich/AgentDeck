@@ -53,7 +53,20 @@ function cliModel(agent) {
 // The name of Auto's smallest model, for the notes about its picks.
 const smallModel = agent => (providerOf(agent.choice) === 'codex' ? 'Luna' : 'Haiku');
 // What a model is called in the notes: "Opus", "Sol".
-const pickName = agent => (providerOf(agent.choice) === 'codex' ? FAMILY_NAMES[cliModel(agent)] || cliModel(agent) : autoModel.nameOf(cliModel(agent)));
+const pickName = agent => (providerOf(agent.choice) === 'codex' ? FAMILY_NAMES[cliModel(agent)] || cliModel(agent) : runningName(agent) || autoModel.nameOf(cliModel(agent)));
+// The Claude model the agent runs, with its version ("Sonnet 5.5"): the one
+// its last answer came from (agent.actualModel), when that is of the family
+// it should run now (after a change of model, the next answer tells);
+// else the version Claude Code's list gives for the choice.
+function runningName(agent) {
+  if (providerOf(agent.choice) === 'codex') return null;
+  const want = cliModel(agent);
+  if (!want || want === 'default') return modelName(agent.actualModel);
+  const actual = modelName(agent.actualModel);
+  if (actual && familyOf(actual) === familyOf(want)) return actual;
+  const m = sharedModels.find(x => x.value === want);
+  return m ? shortName(m) : null;
+}
 // The effort: its choice, or with Auto and Effort "Auto" the one Auto
 // picked for it (agent.autoEffort; '' is the model's default).
 function cliEffort(agent) {
@@ -72,6 +85,7 @@ function autoPickName(agent) {
 function showAutoPick(agent) {
   if (state.current?.kind !== 'agent' || state.current.id !== agent.id) return;
   composerPicker.setResolved(agent.choice?.model === 'auto' && agent.autoLevel ? autoPickName(agent) : null);
+  composerPicker.setActual(agent.choice?.model !== 'auto' ? runningName(agent) : null);
 }
 // Haiku's rating: its level (or null), and its cost goes into the Auto report.
 function rated(r) {
@@ -87,7 +101,7 @@ async function settleAuto(agent, rating) {
   const before = JSON.stringify(cliChoice(agent));
   agent.autoLevel = autoModel.startLevel(agent.autoRules, haiku, agent.autoText);
   agent.autoEffort = autoModel.effortFor(agent.autoLevel, autoModel.score(agent.autoRules, haiku));
-  if (JSON.stringify(cliChoice(agent)) !== before) window.deck.setModel(agent.id, cliChoice(agent));
+  if (JSON.stringify(cliChoice(agent)) !== before) (agent.actualModel = null, window.deck.setModel(agent.id, cliChoice(agent)));
   const easy = autoModel.combine(agent.autoRules, haiku) === 1;
   const why = easy && agent.autoLevel > 1 ? `it rates easy, but it asks for work, which is too much for ${smallModel(agent)}` : haiku ? `the quick-task model rated it ${haiku} of 3` : 'from your message';
   agent.transcript.note(`Auto picked ${autoPickName(agent)} (${why}).`);
@@ -157,7 +171,7 @@ const composerPicker = new ModelPicker($('composer-picker'), {
         a.autoLevel = isVisual ? 3 : autoModel.startLevel(autoModel.rules(text), null, text);
         a.autoEffort = autoModel.effortFor(a.autoLevel, autoModel.rules(text), { visual: isVisual });
       }
-      window.deck.setModel(a.id, cliChoice(a));
+      (a.actualModel = null, window.deck.setModel(a.id, cliChoice(a)));
       showAutoPick(a);
       a.transcript.note(`Switched to ${composerPicker.button.textContent.replace(' ▾', '')} from the next message on.`);
     } else if (cur?.kind === 'history') {
@@ -187,6 +201,31 @@ const composerModePicker = new ModePicker($('composer-mode-picker'), {
       state.history.get(cur.id).mode = mode;
     } else if (cur?.kind === 'hub') {
       ensureDraft().mode = mode;
+    }
+    renderSettingsButton();
+  },
+});
+
+// The checks before an agent's work counts as done (src/verify.js; see
+// verifyTurn): an agent's own level, else Settings → Agents → Checks.
+function defaultVerify() {
+  return state.config.verifyLevel || 'off';
+}
+function verifyLevelOf(a) {
+  return a?.verify || defaultVerify();
+}
+const composerVerifyPicker = new VerifyPicker($('composer-verify-picker'), {
+  onChange: level => {
+    const cur = state.current;
+    if (cur?.kind === 'agent') {
+      const a = state.agents.get(cur.id);
+      a.verify = level;
+      a.transcript.note(`Checks before done: ${composerVerifyPicker.level.label}.`);
+      saveHub();
+    } else if (cur?.kind === 'history') {
+      state.history.get(cur.id).verify = level;
+    } else if (cur?.kind === 'hub') {
+      ensureDraft().verify = level;
     }
     renderSettingsButton();
   },
@@ -596,6 +635,7 @@ function settingsDiffer() {
   const c = composerPicker.value;
   const d = defaultChoice();
   return composerModePicker.value !== defaultMode()
+    || composerVerifyPicker.value !== defaultVerify()
     || providerOf(c) !== providerOf(d)
     || (c.model || 'default') !== (d.model || 'default')
     || (c.effort || '') !== (d.effort || '')
@@ -605,7 +645,7 @@ function settingsDiffer() {
 function renderSettingsButton() {
   const btn = $('composer-settings-btn');
   const open = !$('composer-settings').classList.contains('hidden');
-  const summary = `${composerModePicker.mode.short} · ${composerPicker.button.textContent.replace(' ▾', '')}`;
+  const summary = `${composerModePicker.mode.short} · ${composerPicker.button.textContent.replace(' ▾', '')} · ✓ ${composerVerifyPicker.level.short}`;
   btn.textContent = !open && settingsDiffer() ? `⚙ ${summary}` : '⚙';
   btn.title = `${open ? 'Hide' : 'Show'} permissions and model (${summary})`;
   btn.classList.toggle('active', open);
@@ -853,8 +893,10 @@ function show(kind, id) {
     composerPicker.setLocked(providerOf(a.choice));
     composerPicker.setValue(a.choice || defaultChoice());
     composerPicker.setResolved(null);
+    composerPicker.setActual(null);
     showAutoPick(a);
     composerModePicker.setValue(a.mode || defaultMode());
+    composerVerifyPicker.setValue(verifyLevelOf(a));
     $('input').placeholder = DEFAULT_PLACEHOLDER;
     renderFollowUps();
     $('input').focus();
@@ -873,7 +915,9 @@ function show(kind, id) {
     composerPicker.setLocked(providerOf(h.choice));
     composerPicker.setValue(h.choice || defaultChoice());
     composerPicker.setResolved(null);
+    composerPicker.setActual(null);
     composerModePicker.setValue(h.mode || defaultMode());
+    composerVerifyPicker.setValue(verifyLevelOf(h));
     $('input').placeholder = 'Send a message to continue this session…';
     $('input').focus();
   } else {
@@ -884,7 +928,9 @@ function show(kind, id) {
     composerPicker.setLocked(null);
     composerPicker.setValue(d.choice);
     composerPicker.setResolved(null);
+    composerPicker.setActual(null);
     composerModePicker.setValue(d.mode);
+    composerVerifyPicker.setValue(verifyLevelOf(d));
     renderDraftButtons();
     $('input').placeholder = HUB_PLACEHOLDER;
     renderBroadcast();
@@ -1425,7 +1471,7 @@ async function sendToHubItem(id, text, images = []) {
     if (!session) return false;
     const h = await loadHistory(session);
     const p = state.parked.get(sessionId);
-    await startAgent({ cwd: h.cwd || session.cwd, prompt: text, permissionMode: h.mode || p?.mode, choice: h.choice || p?.choice, resume: h, images });
+    await startAgent({ cwd: h.cwd || session.cwd, prompt: text, permissionMode: h.mode || p?.mode, verify: h.verify || p?.verify, choice: h.choice || p?.choice, resume: h, images });
     return true;
   }
   const a = state.agents.get(id);
@@ -1631,6 +1677,7 @@ function hubInfo(a) {
     autoLevel: a.autoLevel || undefined,
     autoEffort: a.autoEffort || undefined,
     mode: a.mode,
+    verify: a.verify || undefined,
     lastTurn: a.transcript?.lastTurn ? { durationMs: a.transcript.lastTurn.durationMs, usage: a.transcript.lastTurn.usage } : a.lastTurn || null,
     // Finished while you were not looking, and not opened since.
     unread: !!a.unread,
@@ -2012,9 +2059,12 @@ async function openParked(sessionId) {
     h.autoLevel = h.autoLevel || p.autoLevel;
     h.autoEffort = h.autoEffort || p.autoEffort;
     h.mode = h.mode || p.mode;
+    h.verify = h.verify || p.verify;
     composerPicker.setValue(h.choice || defaultChoice());
     composerPicker.setResolved(null);
+    composerPicker.setActual(null);
     composerModePicker.setValue(h.mode || defaultMode());
+    composerVerifyPicker.setValue(verifyLevelOf(h));
   }
   return h?.view;
 }
@@ -2724,7 +2774,19 @@ async function restartInNewFolder(agent) {
   agent.sessionId = null;
   agent.status = 'starting';
   agent.snapshot = null;
+  agent.snapshotHeld = false;
+  agent.taskTurns = null;
   agent.mediaSince = null;
+  // The chat reads the agent's edits against its folder: with the old one,
+  // no edit in the new folder counted as the agent's, and the task's
+  // Changes card came out empty.
+  agent.transcript.cwd = agent.cwd;
+  checkUnityBridge(agent.cwd);
+  // The agent's Changes card compared with the old folder's snapshot: it
+  // starts again with the first task in the new folder.
+  const s = sessionState(agent.view);
+  s.panel?.el.closest('.session-dock')?.remove();
+  Object.assign(s, { started: false, snap: null, paths: new Set(), edits: new Map(), own: null, shared: new Set(), files: [], tasks: [], panel: null, pending: [] });
   clearClashes(agent);
   refreshHub();
   await window.deck.startAgent({
@@ -2970,7 +3032,7 @@ async function resumeInterrupted() {
     if (!session?.file) continue;
     try {
       const h = await loadHistory({ ...session, title: p.title || session.title });
-      await startAgent({ cwd: h.cwd || session.cwd || p.cwd, prompt: RESUME_PROMPT, permissionMode: p.mode, choice: p.choice, resume: h });
+      await startAgent({ cwd: h.cwd || session.cwd || p.cwd, prompt: RESUME_PROMPT, permissionMode: p.mode, verify: p.verify, choice: p.choice, resume: h });
     } catch (err) {
       console.error('Could not continue', p.title, err);
     }
@@ -3087,13 +3149,13 @@ hub.modelOf = agent => {
   const short = effort ? ` · ${EFFORT_SHORT[effort] || effort}` : '';
   const long = effort ? ` at ${(EFFORT_NAMES[effort] || effort).toLowerCase()} effort` : '';
   if (value === 'auto') {
-    const picked = autoModel.nameOf(cliModel(agent));
+    const picked = runningName(agent) || autoModel.nameOf(cliModel(agent));
     const by = effort && !agent.choice.effort ? 'Auto picked' : 'Auto picked the model';
     return { label: `Auto · ${picked}${short}`, auto: true, title: `${by}: ${picked}${long} for this task (it can change with your next message)` };
   }
   if (value === 'default') return { label: `Default${short}`, title: `Claude Code's default model${long}` };
   const m = modelByValue(value);
-  const name = m ? shortName(m) : value;
+  const name = runningName(agent) || (m ? shortName(m) : value);
   return { label: name + short, fable: /^fable/i.test(name), title: `Runs on ${name}${long}` };
 };
 $('composer-unity').onclick = () => openUnity($('composer-unity').dataset.cwd);
@@ -3733,7 +3795,7 @@ async function startFrom(forkFrom, note = flashComposerNote) {
 // note(text) and resolves with any of { prompt, forkFrom, preamble,
 // handoffFrom, cwd, folderNote } to use instead of the ones passed in.
 // folderNote: why the agent works in cwd (Auto game folder), shown in the chat.
-async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId, fromRect, forkFrom, preamble = '', handoffFrom = null, images = [], ticket = null, rewindAt, prepare = null, folderNote = null, pipeline = false }) {
+async function startAgent({ cwd, prompt, permissionMode, verify, choice, resume, groupId, fromRect, forkFrom, preamble = '', handoffFrom = null, images = [], ticket = null, rewindAt, prepare = null, folderNote = null, pipeline = false }) {
   const title = resume ? resume.session.title : prompt.split('\n')[0].slice(0, 80);
   choice = choice || defaultChoice();
   // An older Codex choice: no model is Auto, a newest model id its family.
@@ -3759,7 +3821,7 @@ async function startAgent({ cwd, prompt, permissionMode, choice, resume, groupId
   }
 
   transcript.onUpdate = refreshHub;
-  const agent = { id, title, cwd, status: 'starting', sessionId: resume?.session.id || null, view, transcript, unread: false, choice, mode: permissionMode,
+  const agent = { id, title, cwd, status: 'starting', sessionId: resume?.session.id || null, view, transcript, unread: false, choice, mode: permissionMode, verify,
     // A resumed session stays in its group. A new one goes to the group picked in the form.
     groupId: resume ? groupOf(resume.session.id) : groupId || null,
     // A pipeline governor: the profile it runs (see renderPipelineButton); a
@@ -3988,7 +4050,7 @@ async function sendToAgent(agent, text, images = []) {
     agent.autoLevel = level;
     agent.autoEffort = effort;
     if (JSON.stringify(cliChoice(agent)) !== before) {
-      window.deck.setModel(agent.id, cliChoice(agent));
+      (agent.actualModel = null, window.deck.setModel(agent.id, cliChoice(agent)));
       const why = autoModel.visual(rateText) ? `visual work: ${autoModel.visual(rateText)}`
         : current === 1 && level > 1 && !autoModel.haikuFits(rateText) ? `it asks for work, which is too much for ${smallModel(agent)}` : haiku ? `the quick-task model rated this ${haiku} of 3` : autoModel.stepUp(lastStatus, rateText) ? 'the last try did not work' : 'from your message';
       agent.transcript.note(`Auto switched to ${autoPickName(agent)} for this (${why}).`);
@@ -4046,6 +4108,9 @@ async function sendToAgent(agent, text, images = []) {
   }
   if (!agent.snapshot) {
     agent.snapshotAt = Date.now() - 1000;
+    // The folder of this snapshot: a category moved while the agent works
+    // moves the agent as soon as it is done, before its card is made.
+    agent.snapshotCwd = agent.cwd;
     const [snap] = await Promise.all([snapshotInTime(agent.cwd), loadSession(agent.view, agent.sessionId, agent.cwd, agent.transcript)]);
     agent.snapshot = snap;
     // The project as it was before the agent's first task: its Changes card
@@ -4058,7 +4123,33 @@ async function sendToAgent(agent, text, images = []) {
       s.snap = snap || null;
     }
   }
-  await window.deck.sendMessage(agent.id, text, images);
+  await window.deck.sendMessage(agent.id, withChecks(agent, text), images);
+}
+
+// What an agent at Compile + screenshots is told with each message (the
+// chat leaves it out, see stripChecks in render.js): Tactile Create's
+// "verification contract" for screenshots, as text the agent writes instead
+// of tools. Not with a slash command, which must stay as it is.
+const FENCE = '`'.repeat(3);
+const SCREENSHOT_CHECKS = [
+  '<agenthub-checks>',
+  'Agent Hub checks this task with screenshots before it counts as done. When the task changes what the game shows (UI, the board, effects, animation, layout):',
+  '1. Before you change anything, write the scenarios that show the change, as a block (one line each, a short id and what the screenshot must show):',
+  FENCE + 'agenthub-scenarios',
+  '- <id>: <what the screenshot must show>',
+  FENCE,
+  '2. Do the work. Then prove each scenario with Unity screenshots (unity_take_screenshot: the Game View in Play Mode, or a cameraName without Play Mode). Look at each one: when it does not clearly show the scenario (wrong, ambiguous, too small, cluttered), fix the work or the framing and take it again. A focused test scene or setup that shows only what changed is fine; when the change also matters in the real game, prove it there too.',
+  '3. Agent Hub numbers your screenshots 1, 2, 3… in the order you take them in this task. End your final answer with a block that names the screenshots that prove each scenario (only good ones):',
+  FENCE + 'agenthub-evidence',
+  '- <id>: <screenshot numbers>',
+  FENCE,
+  'When the task changes nothing visible, write only "- none: <why>" in the agenthub-evidence block. Exit Play Mode when you are done and leave the Editor open.',
+  '</agenthub-checks>',
+].join('\n');
+
+function withChecks(agent, text) {
+  if (verifyLevelOf(agent) !== 'screenshots' || isSlashCommand(text) || /<agenthub-checks>/.test(text)) return text;
+  return `${text}\n\n${SCREENSHOT_CHECKS}`;
 }
 
 // ---------- going back to one of your messages ----------
@@ -4101,7 +4192,7 @@ async function rewindTo(transcript, index, text, { undoFiles, files = [] } = {})
 
   if (hist) {
     transcript.truncateAt(index);
-    await startAgent({ cwd, prompt: text, permissionMode: hist.mode, choice: hist.choice, resume: hist, rewindAt: at });
+    await startAgent({ cwd, prompt: text, permissionMode: hist.mode, verify: hist.verify, choice: hist.choice, resume: hist, rewindAt: at });
     return;
   }
 
@@ -4776,6 +4867,17 @@ async function refreshCreateArt() {
 showUsage();
 refreshCreateArt();
 setInterval(refreshCreateArt, 5 * 60 * 1000);
+// After the card's Sign in button: checks every 5 seconds, for 5 minutes,
+// until the budget comes.
+let artSignInTimer = null;
+window.watchCreateArtSignIn = () => {
+  clearInterval(artSignInTimer);
+  const until = Date.now() + 5 * 60 * 1000;
+  artSignInTimer = setInterval(async () => {
+    await refreshCreateArt();
+    if (createArtBudget?.limitUsd != null || Date.now() > until) clearInterval(artSignInTimer);
+  }, 5000);
+};
 
 // The limits also come without an agent: when the app opens, and after that
 // when no agent has reported them for a while (Claude: 15 minutes, since a
@@ -4995,6 +5097,15 @@ window.deck.onEvent((id, msg) => {
   if (isAuthFailure(msg)) { noteAuthWait(a); noteAuthProblem(); }
   if (msg.type === 'system' && msg.subtype === 'compact_boundary') afterCompact(a);
   if (msg.type === 'assistant') { noteClashes(a, msg.message); taskType.noteMessage(a, msg.message); }
+  // The model the agent's answers come from (not its sub-agents'), with its
+  // version: the model button and the tile show it (runningName).
+  const answeredBy = msg.type === 'assistant' && !msg.parent_tool_use_id ? msg.message?.model
+    : msg.type === 'system' && msg.subtype === 'init' ? msg.model : null;
+  if (answeredBy && modelName(answeredBy) && answeredBy !== a.actualModel) {
+    a.actualModel = answeredBy;
+    showAutoPick(a);
+    refreshHub();
+  }
   if (msg.type === 'user' && Array.isArray(msg.message?.content) && msg.message.content.some(b => b?.type === 'tool_result' && b.is_error)) taskType.noteError(a);
   if (msg.type === 'result') clearClashes(a);
   // A finished turn of an Auto agent goes into the Auto report (autoreport.js).
@@ -5046,7 +5157,11 @@ window.deck.onEvent((id, msg) => {
     }) : Promise.resolve();
     const since = a.snapshotAt;
     const turns = a.taskTurns;
-    evidence.then(() => window.deck.gitChanges(a.cwd, snap))
+    // The folder the snapshot was taken in, not the one the agent moves to
+    // when it is done (moveWhenDone): compared with another checkout, the
+    // card listed the differences between the two checkouts.
+    const cwd = a.snapshotCwd || a.cwd;
+    evidence.then(() => window.deck.gitChanges(cwd, snap))
       .then(diff => a.transcript.showGitChanges(turn, diff, snap.kind === 'folder', {
         otherEdit: rel => editedByOther(a, rel, since),
         ownOnly: f => ownDiff(a, turns, f),
@@ -5070,29 +5185,128 @@ window.deck.onEvent((id, msg) => {
   const limitHit = isLimitHit(msg);
   if (limitHit) noteLimitHit(a, msg);
   if (msg.type === 'result' && a.status !== 'background') {
-    notifyAbout(a, msg.is_error ? 'error' : 'idle', limitHit ? `Usage limit reached: continues at ${new Date(a.limited.resetAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : a.authWait ? 'Signed out: continues after you sign in' : msg.is_error ? 'Stopped with an error' : 'Finished and waiting for you');
-    if (playSounds()) {
-      if (!msg.is_error) sounds.done();
-      else if (!a.stopping && !limitHit && !a.authWait) sounds.error();
-    }
-    // Stopped before it was done: you pressed Stop, or it ended with an
-    // error (not the usage limit or a sign-in, which continue by themselves).
-    // Its tile and message box offer Restart (see restartAgent).
-    a.stopped = !!a.stopping || (!!msg.is_error && !limitHit && !a.authWait);
-    // The next queued message goes out now, unless you stopped the task.
-    if (a.queue?.length) {
-      if (a.stopping) {
-        a.queueHeld = true;
-        renderQueue(a);
-      } else {
-        setTimeout(() => sendQueued(a), 400);
-      }
-    }
-    a.stopping = false;
+    // A turn that changed code is checked first (verifyTurn); the task is
+    // done, with its notification, sound and the next queued message, when
+    // the checks pass or give up.
+    const turn = a.transcript.lastFinished;
+    if (!limitHit && wantsVerification(a, turn, msg)) verifyTurn(a, turn, msg);
+    else finishTask(a, msg, { limitHit });
   }
   // The context meter: after each task, and at most every 5 seconds while working.
   if (msg.type === 'result' || (msg.type === 'assistant' && Date.now() - (a.contextAt || 0) > 5000)) updateContext(a);
 });
+
+// The end of a task: its notification and sound, Restart for a task that was
+// stopped, and the next queued message. note: what the notification says
+// instead of the usual.
+function finishTask(a, msg, { limitHit = false, note = null } = {}) {
+  notifyAbout(a, msg.is_error ? 'error' : 'idle', note || (limitHit ? `Usage limit reached: continues at ${new Date(a.limited.resetAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : a.authWait ? 'Signed out: continues after you sign in' : msg.is_error ? 'Stopped with an error' : 'Finished and waiting for you'));
+  if (playSounds()) {
+    if (!msg.is_error) sounds.done();
+    else if (!a.stopping && !limitHit && !a.authWait) sounds.error();
+  }
+  // Stopped before it was done: you pressed Stop, or it ended with an
+  // error (not the usage limit or a sign-in, which continue by themselves).
+  // Its tile and message box offer Restart (see restartAgent).
+  a.stopped = !!a.stopping || (!!msg.is_error && !limitHit && !a.authWait);
+  // The next queued message goes out now, unless you stopped the task.
+  if (a.queue?.length) {
+    if (a.stopping) {
+      a.queueHeld = true;
+      renderQueue(a);
+    } else {
+      setTimeout(() => sendQueued(a), 400);
+    }
+  }
+  a.stopping = false;
+}
+
+// ---------- checks before done ----------
+
+// After a turn that changed a Unity project's C#, Agent Hub checks the work
+// itself before it counts as done (src/verify.js), at the agent's level
+// (verifyLevelOf): it compiles in the open Editor, and with Tests runs the
+// EditMode tests. A card in the chat
+// shows the checks. When they fail, the errors go back to the agent as a
+// message, to fix; after three failed rounds in a row the task stops there,
+// blocked, and you are told. Your own next message starts the count again.
+// Not checked: a turn that ended with an error or that you stopped, a plan,
+// and a turn that changed no C# (or a folder that is not a Unity project).
+const VERIFY_ATTEMPTS = 3;
+// What Unity compiles: C# and assembly definitions.
+const CODE_FILE = /\.(cs|asmdef|asmref)$/i;
+
+function wantsVerification(a, turn, msg) {
+  const level = verifyLevelOf(a);
+  if (level === 'off' || msg.is_error || a.stopping || a.mode === 'plan' || !a.cwd || !turn) return false;
+  const changed = [...(turn.changes?.keys() || [])];
+  // With screenshots, also a change that is not C# (a prefab, a sprite) or a
+  // task that declared scenarios: what shows is what counts.
+  if (level === 'screenshots') return changed.length > 0 || !!a.transcript.proof?.scenarios?.length;
+  return changed.some(p => CODE_FILE.test(p));
+}
+
+async function verifyTurn(a, turn, msg) {
+  const level = verifyLevelOf(a);
+  a.verifying = true;
+  const card = a.transcript.verifyCard(turn, level);
+  a.transcript.liveStep = level === 'tests' ? 'Checking: compile and tests' : level === 'screenshots' ? 'Checking: compile and screenshots' : 'Checking: compile';
+  refreshHub();
+  let result;
+  try {
+    result = await window.deck.verify(a.cwd, level);
+  } catch (err) {
+    result = { blocked: `The checks could not run: ${err?.message || err}`, gates: [] };
+  }
+  a.verifying = false;
+  if (!result.kind && !result.blocked) {
+    // Nothing in this project to check.
+    card.remove();
+    finishTask(a, msg);
+    return;
+  }
+  if (level === 'screenshots' && result.kind === 'unity' && !result.blocked && result.ok) {
+    const { gate, proof } = a.transcript.visualGate();
+    for (const p of proof) {
+      for (const shot of p.shots) {
+        const kept = a.transcript.proof.shots[shot.n - 1];
+        if (!kept.path) kept.path = await window.deck.verifyShot(a.id, shot.n, kept.data, kept.mediaType).catch(() => null);
+        shot.path = kept.path;
+      }
+    }
+    result = { ...result, gates: [...result.gates, gate], proof, ok: gate.ok };
+  }
+  const failed = !result.ok && !result.blocked;
+  const attempt = failed ? (a.verifyAttempts = (a.verifyAttempts || 0) + 1) : 0;
+  if (!failed) a.verifyAttempts = 0;
+  const giveUp = failed && attempt >= VERIFY_ATTEMPTS;
+  card.show(result, { attempt, max: VERIFY_ATTEMPTS, giveUp });
+  refreshHub();
+  if (!failed) {
+    finishTask(a, msg, { note: result.blocked ? 'Finished: not checked (see the chat)' : 'Finished and checked' });
+    return;
+  }
+  if (giveUp) {
+    a.verifyAttempts = 0;
+    finishTask(a, { ...msg, is_error: true }, { note: `Checks still fail after ${VERIFY_ATTEMPTS} rounds: needs you` });
+    return;
+  }
+  // Back to the agent, with what failed.
+  const failing = result.gates.filter(g => !g.ok);
+  const text = [
+    `Agent Hub checked your changes and they do not pass yet (round ${attempt} of ${VERIFY_ATTEMPTS}):`,
+    '',
+    ...failing.map(g => `${{ tests: 'Tests', screenshots: 'Screenshots' }[g.name] || 'Compile'}: ${g.summary}${g.details ? `\n${g.details}` : ''}`),
+    '',
+    'Fix these, then finish your turn: Agent Hub checks again by itself.',
+  ].join('\n');
+  // Shown as Agent Hub's, not yours (render.js knows it by its first words):
+  // it is not one of your prompts, so the agent's title and "You asked" stay yours.
+  a.transcript.add({ type: 'user', message: { role: 'user', content: text } });
+  if (['idle', 'background'].includes(a.status)) a.status = 'working';
+  refreshHub();
+  await sendToAgent(a, text);
+}
 
 window.deck.onStatus((id, status) => {
   const a = state.agents.get(id);
@@ -5252,7 +5466,7 @@ window.deck.onExit((id, { code, stderr }) => {
   // Its process ended with an error, or in the middle of a task: Restart continues it.
   if (!a.removed && a.sessionId) state.parked.set(a.sessionId, { ...hubInfo(a), stopped: code !== 0 || !!a.stopped || a.wasBusy });
   const session = { id: a.sessionId || id, title: a.title, cwd: a.cwd, file: null, updatedAt: Date.now() };
-  state.history.set(session.id, { session, view: a.view, transcript: a.transcript, cwd: a.cwd, choice: a.choice, mode: a.mode, autoLevel: a.autoLevel, autoEffort: a.autoEffort });
+  state.history.set(session.id, { session, view: a.view, transcript: a.transcript, cwd: a.cwd, choice: a.choice, mode: a.mode, verify: a.verify, autoLevel: a.autoLevel, autoEffort: a.autoEffort });
   if (state.current?.kind === 'agent' && state.current.id === id) show('history', session.id);
   loadSessions();
 });
@@ -5344,7 +5558,7 @@ async function sendFromComposer() {
       return { prompt, ...(await startFrom(forkFrom, note)) };
     };
     if (playSounds()) sounds.created();
-    await startAgent({ cwd, prompt: text, permissionMode: d.mode, choice: d.choice, groupId: d.groupId, fromRect, images, ticket, prepare, folderNote: quickGame ? gameNote(quickGame) : null, pipeline: draftPipeline(d) });
+    await startAgent({ cwd, prompt: text, permissionMode: d.mode, verify: d.verify, choice: d.choice, groupId: d.groupId, fromRect, images, ticket, prepare, folderNote: quickGame ? gameNote(quickGame) : null, pipeline: draftPipeline(d) });
   } else if (state.current.kind === 'agent') {
     const a = state.agents.get(state.current.id);
     if (QUEUE_WHILE.includes(a.status)) {
@@ -5362,6 +5576,8 @@ async function sendFromComposer() {
     [...a.view.querySelectorAll('.msg-user')].pop()?.classList.add('just-sent');
     notePrompt(a, text);
     afterSend(a, true);
+    // Your message starts the checks' rounds again (verifyTurn).
+    a.verifyAttempts = 0;
     await sendToAgent(a, text, images);
   } else if (state.current.kind === 'history') {
     const h = state.history.get(state.current.id);
@@ -5373,7 +5589,7 @@ async function sendFromComposer() {
       return;
     }
     if (playSounds()) sounds.created();
-    await startAgent({ cwd, prompt: text, permissionMode: h.mode, choice: h.choice, resume: h, images });
+    await startAgent({ cwd, prompt: text, permissionMode: h.mode, verify: h.verify, choice: h.choice, resume: h, images });
   }
 }
 
@@ -6080,7 +6296,7 @@ async function restartAgent(id) {
   sfx('sent');
   try {
     const h = await loadHistory({ ...saved, title: p.title || saved.title });
-    await startAgent({ cwd: h.cwd || saved.cwd || p.cwd, prompt: RESTART_PROMPT, permissionMode: p.mode, choice: p.choice, resume: h });
+    await startAgent({ cwd: h.cwd || saved.cwd || p.cwd, prompt: RESTART_PROMPT, permissionMode: p.mode, verify: p.verify, choice: p.choice, resume: h });
     // The tile keeps the title of the task it continues.
     const a = [...state.agents.values()].find(x => x.sessionId === sessionId || x.view === h.view);
     if (a && p.latestTitle) { a.latestTitle = p.latestTitle; a.latestPrompt = p.latestPrompt; refreshHub(); }

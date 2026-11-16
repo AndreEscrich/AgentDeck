@@ -108,6 +108,27 @@ function stripGroupNotes(text) {
 // An Excel file's sheets that went with your message (see sheetNote in
 // attachments.js) are for the agent: the chat shows the line that names the
 // file, not the data.
+// "- board-wobble: Pieces next to a merge wobble" lines -> [[id, text]].
+function parseProofLines(text) {
+  const out = [];
+  for (const line of String(text || '').split('\n')) {
+    const m = /^\s*[-*]?\s*([\w.-]+)\s*:\s*(.+?)\s*$/.exec(line);
+    if (m) out.push([m[1], m[2]]);
+  }
+  return out;
+}
+// The last ```name block in a text, or null.
+function proofBlock(text, name) {
+  const all = [...String(text || '').matchAll(new RegExp('```' + name + '[^\\n]*\\n([\\s\\S]*?)```', 'g'))];
+  return all.length ? all[all.length - 1][1] : null;
+}
+
+// The instructions Agent Hub adds to your message for Compile + screenshots
+// (SCREENSHOT_CHECKS in app.js) are for the agent.
+function stripChecks(text) {
+  return String(text).replace(/\n*<agenthub-checks>[\s\S]*?<\/agenthub-checks>\s*/g, '');
+}
+
 function stripAttachedData(text) {
   return String(text).replace(/\n?<spreadsheet\b[^>]*>[\s\S]*?<\/spreadsheet>/g, '');
 }
@@ -343,6 +364,45 @@ function jiraCard(href, key) {
     status.textContent = issue.status;
     status.dataset.category = issue.category;
     a.title = `${issue.type ? issue.type + ' ' : ''}${key}: ${issue.summary}\n${issue.status} · open in Jira`;
+  }).catch(() => {});
+  return a;
+}
+
+// ---------- Tactile PM tasks ----------
+
+// A Tactile PM task link: pm.tactilews.com/pm/items/KEY, or a board or
+// list link with the task's key in its address (?task=KEY, …/KEY).
+function pmKeyOf(href) {
+  let url;
+  try { url = new URL(href); } catch { return null; }
+  if (!/^pm(-[\w-]+)?\.tactilews\.com$/i.test(url.hostname)) return null;
+  const KEY = /^[A-Z][A-Z0-9]{1,9}-\d+$/;
+  const fromPath = url.pathname.split('/').map(p => decodeURIComponent(p)).filter(p => KEY.test(p)).pop();
+  if (fromPath) return fromPath;
+  for (const v of url.searchParams.values()) if (KEY.test(v)) return v;
+  return null;
+}
+
+// A Tactile PM link as a task card, like a Jira ticket: the PM mark, key,
+// title and status. The title and status come from PM (see src/pmtasks.js,
+// a few seconds the first time); until then the card shows the key alone
+// and still opens the task.
+function pmCard(href, key) {
+  const a = document.createElement('a');
+  a.className = 'jira-card pm-card';
+  a.href = href;
+  a.title = `Open ${key} in Tactile PM`;
+  const logo = el('span', 'jira-logo');
+  logo.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14"><rect x="0.5" y="0.5" width="15" height="15" rx="3.5" fill="#f08a3c"/><rect x="3" y="3.5" width="2.6" height="9" rx="1" fill="#fff"/><rect x="6.7" y="3.5" width="2.6" height="6" rx="1" fill="#fff"/><rect x="10.4" y="3.5" width="2.6" height="4" rx="1" fill="#fff"/></svg>';
+  const summary = el('span', 'jira-summary');
+  const status = el('span', 'jira-status');
+  a.append(logo, el('span', 'jira-key', key), summary, status);
+  window.deck?.pmTask?.(key).then(task => {
+    if (!task) return;
+    summary.textContent = task.title;
+    status.textContent = task.status;
+    status.dataset.category = task.category;
+    a.title = `${task.type ? task.type + ' ' : ''}${key}: ${task.title}\n${task.status} · open in Tactile PM`;
   }).catch(() => {});
   return a;
 }
@@ -584,7 +644,8 @@ function slackCard(href, sl, text) {
   return a;
 }
 
-// Every link opens in your browser; Jira ticket links become ticket cards,
+// Every link opens in your browser; Jira ticket and Tactile PM task links
+// become ticket cards,
 // Google Sheets, Docs, Slides and Forms links become file cards, GitHub
 // links become cards with their title and state, and Slack links message cards.
 function decorateLinks(root) {
@@ -595,6 +656,8 @@ function decorateLinks(root) {
     a.target = '_blank';
     const key = jiraKeyOf(href);
     if (key) { a.replaceWith(jiraCard(href, key)); continue; }
+    const pm = pmKeyOf(href);
+    if (pm) { a.replaceWith(pmCard(href, pm)); continue; }
     const doc = gdocOf(href);
     if (doc) { a.replaceWith(gdocCard(href, doc, a.textContent)); continue; }
     const gh = githubOf(href);
@@ -827,6 +890,19 @@ function markdown(text, cwd) {
     }
   }
   // ```agenthub-diff blocks: Agent Hub runs the command and shows the diff.
+  // The scenarios an agent will prove with screenshots, and which of its
+  // screenshots prove each (Compile + screenshots, see visualGate).
+  for (const code of div.querySelectorAll('pre > code.language-agenthub-scenarios, pre > code.language-agenthub-evidence')) {
+    const scenarios = code.classList.contains('language-agenthub-scenarios');
+    const box = el('div', `proof-box ${scenarios ? 'scenarios' : 'evidence'}`);
+    box.appendChild(el('div', 'proof-box-title', scenarios ? '📷 Scenarios to prove' : '📷 Proof'));
+    for (const [id, text] of parseProofLines(code.textContent)) {
+      const row = el('div', 'proof-box-row');
+      row.append(el('span', 'proof-box-id', id), el('span', 'proof-box-text', scenarios ? text : text.split(/[\s,]+/).filter(Boolean).map(n => (/^\d+$/.test(n) ? `Screenshot ${n}` : n)).join(', ')));
+      box.appendChild(row);
+    }
+    code.parentElement.replaceWith(box);
+  }
   for (const code of div.querySelectorAll('pre > code.language-agenthub-diff')) {
     code.parentElement.replaceWith(diffBlock(code.textContent.trim(), cwd));
   }
@@ -939,11 +1015,30 @@ function parsePastedDiff(text) {
   return files.filter(f => f.path && f.lines.some(([k]) => k === 'add' || k === 'del'));
 }
 
+// Tactile's knowledge in Cortex (the knowledge rule in src/knowledge.js):
+// a search in one of its two collections, or a page read from it, with the
+// Tactile Cortex connector's tools.
+const KNOWLEDGE_COLLECTIONS = { 'games-knowledge-database': 'Games Knowledge Database', 'agent-experience-knowledge': 'Agent Experience Knowledge' };
+const CORTEX_TOOL = /^mcp__.*cortex.*__(search_content|get_page)$/i;
+// The knowledge-retriever helper agent (src/knowledge.js) looking it up for the agent.
+function knowledgeHelper(name, input = {}) {
+  return (name === 'Agent' || name === 'Task') && input.subagent_type === 'knowledge-retriever';
+}
+function knowledgeSearch(name, input = {}) {
+  return CORTEX_TOOL.test(name) && /search_content$/.test(name) && !!KNOWLEDGE_COLLECTIONS[input.collectionKey];
+}
+// The collection a Cortex page address is in, or null.
+function knowledgeCollectionOf(url) {
+  const key = /cortex\.[^/]+\/([\w-]+)\//.exec(String(url || ''))?.[1];
+  return KNOWLEDGE_COLLECTIONS[key] ? key : null;
+}
+
 // What an agent is doing, in plain words, for its Hub tile: "Editing
 // SpawnerRig.cs", "Waiting for Unity", or the description it gave a command.
 function stepPhrase(name, input = {}) {
   const base = p => String(p || '').split(/[\\/]/).pop();
   const words = s => s.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+  if (knowledgeSearch(name, input) || knowledgeHelper(name, input)) return 'Looking up Tactile knowledge';
   switch (name) {
     case 'Bash':
     case 'PowerShell': {
@@ -1274,6 +1369,9 @@ class Transcript {
     this.tools = new Map();         // tool_use id -> { card, name, input }
     this.slots = new Map();         // Agent tool_use id -> its slot in an agents box
     this.lastBox = null;            // the agents box of the last assistant message
+    // Proof for Compile + screenshots, for the task since your last message
+    // (visualGate): the screenshots it took, its scenarios and its evidence.
+    this.proof = { shots: [], scenarios: null, evidence: null };
     this.draft = null;              // text streaming in before the full message arrives
     this.turn = null;               // the turn in progress
     this.prompts = [];              // your messages: { el, text }, in order
@@ -1573,6 +1671,8 @@ class Transcript {
       body: el('div', 'steps-body'),
       live: el('div', 'turn-live'),
       skills: el('div', 'turn-skills'),
+      // Tactile knowledge it looked up (see noteKnowledge).
+      knowledge: el('div', 'turn-knowledge'),
       answer: el('div', 'turn-answer'),
       skillNames: new Set(),
       stepCount: 0,
@@ -1583,7 +1683,7 @@ class Transcript {
     turn.summary.append(el('span', 'steps-spinner'), el('span', 'steps-text', 'Working…'));
     turn.steps.append(turn.summary, turn.body);
     turn.progress.open = true;
-    turn.el.append(turn.progress, turn.steps, turn.live, turn.skills, turn.answer);
+    turn.el.append(turn.progress, turn.steps, turn.live, turn.skills, turn.knowledge, turn.answer);
     this.turn = turn;
     this.pipe?.turnStart();
     this.append(turn.el);
@@ -1605,6 +1705,163 @@ class Transcript {
     const chip = el('span', 'skill-chip', short);
     chip.title = name;
     this.pinned(() => turn.skills.appendChild(chip));
+  }
+
+  // Compile + screenshots: every scenario the agent declared has at least one
+  // of the task's screenshots as its evidence, or the agent said the task
+  // changes nothing visible ("none: why"). Returns a gate { name, ok,
+  // summary, details } and the proof: [{ id, text, shots: [{ n, data }] }].
+  visualGate() {
+    const { shots, scenarios, evidence } = this.proof;
+    const none = (evidence || []).find(([id]) => id.toLowerCase() === 'none');
+    if (none) return { gate: { name: 'screenshots', ok: true, summary: `Nothing visible to prove: ${none[1]}`, details: '' }, proof: [] };
+    if (!scenarios?.length) {
+      return { gate: { name: 'screenshots', ok: false, summary: 'No scenarios were declared', details: 'Write the scenarios that show the change in an agenthub-scenarios block, prove each with a Unity screenshot (unity_take_screenshot), and list the screenshots in an agenthub-evidence block. If the task changes nothing visible, write "none: <why>" in the agenthub-evidence block.' }, proof: [] };
+    }
+    const byId = new Map((evidence || []).map(([id, list]) => [id, String(list).split(/[\s,]+/).map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= shots.length)]));
+    const proof = scenarios.map(([id, text]) => ({ id, text, shots: (byId.get(id) || []).map(n => ({ n, ...shots[n - 1] })) }));
+    const missing = proof.filter(p => !p.shots.length);
+    return {
+      gate: missing.length
+        ? { name: 'screenshots', ok: false, summary: `${missing.length} of ${proof.length} scenario${proof.length === 1 ? '' : 's'} without a screenshot`, details: [
+          ...missing.map(p => `${p.id}: ${p.text}`),
+          '',
+          shots.length ? `Screenshots taken in this task: 1 to ${shots.length}.` : 'No screenshots were taken in this task.',
+          'Prove each with unity_take_screenshot (the Game View in Play Mode, or a cameraName without it), look at it, and list it in the agenthub-evidence block.',
+        ].join('\n') }
+        : { name: 'screenshots', ok: true, summary: `${proof.length} scenario${proof.length === 1 ? '' : 's'} proven with screenshots`, details: '' },
+      proof,
+    };
+  }
+
+  // The checks Agent Hub runs on a turn's code before it counts as done
+  // (verifyTurn in app.js, src/verify.js): a card under the answer, first
+  // saying what runs, then each check with ✓ or ✗ (its errors folded under
+  // it) and what happens next. Returns { show(result, { attempt, max,
+  // giveUp }), remove() }.
+  verifyCard(turn, level) {
+    const card = el('div', 'verify-card running');
+    const head = el('div', 'verify-head');
+    head.append(el('span', 'verify-spinner'), el('span', 'verify-title', level === 'tests' ? 'Checking: compile, then tests…' : level === 'screenshots' ? 'Checking: compile, then the screenshots…' : 'Checking: compile…'));
+    card.appendChild(head);
+    this.pinned(() => (turn?.el || this.ensureTurn().el).appendChild(card));
+    const NAMES = { compile: 'Compile', tests: 'Tests', screenshots: 'Screenshots' };
+    return {
+      remove: () => card.remove(),
+      show: (result, { attempt = 0, max = 3, giveUp = false } = {}) => this.pinned(() => {
+        card.classList.remove('running');
+        card.classList.add(result.blocked ? 'blocked' : result.ok ? 'passed' : 'failed');
+        head.textContent = '';
+        head.append(
+          el('span', 'verify-mark', result.blocked ? '⚠' : result.ok ? '✓' : '✗'),
+          el('span', 'verify-title', result.blocked ? 'Not checked' : result.ok ? 'Checks passed' : 'Checks failed'),
+          el('span', 'verify-kind', result.kind === 'unity' ? 'Unity' : ''),
+        );
+        for (const g of result.gates || []) {
+          const row = el(g.details ? 'details' : 'div', `verify-gate ${g.ok ? 'ok' : 'bad'}`);
+          const line = el(g.details ? 'summary' : 'div', 'verify-gate-line');
+          line.append(el('span', 'verify-gate-mark', g.ok ? '✓' : '✗'), el('span', 'verify-gate-name', NAMES[g.name] || g.name), el('span', 'verify-gate-summary', g.summary || ''));
+          row.appendChild(line);
+          if (g.details) row.appendChild(el('pre', 'verify-gate-details', g.details));
+          card.appendChild(row);
+        }
+        for (const p of result.proof || []) {
+          const row = el('div', 'verify-proof');
+          row.appendChild(el('div', 'verify-proof-title', `${p.id}: ${p.text}`));
+          const strip = el('div', 'verify-proof-shots');
+          for (const shot of p.shots) {
+            const img = document.createElement('img');
+            img.src = shot.path ? mediaUrl(shot.path) : `data:${shot.mediaType};base64,${shot.data}`;
+            img.alt = `Screenshot ${shot.n}`;
+            img.title = shot.path ? `Screenshot ${shot.n}: click to review it (draw on it and write what should change)` : `Screenshot ${shot.n}`;
+            img.onclick = () => (shot.path && window.openImageReview ? openImageReview(shot.path) : openImageOverlay(img.src));
+            strip.appendChild(img);
+          }
+          row.appendChild(strip);
+          card.appendChild(row);
+        }
+        const next = result.blocked ? result.blocked
+          : result.ok ? null
+            : giveUp ? `Still failing after ${max} rounds: over to you.`
+              : `Sent to the agent to fix (round ${attempt} of ${max}); Agent Hub checks again when it finishes.`;
+        if (next) card.appendChild(el('div', 'verify-next', next));
+      }),
+    };
+  }
+
+  // Tactile knowledge the agent looked up in this task (src/knowledge.js):
+  // a row under the steps with the entries it read in full (solid, linking
+  // to the Cortex page) and the ones its searches found (outlined), the
+  // searches in the row's tooltip. Each result adds to it as it comes.
+  noteKnowledge(turn, tool, block) {
+    const k = turn.knowledgeLog ||= { searches: [], entries: new Map(), weak: new Map() };
+    let data = null;
+    try { data = JSON.parse(resultText(block.content)); } catch { /* not JSON */ }
+    if (knowledgeHelper(tool.name, tool.input)) {
+      // The helper's report ends with its KNOWLEDGE-USED list:
+      // "- read | games-knowledge-database | <title> | <url>".
+      if (block.is_error) return;
+      const text = resultText(block.content);
+      k.searches.push(`Asked the knowledge helper: ${tool.input.description || 'Tactile knowledge'}`);
+      const at = text.lastIndexOf('KNOWLEDGE-USED');
+      for (const line of at < 0 ? [] : text.slice(at).split('\n')) {
+        const m = /^\s*[-*]\s*(read|found)\s*\|\s*([\w-]+)\s*\|\s*(.+?)\s*\|\s*<?(https?:\/\/[^\s>]+)>?\s*$/i.exec(line);
+        if (!m) continue;
+        const id = /\/([a-f0-9]{24})(?:\/|$)/.exec(m[4])?.[1] || m[4];
+        const entry = k.entries.get(id) || { title: m[3], url: m[4], collection: KNOWLEDGE_COLLECTIONS[m[2]] ? m[2] : knowledgeCollectionOf(m[4]), read: false };
+        entry.read = entry.read || m[1].toLowerCase() === 'read';
+        k.entries.set(id, entry);
+      }
+    } else if (/search_content$/.test(tool.name)) {
+      if (!knowledgeSearch(tool.name, tool.input)) return;
+      k.searches.push(`${KNOWLEDGE_COLLECTIONS[tool.input.collectionKey]}: ${tool.input.query || ''}`);
+      // The good hits (a score of 0.5 or more, at most four); the rest are
+      // counted (their titles in the tooltip): they are seldom what it used.
+      const results = Array.isArray(data?.results) ? data.results : [];
+      results.forEach((r, i) => {
+        if (k.entries.has(r.pageId)) return;
+        if (i < 4 && (r.score ?? 1) >= 0.5) k.entries.set(r.pageId, { title: r.pageTitle, url: r.url, collection: tool.input.collectionKey, read: false });
+        else (k.weak ||= new Map()).set(r.pageId, r.pageTitle);
+      });
+    } else {
+      // A page it read: one of the knowledge's when its address is in one of
+      // the two collections, or a search of them found it.
+      const id = tool.input.pageId || tool.input.id || data?.contentId;
+      const url = data?.url || k.entries.get(id)?.url;
+      const collection = knowledgeCollectionOf(url) || k.entries.get(id)?.collection;
+      if (!collection || block.is_error) return;
+      const entry = k.entries.get(id) || { title: data?.title, url, collection };
+      entry.title = data?.title || entry.title || 'Knowledge entry';
+      entry.read = true;
+      k.entries.set(id, entry);
+    }
+    this.renderKnowledge(turn);
+  }
+
+  renderKnowledge(turn) {
+    const k = turn.knowledgeLog;
+    if (!k?.searches.length && !k?.entries.size) return;
+    const row = turn.knowledge;
+    this.pinned(() => {
+      row.textContent = '';
+      const label = el('span', 'knowledge-label', '📚 Tactile knowledge');
+      label.title = k.searches.length ? `Searched:\n${k.searches.join('\n')}` : '';
+      row.appendChild(label);
+      const entries = [...k.entries.values()].sort((a, b) => Number(b.read) - Number(a.read));
+      for (const e of entries) {
+        const chip = el(e.url ? 'a' : 'span', `knowledge-chip${e.read ? ' read' : ''}${e.collection === 'agent-experience-knowledge' ? ' experience' : ''}`, e.title || 'Knowledge entry');
+        if (e.url) { chip.href = e.url; chip.target = '_blank'; }
+        chip.title = `${e.read ? 'Read in full' : 'Found by its search'} · ${KNOWLEDGE_COLLECTIONS[e.collection] || 'Cortex'}${e.collection === 'agent-experience-knowledge' ? ' (lessons from earlier agent sessions)' : ''}${e.url ? '\nClick to open it in Cortex' : ''}`;
+        row.appendChild(chip);
+      }
+      const weak = [...(k.weak || new Map())].filter(([id]) => !k.entries.has(id)).map(([, title]) => title);
+      if (weak.length) {
+        const more = el('span', 'knowledge-none', `+${weak.length} weaker hit${weak.length === 1 ? '' : 's'}`);
+        more.title = weak.join('\n');
+        row.appendChild(more);
+      }
+      if (!entries.length && !weak.length) row.appendChild(el('span', 'knowledge-none', `${k.searches.length} search${k.searches.length === 1 ? '' : 'es'}, nothing found`));
+    });
   }
 
   // A message that starts with /name runs that skill. The CLI does not report
@@ -1825,8 +2082,18 @@ class Transcript {
     this.fromSubagent = !!msg.parent_tool_use_id;
     this.parentTool = msg.parent_tool_use_id || null;
     switch (msg.type) {
-      case 'user': return this.addUser(msg.message, msg.tool_use_result, msg.isSynthetic || msg.isMeta);
-      case 'assistant': return this.addAssistant(msg.message);
+      case 'user':
+        // A helper agent's own messages (the agent's instructions to it, the
+        // results of its tools) are steps of the task, not messages of yours:
+        // only their tool results count, to finish its tool cards.
+        if (msg.parent_tool_use_id) {
+          for (const block of Array.isArray(msg.message?.content) ? msg.message.content : []) {
+            if (block.type === 'tool_result') this.fillTool(block, msg.tool_use_result);
+          }
+          return;
+        }
+        return this.addUser(msg.message, msg.tool_use_result, msg.isSynthetic || msg.isMeta);
+      case 'assistant': return this.addAssistant(msg.message, { helper: !!msg.parent_tool_use_id });
       case 'stream_event': return this.addStreamEvent(msg.event);
       case 'result': return this.finishTurn(msg);
       case 'system':
@@ -1900,12 +2167,15 @@ class Transcript {
     const texts = (synthetic ? []
       : typeof content === 'string' ? [content]
       : content.filter(b => b.type === 'text').map(b => b.text))
-      .map(t => stripAttachedData(stripGroupNotes(t))).filter(t => t.trim());
+      .map(t => stripChecks(stripAttachedData(stripGroupNotes(t)))).filter(t => t.trim());
     if (texts.length) {
-      // Your message starts a new turn.
+      // Your message starts a new turn, and a new task's proof (not Agent
+      // Hub's own message about its checks: the task goes on).
       this.finishTurn();
+      if (!texts.some(t => /^Agent Hub checked your changes/.test(t))) this.proof = { shots: [], scenarios: null, evidence: null };
       const bubbles = texts.map(t => {
-        const b = el('div', 'msg-user');
+        // Agent Hub's own message when its checks failed (verifyTurn in app.js).
+        const b = el('div', /^Agent Hub checked your changes/.test(t) ? 'msg-user from-app' : 'msg-user');
         b.appendChild(withCommandChips(t));
         return decorateLinks(b);
       });
@@ -2027,7 +2297,8 @@ class Transcript {
     this.onUpdate?.();
   }
 
-  addAssistant(message) {
+  // helper: a helper agent's message (see add): its text is a step, never the answer.
+  addAssistant(message, { helper = false } = {}) {
     const turn = this.ensureTurn();
     // One API call can arrive as several messages with the same id and usage.
     if (message.usage && message.id) {
@@ -2049,6 +2320,11 @@ class Transcript {
         const rest = this.addMilestones(turn, block.text);
         if (!rest.trim()) continue;
         const node = markdown(rest, this.cwd);
+        if (helper) { this.addStep(node, block.text.split('\n')[0].slice(0, 120)); continue; }
+        const scenarios = proofBlock(block.text, 'agenthub-scenarios');
+        const evidence = proofBlock(block.text, 'agenthub-evidence');
+        if (scenarios) this.proof.scenarios = parseProofLines(scenarios);
+        if (evidence) this.proof.evidence = parseProofLines(evidence);
         turn.pendingText.push(node);
         // Everything the agent said during the task (for the group's notes:
         // what failed and what worked is often said along the way).
@@ -2156,7 +2432,7 @@ class Transcript {
   }
 
   toolCard(block) {
-    const d = el('details', 'tool');
+    const d = el('details', knowledgeSearch(block.name, block.input) || knowledgeHelper(block.name, block.input) ? 'tool knowledge-tool' : 'tool');
     const summary = el('summary');
     summary.append(
       el('span', 'tool-name', block.name),
@@ -2184,6 +2460,23 @@ class Transcript {
     (tool.slot ? tool.slot.body : tool.card).appendChild(out);
     if (tool.slot) this.slotDone(tool.slot, !!block.is_error, resultText(block.content));
     if (!block.is_error) this.recordChange(tool, toolUseResult);
+    if (this.turn && (CORTEX_TOOL.test(tool.name) || knowledgeHelper(tool.name, tool.input))) this.noteKnowledge(this.turn, tool, block);
+    // A Unity screenshot is proof the agent can name by its number.
+    if (!block.is_error && /unity_take_screenshot$/.test(tool.name) && Array.isArray(block.content)) {
+      for (const c of block.content) {
+        if (c.type !== 'image' || c.source?.type !== 'base64') continue;
+        this.proof.shots.push({ data: c.source.data, mediaType: c.source.media_type || 'image/png', path: null });
+        const n = this.proof.shots.length;
+        const shot = el('div', 'proof-shot');
+        const img = document.createElement('img');
+        img.src = `data:${c.source.media_type || 'image/png'};base64,${c.source.data}`;
+        img.alt = `Screenshot ${n}`;
+        img.onclick = () => openImageOverlay(img.src);
+        shot.append(el('span', 'proof-shot-label', `Screenshot ${n}`), img);
+        tool.card.appendChild(shot);
+        tool.card.querySelector('.tool-arg').textContent = `Screenshot ${n} · ${tool.card.querySelector('.tool-arg').textContent}`;
+      }
+    }
     // A tool that makes a file on its own (a Unity recorder, a screenshot
     // tool) often only names the file in its result. Shell output is left
     // out: an `ls` there would list other agents' files too.
@@ -2344,6 +2637,49 @@ class Transcript {
     });
   }
 
+  // True when a command or script that writes names this file through a
+  // template: a Python f-string, a JS template or a shell variable the app
+  // cannot fill in (a loop's). edit(f"{d}/{d}Facade.cs") in a loop over the
+  // board names names MergeDiggingSideBoardFacade.cs, but never as that
+  // text. Each {…}, ${…} or $name is a hole for one part of a name, so it
+  // reads as */*Facade.cs, and what fills a hole has to be made of words
+  // the same script holds ("MergeDiggingSideBoard", "Client"): another
+  // agent's MergeGame/MergeGameFacade.cs does not count. The template needs
+  // an extension, and a folder or at least 3 letters of the name of its own
+  // ("{name}.cs" alone matches any file).
+  templateNamed(turn, rel) {
+    const file = rel.replace(/\\/g, '/');
+    turn.templateWords = turn.templateWords || new Map();   // evidence text -> { patterns, words }
+    const HOLE = /\$\{[^{}]*\}|\{[^{}]*\}|\$[A-Za-z_]\w*|%[sd]/g;
+    const escape = s => s.replace(/[.+?^${}()|[\]\\*]/g, '\\$&');
+    return writingEvidence(turn).some(text => {
+      let found = turn.templateWords.get(text);
+      if (!found) {
+        const patterns = text.replace(/\\/g, '/').replace(/\{\{|\}\}/g, '').split(/[\s'"`;|&()<>,=[\]]+/)
+          .filter(w => w.length < 300 && /\.[A-Za-z]\w{0,11}$/.test(w) && w.search(HOLE) >= 0 && !/[*{}$]/.test(w.replace(HOLE, '')))
+          .map(w => w.replace(/^\.\//, ''))
+          .filter(w => {
+            const parts = w.replace(HOLE, '').split('/');
+            return parts.pop().replace(/\.[^.]*$/, '').length >= 3 || parts.some(p => /[A-Za-z]/.test(p));
+          })
+          .map(w => new RegExp(`(?:^|/)${w.split(HOLE).map(escape).join('([^/]*)')}$`, 'i'));
+        const words = new Set(text.split(/[^A-Za-z0-9_-]+/).filter(x => x.length >= 3).map(x => x.toLowerCase()));
+        found = { patterns, words };
+        turn.templateWords.set(text, found);
+      }
+      // "mergediggingsideboardclient" is "mergediggingsideboard" + "client".
+      const madeOfWords = s => {
+        const ok = [true];
+        for (let i = 1; i <= s.length; i++) ok[i] = [...Array(i).keys()].some(j => ok[j] && found.words.has(s.slice(j, i)));
+        return ok[s.length];
+      };
+      return found.patterns.some(re => {
+        const m = re.exec(file);
+        return !!m && m.slice(1).every(hole => !hole || madeOfWords(hole.toLowerCase()));
+      });
+    });
+  }
+
   // Like agentTouched, for an image or video found in the folder: the agent
   // named it in a command or a tool's input, or a tool's result named it.
   agentMadeMedia(turn, file) {
@@ -2447,12 +2783,22 @@ class Transcript {
     // folder while this agent worked. Only files the agent touched stay, and
     // a file another agent edited meanwhile only when this agent edited it too.
     const own = f => this.agentEdited(turn, f.path) || (f.from && this.agentEdited(turn, f.from));
-    let files = pairMoves(parseUnifiedDiff(diffText)).filter(f => !isTempFile(f.path) && (own(f) || (!otherEdit?.(f.path)
+    const parsed = pairMoves(parseUnifiedDiff(diffText));
+    let files = parsed.filter(f => !isTempFile(f.path) && (own(f) || (!otherEdit?.(f.path)
       && (this.agentTouched(turn, f.path) || (f.from && this.agentTouched(turn, f.from))
       || (addedOrRemovedBinary(f) && this.folderTouched(turn, f.path))
       || (f.status === 'del' && this.folderNamed(turn, f.path))
       || this.patternNamed(turn, f.path) || (f.from && this.patternNamed(turn, f.from))
+      || this.templateNamed(turn, f.path) || (f.from && this.templateNamed(turn, f.from))
       || (f.from && this.folderNamed(turn, f.from))))));
+    // Unity makes the .meta file of a file the agent added (and an agent
+    // that removes a file often leaves its .meta to Unity): no command
+    // names it, and it goes with its file.
+    const kept = new Map(files.map(f => [f.path.toLowerCase(), f]));
+    for (const f of parsed) {
+      const owner = /\.meta$/i.test(f.path) && !kept.has(f.path.toLowerCase()) && kept.get(f.path.slice(0, -5).toLowerCase());
+      if (owner && owner.status === f.status && (f.status === 'new' || f.status === 'del') && !otherEdit?.(f.path)) files.push(f);
+    }
     // In a file both agents changed, the other agent's lines are left out:
     // the file shows only what this agent's edits did (when they still undo
     // from the file; else the whole diff, as before).

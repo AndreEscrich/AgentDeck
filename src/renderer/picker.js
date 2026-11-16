@@ -90,14 +90,26 @@ function menuModels() {
 }
 const isFable = m => /^fable/i.test(m.displayName || '') || m.value === 'fable';
 
-// A model's name without its version ("Opus", not "Opus 5.5") when it is the
-// family's alias, which always runs the newest version; a pinned older
-// version keeps its number ("Opus 4.8").
+// A model's name with its version: "Opus 5.5" for the alias "opus" (Claude
+// Code's list names the version the alias runs now), "Opus 4.8" for a
+// pinned older one.
 function shortName(model) {
   if (model.provider === 'codex') return model.displayName;
-  const name = model.displayName.replace(/\s*\(recommended\)/i, '');
-  return /^(fable|opus|sonnet|haiku)$/i.test(model.value || '') ? name.replace(/\s+[\d.]+$/, '') : name;
+  return model.displayName.replace(/\s*\(recommended\)/i, '');
 }
+
+// A model id as Claude Code reports it in its answers ("claude-fable-5-2",
+// "claude-haiku-4-5-20251001", "claude-opus-5-5[1m]") as its name with the
+// version ("Fable 5.2"); null for an id that is not a Claude model.
+function modelName(id) {
+  if (!id) return null;
+  const clean = String(id).replace(/\[[^\]]*\]$/, '');
+  const known = sharedModels.find(m => m.value === clean && /\d/.test(m.displayName || ''));
+  if (known) return shortName(known);
+  const m = /^claude-(fable|opus|sonnet|haiku)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/i.exec(clean);
+  return m ? `${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()} ${m[2]}${m[3] ? `.${m[3]}` : ''}` : null;
+}
+const familyOf = value => (/(fable|opus|sonnet|haiku)/i.exec(value || '') || [])[1]?.toLowerCase() || null;
 
 class ModelPicker {
   // onChange(value) runs after the person changes something in the menu.
@@ -140,6 +152,14 @@ class ModelPicker {
     this.renderButton();
   }
 
+  // The model the agent on screen actually runs ("Fable 5.1": an agent that
+  // started before Fable 5.2 came keeps 5.1 until it starts again), shown
+  // on the button instead of the chosen model's name; null when not known.
+  setActual(name) {
+    this.actual = name || null;
+    this.renderButton();
+  }
+
   setValue(value) {
     this.value = { provider: 'claude', model: 'default', effort: '', fastMode: false, ...value };
     if (!this.value.model) this.value.model = this.value.provider === 'codex' ? 'auto' : 'default';
@@ -148,11 +168,12 @@ class ModelPicker {
   }
 
   renderButton() {
-    const parts = [shortName(this.model) + (this.value.model === 'auto' && this.resolved ? ` → ${this.resolved}` : '')];
+    const auto = this.value.model === 'auto';
+    const parts = [(!auto && this.actual) || shortName(this.model) + (auto && this.resolved ? ` → ${this.resolved}` : '')];
     if (bothOn() || providerOf(this.value) === 'codex') parts.unshift(PROVIDER_NAMES[providerOf(this.value)]);
     if (this.value.effort) parts.push(EFFORT_NAMES[this.value.effort] || this.value.effort);
     this.button.textContent = parts.join(' · ') + (this.value.fastMode ? ' ⚡' : '') + ' ▾';
-    this.button.title = this.model.description || '';
+    this.button.title = (!auto && this.actual && this.actual !== shortName(this.model) ? `Runs on ${this.actual} (it started before ${shortName(this.model)} came; it moves to it when it starts again or you pick it again). ` : '') + (this.model.description || '');
   }
 
   open() {
@@ -318,6 +339,85 @@ class ModePicker {
         this.close();
         window.uiSound?.('select');
         this.onChange?.(m.value);
+      };
+      this.menu.appendChild(row);
+    }
+  }
+}
+
+// Checks after a turn that changed a Unity project's C# (src/verify.js):
+// Agent Hub compiles it in the open Editor, and with Tests also runs the
+// EditMode tests, before the work counts as done; failures go back to the
+// agent to fix.
+const VERIFY_LEVELS = [
+  { value: 'off', label: 'No checks', short: 'No checks', description: 'The agent says when it is done' },
+  { value: 'compile', label: 'Compile', short: 'Compile', description: 'Agent Hub compiles in the Unity Editor after each turn that changed C#' },
+  { value: 'tests', label: 'Compile + tests', short: 'Tests', description: 'Agent Hub compiles in the Unity Editor and runs the EditMode tests' },
+  { value: 'screenshots', label: 'Compile + screenshots', short: 'Screenshots', description: 'Agent Hub compiles it, and the agent proves each visible change with Game View screenshots you can review' },
+];
+
+class VerifyPicker {
+  constructor(anchor, { onChange, openUp = true } = {}) {
+    this.onChange = onChange;
+    this.value = 'off';
+    this.root = el('div', 'model-picker');
+    this.button = el('button', 'model-btn');
+    this.button.type = 'button';
+    this.menu = el('div', 'model-menu hidden' + (openUp ? ' up' : ' down'));
+    this.root.append(this.button, this.menu);
+    anchor.appendChild(this.root);
+    this.button.onclick = e => {
+      e.stopPropagation();
+      this.menu.classList.contains('hidden') ? this.open() : this.close();
+    };
+    this.menu.onclick = e => e.stopPropagation();
+    document.addEventListener('click', () => this.close());
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') this.close(); });
+    pickers.push(this);
+    this.renderButton();
+  }
+
+  get level() {
+    return VERIFY_LEVELS.find(l => l.value === this.value) || VERIFY_LEVELS[0];
+  }
+
+  setValue(value) {
+    this.value = VERIFY_LEVELS.some(l => l.value === value) ? value : 'off';
+    this.renderButton();
+    if (!this.menu.classList.contains('hidden')) this.renderMenu();
+  }
+
+  renderButton() {
+    this.button.textContent = `✓ ${this.level.short} ▾`;
+    this.button.title = `Checks before the work counts as done: ${this.level.label}. ${this.level.description}`;
+  }
+
+  open() {
+    for (const p of pickers) if (p !== this) p.close();
+    this.renderMenu();
+    this.menu.classList.remove('hidden');
+    window.uiSound?.('tick');
+  }
+
+  close() {
+    if (!this.menu.classList.contains('hidden')) window.uiSound?.('tickDown');
+    this.menu.classList.add('hidden');
+  }
+
+  renderMenu() {
+    this.menu.innerHTML = '';
+    this.menu.appendChild(el('div', 'menu-label', 'Checks before done'));
+    for (const l of VERIFY_LEVELS) {
+      const selected = l.value === this.value;
+      const row = el('div', 'menu-item' + (selected ? ' selected' : ''));
+      const text = el('div', 'menu-text');
+      text.append(el('div', 'menu-name', l.label), el('div', 'menu-desc', l.description));
+      row.append(text, el('span', 'menu-check', selected ? '✓' : ''));
+      row.onclick = () => {
+        this.setValue(l.value);
+        this.close();
+        window.uiSound?.('select');
+        this.onChange?.(l.value);
       };
       this.menu.appendChild(row);
     }

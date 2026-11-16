@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('deck', {
   fetchCodexUsage: () => ipcRenderer.invoke('codex:usage'),
   // { spentUsd, limitUsd, resetsAt } of Tactile Create Art, { expired }, { error } or null.
   fetchCreateArtBudget: () => ipcRenderer.invoke('createart:budget'),
+  // Signs in to Create Art for the budget (adds the connector when needed).
+  connectCreateArt: () => ipcRenderer.invoke('createart:connect'),
   setProviderLimited: (provider, untilMs) => ipcRenderer.invoke('providers:limited', provider, untilMs),
   repoOf: cwd => ipcRenderer.invoke('repo:of', cwd),
   // The branch its repository is on: { vcs: 'git' | 'svn', name } or null.
@@ -118,6 +120,8 @@ contextBridge.exposeInMainWorld('deck', {
     remove: (spec, provider) => ipcRenderer.invoke('connectors:remove', spec, provider),
   },
   jiraIssue: key => ipcRenderer.invoke('jira:issue', key),
+  // A Tactile PM task for its card: { key, title, status, category, type } or null.
+  pmTask: key => ipcRenderer.invoke('pm:task', key),
   gdocTitle: url => ipcRenderer.invoke('gdoc:title', url),
   githubLookup: what => ipcRenderer.invoke('github:lookup', what),
   jiraDetails: key => ipcRenderer.invoke('jira:details', key),
@@ -127,6 +131,12 @@ contextBridge.exposeInMainWorld('deck', {
   findMedia: (cwd, name) => ipcRenderer.invoke('media:find', cwd, name),
   // An image's bytes ({ mediaType, data } in base64), for the image review.
   pictureData: file => ipcRenderer.invoke('media:picture', file),
+  // Checks an agent's work in a Unity project at a level (compile | tests): { ok, blocked, kind, gates } (verify.js).
+  verify: (cwd, level) => ipcRenderer.invoke('verify:run', cwd, level),
+  // 'unity' when cwd is a Unity project with the Unity bridge, else null.
+  verifyKind: cwd => ipcRenderer.invoke('verify:detect', cwd),
+  // Saves a proof screenshot (base64) of an agent; resolves with its path.
+  verifyShot: (agentId, n, base64, mediaType) => ipcRenderer.invoke('verify:shot', agentId, n, base64, mediaType),
   mediaBefore: (cwd, file, snap) => ipcRenderer.invoke('media:before', cwd, file, snap),
   listSessions: () => ipcRenderer.invoke('sessions:list'),
   loadTranscript: file => ipcRenderer.invoke('sessions:load', file),

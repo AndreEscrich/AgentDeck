@@ -46,6 +46,21 @@ const CHANGES_PROMPT = [
 // encoding, which reviewers then see as every line changed.
 const EDIT_PROMPT = 'To change an existing file, edit the lines that change (the Edit tool) instead of writing the whole file again, so its line endings and encoding stay as they are.';
 
+// How to work without waste (Tactile Create's "efficiency contract"): every
+// step re-reads the whole conversation, so what the agent reads and writes
+// it pays for again and again. READ_TOOLS_PROMPT is Claude Code's; Codex
+// gets its own (codex.js).
+const READ_TOOLS_PROMPT = 'Read and search with the Read, Grep and Glob tools, not with cat, sed or find in a shell.';
+const EFFICIENCY_PROMPT = [
+  'Work efficiently:',
+  '- Make the smallest correct change: do what the task asks and stop. No new abstractions, events, error handling or refactors it did not ask for; three similar lines are better than a premature helper.',
+  '- Read narrowly: find the symbol first, then read just the lines around it, not whole files or folders "to be safe".',
+  '- Do not read a file again that you already read in this conversation, unless it changed since (you edited it, or something else may have).',
+  '- Run independent reads and searches in parallel, not one at a time.',
+  `- ${READ_TOOLS_PROMPT}`,
+  '- When the change is made and checked, report briefly and end the turn.',
+].join('\n');
+
 // Diffs the user asks for (a branch, a commit) are drawn by Agent Hub from
 // a command, so the agent does not write them out (see branchdiff.js).
 const DIFF_PROMPT = [
@@ -86,7 +101,25 @@ const ART_PROMPT = [
   'When only the surface of a 3D model is wrong, retexture it instead of generating it again. After paid generations, say what they cost when the tool tells you.',
 ].join(' ');
 
-const SYSTEM_PROMPT = `${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}\n\n${RUN_PROMPT}\n\n${MILESTONE_PROMPT}\n\n${ART_PROMPT}`;
+const SYSTEM_PROMPT = `${EFFICIENCY_PROMPT}\n\n${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}\n\n${RUN_PROMPT}\n\n${MILESTONE_PROMPT}\n\n${ART_PROMPT}`;
+
+// The Unity bridge of the project an agent works in (com.tactilegames.unity-mcp,
+// Library/McpServer), wherever in the repository it works: a project's
+// .mcp.json is only read in the folder it is in (MergeTavern2/Unity), and
+// only once it is approved, so an agent at the repository's root had no Unity
+// tools (no recompile, no screenshots). Given here, with the project's path,
+// it needs neither. Not when the agent's own folder's .mcp.json has it.
+function unityBridgeArgs(cwd) {
+  const fs = require('fs');
+  const path = require('path');
+  const root = require('./setupcheck').unityRoot(cwd);
+  const server = root && path.join(root, 'Library', 'McpServer', 'index.js');
+  if (!server || !fs.existsSync(server)) return [];
+  try {
+    if (JSON.parse(fs.readFileSync(path.join(cwd, '.mcp.json'), 'utf8'))?.mcpServers?.unity && path.resolve(cwd) === path.resolve(root)) return [];
+  } catch { /* no .mcp.json here */ }
+  return ['--mcp-config', JSON.stringify({ mcpServers: { unity: { command: 'node', args: [server], env: { UNITY_PROJECT_PATH: root } } } })];
+}
 
 // 'auto', or the size in tokens when it is between 100k and 1M (false otherwise).
 function compactTokens(value) {
@@ -100,13 +133,19 @@ function compactTokens(value) {
 
 // Claude Code's arguments for an agent (also used to measure a pipeline's
 // baseline, see measureBaseline, so both see the same context).
-function claudeArgs(config, { resumeId, forkSession, resumeSessionAt, permissionMode, model, effort, fastMode, pipeline: asPipeline, runsDir } = {}) {
+function claudeArgs(config, { cwd, resumeId, forkSession, resumeSessionAt, permissionMode, model, effort, fastMode, pipeline: asPipeline, runsDir } = {}) {
   // A pipeline agent (the Pipeline button under the message box) is the
   // governor: it gets the pipeline's sub-agents and its instructions. Only
   // while the pipeline is on in Settings; otherwise it is a normal agent.
   // `asPipeline` is the profile to run (true: the default one).
   const governed = !!asPipeline && config.multiAgent?.enabled;
   const run = governed ? pipeline.pick(config.multiAgent, typeof asPipeline === 'string' ? asPipeline : undefined) : null;
+  // The helper's Cortex tools are named after the connector (the Connectors
+  // list knows it once it has been checked; else the usual claude.ai name).
+  const knowledge = require('./knowledge');
+  const cortex = (require('./connectors').cached() || []).find(c => /\bcortex\b/i.test(c.id) && c.status === 'connected')?.id;
+  const retriever = knowledge.retrieverAgents(config, cwd, cortex);
+  const agents = { ...(retriever || {}), ...(governed ? pipeline.subagents(run) : {}) };
   const args = [
     '-p',
     '--input-format', 'stream-json',
@@ -118,9 +157,11 @@ function claudeArgs(config, { resumeId, forkSession, resumeSessionAt, permission
     '--permission-prompt-tool', 'stdio',
     // Without this flag the CLI refuses a later switch to bypass mode.
     '--allow-dangerously-skip-permissions',
-    '--append-system-prompt', governed ? `${SYSTEM_PROMPT}\n\n${pipeline.governorPrompt(run)}` : SYSTEM_PROMPT,
+    // Tactile's knowledge in Cortex, through its knowledge-retriever helper (knowledge.js).
+    '--append-system-prompt', [SYSTEM_PROMPT, knowledge.knowledgePrompt(config, cwd, { helper: !!retriever }), governed ? pipeline.governorPrompt(run) : ''].filter(Boolean).join('\n\n'),
+    ...(Object.keys(agents).length ? ['--agents', JSON.stringify(agents)] : []),
+    ...unityBridgeArgs(cwd),
   ];
-  if (governed) args.push('--agents', JSON.stringify(pipeline.subagents(run)));
   // The run's files (pipelinerun.js) live in Agent Hub's settings folder:
   // the governor and its sub-agents read them there.
   if (governed && runsDir) args.push('--add-dir', runsDir);
@@ -165,7 +206,7 @@ class AgentManager {
     // earlier message (resumeSessionAt) starts without one.
     const governed = !!asPipeline && config.multiAgent?.enabled && !!this.runsDir();
     const runsDir = governed ? this.runsDir() : null;
-    const args = claudeArgs(config, { resumeId, forkSession, resumeSessionAt, permissionMode, model, effort, fastMode, pipeline: asPipeline, runsDir });
+    const args = claudeArgs(config, { cwd, resumeId, forkSession, resumeSessionAt, permissionMode, model, effort, fastMode, pipeline: asPipeline, runsDir });
 
     const proc = spawnClaude(config.claudePath, args, {
       cwd,
@@ -803,7 +844,7 @@ async function measurePipeline(config, multiAgent, cwd) {
   const model = config.defaultModel && config.defaultModel !== 'auto' ? config.defaultModel : undefined;
   const sets = Object.entries(pipeline.TOOL_SETS).filter(([, tools]) => tools);
   const [usage, ...subsets] = await Promise.all([
-    contextProbe(governed, claudeArgs(governed, { pipeline: true, model }), cwd),
+    contextProbe(governed, claudeArgs(governed, { cwd, pipeline: true, model }), cwd),
     // Only the tool definitions count here: no MCP servers, no prompt of ours.
     ...sets.map(([, tools]) => contextProbe(config, ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--tools', tools.join(',')], cwd)),
   ]);
@@ -833,4 +874,52 @@ function pipelineSnapshot(runsDir, sessionId) {
   try { return runsDir ? savedSnapshot(runsDir, sessionId) : null; } catch { return null; }
 }
 
-module.exports = { AgentManager, measurePipeline, pipelineSnapshot, fetchModels, findClaude, summarizeTitle, rateTask, pickGame, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited, compactTokens, SYSTEM_PROMPT, EDIT_PROMPT };
+// Tactile PM tasks for the task cards in the chat (pmtasks.js): Haiku reads
+// each key with the Tactile PM connector's pm_get_task, its tools loaded on
+// demand, and the tasks are taken from the tool's own answers (not from what
+// Haiku writes afterwards), so titles come as PM has them. Resolves with
+// { KEY: task JSON } for the tasks it could read ({} when it failed).
+const PM_GET_TASK = ['mcp__claude_ai_Tactile_PM__pm_get_task', 'mcp__tactile-pm__pm_get_task', 'mcp__tactile_pm__pm_get_task'];
+function readPmTasks(config, keys) {
+  return new Promise(resolve => {
+    const proc = spawnClaude(config.claudePath,
+      ['-p', '--model', 'haiku', '--output-format', 'stream-json', '--verbose', '--no-session-persistence',
+        '--tools', 'ToolSearch', '--allowedTools', ['ToolSearch', ...PM_GET_TASK].join(',')],
+      { cwd: os.tmpdir(), env: { ...childEnv(config.env), ENABLE_TOOL_SEARCH: 'true' }, stdio: ['pipe', 'pipe', 'ignore'] });
+    helperProcesses.add(proc);
+    const tasks = {};
+    let buffer = '';
+    const timer = setTimeout(() => { killTree(proc); }, 30000 + keys.length * 5000);
+    const take = text => {
+      try {
+        const t = JSON.parse(text);
+        if (t && typeof t.key === 'string' && keys.includes(t.key)) tasks[t.key] = t;
+      } catch { /* an error message, not a task */ }
+    };
+    proc.stdout.on('data', d => {
+      buffer += d;
+      let nl;
+      while ((nl = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, nl);
+        buffer = buffer.slice(nl + 1);
+        let msg;
+        try { msg = JSON.parse(line); } catch { continue; }
+        if (msg.type !== 'user' || !Array.isArray(msg.message?.content)) continue;
+        for (const block of msg.message.content) {
+          if (block.type !== 'tool_result') continue;
+          if (typeof block.content === 'string') take(block.content);
+          else for (const c of block.content || []) if (c.type === 'text') take(c.text);
+        }
+      }
+    });
+    proc.on('error', () => resolve({}));
+    proc.on('close', () => {
+      clearTimeout(timer);
+      helperProcesses.delete(proc);
+      resolve(tasks);
+    });
+    proc.stdin.end(`Call the Tactile PM tool pm_get_task once for each of these task keys (find the tool with ToolSearch first): ${keys.join(', ')}. Then reply with only: done`);
+  });
+}
+
+module.exports = { AgentManager, measurePipeline, pipelineSnapshot, fetchModels, findClaude, summarizeTitle, rateTask, pickGame, readPmTasks, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited, compactTokens, SYSTEM_PROMPT, EDIT_PROMPT, READ_TOOLS_PROMPT };

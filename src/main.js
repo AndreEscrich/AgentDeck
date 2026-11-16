@@ -2,7 +2,8 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Notification, Menu, protocol
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
-const { AgentManager, measurePipeline, pipelineSnapshot, fetchModels, summarizeTitle, rateTask, pickGame, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited } = require('./agents');
+const pmTasks = require('./pmtasks');
+const { AgentManager, measurePipeline, pipelineSnapshot, fetchModels, summarizeTitle, rateTask, pickGame, readPmTasks, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited } = require('./agents');
 const { CodexManager, fetchCodexModels, fetchCodexUsage, listCodexThreads, loadCodexThread } = require('./codex');
 const { listSessions, loadTranscript, PROJECTS_DIR } = require('./sessions');
 const git = require('./git');
@@ -62,6 +63,17 @@ const DEFAULT_CONFIG = {
   // (compacts), so long tasks stop re-reading everything with every step.
   // Codex agents too. 100k to 1m, or 'auto' for Claude Code's and Codex's own choice.
   autoCompact: '200k',
+  // Agents look up Tactile's conventions and examples in Cortex (knowledge.js),
+  // leaving out, per project (a folder of the agent's path), what it does not use.
+  // After a turn that changed a Unity project's C#, Agent Hub compiles it in
+  // the open Editor before it counts as done (verify.js): off | compile |
+  // tests (and the EditMode tests). Each agent can change its own.
+  verifyLevel: 'compile',
+  knowledge: true,
+  knowledgeSkip: {
+    MergeTavern: 'conveyor belts, match-3 matching, procedural mesh generation, 3D characters and 3D cameras',
+    MergeTavern2: 'conveyor belts, match-3 matching, procedural mesh generation, 3D characters and 3D cameras',
+  },
   stuckAfterSeconds: 30,                // waiting this long for Unity to be ready marks the agent as stuck
   staleAfterHours: 0,                   // an agent on the Hub that finished longer ago than this is marked as stale (0: never)
   defaultFolder: '',
@@ -374,8 +386,28 @@ app.whenReady().then(() => {
   ipcMain.handle('media:spreadsheet', (_e, file) => require('./spreadsheet').read(file));
   ipcMain.handle('media:find', (_e, cwd, name) => media.findMedia(cwd, name).catch(() => null));
   ipcMain.handle('media:picture', (_e, file) => media.pictureData(file, path.join(app.getPath('userData'), 'media-previews')));
+  // Checking an agent's work in a Unity project after a turn that changed its C# (verify.js).
+  ipcMain.handle('verify:run', (_e, cwd, level) => require('./verify').run(getConfig(), cwd, level));
+  ipcMain.handle('verify:detect', (_e, cwd) => require('./verify').detect(cwd)?.kind || null);
+  // A screenshot an agent took as proof (Compile + screenshots), saved so the
+  // chat's card and the image review can open it: its path, or null.
+  ipcMain.handle('verify:shot', (_e, agentId, n, base64, mediaType) => {
+    if (typeof base64 !== 'string' || !/^[\w-]{1,64}$/.test(String(agentId)) || !Number.isInteger(n)) return null;
+    const dir = path.join(app.getPath('userData'), 'verify-shots', agentId);
+    const file = path.join(dir, `${Date.now()}-${n}.${/jpe?g/.test(mediaType || '') ? 'jpg' : 'png'}`);
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(file, Buffer.from(base64, 'base64'));
+      return file;
+    } catch {
+      return null;
+    }
+  });
   ipcMain.handle('media:before', (_e, cwd, file, snap) => media.mediaBefore(cwd, file, snap, path.join(app.getPath('userData'), 'media-before')).catch(() => null));
   ipcMain.handle('jira:issue', (_e, key) => jira.issue(key));
+  // Tactile PM task cards (pmtasks.js), read with the PM connector by Haiku.
+  pmTasks.setup(path.join(app.getPath('userData'), 'pm-tasks.json'), keys => readPmTasks(getConfig(), keys));
+  ipcMain.handle('pm:task', (_e, key) => pmTasks.task(key));
   ipcMain.handle('gdoc:title', (_e, url) => require('./gdocs').title(url));
   ipcMain.handle('github:lookup', (_e, what) => require('./github').lookup(what));
   ipcMain.handle('jira:details', (_e, key) => jira.details(key));
@@ -456,6 +488,7 @@ app.whenReady().then(() => {
   ipcMain.handle('codex:usage', () => (getConfig().codexEnabled ? fetchCodexUsage(getConfig()) : null));
   // The Tactile Create Art budget (createart.js): numbers only, never the sign-in.
   ipcMain.handle('createart:budget', () => require('./createart').budget());
+  ipcMain.handle('createart:connect', () => require('./createart').connect(getConfig()));
   ipcMain.handle('providers:limited', (_e, provider, untilMs) => setProviderLimited(provider, untilMs));
   ipcMain.handle('app:version', () => appVersion());
   ipcMain.handle('update:latest', () => latestUpdate);
