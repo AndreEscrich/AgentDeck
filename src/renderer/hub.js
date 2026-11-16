@@ -713,6 +713,22 @@ class Hub {
       entry.status = agent.status;
     }
     tile.classList.toggle('current', agent.id === currentId);
+    // A ticket run's finished subtask waits for your approval (ticketrun.js):
+    // a purple tank, "Waiting approval" and an Approve button on the tile.
+    const laneState = agent.lane?.role === 'worker' ? this.laneState?.(agent) : null;
+    tile.classList.toggle('lane-review', laneState === 'review' || laneState === 'approving');
+    let approve = tile.querySelector(':scope .tile-approve');
+    if (laneState === 'review' || laneState === 'approving') {
+      if (!approve) {
+        approve = el('button', 'primary tile-approve', '✓ Approve');
+        approve.type = 'button';
+        approve.title = 'Approve this subtask: it moves to Done in PM';
+        approve.onclick = e => { e.stopPropagation(); this.onApprove?.(agent.id); };
+        // Its own row under the status, so "Waiting approval" keeps its room.
+        parts.statusText.parentElement.after(approve);
+      }
+      approve.disabled = laneState === 'approving';
+    } else if (approve) approve.remove();
     // A ticket run's approved subtask: its tile gets smaller (ticketrun.js).
     tile.classList.toggle('lane-approved', !!agent.laneApproved);
     // Thinking (no tool running): slow bubbles that gather at the surface.
@@ -799,6 +815,11 @@ class Hub {
       parts.stale.textContent = `${ago} ago`;
       if (agent.status === 'idle' && !agent.stopped) parts.statusText.textContent = `Stale · ${ago} ago`;
       parts.statusText.title = `Finished ${ago} ago`;
+    }
+    // A finished subtask's state wins over Completed and Stale.
+    if (laneState === 'review' || laneState === 'approving' || laneState === 'approved') {
+      parts.statusText.textContent = laneState === 'review' ? 'Waiting approval' : laneState === 'approving' ? 'Moving to Done…' : 'Done in PM';
+      parts.statusText.title = laneState === 'review' ? 'Approve moves the subtask to Done in PM' : '';
     }
     this.updateTimer(agent, parts.timer);
     const model = this.modelOf?.(agent) || null;
@@ -917,6 +938,21 @@ class Hub {
     let order = 0;
     for (const agent of agents) {
       seen.add(agent.id);
+      // A ticket run's briefing has no tile: the run's box shows it, booting
+      // up while the briefing reads the ticket (ticketrun.js).
+      if (agent.lane?.role === 'briefing') {
+        const groupKey = groups.some(g => g.id === agent.groupId) ? agent.groupId : '';
+        const key = `${groupKey}\n${agent.repo || ''}`;
+        counts.set(key, (counts.get(key) || 0) + 1);
+        if (!firstAt.has(key)) firstAt.set(key, order);
+        const sec = this.section(key, groupKey, agent.repo || '');
+        if (!seenSections.has(sec)) { seenSections.add(sec); sec.cwd = agent.cwd; sec.root = agent.repoRoot || agent.repo || ''; }
+        const box = this.runBox(sec, agent.lane.runId);
+        box.briefing = agent;
+        box.order = Math.min(box.order, order++);
+        seenRuns.add(box);
+        continue;
+      }
       const entry = this.tiles.get(agent.id) || this.createTile(agent);
       if (entry.removing) continue;
       const { el: tile } = entry;
@@ -978,9 +1014,25 @@ class Hub {
         box.key.textContent = `⑂ ${info.key || 'Ticket'}`;
         box.title.textContent = info.title || '';
         box.progress.textContent = info.progress || '';
-        box.el.title = `${info.key || ''} ${info.title || ''}\nAgents of this ticket run: they work on its subtasks at the same time`.trim();
+        box.el.title = `${info.key || ''} ${info.title || ''}\nAgents of this ticket run: they work on its subtasks at the same time. Click the header for the briefing and its plan`.trim();
         box.el.style.order = String(box.order);
-        box.el.style.flexGrow = String(box.tiles);
+        // Booting: the briefing is still reading the ticket.
+        const b = box.briefing;
+        const booting = info.phase === 'briefing' && !!b;
+        box.el.classList.toggle('booting', booting);
+        box.el.classList.toggle('has-briefing', !!b);
+        const needsYou = booting && (b.status === 'waiting' || info.planMissing);
+        box.el.classList.toggle('needs-you', needsYou);
+        if (booting) {
+          const steps = b.transcript?.stepCount || 0;
+          box.liquid.style.height = `${Math.min(92, 18 + steps * 9)}%`;
+          box.bootText.textContent = b.status === 'waiting' ? 'Briefing · needs you'
+            : info.planMissing ? 'Briefing · waiting for the subtask list (click to ask for it)'
+            : `Briefing · ${b.transcript?.activity || 'reading the ticket…'}`;
+          const started = b.transcript?.turnStartedAt;
+          box.bootTimer.textContent = started ? formatDuration(Date.now() - started) : '';
+        }
+        box.el.style.flexGrow = String(Math.max(box.tiles, booting ? 3 : 1));
       }
     }
 
@@ -1300,10 +1352,29 @@ class Hub {
       const title = el('span', 'hub-run-title');
       const progress = el('span', 'hub-run-progress');
       head.append(key, title, progress);
+      // While the briefing reads the ticket, the box boots up: a wide tank
+      // that fills with its steps, what it is doing, and a timer.
+      const boot = el('div', 'hub-run-boot');
+      const tank = el('div', 'hub-run-tank');
+      const liquid = el('div', 'hub-run-liquid');
+      tank.appendChild(liquid);
+      const bootLine = el('div', 'hub-run-boot-line');
+      const bootText = el('span', 'hub-run-boot-text');
+      const bootTimer = el('span', 'hub-run-boot-timer');
+      bootLine.append(bootText, bootTimer);
+      boot.append(tank, bootLine);
       const grid = el('div', 'hub-run-grid');
-      el_.append(head, grid);
+      el_.append(head, boot, grid);
       sec.grid.appendChild(el_);
-      box = { el: el_, key, title, progress, grid, tiles: 0, order: Infinity };
+      box = { el: el_, key, title, progress, grid, boot, liquid, bootText, bootTimer, tiles: 0, order: Infinity, briefing: null };
+      // The header (and the booting box) open the briefing's chat: its plan.
+      const openBriefing = e => {
+        if (!box.briefing) return;
+        e.stopPropagation();
+        this.onOpen(box.briefing.id);
+      };
+      head.onclick = openBriefing;
+      boot.onclick = openBriefing;
       sec.runs.set(runId, box);
     }
     return box;

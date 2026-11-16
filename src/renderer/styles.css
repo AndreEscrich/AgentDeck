@@ -3410,3 +3410,25 @@ button.uml-peer-chip:hover { background: color-mix(in srgb, var(--chip, var(--ac
 .ticket-approve-label { flex: 1; color: var(--text-dim); }
 .ticket-approve.approved { border-color: rgba(76, 175, 122, 0.5); }
 .ticket-approve.approved .ticket-approve-label { color: var(--ok); }
+
+/* A ticket run booting up: while the briefing reads the ticket, its box is a
+   wide tank that fills with the briefing's steps (hub.js runBox). */
+.hub-run-boot { display: none; flex-direction: column; gap: 6px; cursor: pointer; }
+.hub-run.booting .hub-run-boot { display: flex; }
+.hub-run.booting { min-width: 360px; }
+.hub-run-tank { position: relative; height: 92px; border-radius: 12px 12px 18px 18px; overflow: hidden;
+  background: #0f1016; border: 2px solid #2c2f3d; box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.6); }
+.hub-run-liquid { position: absolute; left: 0; right: 0; bottom: 0; height: 12%;
+  background: linear-gradient(#7fa8f0, #3d6bc4); transition: height 1.2s cubic-bezier(.3,1.3,.5,1);
+  animation: run-boot-glow 2.4s ease-in-out infinite; }
+.hub-run.needs-you .hub-run-liquid { background: linear-gradient(#f09a75, #c4562f); }
+.hub-run.needs-you { animation: attention 1.4s ease-in-out infinite; }
+@keyframes run-boot-glow { 50% { filter: brightness(1.25); } }
+.hub-run-boot-line { display: flex; gap: 10px; font-size: 12px; color: var(--text-dim); min-width: 0; }
+.hub-run-boot-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-run-boot-timer { flex-shrink: 0; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.hub-run.has-briefing .hub-run-head { cursor: pointer; }
+.hub-run.has-briefing .hub-run-head:hover .hub-run-title { color: var(--text); text-decoration: underline; }
+/* A finished subtask waiting for your approval: a purple tank and an Approve button. */
+.hub-tile.lane-review { --c1: #c3a6f5; --c2: #7a52c9; --glow: rgba(150, 110, 230, 0.35); }
+.tile-approve { align-self: stretch; margin-top: 4px; padding: 3px 10px; font-size: 12px; border-radius: 7px; }

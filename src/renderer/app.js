@@ -3128,6 +3128,9 @@ hub.onOpenUnity = openUnity;
 // A ticket run's agents stand in a box of their panel, with the ticket and
 // the run's progress (ticketrun.js); the ⑂ button next to Send starts one.
 hub.runInfo = ticketRuns.infoOf;
+// A finished subtask's tile: "Waiting approval" and its Approve button.
+hub.laneState = ticketRuns.laneState;
+hub.onApprove = ticketRuns.approve;
 ticketRuns.wire();
 hub.onOpenTactileSvn = openTactileSvn;
 $('composer-tsvn').onclick = () => openTactileSvn($('composer-tsvn').dataset.cwd);

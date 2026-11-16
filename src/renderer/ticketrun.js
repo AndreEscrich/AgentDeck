@@ -154,7 +154,7 @@ const ticketRuns = (() => {
   // and whenever a subtask finishes.
   function schedule(run) {
     if (run.status !== 'running') return;
-    const finished = new Set(run.subtasks.filter(s => ['review', 'approved', 'failed', 'skipped'].includes(s.state)).map(s => s.key));
+    const finished = new Set(run.subtasks.filter(s => ['review', 'approving', 'approved', 'failed', 'skipped'].includes(s.state)).map(s => s.key));
     const known = new Set(run.subtasks.map(s => s.key));
     const ceiling = Math.max(1, Number(state.config.maxTicketAgents) || 5);
     const running = run.subtasks.filter(s => s.state === 'working');
@@ -168,7 +168,7 @@ const ticketRuns = (() => {
     }
     if (!run.subtasks.some(s => ['queued', 'working'].includes(s.state))) {
       run.status = 'done';
-      toast?.(`${run.key}: every subtask is done. Approve them in their agents' chats.`);
+      toast?.(`${run.key}: every subtask is done. Approve them on their tiles in the Hub.`);
     }
     refreshHub();
   }
@@ -218,31 +218,61 @@ const ticketRuns = (() => {
     agent.transcript.note(`Ticket run: ${todo.length} subtask${todo.length === 1 ? '' : 's'}, each on an agent of its own. ${now} start${now === 1 ? 's' : ''} now; the others start when the subtasks that share their files, or that they wait for, are done (at most ${Math.max(1, Number(state.config.maxTicketAgents) || 5)} at once, Settings → Ticket runs).`);
   }
 
-  // Under a finished subtask: its PM card and the Approve button.
+  // Approves a finished subtask: it moves to Done in PM. From the Approve
+  // button on its tile (hub.js) or under its answer in the chat.
+  async function approve(agentId) {
+    const agent = state.agents.get(agentId);
+    const run = agent?.lane && runs.get(agent.lane.runId);
+    const sub = run && subOf(run, agent);
+    if (!sub || sub.state !== 'review') return;
+    sub.state = 'approving';
+    renderBars(sub);
+    refreshHub();
+    const moved = await window.deck.pmDone([sub.key]).catch(() => ({}));
+    sub.state = moved?.[sub.key] ? 'approved' : 'review';
+    sub.approveFailed = !moved?.[sub.key];
+    if (sub.state === 'approved') agent.laneApproved = true;
+    renderBars(sub);
+    refreshHub();
+  }
+
+  // The Approve bar under a finished subtask's answer, kept in step with the
+  // subtask's state (the tile's button changes it too).
+  function renderBars(sub) {
+    for (const bar of sub.bars || []) {
+      const label = bar.querySelector('.ticket-approve-label');
+      const button = bar.querySelector('button');
+      bar.classList.toggle('approved', sub.state === 'approved');
+      if (sub.state === 'approved') {
+        label.textContent = `${sub.key} is approved and in Done.`;
+        button?.remove();
+      } else if (sub.state === 'approving') {
+        label.textContent = `Moving ${sub.key} to Done…`;
+        if (button) button.disabled = true;
+      } else {
+        label.textContent = sub.approveFailed
+          ? `${sub.key} could not be moved to Done in PM. Try again, or move it there yourself.`
+          : `${sub.key} is waiting for your approval. Approve it to move it to Done in PM.`;
+        if (button) { button.disabled = false; button.textContent = 'Approve → Done'; }
+      }
+    }
+  }
+
   function approveBar(run, sub, agent) {
     const bar = el('div', 'ticket-approve');
-    const label = el('span', 'ticket-approve-label', `${sub.key} is done. Approve it to move it to Done in PM.`);
     const button = el('button', 'primary', 'Approve → Done');
-    button.onclick = async () => {
-      button.disabled = true;
-      button.textContent = 'Moving to Done…';
-      const moved = await window.deck.pmDone([sub.key]).catch(() => ({}));
-      if (moved?.[sub.key]) {
-        sub.state = 'approved';
-        agent.laneApproved = true;
-        bar.classList.add('approved');
-        label.textContent = `${sub.key} is approved and in Done.`;
-        button.remove();
-      } else {
-        button.disabled = false;
-        button.textContent = 'Approve → Done';
-        label.textContent = `${sub.key} could not be moved to Done in PM. Try again, or move it there yourself.`;
-      }
-      refreshHub();
-    };
-    bar.append(label, button);
+    button.onclick = () => approve(agent.id);
+    bar.append(el('span', 'ticket-approve-label'), button);
+    (sub.bars = sub.bars || []).push(bar);
+    renderBars(sub);
     const turn = agent.transcript.lastFinished?.el;
     (turn || agent.view).appendChild(bar);
+  }
+
+  // A worker's subtask state, for its tile (hub.js): review is "Waiting approval".
+  function laneState(agent) {
+    const run = agent?.lane && runs.get(agent.lane.runId);
+    return (run && subOf(run, agent)?.state) || null;
   }
 
   function onResult(agent, msg) {
@@ -267,15 +297,15 @@ const ticketRuns = (() => {
   function infoOf(runId) {
     const run = runs.get(runId);
     if (!run) return null;
-    return { key: run.key, title: run.title, progress: progressOf(run) };
+    return { key: run.key, title: run.title, progress: progressOf(run), phase: run.status, planMissing: !!run.waitingNoted && run.status === 'briefing' };
   }
 
   function progressOf(run) {
     if (run.status === 'briefing') return 'briefing…';
     const count = st => run.subtasks.filter(s => s.state === st).length;
-    const parts = [`${count('approved') + count('review')}/${run.subtasks.length - count('skipped')} done`];
+    const parts = [`${count('approved') + count('review') + count('approving')}/${run.subtasks.length - count('skipped')} done`];
     if (count('working')) parts.push(`${count('working')} working`);
-    if (count('review')) parts.push(`${count('review')} to approve`);
+    if (count('review') + count('approving')) parts.push(`${count('review') + count('approving')} waiting approval`);
     if (count('queued')) parts.push(`${count('queued')} waiting`);
     if (count('failed')) parts.push(`${count('failed')} failed`);
     if (count('skipped')) parts.push(`${count('skipped')} skipped`);
@@ -310,7 +340,7 @@ const ticketRuns = (() => {
     };
   }
 
-  return { keyIn, start, onResult, infoOf, renderButton, wire, parsePlan, runs };
+  return { keyIn, start, onResult, infoOf, laneState, approve, renderButton, wire, parsePlan, runs };
 })();
 
 window.ticketRuns = ticketRuns;
