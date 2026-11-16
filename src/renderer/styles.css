@@ -3403,6 +3403,8 @@ button.uml-peer-chip:hover { background: color-mix(in srgb, var(--chip, var(--ac
 .hub-run-progress { flex-shrink: 0; color: var(--text-faint); }
 .hub-run-grid { display: flex; gap: 10px; align-items: stretch; min-width: 0; }
 .hub-run-grid .hub-tile { flex: 1 1 0; min-width: 0; max-width: 240px; }
+/* An approved subtask's tile is smaller, so the ones left to review stand out. */
+.hub-run-grid .hub-tile.lane-approved { flex: 0.5 1 0; max-width: 130px; opacity: 0.7; }
 .ticket-approve { display: flex; align-items: center; gap: 12px; margin: 10px 0 4px; padding: 8px 12px;
   border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); font-size: 13px; }
 .ticket-approve-label { flex: 1; color: var(--text-dim); }

@@ -713,6 +713,8 @@ class Hub {
       entry.status = agent.status;
     }
     tile.classList.toggle('current', agent.id === currentId);
+    // A ticket run's approved subtask: its tile gets smaller (ticketrun.js).
+    tile.classList.toggle('lane-approved', !!agent.laneApproved);
     // Thinking (no tool running): slow bubbles that gather at the surface.
     tile.classList.toggle('thinking', agent.status === 'working' && agent.transcript?.liveStep === 'Thinking…');
     tile.classList.toggle('unread', !!agent.unread);

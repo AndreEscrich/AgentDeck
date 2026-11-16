@@ -453,7 +453,7 @@ function openSettings(config, { onSaved } = {}) {
       section('Stuck agents',
         settingsField('Waiting for Unity for', 'Seconds. An agent only counts as stuck while it waits for Unity to be ready', stuckAfter)),
       section('Ticket runs',
-        settingsField('Agents at once', 'A PM ticket split into its subtasks runs on at most this many agents at the same time. When one finishes a subtask, it gets the next one', maxTicketAgents))]],
+        settingsField('Agents at once', 'At most. Every subtask of a split PM ticket gets an agent of its own; the briefing\'s plan decides which run at the same time (those that share no files), and this is the ceiling on top, for your usage limits', maxTicketAgents))]],
   ];
   // A bar on the left with the groups: clicking one scrolls the list to it,
   // and the group you are reading is lit up as you scroll.

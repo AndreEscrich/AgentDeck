@@ -5,12 +5,18 @@
 // 1. A briefing agent reads the ticket, its subtasks and the code they are
 //    about, changes nothing, and ends with the subtasks as JSON (an
 //    agenthub-subtasks block).
-// 2. Then up to Settings → Agents at once (maxTicketAgents) worker agents
-//    start, each a fork of the briefing (so each knows the ticket and the
-//    code), each on one subtask. When a worker finishes a subtask, it gets
-//    the next one from the queue as its next message.
-// 3. Workers change files under the file locks (src/filelocks.js): a file
-//    another worker is changing makes them wait; their tile says for which file.
+//    For each subtask it also lists the files it will likely change and the
+//    subtasks it must wait for.
+// 2. Every subtask gets an agent of its own, a fork of the briefing (so it
+//    knows the ticket and the code). The briefing's plan decides when each
+//    starts (schedule): a subtask starts once no running subtask shares its
+//    files and the subtasks it waits for are done, so independent subtasks
+//    run at the same time. Settings → Agents at once (maxTicketAgents) is a
+//    ceiling on top, for your usage limits. A finished agent stays in the
+//    run's box with its one subtask, for review.
+// 3. Workers change files under the file locks (src/filelocks.js), in case
+//    the briefing missed a file: a file another worker is changing makes
+//    them wait; their tile says for which file.
 // 4. Each worker posts a comment on its subtask in PM. Under each finished
 //    subtask, the chat has an Approve button that moves it to Done.
 //
@@ -48,19 +54,21 @@ const ticketRuns = (() => {
       '```agenthub-subtasks',
       '{"ticket": {"key": "ABC-1", "title": "the ticket\'s title"},',
       ' "subtasks": [{"key": "ABC-2", "title": "the subtask\'s title", "description": "its description, short", "notes": "what you found that matters for it: files, classes, pitfalls",',
-      '   "status": "its status in PM", "done": false, "assignee": "who it is assigned to, or empty", "mine": true}]}',
+      '   "status": "its status in PM", "done": false, "assignee": "who it is assigned to, or empty", "mine": true,',
+      '   "files": ["Assets/Code/Example.cs"], "after": []}]}',
+      '```',
       '',
       '"done" is true when the subtask is Done, closed or resolved. "mine" is true when it is assigned to the user, false when it is assigned to someone else, and null when it has no assignee. Subtasks that are done or someone else\'s are skipped by the run, so you do not need to read code for them.',
-      '```',
+      '"files" are the files the subtask will most likely change (paths relative to the working folder: scripts, prefabs, assets). "after" are the keys of subtasks it must wait for, because it builds on their result. The run starts subtasks that share no files at the same time, and the others one after the other, so these lists decide how fast and how safely the ticket is done: be thorough, and leave "after" empty when a subtask does not really depend on another.',
       '',
       `The user's message: ${text}`,
     ].join('\n');
   }
 
-  function subtaskPrompt(run, sub, next) {
+  function subtaskPrompt(run, sub) {
     const paragraphs = [
       `${sub.key} ${sub.title}`,
-      next ? 'Your previous subtask is done. This is your next one.' : `This is your subtask of ${run.key}${run.title ? ` (${run.title})` : ''}.`,
+      `This is your subtask of ${run.key}${run.title ? ` (${run.title})` : ''}.`,
       sub.description && `Description (the briefing's summary): ${sub.description}`,
       sub.notes && `From the briefing: ${sub.notes}`,
       // The briefing's summary can leave out what matters (a video link,
@@ -88,6 +96,8 @@ const ticketRuns = (() => {
           // A subtask that is done, or assigned to someone else, is skipped.
           done: s.done === true || /^(done|closed|resolved|released|complete|cancel)/i.test(String(s.status || '')),
           othersAssigned: s.mine === false && !!String(s.assignee || '').trim(),
+          files: (Array.isArray(s.files) ? s.files : []).map(f => String(f)).filter(Boolean),
+          after: (Array.isArray(s.after) ? s.after : []).map(k => String(k)).filter(k => k !== s.key),
         }));
       return subtasks.length ? { ticket: data.ticket || null, subtasks } : null;
     } catch {
@@ -111,8 +121,8 @@ const ticketRuns = (() => {
       key, title: '', cwd: d.folder, groupId: d.groupId || null,
       choice: d.choice, mode: d.mode,
       status: 'briefing', briefing: null,
-      subtasks: [],            // { key, title, description, notes, state: queued | working | review | approved | failed, agentId }
-      queue: [],
+      subtasks: [],            // { key, title, description, notes, files, after, state: queued | working | review | approved | failed | skipped, agentId }
+      forkFrom: null,          // the briefing, which every worker is a fork of
     };
     runs.set(run.id, run);
     const lane = { runId: run.id, role: 'briefing' };
@@ -126,25 +136,54 @@ const ticketRuns = (() => {
     await started;
   }
 
-  const subOf = (run, agent) => run.subtasks.find(s => s.agentId === agent.id && s.state === 'working');
+  const subOf = (run, agent) => run.subtasks.find(s => s.agentId === agent.id);
 
-  function feed(run, agent, sub, next) {
-    sub.state = 'working';
-    sub.agentId = agent.id;
-    agent.lane.subtask = sub.key;
-    agent.title = `${sub.key} ${sub.title}`;
-    const prompt = subtaskPrompt(run, sub, next);
-    if (next) {
-      agent.transcript.add({ type: 'user', message: { role: 'user', content: prompt } });
-      hub.wake?.(agent.id);
-      sendToAgent(agent, prompt);
-    }
-    refreshHub();
-    return prompt;
+  // Two subtasks overlap when the briefing expects them to change a file in
+  // common (by path, or by name when one path is written differently).
+  const fileKey = f => f.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
+  const fileName = f => fileKey(f).split('/').pop();
+  function overlap(a, b) {
+    const paths = new Set(a.files.map(fileKey));
+    const names = new Set(a.files.map(fileName));
+    return b.files.some(f => paths.has(fileKey(f)) || names.has(fileName(f)));
   }
 
-  // The briefing is done: read its plan and start the workers.
-  async function startWorkers(run, agent, msg) {
+  // Starts every waiting subtask that can start now: the subtasks it waits
+  // for are finished, no running subtask shares its files, and the ceiling
+  // (Settings → Agents at once) is not reached. Called when the plan arrives
+  // and whenever a subtask finishes.
+  function schedule(run) {
+    if (run.status !== 'running') return;
+    const finished = new Set(run.subtasks.filter(s => ['review', 'approved', 'failed', 'skipped'].includes(s.state)).map(s => s.key));
+    const known = new Set(run.subtasks.map(s => s.key));
+    const ceiling = Math.max(1, Number(state.config.maxTicketAgents) || 5);
+    const running = run.subtasks.filter(s => s.state === 'working');
+    for (const sub of run.subtasks) {
+      if (sub.state !== 'queued') continue;
+      if (running.length >= ceiling) break;
+      if (sub.after.some(k => known.has(k) && !finished.has(k))) continue;
+      if (running.some(r => overlap(r, sub))) continue;
+      startWorker(run, sub);
+      running.push(sub);
+    }
+    if (!run.subtasks.some(s => ['queued', 'working'].includes(s.state))) {
+      run.status = 'done';
+      toast?.(`${run.key}: every subtask is done. Approve them in their agents' chats.`);
+    }
+    refreshHub();
+  }
+
+  // A new agent for one subtask, a fork of the briefing.
+  function startWorker(run, sub) {
+    const lane = { runId: run.id, role: 'worker', subtask: sub.key };
+    sub.state = 'working';
+    startAgent({ cwd: run.cwd, prompt: subtaskPrompt(run, sub), permissionMode: run.mode, choice: run.choice, groupId: run.groupId, forkFrom: run.forkFrom, lane });
+    const worker = [...state.agents.values()].find(a => a.lane === lane);
+    if (worker) { sub.agentId = worker.id; worker.title = `${sub.key} ${sub.title}`; }
+  }
+
+  // The briefing is done: read its plan and start the subtasks that can start.
+  function readPlan(run, agent, msg) {
     const plan = parsePlan(msg.result) || parsePlan(agent.transcript.lastFinished?.el?.innerText);
     if (!plan) {
       // The run keeps waiting: the briefing may still get its sub-agents'
@@ -161,31 +200,22 @@ const ticketRuns = (() => {
     run.title = plan.ticket?.title || '';
     // Done subtasks and other people's stay out; unassigned ones are free work.
     run.subtasks = plan.subtasks.map(s => ({ ...s, state: s.done || s.othersAssigned ? 'skipped' : 'queued', agentId: null }));
-    run.queue = run.subtasks.filter(s => s.state === 'queued');
     const skipped = run.subtasks.filter(s => s.state === 'skipped');
     if (skipped.length) {
       agent.transcript.note(`Skipped ${skipped.length} subtask${skipped.length === 1 ? '' : 's'}: ${skipped.map(s => `${s.key} (${s.done ? s.status || 'done' : `assigned to ${s.assignee}`})`).join(', ')}.`);
     }
-    if (!run.queue.length) {
+    const todo = run.subtasks.filter(s => s.state === 'queued');
+    if (!todo.length) {
       run.status = 'done';
       agent.transcript.note('Every subtask of this ticket is done or assigned to someone else, so no agents start.');
       refreshHub();
       return;
     }
-    const max = Math.max(1, Number(state.config.maxTicketAgents) || 5);
-    const workers = Math.min(max, run.queue.length);
     run.status = 'running';
-    agent.transcript.note(`Ticket run: ${run.queue.length} subtask${run.queue.length === 1 ? '' : 's'} on ${workers} agent${workers === 1 ? '' : 's'} at once (Settings → Ticket runs). Each one starts as a copy of this briefing.`);
-    const forkFrom = { sessionId: agent.sessionId, title: agent.title, provider: 'claude' };
-    for (let i = 0; i < workers; i++) {
-      const sub = run.queue.shift();
-      const lane = { runId: run.id, role: 'worker', subtask: sub.key };
-      sub.state = 'working';
-      startAgent({ cwd: run.cwd, prompt: subtaskPrompt(run, sub, false), permissionMode: run.mode, choice: run.choice, groupId: run.groupId, forkFrom, lane });
-      const worker = [...state.agents.values()].find(a => a.lane === lane);
-      if (worker) { sub.agentId = worker.id; worker.title = `${sub.key} ${sub.title}`; }
-    }
-    refreshHub();
+    run.forkFrom = { sessionId: agent.sessionId, title: agent.title, provider: 'claude' };
+    schedule(run);
+    const now = run.subtasks.filter(s => s.state === 'working').length;
+    agent.transcript.note(`Ticket run: ${todo.length} subtask${todo.length === 1 ? '' : 's'}, each on an agent of its own. ${now} start${now === 1 ? 's' : ''} now; the others start when the subtasks that share their files, or that they wait for, are done (at most ${Math.max(1, Number(state.config.maxTicketAgents) || 5)} at once, Settings → Ticket runs).`);
   }
 
   // Under a finished subtask: its PM card and the Approve button.
@@ -199,6 +229,7 @@ const ticketRuns = (() => {
       const moved = await window.deck.pmDone([sub.key]).catch(() => ({}));
       if (moved?.[sub.key]) {
         sub.state = 'approved';
+        agent.laneApproved = true;
         bar.classList.add('approved');
         label.textContent = `${sub.key} is approved and in Done.`;
         button.remove();
@@ -219,25 +250,17 @@ const ticketRuns = (() => {
     const run = lane && runs.get(lane.runId);
     if (!run) return;
     if (lane.role === 'briefing') {
-      if (run.status === 'briefing' && !msg.is_error) startWorkers(run, agent, msg);
+      if (run.status === 'briefing' && !msg.is_error) readPlan(run, agent, msg);
       return;
     }
+    // A worker keeps its one subtask: when you write to it afterwards, its
+    // next answer counts for the same subtask.
     const sub = subOf(run, agent);
-    if (sub) {
+    if (sub && sub.state === 'working') {
       sub.state = msg.is_error ? 'failed' : 'review';
       if (!msg.is_error) approveBar(run, sub, agent);
     }
-    // The next subtask goes to this agent.
-    const next = run.queue.shift();
-    if (next) feed(run, agent, next, true);
-    else {
-      lane.subtask = null;
-      if (run.subtasks.every(s => !['queued', 'working'].includes(s.state))) {
-        run.status = 'done';
-        toast?.(`${run.key}: every subtask is done. Approve them in their agents' chats.`);
-      }
-    }
-    refreshHub();
+    schedule(run);
   }
 
   // A run's box in the Hub (hub.js runBox): the ticket and the progress.
@@ -251,6 +274,7 @@ const ticketRuns = (() => {
     if (run.status === 'briefing') return 'briefing…';
     const count = st => run.subtasks.filter(s => s.state === st).length;
     const parts = [`${count('approved') + count('review')}/${run.subtasks.length - count('skipped')} done`];
+    if (count('working')) parts.push(`${count('working')} working`);
     if (count('review')) parts.push(`${count('review')} to approve`);
     if (count('queued')) parts.push(`${count('queued')} waiting`);
     if (count('failed')) parts.push(`${count('failed')} failed`);
@@ -267,7 +291,7 @@ const ticketRuns = (() => {
     button.classList.toggle('hidden', !key);
     if (key) {
       button.textContent = `⑂ Split ${key}`;
-      button.title = `Instead of one agent: one agent per subtask of ${key}, at most ${state.config.maxTicketAgents || 5} at once (Settings → Ticket runs), in the category you picked`;
+      button.title = `Instead of one agent: one agent per subtask of ${key}, in the category you picked. Subtasks that share no files run at the same time (at most ${state.config.maxTicketAgents || 5} at once, Settings → Ticket runs)`;
       button.dataset.key = key;
     }
   }
