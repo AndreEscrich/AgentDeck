@@ -307,6 +307,35 @@ const ticketRuns = (() => {
     save();
     renderBars(sub);
     refreshHub();
+    if (sub.state === 'approved' && sub.proof?.length && !sub.proofPosted) postProof(run, sub, agent);
+  }
+
+  // The screenshots that proved a worker's latest work (verifyTurn in app.js).
+  function noteProof(agent, proof) {
+    const run = agent?.lane && runs.get(agent.lane.runId);
+    const sub = run && subOf(run, agent);
+    if (!sub || !proof?.length) return;
+    sub.proof = proof;
+    sub.proofPosted = false;
+    save();
+    // Approved before its checks were done: the proof follows now.
+    if (sub.state === 'approved') postProof(run, sub, agent);
+  }
+
+  // Done in PM, with visual proof: the screenshots go on the subtask as a
+  // comment, with what changed (src/agents.js postPmProof).
+  async function postProof(run, sub, agent) {
+    const live = state.agents.get(agent.id);
+    const count = sub.proof.reduce((n, p) => n + p.files.length, 0);
+    live?.transcript.note('Posting the visual proof (' + count + ' screenshot' + (count === 1 ? '' : 's') + ') on ' + sub.key + ' in PM…');
+    const ok = await window.deck.pmProof({ key: sub.key, summary: sub.summary || '', proof: sub.proof }).catch(() => false);
+    sub.proofPosted = !!ok;
+    save();
+    if (ok) live?.transcript.note('Posted the visual proof on ' + sub.key + ' in PM, with what changed.');
+    else {
+      live?.transcript.note('Could not post the visual proof on ' + sub.key + ' in PM.', true);
+      toast?.(sub.key + ': the visual proof could not be posted in PM.');
+    }
   }
 
   // The Approve bar under a finished subtask's answer, kept in step with the
@@ -359,6 +388,11 @@ const ticketRuns = (() => {
     // A worker keeps its one subtask: when you write to it afterwards, its
     // next answer counts for the same subtask.
     const sub = subOf(run, agent);
+    // What it changed (its answer) and its visual proof, for the comment on
+    // the subtask when you approve it (postProof).
+    if (sub && !msg.is_error) {
+      if (msg.result) sub.summary = String(msg.result).slice(0, 4000);
+    }
     if (sub && sub.state === 'working') {
       sub.state = msg.is_error ? 'failed' : 'review';
       if (!msg.is_error) approveBar(run, sub, agent);
@@ -426,7 +460,7 @@ const ticketRuns = (() => {
     };
   }
 
-  return { keyIn, start, onResult, infoOf, ticketOf, laneState, save, load, laneOfSession, attach, resumeRuns, approve, renderButton, wire, parsePlan, runs };
+  return { keyIn, start, onResult, infoOf, ticketOf, laneState, save, load, laneOfSession, attach, resumeRuns, noteProof, approve, renderButton, wire, parsePlan, runs };
 })();
 
 window.ticketRuns = ticketRuns;

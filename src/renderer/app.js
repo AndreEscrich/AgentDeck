@@ -5359,6 +5359,8 @@ async function verifyTurn(a, turn, msg) {
       }
     }
     result = { ...result, gates: [...result.gates, gate], proof, ok: gate.ok };
+    // A ticket run's subtask takes this proof to PM when you approve it (ticketrun.js).
+    if (gate.ok) ticketRuns.noteProof(a, proof.map(p => ({ text: p.text, files: p.shots.map(s => s.path).filter(Boolean) })).filter(p => p.files.length));
   }
   const failed = !result.ok && !result.blocked;
   const attempt = failed ? (a.verifyAttempts = (a.verifyAttempts || 0) + 1) : 0;
