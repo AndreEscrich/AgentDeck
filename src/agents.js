@@ -12,6 +12,7 @@ const { randomUUID } = require('crypto');
 const { findClaude, spawnClaude, killTree, childEnv } = require('./platform');
 const pipeline = require('./pipeline');
 const { PipelineEngine, savedSnapshot } = require('./pipelinerun');
+const { FileLocks } = require('./filelocks');
 const TRANSIENT_STATUS = new Set([401, 429]);
 const TRANSIENT_ERROR = /hit your (session |weekly |opus |usage )?limit|usage limit (reached|was hit|hit)|rate_limit|OAuth (session|token)[^.\n]*expired|Failed to authenticate|authentication_error|Invalid API key|Please run \/login|Not logged in/i;
 
@@ -193,11 +194,13 @@ class AgentManager {
     this.getConfig = getConfig;
     this.runsDir = runsDir;    // where pipeline runs are saved (pipelinerun.js)
     this.agents = new Map();
+    // The agents of a ticket run share the files of one folder (filelocks.js).
+    this.locks = new FileLocks((id, wait) => this.send('agent:lock', id, wait ? { file: wait.file, holder: wait.holder } : null));
   }
 
   // The window may pick the id itself (so it can show the agent's tile before
   // this process has started anything); otherwise a new one is made here.
-  start({ id: wantedId, cwd, resumeId, forkSession, resumeSessionAt, permissionMode, model, effort, fastMode, title, pipeline: asPipeline }) {
+  start({ id: wantedId, cwd, resumeId, forkSession, resumeSessionAt, permissionMode, model, effort, fastMode, title, pipeline: asPipeline, lane }) {
     const config = this.getConfig();
     const id = typeof wantedId === 'string' && /^[\w-]{8,64}$/.test(wantedId) && !this.agents.has(wantedId) ? wantedId : randomUUID();
     // A pipeline governor's run is held here (pipelinerun.js): Claude Code
@@ -232,6 +235,13 @@ class AgentManager {
       if (agent.sessionId) agent.engine.bindSession(agent.sessionId);
       // The hooks go with "initialize", before your first message.
       proc.stdin.write(JSON.stringify({ type: 'control_request', request_id: `pipeline-init-${id}`, request: { subtype: 'initialize', hooks: PipelineEngine.hooks() } }) + '\n');
+    } else if (typeof lane === 'string' && lane) {
+      // An agent of a ticket run (ticketrun.js): before it changes a file,
+      // Claude Code asks the file locks (filelocks.js), and waits.
+      agent.lane = lane;
+      proc.stdin.write(JSON.stringify({ type: 'control_request', request_id: `lane-init-${id}`, request: { subtype: 'initialize', hooks: {
+        PreToolUse: [{ matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash', hookCallbackIds: ['lane-lock'] }],
+      } } }) + '\n');
     }
 
     let buffer = '';
@@ -252,6 +262,7 @@ class AgentManager {
       this.send('agent:event', id, { type: 'app_error', message: `Could not start claude: ${err.message}` });
     });
     proc.on('exit', code => {
+      if (agent.lane) this.locks.releaseAll(id);
       this.setStatus(agent, code === 0 || agent.closing ? 'exited' : 'error');
       this.send('agent:exit', id, { code, stderr: agent.stderr });
       this.agents.delete(id);
@@ -315,6 +326,8 @@ class AgentManager {
     }
     if (msg.type === 'result') this.setStatus(agent, msg.is_error ? 'error' : agent.background?.length ? 'background' : 'idle');
     if (msg.type === 'rate_limit_event' && msg.rate_limit_info) agent.engine?.rateLimit(msg.rate_limit_info);
+    // A ticket run agent's subtask is done: its files go to the agents waiting.
+    if (msg.type === 'result' && agent.lane) this.locks.releaseAll(agent.id);
     if (msg.type === 'result') agent.engine?.turnEnded({ error: !!msg.is_error, transient: TRANSIENT_STATUS.has(msg.api_error_status) || TRANSIENT_ERROR.test(String(msg.result || '')), result: msg });
     this.send('agent:event', agent.id, msg);
   }
@@ -334,6 +347,13 @@ class AgentManager {
       const answer = response => this.writeJson(agent, { type: 'control_response', response: { subtype: 'success', request_id: msg.request_id, response } });
       agent.engine.handle(msg.request.callback_id, msg.request.input || {})
         .then(answer, err => { console.error('pipeline hook', msg.request.callback_id, err); answer({}); });
+      return;
+    }
+    // A ticket run agent's file locks (filelocks.js): the answer comes once
+    // the files are its own.
+    if (msg.request?.subtype === 'hook_callback' && agent.lane && msg.request.callback_id === 'lane-lock') {
+      const answer = response => this.writeJson(agent, { type: 'control_response', response: { subtype: 'success', request_id: msg.request_id, response } });
+      this.locks.acquire(agent.id, agent.cwd, msg.request.input || {}).then(answer, () => answer({}));
       return;
     }
     // The governor's step tools (pipelinerun.js mcp()).
@@ -922,4 +942,39 @@ function readPmTasks(config, keys) {
   });
 }
 
-module.exports = { AgentManager, measurePipeline, pipelineSnapshot, fetchModels, findClaude, summarizeTitle, rateTask, pickGame, readPmTasks, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited, compactTokens, SYSTEM_PROMPT, EDIT_PROMPT, READ_TOOLS_PROMPT };
+// Moves Tactile PM tasks to their project's Done column, for the Approve
+// button of a ticket run's subtasks (ticketrun.js). Haiku does it with the PM
+// connector, like readPmTasks. Resolves with { KEY: true | false }.
+const PM_SERVERS = ['mcp__claude_ai_Tactile_PM__', 'mcp__tactile-pm__', 'mcp__tactile_pm__'];
+const PM_DONE_TOOLS = PM_SERVERS.flatMap(s => ['pm_get_task', 'pm_list_statuses', 'pm_update_task'].map(t => s + t));
+function setPmTasksDone(config, keys) {
+  return new Promise(resolve => {
+    const proc = spawnClaude(config.claudePath,
+      ['-p', '--model', 'haiku', '--output-format', 'json', '--no-session-persistence',
+        '--tools', 'ToolSearch', '--allowedTools', ['ToolSearch', ...PM_DONE_TOOLS].join(',')],
+      { cwd: os.tmpdir(), env: { ...childEnv(config.env), ENABLE_TOOL_SEARCH: 'true' }, stdio: ['pipe', 'pipe', 'ignore'] });
+    helperProcesses.add(proc);
+    let out = '';
+    const timer = setTimeout(() => { killTree(proc); }, 60000 + keys.length * 15000);
+    proc.stdout.on('data', d => { out += d; });
+    proc.on('error', () => resolve({}));
+    proc.on('close', () => {
+      clearTimeout(timer);
+      helperProcesses.delete(proc);
+      try {
+        const text = String(JSON.parse(out).result || '');
+        const json = text.match(/\{[\s\S]*\}/);
+        const parsed = json ? JSON.parse(json[0]) : {};
+        resolve(Object.fromEntries(keys.map(k => [k, parsed[k] === true])));
+      } catch {
+        resolve({});
+      }
+    });
+    proc.stdin.end(`Move each of these Tactile PM tasks to its project's Done column: ${keys.join(', ')}. `
+      + 'Find the PM tools with ToolSearch. For each task: read it with pm_get_task; find the Done status of its project with pm_list_statuses if you need its id; '
+      + 'then change the task with pm_update_task. Change nothing else. '
+      + 'Do not touch any other task. Reply with only a JSON object from each of these keys to true (moved) or false (not moved), in the form {"<key>": true}.');
+  });
+}
+
+module.exports = { AgentManager, measurePipeline, pipelineSnapshot, fetchModels, findClaude, summarizeTitle, rateTask, pickGame, readPmTasks, setPmTasksDone, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited, compactTokens, SYSTEM_PROMPT, EDIT_PROMPT, READ_TOOLS_PROMPT };

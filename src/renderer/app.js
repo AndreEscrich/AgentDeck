@@ -940,6 +940,7 @@ function show(kind, id) {
   }
   renderSettingsButton();
   renderSidebar();
+  ticketRuns.renderButton();
   // Opening an agent can take it off the badge.
   updateAttention();
   // The context meter shows for a running agent; it asks for numbers the
@@ -3118,6 +3119,10 @@ async function openUnity(cwd) {
   setTimeout(refreshUnity, r.action === 'opened' ? 8000 : 1500);
 }
 hub.onOpenUnity = openUnity;
+// A ticket run's panel shows its progress (ticketrun.js), and the ⑂ button
+// under the message box starts one.
+hub.sectionNote = ticketRuns.progressOf;
+ticketRuns.wire();
 hub.onOpenTactileSvn = openTactileSvn;
 $('composer-tsvn').onclick = () => openTactileSvn($('composer-tsvn').dataset.cwd);
 hub.onMoveGroup = moveGroup;
@@ -3795,7 +3800,7 @@ async function startFrom(forkFrom, note = flashComposerNote) {
 // note(text) and resolves with any of { prompt, forkFrom, preamble,
 // handoffFrom, cwd, folderNote } to use instead of the ones passed in.
 // folderNote: why the agent works in cwd (Auto game folder), shown in the chat.
-async function startAgent({ cwd, prompt, permissionMode, verify, choice, resume, groupId, fromRect, forkFrom, preamble = '', handoffFrom = null, images = [], ticket = null, rewindAt, prepare = null, folderNote = null, pipeline = false }) {
+async function startAgent({ cwd, prompt, permissionMode, verify, choice, resume, groupId, fromRect, forkFrom, preamble = '', handoffFrom = null, images = [], ticket = null, rewindAt, prepare = null, folderNote = null, pipeline = false, lane = null }) {
   const title = resume ? resume.session.title : prompt.split('\n')[0].slice(0, 80);
   choice = choice || defaultChoice();
   // An older Codex choice: no model is Auto, a newest model id its family.
@@ -3843,7 +3848,9 @@ async function startAgent({ cwd, prompt, permissionMode, verify, choice, resume,
     if (agent.autoVisual) setTimeout(() => { agent.transcript.note(`Auto picked ${autoPickName(agent)} (visual work: ${agent.autoVisual}).`); showAutoPick(agent); }, 0);
   }
   if (ticket) agent.ticket = ticket;
-  if (!resume) summarizeTitle(agent, prompt);
+  // An agent of a ticket run (ticketrun.js): the run names it after its subtask.
+  if (lane) agent.lane = lane;
+  if (!resume && !lane) summarizeTitle(agent, prompt);
   // What kind of task it is (the Nostromo theme's tank shows it, see tasktype.js).
   if (!resume) taskType.start(agent, prompt);
   else if (prompt !== RESUME_PROMPT && prompt !== RESTART_PROMPT) notePrompt(agent, prompt);
@@ -3910,6 +3917,8 @@ async function startAgent({ cwd, prompt, permissionMode, verify, choice, resume,
       effort: cliEffort(agent),
       fastMode: choice.fastMode,
       pipeline: agent.pipeline,
+      // A ticket run's workers change files under the file locks (filelocks.js).
+      lane: lane?.role === 'worker' ? lane.runId : undefined,
       ...(rewindAt === undefined
         ? { resumeId: resume?.session.id || forkFrom?.sessionId, forkSession: resume ? !!resume.moved : !!forkFrom }
         : { resumeId: rewindAt?.session || undefined, forkSession: !!rewindAt, resumeSessionAt: rewindAt?.uuid }),
@@ -5081,6 +5090,20 @@ setInterval(() => { if (hubItems().some(i => i.limited)) refreshHub(); }, 30 * 1
 // Tokens of each API answer, once per answer: they float off the health bar.
 const tickedAnswers = new Set();
 
+// A ticket run's worker waits for a file another worker is changing (filelocks.js).
+window.deck.onLock((id, wait) => {
+  const a = state.agents.get(id);
+  if (!a) return;
+  if (wait) {
+    const holder = state.agents.get(wait.holder);
+    a.lockWait = { ...wait, holderName: holder?.lane?.subtask || holder?.title || '' };
+    a.transcript.note(`Waiting for ${wait.file.split(/[\\/]/).pop()}: another agent of this ticket${a.lockWait.holderName ? ` (${a.lockWait.holderName})` : ''} is changing it.`);
+  } else {
+    a.lockWait = null;
+  }
+  refreshHub();
+});
+
 window.deck.onEvent((id, msg) => {
   // The agent could not start because claude is not there.
   if (msg.type === 'app_error' && /could not start claude/i.test(msg.message || '') && /ENOENT|not found|no such file/i.test(msg.message || '')) showClaudeMissing();
@@ -5108,6 +5131,8 @@ window.deck.onEvent((id, msg) => {
   }
   if (msg.type === 'user' && Array.isArray(msg.message?.content) && msg.message.content.some(b => b?.type === 'tool_result' && b.is_error)) taskType.noteError(a);
   if (msg.type === 'result') clearClashes(a);
+  // A ticket run's agent finished its task: the run feeds it the next subtask.
+  if (msg.type === 'result') ticketRuns.onResult(a, msg);
   // A finished turn of an Auto agent goes into the Auto report (autoreport.js).
   if (msg.type === 'result' && a.choice?.model === 'auto' && providerOf(a.choice) === 'claude') {
     autoReport.recordTurn(msg, { family: cliModel(a), title: a.latestTitle || a.summaryTitle || a.title, switched: !!a.autoSwitched, contextBefore: a.autoContext || 0, failedStepUp: !!a.autoFailStep, effort: cliEffort(a) });

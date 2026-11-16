@@ -786,6 +786,12 @@ class Hub {
       // Which background jobs a "background" agent waits for.
       parts.statusText.title = agent.status === 'background' && agent.backgroundTasks?.length ? `Waiting for: ${agent.backgroundTasks.join(', ')}` : '';
     }
+    // A ticket run's worker that waits for a file another worker is changing.
+    if (agent.lockWait && ['working', 'starting'].includes(agent.status)) {
+      const name = agent.lockWait.file.split(/[\\/]/).pop();
+      parts.statusText.textContent = `Waiting for ${name}`;
+      parts.statusText.title = `${agent.lockWait.file}\nAnother agent of this ticket${agent.lockWait.holderName ? ` (${agent.lockWait.holderName})` : ''} is changing it`;
+    }
     if (stale) {
       const ago = Hub.ago(Date.now() - agent.finishedAt);
       parts.stale.textContent = `${ago} ago`;
@@ -969,6 +975,9 @@ class Hub {
       sec.count.textContent = String(n);
       const group = sec.groupKey ? groups.find(g => g.id === sec.groupKey) : null;
       sec.name.textContent = sec.groupKey ? group?.name || 'Category' : 'No category';
+      // A ticket run's progress (ticketrun.js), after its category's name.
+      const runNote = sec.groupKey ? this.sectionNote?.(sec.groupKey) : '';
+      if (runNote) sec.name.textContent += ` · ${runNote}`;
       // No category: a looser, open panel, because its agents do not share what they know.
       sec.el.classList.toggle('loose', !sec.groupKey);
       // Shared notes: only for a category; the number of notes when it has some.

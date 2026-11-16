@@ -123,6 +123,8 @@ contextBridge.exposeInMainWorld('deck', {
   // A Tactile PM task for its card: { key, title, status, category, type } or null.
   pmTask: key => ipcRenderer.invoke('pm:task', key),
   pmSeed: list => ipcRenderer.invoke('pm:seed', list),
+  pmDone: keys => ipcRenderer.invoke('pm:done', keys),
+  onLock: fn => on('agent:lock', fn),
   gdocTitle: url => ipcRenderer.invoke('gdoc:title', url),
   githubLookup: what => ipcRenderer.invoke('github:lookup', what),
   jiraDetails: key => ipcRenderer.invoke('jira:details', key),

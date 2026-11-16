@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const pmTasks = require('./pmtasks');
-const { AgentManager, measurePipeline, pipelineSnapshot, fetchModels, summarizeTitle, rateTask, pickGame, readPmTasks, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited } = require('./agents');
+const { AgentManager, measurePipeline, pipelineSnapshot, fetchModels, summarizeTitle, rateTask, pickGame, readPmTasks, setPmTasksDone, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited } = require('./agents');
 const { CodexManager, fetchCodexModels, fetchCodexUsage, listCodexThreads, loadCodexThread } = require('./codex');
 const { listSessions, loadTranscript, PROJECTS_DIR } = require('./sessions');
 const git = require('./git');
@@ -75,6 +75,7 @@ const DEFAULT_CONFIG = {
     MergeTavern2: 'conveyor belts, match-3 matching, procedural mesh generation, 3D characters and 3D cameras',
   },
   stuckAfterSeconds: 30,                // waiting this long for Unity to be ready marks the agent as stuck
+  maxTicketAgents: 5,                   // a ticket run (ticketrun.js) keeps at most this many agents working on its subtasks at once
   staleAfterHours: 0,                   // an agent on the Hub that finished longer ago than this is marked as stale (0: never)
   defaultFolder: '',
   gamesFolder: '',                      // the folder with every game's folder, for Auto game folder (gamefolders.js)
@@ -409,6 +410,8 @@ app.whenReady().then(() => {
   pmTasks.setup(path.join(app.getPath('userData'), 'pm-tasks.json'), keys => readPmTasks(getConfig(), keys));
   ipcMain.handle('pm:task', (_e, key) => pmTasks.task(key));
   ipcMain.handle('pm:seed', (_e, list) => pmTasks.seed(list));
+  // A ticket run's Approve button: the subtask moves to Done in PM.
+  ipcMain.handle('pm:done', (_e, keys) => setPmTasksDone(getConfig(), (Array.isArray(keys) ? keys : [keys]).filter(k => /^[A-Z][A-Z0-9]{1,9}-\d+$/.test(k))));
   ipcMain.handle('gdoc:title', (_e, url) => require('./gdocs').title(url));
   ipcMain.handle('github:lookup', (_e, what) => require('./github').lookup(what));
   ipcMain.handle('jira:details', (_e, key) => jira.details(key));

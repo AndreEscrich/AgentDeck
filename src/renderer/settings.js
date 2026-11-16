@@ -311,6 +311,9 @@ function openSettings(config, { onSaved } = {}) {
   // Stuck agents
   const stuckAfter = settingsInput('number', config.stuckAfterSeconds, { min: 5, step: 5 });
 
+  // Ticket runs (ticketrun.js)
+  const maxTicketAgents = settingsInput('number', config.maxTicketAgents ?? 5, { min: 1, step: 1 });
+
   // Claude Code
   const claudePath = settingsInput('text', config.claudePath, { placeholder: 'Found by itself: the newest Claude Code installed' });
   const extraArgs = settingsText((config.extraArgs || []).join('\n'), 'One flag or value per line, for example\n--add-dir\nC:\\Some\\Folder');
@@ -446,7 +449,9 @@ function openSettings(config, { onSaved } = {}) {
       section('Both providers',
         settingsField('Environment variables', 'For every agent, on Claude and on Codex', env)),
       section('Stuck agents',
-        settingsField('Waiting for Unity for', 'Seconds. An agent only counts as stuck while it waits for Unity to be ready', stuckAfter))]],
+        settingsField('Waiting for Unity for', 'Seconds. An agent only counts as stuck while it waits for Unity to be ready', stuckAfter)),
+      section('Ticket runs',
+        settingsField('Agents at once', 'A PM ticket split into its subtasks runs on at most this many agents at the same time. When one finishes a subtask, it gets the next one', maxTicketAgents))]],
   ];
   // A bar on the left with the groups: clicking one scrolls the list to it,
   // and the group you are reading is lit up as you scroll.
@@ -578,6 +583,7 @@ function openSettings(config, { onSaved } = {}) {
       theme: theme.value,
       curvedScreen: curved.checked,
       stuckAfterSeconds: number(stuckAfter, 30),
+      maxTicketAgents: Math.max(1, Math.round(Number(maxTicketAgents.value))) || 5,
       staleAfterHours: Math.max(0, Number(staleAfter.value)) || 0,
       svnProjects: settingsList(svnProjects.value).map(p => p.replace(/^\/+|\/+$/g, '')).filter(Boolean),
       svnBranchFilter: settingsList(svnBranchFilter.value),

@@ -3389,3 +3389,11 @@ button.uml-peer-chip:hover { background: color-mix(in srgb, var(--chip, var(--ac
 .pp-panel.compact:not(.open) .pp-body { display: none; }
 .pp-panel.compact.busy:not(.open) { border-color: var(--accent); }
 .pp-panel.compact.open .pp-head { flex-direction: column; align-items: flex-start; gap: 1px; }
+
+/* Ticket runs (ticketrun.js): the ⑂ button and the Approve bar under a finished subtask */
+.composer-split { color: var(--accent); }
+.ticket-approve { display: flex; align-items: center; gap: 12px; margin: 10px 0 4px; padding: 8px 12px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); font-size: 13px; }
+.ticket-approve-label { flex: 1; color: var(--text-dim); }
+.ticket-approve.approved { border-color: rgba(76, 175, 122, 0.5); }
+.ticket-approve.approved .ticket-approve-label { color: var(--ok); }
