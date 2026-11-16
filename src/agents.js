@@ -12,6 +12,8 @@ const { randomUUID } = require('crypto');
 const { findClaude, spawnClaude, killTree, childEnv } = require('./platform');
 const pipeline = require('./pipeline');
 const { PipelineEngine, savedSnapshot } = require('./pipelinerun');
+const TRANSIENT_STATUS = new Set([401, 429]);
+const TRANSIENT_ERROR = /hit your (session |weekly |opus |usage )?limit|usage limit (reached|was hit|hit)|rate_limit|OAuth (session|token)[^.\n]*expired|Failed to authenticate|authentication_error|Invalid API key|Please run \/login|Not logged in/i;
 
 // Tells every agent that the chat shows images and videos (see media.js and
 // the Markdown rendering in render.js).
@@ -271,7 +273,8 @@ class AgentManager {
       }
     }
     if (msg.type === 'result') this.setStatus(agent, msg.is_error ? 'error' : agent.background?.length ? 'background' : 'idle');
-    if (msg.type === 'result') agent.engine?.turnEnded();
+    if (msg.type === 'rate_limit_event' && msg.rate_limit_info) agent.engine?.rateLimit(msg.rate_limit_info);
+    if (msg.type === 'result') agent.engine?.turnEnded({ error: !!msg.is_error, transient: TRANSIENT_STATUS.has(msg.api_error_status) || TRANSIENT_ERROR.test(String(msg.result || '')), result: msg });
     this.send('agent:event', agent.id, msg);
   }
 

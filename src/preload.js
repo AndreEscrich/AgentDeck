@@ -134,6 +134,7 @@ contextBridge.exposeInMainWorld('deck', {
   startAgent: opts => ipcRenderer.invoke('agent:start', opts),
   measurePipeline: (multiAgent, folder) => ipcRenderer.invoke('pipeline:measure', multiAgent, folder),
   pipelineState: (agentId, sessionId) => ipcRenderer.invoke('pipeline:state', agentId, sessionId),
+  pipelineCosts: profileId => ipcRenderer.invoke('pipeline:costs', profileId),
   sendMessage: (id, text, images) => ipcRenderer.invoke('agent:send', id, text, images),
   // Where a dropped file is on disk (Electron no longer puts it on the File).
   photoshopPicture: (file, maxSide) => ipcRenderer.invoke('media:photoshop', file, maxSide),

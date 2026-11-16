@@ -1272,6 +1272,8 @@ class Transcript {
     this.cwd = cwd || null;
     this.seen = new Set();          // content blocks already drawn
     this.tools = new Map();         // tool_use id -> { card, name, input }
+    this.slots = new Map();         // Agent tool_use id -> its slot in an agents box
+    this.lastBox = null;            // the agents box of the last assistant message
     this.draft = null;              // text streaming in before the full message arrives
     this.turn = null;               // the turn in progress
     this.prompts = [];              // your messages: { el, text }, in order
@@ -1614,6 +1616,18 @@ class Transcript {
 
   addStep(node, activity) {
     const turn = this.ensureTurn();
+    const slot = this.fromSubagent ? this.slots.get(this.parentTool) : null;
+    if (slot) {
+      this.pinned(() => slot.body.appendChild(node));
+      if (activity) {
+        slot.steps++;
+        slot.activity.textContent = activity;
+        turn.summary.querySelector('.steps-text').textContent = `${slot.name}: ${activity}`;
+        this.activity = activity;
+      }
+      this.onUpdate?.();
+      return;
+    }
     turn.steps.classList.remove('hidden');
     this.pinned(() => turn.body.appendChild(node));
     if (activity) {
@@ -1621,6 +1635,95 @@ class Transcript {
       this.activity = activity;
     }
     this.onUpdate?.();
+  }
+
+  // ---------- helper agents ----------
+
+  addAgentCall(turn, messageId, block) {
+    let box = this.lastBox?.messageId === messageId ? this.lastBox.box : null;
+    const name = block.input?.description || block.input?.subagent_type || 'Agent';
+    if (!box) {
+      box = el('div', 'agents-box');
+      box.titleEl = el('span', 'agents-title');
+      box.note = el('details', 'agents-note hidden');
+      box.grid = el('div', 'agents-grid');
+      const head = el('div', 'agents-head');
+      head.appendChild(box.titleEl);
+      box.append(head, box.note, box.grid);
+      box.count = 0;
+      this.lastBox = { messageId, box };
+      this.addStep(box, `Helper: ${name}`);
+    } else {
+      turn.summary.querySelector('.steps-text').textContent = `${box.count + 1} agents at once`;
+      this.activity = `${box.count + 1} agents at once`;
+    }
+    box.count++;
+    box.titleEl.textContent = box.count > 1 ? `${box.count} agents at once` : 'Helper agent';
+    box.classList.toggle('many', box.count > 1);
+    const slot = el('details', 'agent-slot running');
+    const summary = el('summary');
+    const row = el('div', 'agent-row');
+    const spinner = el('span', 'steps-spinner');
+    const state = el('span', 'tool-state pending', 'running');
+    row.append(spinner, el('span', 'agent-name', name), state);
+    const activity = el('span', 'agent-activity', 'Starting…');
+    summary.append(row, activity);
+    const body = el('div', 'agent-body');
+    slot.append(summary, body);
+    box.grid.appendChild(slot);
+    const entry = { el: slot, box, body, state, spinner, activity, name, steps: 0, prompt: '', background: false };
+    this.slots.set(block.id, entry);
+    this.tools.set(block.id, { card: slot, slot: entry, name: block.name, input: block.input || {} });
+  }
+
+  slotDone(slot, isError, text) {
+    slot.background = !isError && /async_launched|"isAsync"\s*:\s*true|in the background/i.test(text || '');
+    slot.el.classList.toggle('running', slot.background);
+    if (!slot.background) slot.spinner.remove();
+    slot.state.className = `tool-state ${isError ? 'err' : slot.background ? 'background' : 'ok'}`;
+    slot.state.textContent = isError ? 'failed' : slot.background ? 'in the background' : 'done';
+    if (!slot.background) slot.activity.textContent = isError ? 'Failed' : `Done · ${slot.steps} step${slot.steps === 1 ? '' : 's'}`;
+  }
+
+  addSubagentUser(message, toolUseResult) {
+    const content = message.content;
+    const slot = this.slots.get(this.parentTool);
+    const text = (typeof content === 'string' ? [content] : Array.isArray(content) ? content.filter(b => b.type === 'text').map(b => b.text) : []).join('\n').trim();
+    if (slot && text && !slot.prompt) this.showAgentPrompt(slot, text);
+    if (Array.isArray(content)) {
+      for (const block of content) if (block.type === 'tool_result') this.fillTool(block, toolUseResult);
+    }
+  }
+
+  showAgentPrompt(slot, text) {
+    slot.prompt = text;
+    const box = slot.box;
+    if (!box.prompt) {
+      box.prompt = text;
+      const summary = el('summary');
+      summary.append(el('span', 'agents-badge', 'Governor'), el('span', 'agents-note-text', `Automated message from the governor to ${box.count > 1 ? `its ${box.count} agents` : 'the agent'}`));
+      box.note.append(summary, el('pre', null, clip(text)));
+      box.note.classList.remove('hidden');
+      return;
+    }
+    if (text !== box.prompt) {
+      const own = el('details', 'agent-own-message');
+      own.append(el('summary', null, 'What the governor asked this one'), el('pre', null, clip(text)));
+      slot.body.prepend(own);
+    }
+  }
+
+  addSubagentBlock(turn, block) {
+    if (block.type === 'text' && block.text.trim()) {
+      this.addStep(markdown(block.text, this.cwd), block.text.split('\n').find(l => l.trim())?.replace(/[*_`#>]/g, '').trim().slice(0, 120));
+    } else if (block.type === 'thinking' && block.thinking) {
+      const d = el('details', 'thinking');
+      d.append(el('summary', null, 'Thinking'), el('pre', null, block.thinking));
+      this.addStep(d, 'Thinking…');
+    } else if (block.type === 'tool_use') {
+      turn.stepCount++;
+      this.addStep(this.toolCard(block), `${block.name} · ${toolSummary(block.name, block.input)}`);
+    }
   }
 
   // ---------- state for the Hub ----------
@@ -1720,6 +1823,7 @@ class Transcript {
     // A sub-agent's own messages (the pipeline's steps) are not the
     // governor's: they do not move the pipeline's progress.
     this.fromSubagent = !!msg.parent_tool_use_id;
+    this.parentTool = msg.parent_tool_use_id || null;
     switch (msg.type) {
       case 'user': return this.addUser(msg.message, msg.tool_use_result, msg.isSynthetic || msg.isMeta);
       case 'assistant': return this.addAssistant(msg.message);
@@ -1751,6 +1855,7 @@ class Transcript {
   // agent runs a skill, notes about attached images) is for the agent, not
   // you: it stays out of the chat and does not start a new turn.
   addUser(message, toolUseResult, synthetic) {
+    if (this.fromSubagent) return this.addSubagentUser(message, toolUseResult);
     const content = message.content;
     // A background command the agent started has finished: Claude Code wakes
     // the agent with a <task-notification> "message" so it can carry on. That
@@ -1778,6 +1883,7 @@ class Transcript {
     }
     if (/^\s*<task-notification>/.test(first)) {
       this.pipe?.taskNotification(first);
+      for (const [id, slot] of this.slots) if (slot.background && first.includes(id)) this.slotDone(slot, /<status>\s*(failed|error|killed)/i.test(first), '');
       this.finishTurn();
       const summary = /<summary>([\s\S]*?)<\/summary>/.exec(first)?.[1]?.trim();
       this.noteIn(this.startTurn(), summary || 'A background task finished.');
@@ -1932,6 +2038,10 @@ class Transcript {
       const key = `${message.id}|${block.type}|${block.id || (block.text || block.thinking || '').slice(0, 300)}`;
       if (this.seen.has(key)) continue;
       this.seen.add(key);
+      if (this.fromSubagent) {
+        this.addSubagentBlock(turn, block);
+        continue;
+      }
 
       if (block.type === 'text' && block.text.trim()) {
         this.clearDraft();
@@ -1960,7 +2070,8 @@ class Transcript {
         // Text before a tool call was a note to itself, not the answer.
         turn.pendingText = [];
         turn.stepCount++;
-        this.addStep(this.toolCard(block), `${block.name} · ${toolSummary(block.name, block.input)}`);
+        if (block.name === 'Agent' || block.name === 'Task') this.addAgentCall(turn, message.id, block);
+        else this.addStep(this.toolCard(block), `${block.name} · ${toolSummary(block.name, block.input)}`);
         this.liveStep = stepPhrase(block.name, block.input);
         if (block.name === 'TodoWrite' && Array.isArray(block.input?.todos)) this.showPlan(turn, block.input.todos);
       }
@@ -2070,7 +2181,8 @@ class Transcript {
     out.appendChild(linkify(clip(resultText(block.content))));
     decorateLinks(out);
     if (block.is_error) out.style.color = 'var(--err)';
-    tool.card.appendChild(out);
+    (tool.slot ? tool.slot.body : tool.card).appendChild(out);
+    if (tool.slot) this.slotDone(tool.slot, !!block.is_error, resultText(block.content));
     if (!block.is_error) this.recordChange(tool, toolUseResult);
     // A tool that makes a file on its own (a Unity recorder, a screenshot
     // tool) often only names the file in its result. Shell output is left
@@ -2655,6 +2767,7 @@ class Transcript {
   // Partial messages: show text as it arrives, under the steps, then swap it
   // for the rendered Markdown when the complete message comes in.
   addStreamEvent(event) {
+    if (this.fromSubagent) return;
     if (event?.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
       const turn = this.ensureTurn();
       if (!this.draft) {

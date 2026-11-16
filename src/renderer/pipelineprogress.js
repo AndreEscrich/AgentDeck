@@ -2,7 +2,9 @@
 // chat (pipeline.js steps), each one marked as it goes: pending, running,
 // done, sent back (its verdict was "changes"), failed, waiting for you (Ask the
 // user) and not run (the governor skipped it, or the run stopped before it:
-// red when an error stopped it).
+// red when an error stopped it). When a step sends the work back, the steps
+// that run again get a new row under "Round N": the earlier rows keep what
+// happened in them, so the whole run stays in view.
 //
 // What happens comes from the run Agent Hub holds (pipelinerun.js): each
 // change of it arrives as a snapshot (setState), so the panel shows exactly
@@ -27,6 +29,7 @@ const PP_STATUS = {
   notrun: ['–', 'Not run: it had nothing to run, or the governor went on without it'],
   blocked: ['⊘', 'Not run: an error stopped the pipeline before it'],
 };
+const FINAL = new Set(['done', 'changes', 'failed']);
 const PP_SIDE_W = 240;     // the side panel's widest
 const PP_SIDE_MIN = 170;   // narrower than this, it folds into the chip
 
@@ -35,8 +38,11 @@ class PipelineProgress {
     this.scroller = container;
     this.root = root;
     this.plan = plan;
-    this.steps = [...plan.stages.flat(), ...plan.onDemand].map(s => ({ ...s, status: 'pending', round: 1, open: new Set() }));
+    this.steps = [...plan.stages.flat(), ...plan.onDemand].map(s => ({ ...s, status: 'pending', round: 1, pass: 1, open: new Set(), history: [] }));
     this.byId = new Map(this.steps.map(s => [s.id, s]));
+    this.stageOf = new Map(this.steps.map(s => [s.id, plan.stages.findIndex(stage => stage.some(x => x.id === s.id))]));
+    for (const s of plan.onDemand) this.stageOf.set(s.id, plan.stages.length);
+    this.order = new Map(this.steps.map((s, i) => [s.id, i]));
     this.calls = new Map();       // tool_use id → { step, background }
     this.turnFresh = true;        // no step started yet in this turn
     this.ranInTurn = false;
@@ -55,15 +61,12 @@ class PipelineProgress {
       this.place();
     };
     this.body = el('div', 'pp-body');
-    this.nodes = new Map();       // step id → element
+    this.nodes = new Map();       // `${step id}@${pass}` → element
+    this.passes = 1;              // one more each time work is sent back
+    this.groups = new Map();      // pass (2 and up) → { section, rows: stage index → row }
     const row = list => {
       const r = el('div', 'pp-stage');
-      for (const s of list) {
-        const node = el('div', 'pp-node');
-        node.append(el('span', 'pp-mark'), el('span', 'pp-label', s.label), el('span', 'pp-round'));
-        this.nodes.set(s.id, node);
-        r.appendChild(node);
-      }
+      for (const s of list) r.appendChild(this.makeNode(s, 1));
       return r;
     };
     plan.stages.forEach((stage, i) => {
@@ -71,6 +74,10 @@ class PipelineProgress {
       this.body.appendChild(row(stage));
     });
     if (plan.onDemand.length) this.body.append(el('div', 'pp-section', 'Only when work is sent back'), row(plan.onDemand));
+    this.more = el('div', 'pp-rounds');
+    this.body.appendChild(this.more);
+    this.costEl = el('div', 'pp-cost hidden');
+    this.body.appendChild(this.costEl);
     this.panel.append(this.head, this.body);
     this.wrap.appendChild(this.panel);
     container.insertBefore(this.wrap, root);
@@ -90,16 +97,75 @@ class PipelineProgress {
   // tool calls are no longer read.
   setState(snap) {
     if (!snap?.steps || !Object.keys(snap.steps).length) return;
+    const roundOf = s => snap.steps[s.id]?.round || 1;
+    if ((this.engine?.runId && snap.runId && snap.runId !== this.engine.runId) || this.steps.some(s => snap.steps[s.id] && roundOf(s) < s.round)) this.resetRounds();
     this.engine = snap;
+    const bumped = this.steps.filter(s => snap.steps[s.id] && roundOf(s) > s.round);
+    if (bumped.length) {
+      const sender = this.sender(bumped);
+      this.passes++;
+      for (const s of bumped) this.enterPass(s, s === sender ? 'changes' : FINAL.has(s.status) ? s.status : 'done');
+    }
     for (const s of this.steps) {
       const x = snap.steps[s.id];
       if (!x) continue;
       s.status = PP_STATUS[x.status] ? x.status : 'pending';
-      s.round = x.round || 1;
+      s.round = roundOf(s);
       s.active = x.active || 0;
       if (s.status === 'changes') this.last = s.id;
     }
     this.render();
+  }
+
+  // ---------- rounds ----------
+
+  sender(steps) {
+    return steps.filter(s => s.verdict).sort((a, b) => this.stageOf.get(b.id) - this.stageOf.get(a.id))[0] || null;
+  }
+
+  enterPass(s, frozen) {
+    s.history.push({ pass: s.pass, round: s.round, status: frozen });
+    s.pass = this.passes;
+    s.open = new Set();
+    this.placeNode(s, s.pass);
+  }
+
+  makeNode(s, pass) {
+    const node = el('div', 'pp-node');
+    node.append(el('span', 'pp-mark'), el('span', 'pp-label', s.label), el('span', 'pp-round'));
+    node.dataset.order = this.order.get(s.id);
+    this.nodes.set(`${s.id}@${pass}`, node);
+    return node;
+  }
+
+  placeNode(s, pass) {
+    let group = this.groups.get(pass);
+    if (!group) {
+      group = { section: el('div', 'pp-round-group'), rows: new Map() };
+      group.section.appendChild(el('div', 'pp-section', `Round ${pass}`));
+      this.groups.set(pass, group);
+      this.more.appendChild(group.section);
+    }
+    const stage = this.stageOf.get(s.id);
+    let row = group.rows.get(stage);
+    if (!row) {
+      row = el('div', 'pp-stage');
+      group.rows.set(stage, row);
+      const rows = [...group.rows].sort((a, b) => a[0] - b[0]).map(([, r]) => r);
+      group.section.replaceChildren(group.section.firstChild, ...rows.flatMap((r, i) => i ? [el('div', 'pp-link'), r] : [r]));
+    }
+    const node = this.makeNode(s, pass);
+    const after = [...row.children].find(c => Number(c.dataset.order) > this.order.get(s.id));
+    row.insertBefore(node, after || null);
+  }
+
+  resetRounds() {
+    for (const s of this.steps) Object.assign(s, { status: 'pending', round: 1, pass: 1, active: 0, open: new Set(), history: [] });
+    for (const key of [...this.nodes.keys()]) if (!key.endsWith('@1')) this.nodes.delete(key);
+    this.passes = 1;
+    this.groups.clear();
+    this.more.replaceChildren();
+    this.calls.clear();
   }
 
   // ---------- what the governor does (sessions without a saved run) ----------
@@ -138,8 +204,7 @@ class PipelineProgress {
       if (step) {
         for (const s of this.downstream(step.id)) if (s.status === 'notrun' || s.status === 'blocked') s.status = 'pending';
       } else if (!candidates.some(s => s.status === 'running' || s.status === 'waiting')) {
-        for (const s of this.steps) Object.assign(s, { status: 'pending', round: 1, open: new Set() });
-        this.calls.clear();
+        this.resetRounds();
         step = candidates[0];
       }
     }
@@ -149,10 +214,18 @@ class PipelineProgress {
       || candidates.find(s => s.status === status && s.open.size < s.count)
       || candidates.find(s => waiting(s))
       || candidates[0];
-    if (['done', 'changes', 'failed'].includes(step.status)) {
-      step.round++;
-      // What comes after it runs again too.
-      for (const s of this.downstream(step.id)) if (s.status !== 'running') s.status = 'pending';
+    if (FINAL.has(step.status)) {
+      // What comes after it runs again too, in a new round.
+      const again = this.downstream(step.id).filter(s => s.status !== 'running');
+      const sender = this.sender([step, ...again].filter(s => ['done', 'changes'].includes(s.status)));
+      this.passes++;
+      for (const s of [step, ...again]) {
+        if (FINAL.has(s.status)) {
+          this.enterPass(s, s === sender ? 'changes' : s.status);
+          s.round++;
+        }
+        s.status = 'pending';
+      }
     }
     step.status = status;
     this.last = step.id;
@@ -237,13 +310,8 @@ class PipelineProgress {
 
   render() {
     for (const s of this.steps) {
-      const node = this.nodes.get(s.id);
-      const [mark, what] = PP_STATUS[s.status];
-      node.className = `pp-node pp-${s.status}`;
-      node.querySelector('.pp-mark').textContent = mark;
-      const many = this.engine ? s.active : s.open.size;
-      node.querySelector('.pp-round').textContent = s.round > 1 ? `round ${s.round}` : s.count > 1 && many > 1 ? `×${many}` : '';
-      node.title = `${s.label}: ${what}${s.round > 1 ? ` (round ${s.round})` : ''}`;
+      for (const h of s.history) this.paint(s, h.pass, h.round, h.status, 0);
+      this.paint(s, s.pass, s.round, s.status, this.engine ? s.active : s.open.size);
     }
     const main = this.steps.filter(s => !this.plan.onDemand.some(d => d.id === s.id));
     const finished = main.filter(s => ['done', 'changes', 'notrun'].includes(s.status)).length;
@@ -254,6 +322,7 @@ class PipelineProgress {
     const run = this.engine;
     const issues = run?.issues ? ` · ${run.issues} open` : '';
     this.status.textContent = run && !now.length && run.status === 'done' ? `Done${skipped ? ` · ${skipped} not run` : ''}${issues}`
+      : run && !now.length && run.status === 'stopped' ? `${of} · ${run.failed ? 'failed' : 'stopped'}`
       : run && !now.length && run.status === 'paused' && this.byId.get(this.last)?.status !== 'changes' ? `${of} · paused`
         : now.length ? `${finished + 1}/${main.length} · ${now.map(s => s.label).join(' + ')}`
       : failed ? `${of} · stopped`
@@ -262,9 +331,45 @@ class PipelineProgress {
           : finished === main.length ? `Done${skipped ? ` · ${skipped} skipped` : ''}`
             : finished ? of : 'Not started';
     this.panel.title = run ? `The run's files: ${run.folder}` : '';
+    this.renderCost(run);
     this.panel.classList.toggle('busy', !!now.length);
-    this.panel.classList.toggle('stopped', !now.length && failed);
+    this.panel.classList.toggle('stopped', !now.length && (failed || !!run?.failed));
     this.place();
+  }
+
+  renderCost(run) {
+    const c = run?.cost;
+    const over = run && (run.status === 'done' || run.status === 'stopped');
+    this.costEl.classList.toggle('hidden', !c || !over);
+    if (!c || !over) return;
+    const one = window.Pipeline?.oneCall?.(window.pipelineConfig?.() || {}, typeof pipeMeasured !== 'undefined' ? pipeMeasured : null);
+    const fmt = window.Pipeline?.formatTokens || (n => String(n));
+    const usd = c.usd >= 100 ? `$${c.usd.toFixed(0)}` : c.usd >= 1 ? `$${c.usd.toFixed(2)}` : `$${c.usd.toFixed(3)}`;
+    const pct = v => (v == null ? null : v < 0.05 ? '<0.1%' : `${v >= 10 ? v.toFixed(0) : v.toFixed(1)}%`);
+    const rows = [[`${fmt(c.tokens)} tokens`, `${usd} at API prices`]];
+    if (c.weekPct != null || c.fiveHourPct != null) rows.push([c.weekPct != null ? `${pct(c.weekPct)} of your week` : '', c.fiveHourPct != null ? `${pct(c.fiveHourPct)} of the 5-hour window` : '']);
+    if (one) {
+      const times = c.usd > 0 && one.usd > 0 ? c.usd / one.usd : c.tokens / one.tokens;
+      rows.push([`≈ ${times >= 10 ? times.toFixed(0) : times.toFixed(1)}× one plain Opus call`, '']);
+    }
+    this.costEl.replaceChildren(el('div', 'pp-section', `This run took${c.closed ? '' : ' so far'}`));
+    for (const [a, b] of rows) {
+      const row = el('div', 'pp-cost-row');
+      row.append(el('span', null, a), el('span', 'pp-cost-dim', b));
+      this.costEl.appendChild(row);
+    }
+    this.costEl.title = `${c.turns} turn${c.turns === 1 ? '' : 's'} of the governor, sub-agents included: new ${fmt(c.parts.input)}, from cache ${fmt(c.parts.read)}, written to cache ${fmt(c.parts.write)}, answers ${fmt(c.parts.output)}`
+      + (one ? `. One plain Opus call: ${one.measured ? '' : 'about '}${fmt(one.tokens)} tokens, $${one.usd.toFixed(2)}` : '');
+  }
+
+  paint(s, pass, round, status, many) {
+    const node = this.nodes.get(`${s.id}@${pass}`);
+    if (!node) return;
+    const [mark, what] = PP_STATUS[status];
+    node.className = `pp-node pp-${status}`;
+    node.querySelector('.pp-mark').textContent = mark;
+    node.querySelector('.pp-round').textContent = s.count > 1 && many > 1 ? `×${many}` : '';
+    node.title = `${s.label}: ${what}${round > 1 ? ` (round ${round})` : ''}`;
   }
 
   // In the right margin, or the left one when something lies under it on

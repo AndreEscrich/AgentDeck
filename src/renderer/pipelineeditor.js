@@ -21,10 +21,13 @@
 const PIPE_NODE_W = 196;
 const PIPE_PORT_Y = 21;          // the ports sit at the middle of a card's title bar
 const PIPE_TERM_W = 112;
+const PIPE_WORLD_W = 6000;
+const PIPE_WORLD_H = 4000;
 
 // The last measurement (see the estimate panel), kept while the app runs so
 // reopening Settings does not measure again.
 let pipeMeasured = null;
+let pipeZoom = 1;
 // Your skills (slashcommands.js), for the Use a skill cards, per folder.
 const pipeSkills = new Map();
 
@@ -71,6 +74,7 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
     syncProfile();
     current = id;
     cfg = { types: all.types, nodes: profileOf(id).nodes, edges: profileOf(id).edges };
+    origin = null;
     renderProfiles();
     render();
     renderTypes();
@@ -101,6 +105,7 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
     current = all.defaultProfile;
     window.uiSound?.('tickDown');
     cfg = { types: all.types, nodes: profileOf(current).nodes, edges: profileOf(current).edges };
+    origin = null;
     renderProfiles();
     render();
     renderTypes();
@@ -119,21 +124,24 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
   start.title = 'Replace the cards with a ready-made pipeline. Your agent types stay as they are';
   start.append(new Option('Start from…', ''), ...window.Pipeline.TEMPLATES.map(t => new Option(t.name, t.id)));
   bar.append(add, start, reset, el('div', 'settings-hint pipe-help',
-    'Drag a card by its title to move it. Drag from the dot on its right side to another card to connect them; click a line to remove it.'));
+    'Drag a card by its title to move it. Drag from the dot on its right side to another card to connect them, or to empty space to add a card there; click a line to remove it. Click a card to select it: ⌘/Ctrl+C and V copy and paste it, ⌫ removes it. Ctrl+wheel to zoom, drag the background to move around.'));
 
   // ---------- canvas ----------
   const scroller = el('div', 'pipe-canvas');
+  scroller.tabIndex = 0;
+  const sizer = el('div', 'pipe-sizer');
   const surface = el('div', 'pipe-surface');
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.classList.add('pipe-lines');
   surface.appendChild(svg);
-  scroller.appendChild(surface);
+  sizer.appendChild(surface);
+  scroller.appendChild(sizer);
   // 🧹 in the canvas's top right corner tidies the cards (see tidy below).
   const canvasWrap = el('div', 'pipe-canvas-wrap');
   const tidyBtn = el('button', 'pipe-tidy', '🧹');
   tidyBtn.type = 'button';
   tidyBtn.title = 'Tidy up: line the cards up in evenly spaced columns, in the order they run, with straight connections that do not cross cards';
-  canvasWrap.append(scroller, tidyBtn);
+  canvasWrap.append(scroller, tidyBtn, el('div', 'pipe-canvas-hint', 'Click the canvas to scroll and zoom it'));
   const problems = el('div', 'pipe-problems');
 
   // ---------- tokens per request ----------
@@ -148,6 +156,28 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
 
   const typeOf = id => cfg.types.find(t => t.id === id);
   const nodeOf = id => cfg.nodes.find(n => n.id === id);
+  let selected = null;
+  let clipboard = null;
+  const select = id => {
+    selected = id && nodeOf(id) ? id : null;
+    for (const [cid, c] of cards) c.classList.toggle('selected', cid === selected);
+  };
+  const removeNode = id => {
+    cfg.nodes = cfg.nodes.filter(x => x.id !== id);
+    cfg.edges = cfg.edges.filter(e => e.from !== id && e.to !== id);
+    if (selected === id) selected = null;
+    window.uiSound?.('tickDown');
+    render();
+  };
+  const addNode = (type, x, y, extra = {}) => {
+    const id = newId('n', new Set(cfg.nodes.map(n => n.id)));
+    cfg.nodes.push({ id, type, count: 1, note: '', rounds: 3, ...extra, x: Math.round(x), y: Math.round(y) });
+    selected = id;
+    window.uiSound?.('tick');
+    render();
+    requestAnimationFrame(() => cards.get(id)?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }));
+    return id;
+  };
   const fmt = P.formatTokens;
   let estimateNow = P.estimate(cfg, pipeMeasured);
 
@@ -202,6 +232,8 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
   // Where things are on the surface: Done right of the rightmost card, Your
   // task left of the leftmost one, and room under the cards for the ✕ lines.
   const heightOf = id => cards.get(id)?.offsetHeight || 150;
+  let origin = null;
+  let frame = false;
   const layout = () => {
     const xs = cfg.nodes.map(n => n.x), ys = cfg.nodes.map(n => n.y);
     const minX = xs.length ? Math.min(...xs) : 200, minY = ys.length ? Math.min(...ys) : 110;
@@ -216,7 +248,7 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
     };
     const doneX = maxX + 70;
     return {
-      task: { x: Math.max(8, minX - PIPE_TERM_W - 70), y: levelWith(cfg.edges.filter(e => e.from === P.TASK).map(e => e.to)) },
+      task: { x: minX - PIPE_TERM_W - 70, y: levelWith(cfg.edges.filter(e => e.from === P.TASK).map(e => e.to)) },
       done: { x: doneX, y: levelWith(cfg.edges.filter(e => e.to === P.DONE && !P.isFail(e)).map(e => e.from)) },
       bottom,
       width: doneX + PIPE_TERM_W + 30,
@@ -309,13 +341,9 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
     const remove = el('button', 'icon pipe-node-remove', '×');
     remove.type = 'button';
     remove.title = 'Remove this card';
-    remove.onclick = () => {
-      cfg.nodes = cfg.nodes.filter(x => x.id !== n.id);
-      cfg.edges = cfg.edges.filter(e => e.from !== n.id && e.to !== n.id);
-      window.uiSound?.('tickDown');
-      render();
-    };
+    remove.onclick = () => removeNode(n.id);
     head.append(title, remove);
+    card.addEventListener('pointerdown', () => select(n.id));
     card.classList.add(accessClass(typeOf(n.type)));
     const body = el('div', 'pipe-node-body');
     body.appendChild(chips(typeOf(n.type), n.count));
@@ -383,8 +411,8 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
       const start = { x: e.clientX, y: e.clientY, nx: n.x, ny: n.y };
       card.classList.add('dragging');
       handle.onpointermove = m => {
-        n.x = Math.max(PIPE_TERM_W + 90, Math.round(start.nx + m.clientX - start.x));
-        n.y = Math.max(80, Math.round(start.ny + m.clientY - start.y));
+        n.x = Math.min(PIPE_WORLD_W - origin.x - PIPE_NODE_W - PIPE_TERM_W - 110, Math.max(PIPE_TERM_W + 90 - origin.x, Math.round(start.nx + (m.clientX - start.x) / pipeZoom)));
+        n.y = Math.min(PIPE_WORLD_H - origin.y - 320, Math.max(80 - origin.y, Math.round(start.ny + (m.clientY - start.y) / pipeZoom)));
         place();
       };
       handle.onpointerup = () => {
@@ -398,7 +426,7 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
   let pending = null;   // the line being drawn from an output
   const surfacePoint = e => {
     const r = surface.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
+    return { x: (e.clientX - r.left) / pipeZoom - origin.x, y: (e.clientY - r.top) / pipeZoom - origin.y };
   };
   surface.addEventListener('pointerdown', e => {
     const out = e.target.closest('.pipe-port-out, .pipe-port-fail');
@@ -409,6 +437,7 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
     const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     line.classList.add('pipe-line', 'pending');
     if (kind) line.classList.add('pipe-fail-line');
+    line.setAttribute('transform', `translate(${origin.x},${origin.y})`);
     svg.appendChild(line);
     pending = { from, line };
     surface.classList.add('connecting');
@@ -435,11 +464,42 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
         window.uiSound?.('tick');
         if (kind) render();
         else { drawLines(); check(); }
+      } else if (!kind && !document.elementFromPoint(u.clientX, u.clientY)?.closest('.pipe-node, .pipe-term') && scroller.contains(document.elementFromPoint(u.clientX, u.clientY))) {
+        const at = surfacePoint(u);
+        typeMenu(u, type => {
+          const id = addNode(type, at.x, at.y - PIPE_PORT_Y);
+          cfg.edges.push({ from, to: id });
+          render();
+        });
       }
     };
     document.addEventListener('pointermove', move);
     document.addEventListener('pointerup', up);
   });
+  const typeMenu = (e, pick) => {
+    canvasWrap.querySelector('.pipe-type-menu')?.remove();
+    const menu = el('div', 'pipe-type-menu');
+    const r = canvasWrap.getBoundingClientRect();
+    menu.style.left = `${Math.min(e.clientX - r.left, r.width - 230)}px`;
+    menu.style.top = `${Math.min(e.clientY - r.top, r.height - 40)}px`;
+    menu.appendChild(el('div', 'pipe-type-menu-title', 'Add a card'));
+    let group = null;
+    for (const t of cfg.types) {
+      if (t.group !== group) {
+        group = t.group;
+        if (group) menu.appendChild(el('div', 'pipe-type-menu-group', group));
+      }
+      const item = el('div', 'group-panel-item', t.name);
+      item.onclick = () => { close(); pick(t.id); };
+      menu.appendChild(item);
+    }
+    const close = () => { menu.remove(); document.removeEventListener('pointerdown', outside, true); };
+    const outside = ev => { if (!menu.contains(ev.target)) close(); };
+    canvasWrap.appendChild(menu);
+    setTimeout(() => document.addEventListener('pointerdown', outside, true), 0);
+    const bottom = menu.getBoundingClientRect().bottom - r.bottom;
+    if (bottom > 0) menu.style.top = `${Math.max(0, parseFloat(menu.style.top) - bottom)}px`;
+  };
   // The card (or Done) under the pointer: dropping anywhere on a card connects to it.
   const targetAt = e => {
     const hit = document.elementFromPoint(e.clientX, e.clientY);
@@ -481,6 +541,8 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
     const failMarker = svgEl('marker', { id: 'pipe-arrow-fail', viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse' });
     failMarker.appendChild(svgEl('path', { d: 'M0,0 L10,5 L0,10 z', class: 'pipe-arrowhead-fail' }));
     defs.appendChild(failMarker);
+    const world = svgEl('g', { transform: `translate(${origin.x},${origin.y})` });
+    svg.appendChild(world);
     const edgeGroup = (edge, d, fail) => {
       const g = svgEl('g', { class: `pipe-edge${fail ? ' fail' : ''}` });
       const hit = svgEl('path', { d, class: 'pipe-line-hit' });
@@ -494,21 +556,35 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
         if (fail) render();
         else { drawLines(); check(); }
       };
-      svg.appendChild(g);
+      world.appendChild(g);
       return g;
     };
     // A connection that would run through a card on its way (one that skips
     // a column, say) goes over the cards instead, each in its own lane.
     let lane = 0;
-    const top = cfg.nodes.length ? Math.min(...cfg.nodes.map(n => n.y)) : 110;
+    const inSpan = (x1, x2) => cfg.nodes.filter(n => n.x < Math.max(x1, x2) + 20 && n.x + PIPE_NODE_W > Math.min(x1, x2) - 20);
+    const crosses = (d, skip) => {
+      const rects = cfg.nodes.filter(n => !skip.includes(n.id)).map(n => ({ l: n.x - 6, r: n.x + PIPE_NODE_W + 6, t: n.y - 6, b: n.y + heightOf(n.id) + 6 }));
+      if (!rects.length) return false;
+      const probe = svgEl('path', { d });
+      svg.appendChild(probe);
+      const len = probe.getTotalLength();
+      const steps = Math.ceil(len / 10);
+      let hit = false;
+      for (let i = 0; i <= steps && !hit; i++) {
+        const q = probe.getPointAtLength(len * i / steps);
+        hit = rects.some(r => q.x > r.l && q.x < r.r && q.y > r.t && q.y < r.b);
+      }
+      probe.remove();
+      return hit;
+    };
     for (const edge of cfg.edges.filter(e => !P.isFail(e))) {
       const a = portPoint(edge.from, 'out');
       const b = portPoint(edge.to, 'in');
-      const blocked = cfg.nodes.some(n => n.id !== edge.from && n.id !== edge.to
-        && n.x > Math.min(a.x, b.x) - 4 && n.x + PIPE_NODE_W < Math.max(a.x, b.x) + 4
-        && Math.max(a.y, b.y) > n.y - 6 && Math.min(a.y, b.y) < n.y + heightOf(n.id) + 6);
-      if (!blocked || b.x <= a.x) { edgeGroup(edge, curve(a, b), false); continue; }
-      const y = top - 26 - lane++ * 14;
+      const d = curve(a, b);
+      if (b.x <= a.x || !crosses(d, [edge.from, edge.to])) { edgeGroup(edge, d, false); continue; }
+      const over = inSpan(a.x, b.x);
+      const y = (over.length ? Math.min(...over.map(n => n.y)) : a.y) - 26 - lane++ * 14;
       const r = 14;
       edgeGroup(edge, `M${a.x},${a.y} C${a.x + 24},${a.y} ${a.x + 24},${y} ${a.x + 24 + r},${y} L${b.x - 24 - r},${y} C${b.x - 24},${y} ${b.x - 24},${b.y} ${b.x},${b.y}`, false);
     }
@@ -517,16 +593,17 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
     cfg.edges.filter(P.isFail).forEach((edge, i) => {
       const from = portPoint(edge.from, 'fail');
       const to = portPoint(edge.to, 'back');
-      const low = layoutNow.bottom + 26 + i * 16;
       const r = 14;
       const dir = to.x < from.x ? -1 : 1;
       // A card under the dot (a column of several): go down the gap right
       // of the column instead of through it.
       const gate = nodeOf(edge.from);
       const under = cfg.nodes.some(n => n.id !== gate.id && n.y > gate.y && n.x < from.x + 8 && n.x + PIPE_NODE_W > from.x - 8);
+      const gx = gate.x + PIPE_NODE_W + 30 + i * 6;
+      const xs = under ? [from.x, to.x, gx] : [from.x, to.x];
+      const low = Math.max(...inSpan(Math.min(...xs), Math.max(...xs)).map(n => n.y + heightOf(n.id))) + 26 + i * 16;
       const d = under
         ? (() => {
-          const gx = gate.x + PIPE_NODE_W + 30 + i * 6;
           const y1 = from.y + 18;
           return `M${from.x},${from.y + 7} L${from.x},${y1 - r} Q${from.x},${y1} ${from.x + r},${y1} L${gx - r},${y1} Q${gx},${y1} ${gx},${y1 + r} L${gx},${low - r} Q${gx},${low} ${gx - r},${low} L${to.x - dir * r},${low} Q${to.x},${low} ${to.x},${low - r} L${to.x},${to.y}`;
         })()
@@ -539,20 +616,104 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
   };
 
   // Moves everything to where layout() says, then redraws the lines.
+  const bounds = () => {
+    const { task, done, height } = layoutNow;
+    const top = Math.min(task.y, done.y, ...cfg.nodes.map(n => n.y)) - 60;
+    return { left: task.x, right: done.x + PIPE_TERM_W, top, bottom: height };
+  };
   const place = () => {
     layoutNow = layout();
-    const { task, done, width, height } = layoutNow;
-    surface.style.width = `${width}px`;
-    surface.style.height = `${height}px`;
-    svg.setAttribute('width', width);
-    svg.setAttribute('height', height);
+    const { task, done, height } = layoutNow;
+    if (!origin) {
+      const b = bounds();
+      origin = { x: Math.round(PIPE_WORLD_W / 2 - (b.left + b.right) / 2), y: Math.round(PIPE_WORLD_H / 2 - (b.top + b.bottom) / 2) };
+      frame = true;
+    }
+    surface.style.width = `${PIPE_WORLD_W}px`;
+    surface.style.height = `${PIPE_WORLD_H}px`;
+    surface.style.transform = `scale(${pipeZoom})`;
+    sizer.style.width = `${Math.ceil(PIPE_WORLD_W * pipeZoom)}px`;
+    sizer.style.height = `${Math.ceil(PIPE_WORLD_H * pipeZoom)}px`;
+    scroller.style.height = `${height}px`;
+    svg.setAttribute('width', PIPE_WORLD_W);
+    svg.setAttribute('height', PIPE_WORLD_H);
     for (const [id, card] of cards) {
       const at = id === P.TASK ? task : id === P.DONE ? done : nodeOf(id);
-      card.style.left = `${at.x}px`;
-      card.style.top = `${at.y}px`;
+      card.style.left = `${at.x + origin.x}px`;
+      card.style.top = `${at.y + origin.y}px`;
     }
     drawLines();
   };
+  const showGraph = smooth => {
+    const b = bounds();
+    const w = (b.right - b.left) * pipeZoom, h = (b.bottom - b.top) * pipeZoom;
+    const left = (b.left + origin.x) * pipeZoom, top = (b.top + origin.y) * pipeZoom;
+    scroller.scrollTo({
+      left: w > scroller.clientWidth - 32 ? left - 16 : left - (scroller.clientWidth - w) / 2,
+      top: h > scroller.clientHeight - 32 ? top - 16 : top - (scroller.clientHeight - h) / 2,
+      behavior: smooth ? 'smooth' : 'auto',
+    });
+  };
+
+  // ---------- zoom and moving around ----------
+  const isBackground = e => e.target === surface || e.target === sizer || e.target === scroller;
+  const zoomAt = (factor, clientX, clientY) => {
+    const k = Math.min(2, Math.max(0.25, pipeZoom * factor));
+    if (k === pipeZoom) return;
+    const r = scroller.getBoundingClientRect();
+    const vx = clientX - r.left, vy = clientY - r.top;
+    const cx = (scroller.scrollLeft + vx) / pipeZoom, cy = (scroller.scrollTop + vy) / pipeZoom;
+    pipeZoom = k;
+    place();
+    scroller.scrollLeft = cx * k - vx;
+    scroller.scrollTop = cy * k - vy;
+  };
+  scroller.addEventListener('pointerdown', () => {
+    if (!scroller.contains(document.activeElement)) scroller.focus({ preventScroll: true });
+  }, true);
+  scroller.addEventListener('wheel', e => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
+  }, { passive: false });
+  scroller.addEventListener('dblclick', e => {
+    if (isBackground(e)) zoomAt(1 / pipeZoom, e.clientX, e.clientY);
+  });
+  scroller.addEventListener('keydown', e => {
+    if (e.target !== scroller) return;
+    const mod = e.metaKey || e.ctrlKey;
+    const node = selected && nodeOf(selected);
+    if (mod && e.key.toLowerCase() === 'c' && node) {
+      clipboard = { ...node };
+      e.preventDefault();
+    } else if (mod && e.key.toLowerCase() === 'v' && clipboard) {
+      const { id, x, y, ...rest } = clipboard;
+      clipboard = { ...clipboard, x: x + 40, y: y + 40 };
+      addNode(rest.type, x + 40, y + 40, rest);
+      e.preventDefault();
+    } else if ((e.key === 'Backspace' || e.key === 'Delete') && node) {
+      removeNode(node.id);
+      e.preventDefault();
+    }
+  });
+  scroller.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || !isBackground(e)) return;
+    select(null);
+    scroller.setPointerCapture(e.pointerId);
+    scroller.classList.add('panning');
+    const start = { x: e.clientX, y: e.clientY, left: scroller.scrollLeft, top: scroller.scrollTop };
+    const move = m => {
+      scroller.scrollLeft = start.left - (m.clientX - start.x);
+      scroller.scrollTop = start.top - (m.clientY - start.y);
+    };
+    const up = () => {
+      scroller.removeEventListener('pointermove', move);
+      scroller.removeEventListener('pointerup', up);
+      scroller.classList.remove('panning');
+    };
+    scroller.addEventListener('pointermove', move);
+    scroller.addEventListener('pointerup', up);
+  });
 
   // ---------- problems ----------
   const check = () => {
@@ -654,6 +815,14 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
   const tidy = () => {
     const targets = tidyTargets();
     const from = new Map(cfg.nodes.map(n => [n.id, { x: n.x, y: n.y }]));
+    const moveTo = at => { for (const n of cfg.nodes) { const p = at.get(n.id); if (p) { n.x = p.x; n.y = p.y; } } };
+    moveTo(targets);
+    layoutNow = layout();
+    const end = bounds();
+    scroller.style.height = `${layoutNow.height}px`;
+    moveTo(from);
+    const zoomFrom = pipeZoom;
+    const zoomTo = Math.min(1, Math.max(0.25, Math.min((scroller.clientWidth - 32) / (end.right - end.left), (scroller.clientHeight - 32) / (end.bottom - end.top))));
     const start = performance.now();
     const ease = t => 1 - Math.pow(1 - t, 3);
     window.uiSound?.('tick');
@@ -665,9 +834,10 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
         n.x = Math.round(a.x + (b.x - a.x) * ease(t));
         n.y = Math.round(a.y + (b.y - a.y) * ease(t));
       }
+      pipeZoom = zoomFrom + (zoomTo - zoomFrom) * ease(t);
       place();
+      showGraph(false);
       if (t < 1) requestAnimationFrame(step);
-      else scroller.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
     };
     requestAnimationFrame(step);
   };
@@ -681,9 +851,14 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
     cards.set(P.DONE, terminal(P.DONE, '✓ Done', 'What reaches Done is the result of the pipeline'));
     for (const n of cfg.nodes) cards.set(n.id, nodeCard(n));
     for (const [, card] of cards) surface.appendChild(card);
+    select(selected);
     place();
     // Card heights are known once they are on screen: the ✕ lines need them.
     requestAnimationFrame(place);
+    if (frame) {
+      frame = false;
+      requestAnimationFrame(() => showGraph(false));
+    }
     check();
     fillAdd();
   };
@@ -697,20 +872,18 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
   add.onchange = () => {
     const type = add.value;
     if (!type) return;
-    const id = newId('n', new Set(cfg.nodes.map(n => n.id)));
     // Right of the rightmost card, or under it when the row is long.
     const right = cfg.nodes.reduce((m, n) => (n.x > m.x ? n : m), { x: 0, y: 110 });
     const x = right.x ? right.x + PIPE_NODE_W + 34 : 200;
-    cfg.nodes.push({ id, type, count: 1, note: '', rounds: 3, ...(x > 1300 ? { x: 200, y: right.y + 200 } : { x, y: right.y }) });
-    window.uiSound?.('tick');
-    render();
-    requestAnimationFrame(() => cards.get(id)?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' }));
+    if (x > 1300) addNode(type, 200, right.y + 200);
+    else addNode(type, x, right.y);
   };
   start.onchange = () => {
     const id = start.value;
     start.value = '';
     if (!id) return;
     cfg = { ...cfg, ...P.template(id) };
+    origin = null;
     window.uiSound?.('tick');
     render();
     renderTypes();
@@ -718,6 +891,7 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
   reset.onclick = () => {
     // The types as they came, and this profile's graph as the General one.
     cfg = { types: P.defaults().types, ...P.template('default') };
+    origin = null;
     window.uiSound?.('tick');
     render();
     renderTypes();
@@ -871,6 +1045,10 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
     measure();
   };
 
+  let costHistory = { id: null, list: null };
+  const median = xs => { const a = xs.filter(x => x != null).sort((x, y) => x - y); return a.length ? a[Math.floor((a.length - 1) / 2)] : null; };
+  const money = v => (v >= 100 ? `$${v.toFixed(0)}` : v >= 1 ? `$${v.toFixed(2)}` : `$${v.toFixed(3)}`);
+  const times = v => `${v >= 10 ? v.toFixed(0) : v.toFixed(1)}×`;
   const CATEGORY_NAMES = { system_prompt: 'System prompt + pipeline instructions', system_tools: 'Tools', memory_files: 'Instruction files', skills: 'Skills', custom_agents: 'Pipeline agents list', mcp_tools: 'MCP tools', messages: 'Message', slash_commands: 'Commands' };
   const stat = (label, value, hint, kind = '') => {
     const tile = el('div', `pipe-stat ${kind}`);
@@ -912,6 +1090,32 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
       stat(`Whole run, first time through (${e.agents + 1} agents${e.asks ? `, stops to ask you ${e.asks}×` : ''})`, approx + fmt(e.oneRound), 'Every agent\'s first request added up: the governor and each step × its count'),
       stat(e.rounds > 1 ? 'Whole run, sent back every time' : 'Whole run, nothing sent back', approx + fmt(e.worst), 'When every ✕ "not right" is taken as often as it may be: the steps from the one it goes back to, up to the one that sends it back, run again', e.rounds > 1 ? 'warn' : ''));
     estimateBox.appendChild(tiles);
+
+    if (costHistory.id !== current) {
+      costHistory = { id: current, list: null };
+      window.deck?.pipelineCosts?.(current).then(list => {
+        if (costHistory.id !== current) return;
+        costHistory.list = Array.isArray(list) ? list : [];
+        renderEstimate();
+      }).catch(() => { costHistory.list = []; });
+    }
+    const one = P.oneCall(cfg, m);
+    const runs = costHistory.list || [];
+    const medTokens = median(runs.map(r => r.tokens));
+    const medUsd = median(runs.map(r => r.usd));
+    const medWeek = median(runs.map(r => r.weekPct));
+    const compare = el('div', 'pipe-stats');
+    compare.append(
+      stat('One plain Opus call, this folder', `${one.measured ? '' : '≈'}${fmt(one.tokens)} · ${money(one.usd)}`, 'The same request to a plain agent instead of the pipeline: one request with the agent\'s context (the governor\'s without the pipeline\'s instructions and its agents list) and an answer of about 1.5k tokens, at API list prices (Opus: $4 per million in, $20 per million out). A plain agent that uses tools makes more requests than one.'),
+      stat('A run, at the very least', `≥ ${times(e.oneRound / one.tokens)}`, 'Whole run, first time through ÷ one plain call: one request per agent and nothing sent back. A real run makes many requests per agent, each carrying its conversation so far, so expect far more', 'warn'));
+    if (runs.length) {
+      const n = runs.length;
+      const range = `${fmt(Math.min(...runs.map(r => r.tokens)))} to ${fmt(Math.max(...runs.map(r => r.tokens)))} tokens, ${money(Math.min(...runs.map(r => r.usd)))} to ${money(Math.max(...runs.map(r => r.usd)))}`;
+      compare.append(stat(`Measured: ${n} past run${n === 1 ? '' : 's'} of this profile`, `${fmt(medTokens)} · ${money(medUsd)} ≈ ${times(medUsd > 0 && one.usd > 0 ? medUsd / one.usd : medTokens / one.tokens)}`, `The typical (median) run of this profile, sub-agents included, next to one plain Opus call. Runs: ${range}${runs.some(r => r.failed) ? `; ${runs.filter(r => r.failed).length} failed` : ''}`, 'main'));
+      if (medWeek != null) compare.append(stat('Of your week, typical run', medWeek < 0.05 ? '<0.1%' : `${medWeek >= 10 ? medWeek.toFixed(0) : medWeek.toFixed(1)}%`, 'From the usage windows Claude Code reports at the start and the end of each run'));
+    }
+    estimateBox.append(el('div', 'pipe-estimate-sub pipe-compare', 'Whole run vs one plain Opus call'), compare);
+    if (!runs.length) estimateBox.appendChild(el('div', 'settings-hint', costHistory.list ? 'No finished run of this profile yet: after one, what it took shows here, and under the pipeline graph in its chat.' : 'Looking up past runs…'));
 
     // The governor's context, by part, as a bar.
     if (m) {
@@ -996,6 +1200,10 @@ function pipelineEditor(saved, { folder = '', folders = [], home = '' } = {}) {
       return rest;
     },
     problems: () => P.validate(cfg),
+    show: () => {
+      origin = null;
+      render();
+    },
   };
 }
 

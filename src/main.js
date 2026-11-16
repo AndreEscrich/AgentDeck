@@ -26,6 +26,7 @@ const gameFolders = require('./gamefolders');
 const toast = require('./toast');
 const { ReviewPeer } = require('./reviewpeer');
 const pipeline = require('./pipeline');
+const { runCosts } = require('./pipelinerun');
 
 // The window loads images and videos from disk through media:// (see media.js).
 // "stream" lets video players read a file piece by piece.
@@ -554,6 +555,7 @@ app.whenReady().then(() => {
   ipcMain.handle('pipeline:measure', (_e, multiAgent, folder) => measurePipeline(getConfig(), multiAgent, folder));
   // Where a pipeline agent's run stands: a running agent's, or a saved session's last run.
   ipcMain.handle('pipeline:state', (_e, agentId, sessionId) => claudeAgents.pipelineState(agentId) || pipelineSnapshot(pipelineRunsDir(), String(sessionId || '')));
+  ipcMain.handle('pipeline:costs', (_e, profileId) => (pipelineRunsDir() ? runCosts(pipelineRunsDir(), String(profileId || '')) : []));
   ipcMain.handle('agent:send', (_e, id, text, images) => agents.sendMessage(id, text, images));
   ipcMain.handle('agent:setModel', (_e, id, choice) => agents.setModel(id, choice));
   let models = null;

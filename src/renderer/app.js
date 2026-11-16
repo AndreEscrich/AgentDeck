@@ -5193,8 +5193,17 @@ window.deck.onPermissionCancel((id, requestId) => {
   state.agents.get(id)?.transcript.cancelPermission(requestId);
 });
 
+window.pipelineConfig = () => state.config.multiAgent;
+
 // A pipeline agent's run changed: its steps beside the chat (pipelineprogress.js).
-window.deck.onPipeline((id, snap) => state.agents.get(id)?.transcript?.pipe?.setState(snap));
+window.deck.onPipeline((id, snap) => {
+  const a = state.agents.get(id);
+  if (!a?.transcript?.pipe) return;
+  const was = a.transcript.pipe.engine?.status;
+  a.transcript.pipe.setState(snap);
+  const over = s => s === 'done' || s === 'stopped';
+  if (was && !over(was) && over(snap.status)) a.transcript.note(`${snap.failed ? 'The pipeline run failed' : 'The pipeline run is done'}. From here the chat goes on as a normal one. To run the pipeline again, ask for it by name.`);
+});
 
 window.deck.onSession((id, sessionId) => {
   const a = state.agents.get(id);

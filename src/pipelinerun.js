@@ -132,6 +132,7 @@ class PipelineEngine {
     this.onChange = onChange;
     this.git = git;
     this.run = null;
+    this.limits = null;
     this.sessionId = null;
     this.lastPrompt = '';
     this.blockedStop = false;
@@ -199,6 +200,8 @@ class PipelineEngine {
   step(id) { return this.run.steps[id]; }
   label(id) { return id === TASK ? 'the task' : id === DONE ? 'Done' : `step ${id} (${this.node(id)?.label || '?'})`; }
   active() { return !!this.run && (this.run.status === 'running' || this.run.status === 'paused'); }
+  over() { return !!this.run && (this.run.status === 'done' || this.run.status === 'stopped'); }
+  wantsPipeline() { return /\bpipeline\b/i.test(this.lastPrompt); }
 
   inputsDone(n) {
     return n.inputs.every(i => i === TASK || FINISHED.has(this.step(i)?.status));
@@ -281,6 +284,7 @@ class PipelineEngine {
     this.run = {
       version: 1, id, sessionId: this.sessionId, profileId: plan.profileId, profileName: plan.profileName, createdAt: Date.now(),
       plan, task: String(task || ''), status: 'running', steps, rounds: {}, sendBack: null, issues: [], calls: {},
+      cost: { turns: 0, usd: 0, tokens: { input: 0, output: 0, read: 0, write: 0 }, models: {}, week: windowAt(this.limits, 'seven_day'), fiveHour: windowAt(this.limits, 'five_hour') },
     };
     fs.mkdirSync(this.dir(), { recursive: true });
     fs.writeFileSync(path.join(this.dir(), 'task.md'), `# The task\n\n${this.run.task || '(See the conversation: the user\'s last message.)'}\n`);
@@ -360,6 +364,7 @@ class PipelineEngine {
     // Agents that are not steps (a quick helper of the governor's) are its own business.
     if (!this.isStepAgent(type)) return {};
     const claim = await this.claim(type, `${input.description || ''}`, toolId);
+    if (claim.helper) return {};
     if (claim.deny) return deny(`${NOTE} ${claim.deny}`);
     return allow({ ...input, prompt: `${input.prompt || ''}${claim.addendum}`, run_in_background: false, ...(claim.isolate ? { isolation: 'worktree' } : {}) });
   }
@@ -367,6 +372,7 @@ class PipelineEngine {
   // Which step a call of `type` is, whether it may start, and what its
   // prompt gets: { deny } or { node, addendum, isolate }.
   async claim(type, description, toolId) {
+    if (this.over() && !this.wantsPipeline()) return { helper: true };
     const wanted = /\bstep\s+([\w-]+)/i.exec(description)?.[1];
     const pick = plan => {
       const all = plan.nodes.filter(n => n.agent === type);
@@ -672,7 +678,7 @@ class PipelineEngine {
 
   finalNote() {
     const issues = this.run.issues;
-    return `Every step is done${issues.length ? `, with ${issues.length} problem${issues.length === 1 ? '' : 's'} left open: ${issues.map(i => `${i.file ? `${i.file}${i.line ? `:${i.line}` : ''}: ` : ''}${i.problem}`).join('; ')}` : ''}. The run's files are in ${this.dir()}. Write your final message: what was done, what the reviews said, what is left open.`;
+    return `Every step is done${issues.length ? `, with ${issues.length} problem${issues.length === 1 ? '' : 's'} left open: ${issues.map(i => `${i.file ? `${i.file}${i.line ? `:${i.line}` : ''}: ` : ''}${i.problem}`).join('; ')}` : ''}. The run's files are in ${this.dir()}. Write your final message: what was done, what the reviews said, what is left open. From the user's next message on, the conversation goes on as a normal chat without the pipeline, unless they ask for the pipeline by name.`;
   }
 
   async dropWorktree(call) {
@@ -687,6 +693,14 @@ class PipelineEngine {
     this.lastPrompt = String(prompt || '');
     this.blockedStop = false;
     this.promptSinceStep = true;
+    if (this.over()) {
+      return context(`${NOTE} the run of the ${this.run.profileName || 'pipeline'} pipeline is ${this.run.failed ? 'over: it failed' : 'done'}; its files are in ${this.dir()}. From here the conversation goes on as a normal chat: answer this message yourself, with your tools, without the pipeline's steps (its sub-agents may help you as plain helpers). ${this.wantsPipeline() ? 'The user names the pipeline: if they want it run again, start its first step; that starts a new run, as a new task.' : 'The pipeline runs again only when the user asks for it by name.'}`, 'UserPromptSubmit');
+    }
+    if (!this.run) {
+      const plan = this.currentPlan();
+      const starts = (plan?.first || []).map(id => plan.nodes.find(n => n.id === id)).filter(n => n?.agent).map(n => `step ${n.id} (${n.label}, subagent_type "${n.agent}")`);
+      return context(`${NOTE} no run of the ${plan?.profileName || 'pipeline'} pipeline has started. This message is the task: start the pipeline's first step${starts.length ? ` (${starts.join(' or ')})` : ''} even if it is phrased as a question, unless it only asks about the pipeline itself.`, 'UserPromptSubmit');
+    }
     if (!this.active()) return {};
     const waiting = this.run.plan.nodes.find(n => n.kind === 'ask' && this.step(n.id).status === 'waiting');
     if (waiting && !this.run.askPending) return context(this.askAnswered(waiting.id, `## The user's answer\n\n${this.lastPrompt}\n`), 'UserPromptSubmit');
@@ -732,10 +746,10 @@ class PipelineEngine {
 
   // The governor's turn ended (an answer, an error or Esc): a step whose
   // answer never came starts again in the next turn.
-  turnEnded() {
+  turnEnded({ error = false, transient = false, result = null } = {}) {
     this.blockedStop = false;
     if (!this.run) return;
-    let changed = false;
+    let changed = this.addCost(result);
     for (const [id, call] of Object.entries(this.run.calls)) {
       if (call.ask || call.agentId || call.self) continue;
       delete this.run.calls[id];
@@ -745,11 +759,47 @@ class PipelineEngine {
       if (call.isolate) this.batch && (this.batch.open -= 1);
       changed = true;
     }
-    if (this.run.status === 'running' && !this.runningIds().length && this.next().length) {
+    const asking = this.run.plan.nodes.some(n => this.step(n.id).status === 'waiting');
+    if (error && !transient && this.active() && !asking) {
+      this.run.status = 'stopped';
+      this.run.failed = true;
+      changed = true;
+    } else if (this.run.status === 'running' && !this.runningIds().length && this.next().length) {
       this.run.status = 'paused';
       changed = true;
     }
     if (changed) this.save();
+  }
+
+  // ---------- what the run costs ----------
+
+  rateLimit(info) {
+    this.limits = info;
+    const cost = this.run?.cost;
+    if (!cost || cost.closed) return;
+    for (const [key, name] of [['week', 'seven_day'], ['fiveHour', 'five_hour']]) {
+      const now = windowAt(info, name);
+      if (!now) continue;
+      if (!cost[key]) cost[key] = now;
+      else cost[key] = { ...cost[key], end: now.end, endResets: now.endResets };
+    }
+    this.save();
+  }
+
+  addCost(result) {
+    const cost = this.run.cost;
+    if (!cost || cost.closed || !result) return false;
+    const models = result.modelUsage || {};
+    for (const [model, u] of Object.entries(models)) {
+      const m = cost.models[model] || (cost.models[model] = { input: 0, output: 0, read: 0, write: 0, usd: 0 });
+      const add = { input: u.inputTokens || 0, output: u.outputTokens || 0, read: u.cacheReadInputTokens || 0, write: u.cacheCreationInputTokens || 0 };
+      for (const k of Object.keys(add)) { m[k] += add[k]; cost.tokens[k] += add[k]; }
+      m.usd += Number(u.costUSD) || 0;
+    }
+    cost.usd += Number(result.total_cost_usd) || Object.values(models).reduce((sum, u) => sum + (Number(u.costUSD) || 0), 0);
+    cost.turns++;
+    if (this.over()) cost.closed = true;
+    return true;
   }
 
   // ---------- steps the governor does itself ----------
@@ -871,7 +921,7 @@ class PipelineEngine {
         round: s.round, count: n.count, active: Math.max(0, s.started - s.finished), verdict: s.verdict, asked,
       };
     }
-    return { runId: r.id, profileId: r.profileId, profileName: r.profileName, status: r.status, folder: this.dir(), issues: r.issues.length, steps };
+    return { runId: r.id, profileId: r.profileId, profileName: r.profileName, status: r.status, failed: !!r.failed, folder: this.dir(), issues: r.issues.length, steps, cost: costSummary(r) };
   }
 }
 
@@ -904,6 +954,36 @@ const STEP_TOOL_DEFS = [
 
 const deny = reason => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } });
 const allow = updatedInput => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow', updatedInput } });
+const windowAt = (info, name) => {
+  const w = info?.unifiedWindows?.[name];
+  if (!w || typeof w.utilization !== 'number') return null;
+  return { start: w.utilization, end: w.utilization, startResets: w.resetsAt || null, endResets: w.resetsAt || null };
+};
+
+function costSummary(r) {
+  const c = r.cost;
+  if (!c || !c.turns) return null;
+  const pct = w => (w && w.startResets === w.endResets && w.end >= w.start ? (w.end - w.start) * 100 : null);
+  const tokens = c.tokens.input + c.tokens.output + c.tokens.read + c.tokens.write;
+  return { turns: c.turns, usd: c.usd, tokens, parts: c.tokens, models: c.models, weekPct: pct(c.week), fiveHourPct: pct(c.fiveHour), closed: !!c.closed };
+}
+
+function runCosts(runsDir, profileId, limit = 20) {
+  const out = [];
+  let ids = [];
+  try { ids = fs.readdirSync(runsDir).filter(id => /^[\w-]{8,64}$/.test(id)); } catch { return out; }
+  for (const id of ids) {
+    let state;
+    try { state = JSON.parse(fs.readFileSync(path.join(runsDir, id, 'state.json'), 'utf8')); } catch { continue; }
+    if (!state || state.profileId !== profileId || state.copiedFrom || !(state.status === 'done' || state.status === 'stopped')) continue;
+    const cost = costSummary(state);
+    if (!cost) continue;
+    const steps = Object.values(state.steps || {}).filter(s => s.status === 'done').length;
+    out.push({ runId: id, at: state.createdAt || 0, failed: !!state.failed, steps, ...cost });
+  }
+  return out.sort((a, b) => b.at - a.at).slice(0, limit);
+}
+
 const context = (text, event = 'PostToolUse') => (text ? { hookSpecificOutput: { hookEventName: event, additionalContext: text } } : {});
 
 // A session's last run, read only (a saved session in History).
@@ -916,4 +996,4 @@ function savedSnapshot(runsDir, sessionId) {
   return engine.snapshot();
 }
 
-module.exports = { PipelineEngine, RunStore, answerText, savedSnapshot };
+module.exports = { PipelineEngine, RunStore, answerText, savedSnapshot, runCosts };

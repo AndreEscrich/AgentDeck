@@ -310,12 +310,36 @@ function openSettings(config, { onSaved } = {}) {
     folders: typeof recentFolders === 'function' ? recentFolders() : [],
     home: config.home || '',
   });
-  const showMulti = () => {
-    pipeline.element.classList.toggle('off', !multiOn.checked);
-    pipeline.element.title = multiOn.checked ? '' : 'Turn on the multi-agent pipeline to use it';
+  const openPipeline = el('button', null, 'Edit the pipeline…');
+  openPipeline.type = 'button';
+  const multiRow = el('div', 'settings-inline settings-switch-row');
+  multiRow.append(multiOn, openPipeline);
+  let pipelineWin = null;
+  const closePipeline = () => {
+    pipelineWin?.remove();
+    pipelineWin = null;
   };
-  multiOn.addEventListener('change', showMulti);
-  showMulti();
+  openPipeline.onclick = e => {
+    e.preventDefault();
+    if (pipelineWin) return;
+    pipelineWin = el('div', 'pipeline-modal');
+    const win = el('div', 'pipeline-card');
+    const winHead = el('div', 'settings-head');
+    winHead.append(el('div', 'settings-title', 'Multi-agent pipeline'));
+    const winBody = el('div', 'settings-body pipeline-body');
+    winBody.appendChild(pipeline.element);
+    const winFoot = el('div', 'settings-foot');
+    const done = el('button', null, 'Done');
+    done.type = 'button';
+    done.onclick = closePipeline;
+    winFoot.append(el('span', 'settings-hint', 'Kept until you press Save in Settings'), done);
+    win.append(winHead, winBody, winFoot);
+    pipelineWin.appendChild(win);
+    pipelineWin.onclick = ev => { if (ev.target === pipelineWin) closePipeline(); };
+    overlay.appendChild(pipelineWin);
+    requestAnimationFrame(() => pipelineWin?.classList.add('show'));
+    pipeline.show();
+  };
 
   // Settings of a provider that is off are greyed out (see showProviders).
   const providerRows = { claude: [], codex: [] };
@@ -366,7 +390,8 @@ function openSettings(config, { onSaved } = {}) {
         claudeOnly(settingsField('Model', 'Auto picks Opus, Sonnet or Haiku for each task', model)),
         claudeOnly(settingsField('Auto model report', 'What Auto cost against running everything on Opus at medium effort', reportBtn)),
         claudeOnly(settingsField('Effort', 'Auto: with the Auto model, it picks the effort for each task too; with another model, the model\'s default', effort)),
-        claudeOnly(settingsField('Fast mode', 'Faster answers from the same model', fast))),
+        claudeOnly(settingsField('Fast mode', 'Faster answers from the same model', fast)),
+        claudeOnly(settingsField('Multi-agent pipeline', 'Adds a ⛓ Pipeline button under the message box. With it on, the new agent is a governor: it hands each step of the pipeline to its own agents (several at once where a card says so), recaps their work, fixes what is missing between steps, and has the reviewer send the result back until it is right. Off: every agent is a normal one', multiRow))),
       section('Codex',
         settingsField('Use Codex', 'OpenAI\'s Codex CLI, with your ChatGPT login (codex login in a terminal). Its agents read the project\'s CLAUDE.md and your global one', codexOn),
         codexOnly(settingsField('Model', 'Auto picks Sol, Terra or Luna for each task. Each one is its newest version; Astra is for exceptions', codexModel)),
@@ -388,10 +413,6 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('Sounds', 'For everything you and the agents do', sounds),
       settingsField('Voice language', `The language you speak to the microphone button next to Send (${IS_MAC ? '⌘⇧Space' : 'Ctrl+Shift+Space'}). ${IS_MAC ? 'macOS' : 'Windows'} turns it into text itself, so nothing is downloaded`, voiceLanguage),
       settingsField('Update pop-up', 'A card on the Hub asks you to update when a new version is out. Off: only the Update button next to the version in the title bar shows it', updatePopup))]],
-    ['multiagent', 'Multi-agent', [
-      section(null,
-        settingsField('Multi-agent pipeline', 'Adds a ⛓ Pipeline button under the message box. With it on, the new agent is a governor: it hands each step below to its own agents (several at once where a card says so), recaps their work, fixes what is missing between steps, and has the reviewer send the result back until it is right. Claude only. Off: every agent is a normal one', multiOn)),
-      section('Pipeline', pipeline.element)]],
     ['branches', 'Branch diff', [section(null,
       settingsField('Projects', `The Branches view lists ${(config.svnServer || 'svn+ssh://svn@tactile.build').replace(/\/+$/, '')}/<project>/branches for each one. Separate them with commas. Empty: every project someone committed to in the last year`, svnProjects),
       settingsField('Branch names', 'Only branches whose names start with one of these. Separate them with commas. Empty: every branch', svnBranchFilter),
@@ -564,6 +585,7 @@ function openSettings(config, { onSaved } = {}) {
   const onKey = e => {
     // A card over Settings (signing in, Switch's question) has the keys.
     if (document.querySelector('.quit-modal')) return;
+    if (e.key === 'Escape' && pipelineWin) { e.preventDefault(); e.stopImmediatePropagation(); closePipeline(); return; }
     if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); }
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopImmediatePropagation(); submit(); }
   };

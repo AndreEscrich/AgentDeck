@@ -847,7 +847,8 @@
       '- After each step, write a short recap for the user, as one line that starts with "Milestone:" (for example "Milestone: 2 of 4, plan ready: 5 changes in 3 files").',
       '- Check every output before passing it on. When something is missing, wrong or contradicts an earlier step, fix it yourself if it is small, or send it back to the same sub-agent with what to change. When parallel agents disagree, decide and say why.',
       '- When work goes back to an earlier step, say so in a Milestone line with the round (for example "Milestone: review round 2 of 3, back to the implementer: 2 blocking problems").',
-      '- When the user\'s message is only a question, you may answer it without the pipeline. Once you start the first step, every step runs: Agent Hub does not let you skip one. Starting a first step again starts the pipeline over, as a new task.',
+      '- The user\'s first message is the task: run the pipeline for it, even when it is phrased as a question or sounds small. Only a later message that is plainly a question about the run itself may be answered without the pipeline. Once you start the first step, every step runs: Agent Hub does not let you skip one.',
+      '- The pipeline runs once, for the task the user gave you. When its run is done or has failed, the conversation goes on as a normal chat: answer the user yourself, with your tools, without the pipeline\'s steps. It runs again only when the user asks for the pipeline by name: then starting its first step starts a new run, as a new task.',
       '- When you stop before the pipeline is done, Agent Hub reminds you once what is next; stopping again pauses the run, and it goes on from there in a later turn.',
       '- If a sub-agent asks the user something, ask the user yourself and pass the answer on (stop to ask: the run pauses and goes on after their answer).',
       '- Your final message: what was done, what the reviews said, what is left open. Follow the rest of your instructions for it.',
@@ -1021,10 +1022,20 @@
     return { measured: !!m, governor, memory, mcp, perType, steps, oneRound, worst: oneRound + again, rounds, agents, asks };
   }
 
+  const OPUS_PRICE = { input: 4, output: 20 };
+  const ONE_CALL_ANSWER = 1500;
+  function oneCall(cfg, measured = null) {
+    const m = measured && !measured.error ? measured : null;
+    const pipelineParts = m ? tokensOf(governorPrompt(cfg)) + (m.governor.categories.find(c => c.id === 'custom_agents')?.tokens || 0) : 0;
+    const context = m ? Math.max(3000, m.governor.total - pipelineParts) : FALLBACK_GOVERNOR - 8000;
+    const tokens = context + ONE_CALL_ANSWER;
+    return { measured: !!m, context, tokens, usd: (context * OPUS_PRICE.input + ONE_CALL_ANSWER * OPUS_PRICE.output) / 1e6 };
+  }
+
   const formatTokens = n => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(n >= 1e4 ? 0 : 1)}k` : String(Math.round(n)));
 
   const cleanMcp = list => cleanList(list, MCP_ENTRY);
   const cleanSkills = list => cleanList(list, SKILL_NAME);
 
-  return { STEP_SERVER, STEP_TOOLS, byGovernor, steps, plan, parseVerdict, VERDICT_FORMAT, pick, PROFILE_ID, TASK, DONE, TOOL_SETS, TOOL_NAMES, CONNECTORS, TEMPLATES, template, mcpTools, connectorsOf, cleanMcp, cleanSkills, MODELS, EFFORTS, BUILTIN_TYPES, estimate, formatTokens, tokensOf, defaults, normalize, validate, stages, subagents, governorPrompt, summary, slug, isFail };
+  return { STEP_SERVER, STEP_TOOLS, byGovernor, steps, plan, parseVerdict, VERDICT_FORMAT, pick, PROFILE_ID, TASK, DONE, TOOL_SETS, TOOL_NAMES, CONNECTORS, TEMPLATES, template, mcpTools, connectorsOf, cleanMcp, cleanSkills, MODELS, EFFORTS, BUILTIN_TYPES, estimate, formatTokens, tokensOf, defaults, normalize, validate, stages, subagents, governorPrompt, summary, slug, isFail, oneCall };
 }));
