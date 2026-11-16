@@ -407,6 +407,102 @@ function pmCard(href, key) {
   return a;
 }
 
+// ---------- Tactile PM task keys in plain text ----------
+
+// An agent often names a PM task by its key alone ("Story M2S-3460 is
+// created"), without a link. A key looks the same as a Jira key, so a key
+// becomes a PM card only when its project prefix is known to be a PM
+// project: the app learns the prefixes from the PM tools' input and results
+// (pm_list_projects names them all) and keeps them in local storage.
+const PM_TASK_KEY = /^[A-Z][A-Z0-9]{1,9}-\d+$/;
+const PM_PROJECT_KEY = /^[A-Z][A-Z0-9]{1,9}$/;
+const pmPrefixes = (() => {
+  try { return new Set(JSON.parse(localStorage.getItem('pmPrefixes') || '[]')); } catch { return new Set(); }
+})();
+function learnPmPrefix(prefix) {
+  if (!PM_PROJECT_KEY.test(prefix || '') || pmPrefixes.has(prefix)) return;
+  pmPrefixes.add(prefix);
+  try { localStorage.setItem('pmPrefixes', JSON.stringify([...pmPrefixes])); } catch { /* kept for this window */ }
+}
+
+function isPmTool(name) {
+  return /(^|__)pm_[a-z_]+$/i.test(name || '');
+}
+
+// PM shows a column id like "in-progress"; the card wants "In Progress".
+function pmColumnName(id) {
+  const known = { todo: 'To Do', 'to-do': 'To Do', 'in-progress': 'In Progress', 'in-review': 'In Review', done: 'Done', backlog: 'Backlog' };
+  if (!id) return '';
+  return known[id] || String(id).replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// After a PM tool call: learn the project prefixes it names, and hand the
+// tasks it returned (key, title, status, type) to the app's PM task list
+// (pmtasks.js), so their cards show without asking PM again.
+function learnFromPmTool(tool, content) {
+  if (!isPmTool(tool?.name)) return;
+  const input = tool.input || {};
+  learnPmPrefix(input.projectId);
+  const text = resultText(content);
+  let data;
+  try { data = JSON.parse(text); } catch { data = null; }
+  const tasks = [];
+  const visit = (node, depth) => {
+    if (!node || typeof node !== 'object' || depth > 4) return;
+    if (Array.isArray(node)) { for (const n of node) visit(n, depth + 1); return; }
+    if (typeof node.key === 'string') {
+      if (PM_PROJECT_KEY.test(node.key)) learnPmPrefix(node.key);
+      if (PM_TASK_KEY.test(node.key)) {
+        learnPmPrefix(node.key.split('-')[0]);
+        // A created task's result has no title; the call's input has it.
+        const created = /pm_create_(task|subtask)$/.test(tool.name) && depth === 0;
+        const title = node.title || (created ? input.title : '');
+        if (title) {
+          tasks.push({
+            key: node.key,
+            title,
+            status: node.resolvedStatusName || pmColumnName(node.columnId),
+            type: node.type || (created ? input.type || (/subtask$/.test(tool.name) ? 'Subtask' : '') : ''),
+          });
+        }
+      }
+    }
+    for (const v of Object.values(node)) if (v && typeof v === 'object') visit(v, depth + 1);
+  };
+  if (data) visit(data, 0);
+  else for (const m of text.matchAll(/"key"\s*:\s*"([A-Z][A-Z0-9]{1,9})(?:-\d+)?"/g)) learnPmPrefix(m[1]);
+  if (tasks.length) window.deck?.pmSeed?.(tasks);
+}
+
+// Keys with a known PM prefix in the message's text become links to the
+// task; decorateLinks then draws them as PM cards. Code, links and buttons
+// keep their text.
+function linkPmKeys(root) {
+  if (!pmPrefixes.size) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: n => (n.parentElement?.closest('a, code, pre, button, .jira-card') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+  });
+  const nodes = [];
+  while (walker.nextNode()) if (/[A-Z][A-Z0-9]{1,9}-\d/.test(walker.currentNode.nodeValue)) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    const text = node.nodeValue;
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    for (const m of text.matchAll(/\b([A-Z][A-Z0-9]{1,9})-(\d+)\b/g)) {
+      if (!pmPrefixes.has(m[1])) continue;
+      frag.append(text.slice(last, m.index));
+      const a = document.createElement('a');
+      a.href = `https://pm.tactilews.com/pm/items/${m[0]}`;
+      a.textContent = m[0];
+      frag.append(a);
+      last = m.index + m[0].length;
+    }
+    if (!last) continue;
+    frag.append(text.slice(last));
+    node.replaceWith(frag);
+  }
+}
+
 // ---------- Google Sheets, Docs, Slides and Forms links ----------
 
 // What a docs.google.com link points to: { kind, label, color, where }, or
@@ -911,6 +1007,7 @@ function markdown(text, cwd) {
     const files = parsePastedDiff(code.textContent);
     if (files.length) code.parentElement.replaceWith(changesCard(files, cwd, { title: 'Diff in the answer' }));
   }
+  linkPmKeys(div);
   decorateLinks(div);
   markFileLinks(div, cwd);
   addJsonCopy(div);
@@ -2350,6 +2447,7 @@ class Transcript {
         tool.card.querySelector('.tool-arg').textContent = `Screenshot ${n} · ${tool.card.querySelector('.tool-arg').textContent}`;
       }
     }
+    if (!block.is_error) learnFromPmTool(tool, block.content);
     // A tool that makes a file on its own (a Unity recorder, a screenshot
     // tool) often only names the file in its result. Shell output is left
     // out: an `ls` there would list other agents' files too.

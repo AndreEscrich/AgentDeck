@@ -399,6 +399,7 @@ app.whenReady().then(() => {
   // Tactile PM task cards (pmtasks.js), read with the PM connector by Haiku.
   pmTasks.setup(path.join(app.getPath('userData'), 'pm-tasks.json'), keys => readPmTasks(getConfig(), keys));
   ipcMain.handle('pm:task', (_e, key) => pmTasks.task(key));
+  ipcMain.handle('pm:seed', (_e, list) => pmTasks.seed(list));
   ipcMain.handle('gdoc:title', (_e, url) => require('./gdocs').title(url));
   ipcMain.handle('github:lookup', (_e, what) => require('./github').lookup(what));
   ipcMain.handle('jira:details', (_e, key) => jira.details(key));

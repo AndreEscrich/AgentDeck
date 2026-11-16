@@ -102,4 +102,21 @@ async function run() {
   if (queue.size) run();
 }
 
-module.exports = { setup, task, category };
+// Tasks an agent's own PM tool calls returned (created, searched, read): kept
+// like an answer from Haiku, so their cards show at once without asking.
+// list: [{ key, title, status, type }]
+function seed(list) {
+  if (!Array.isArray(list) || !file) return;
+  load();
+  let changed = false;
+  for (const t of list) {
+    if (!t || typeof t.key !== 'string' || !KEY.test(t.key) || typeof t.title !== 'string' || !t.title) continue;
+    const status = String(t.status || saved[t.key]?.status || '');
+    saved[t.key] = { at: Date.now(), title: t.title, status, category: category(status), type: String(t.type || saved[t.key]?.type || '') };
+    failed.delete(t.key);
+    changed = true;
+  }
+  if (changed) store();
+}
+
+module.exports = { setup, task, category, seed };
