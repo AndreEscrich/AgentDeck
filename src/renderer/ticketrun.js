@@ -14,9 +14,12 @@
 // 4. Each worker posts a comment on its subtask in PM. Under each finished
 //    subtask, the chat has an Approve button that moves it to Done.
 //
-// The run lives in this window (not saved yet): every agent of a run is in
-// its own category, named after the ticket, so the Hub shows the run as one
-// panel, with the progress in its name.
+// The run lives in this window (not saved yet). Its agents go into the
+// category picked under the message box, like any new agent, and stand
+// together in a box of that Group's panel (hub.js runBox), with the ticket
+// and the run's progress in the box's header. The briefing starts as a fork
+// of the Group's latest finished agent (forkSourceFor in app.js), so the
+// Group's shared context reaches every agent of the run.
 
 const ticketRuns = (() => {
   const runs = new Map();   // run id -> run
@@ -86,23 +89,29 @@ const ticketRuns = (() => {
       flashComposerNote('Pick a folder for the ticket run first.');
       return;
     }
-    const category = addGroup(key);
+    // The file locks are Claude Code hooks (filelocks.js).
+    if (providerOf(startChoice(d.choice)) !== 'claude') {
+      flashComposerNote('Ticket runs need Claude: pick a Claude model with ⚙ first.');
+      return;
+    }
     const run = {
       id: crypto.randomUUID(),
-      key, title: '', cwd: d.folder, groupId: category.id,
+      key, title: '', cwd: d.folder, groupId: d.groupId || null,
       choice: d.choice, mode: d.mode,
       status: 'briefing', briefing: null,
       subtasks: [],            // { key, title, description, notes, state: queued | working | review | approved | failed, agentId }
       queue: [],
     };
     runs.set(run.id, run);
-    await startAgent({
+    const lane = { runId: run.id, role: 'briefing' };
+    const started = startAgent({
       cwd: run.cwd, prompt: briefingPrompt(key, text), permissionMode: run.mode, choice: run.choice, groupId: run.groupId,
-      lane: { runId: run.id, role: 'briefing' },
+      forkFrom: forkSourceFor(run.cwd, run.groupId, 'claude'), lane,
     });
-    run.briefing = [...state.agents.values()].find(a => a.lane?.runId === run.id && a.lane.role === 'briefing') || null;
+    run.briefing = [...state.agents.values()].find(a => a.lane === lane) || null;
     if (run.briefing) run.briefing.title = `${key} · briefing`;
     refreshHub();
+    await started;
   }
 
   const subOf = (run, agent) => run.subtasks.find(s => s.agentId === agent.id && s.state === 'working');
@@ -133,8 +142,6 @@ const ticketRuns = (() => {
     run.title = plan.ticket?.title || '';
     run.subtasks = plan.subtasks.map(s => ({ ...s, state: 'queued', agentId: null }));
     run.queue = [...run.subtasks];
-    const category = state.groups.groups.find(g => g.id === run.groupId);
-    if (category && run.title) { category.name = `${run.key} ${run.title}`; saveGroups(); }
     const max = Math.max(1, Number(state.config.maxTicketAgents) || 5);
     const workers = Math.min(max, run.queue.length);
     run.status = 'running';
@@ -203,10 +210,14 @@ const ticketRuns = (() => {
     refreshHub();
   }
 
-  // The Hub panel's progress, for a run's category.
-  function progressOf(groupId) {
-    const run = [...runs.values()].find(r => r.groupId === groupId);
-    if (!run) return '';
+  // A run's box in the Hub (hub.js runBox): the ticket and the progress.
+  function infoOf(runId) {
+    const run = runs.get(runId);
+    if (!run) return null;
+    return { key: run.key, title: run.title, progress: progressOf(run) };
+  }
+
+  function progressOf(run) {
     if (run.status === 'briefing') return 'briefing…';
     const count = st => run.subtasks.filter(s => s.state === st).length;
     const parts = [`${count('approved') + count('review')}/${run.subtasks.length} done`];
@@ -224,8 +235,8 @@ const ticketRuns = (() => {
     const key = ['hub', 'new'].includes(kind) || !['agent', 'history', 'branches'].includes(kind) ? keyIn(document.getElementById('input').value) : null;
     button.classList.toggle('hidden', !key);
     if (key) {
-      button.textContent = `⑂ Split ${key} into agents`;
-      button.title = `One agent per subtask of ${key}, at most ${state.config.maxTicketAgents || 5} at once (Settings → Ticket runs)`;
+      button.textContent = `⑂ Split ${key}`;
+      button.title = `Instead of one agent: one agent per subtask of ${key}, at most ${state.config.maxTicketAgents || 5} at once (Settings → Ticket runs), in the category you picked`;
       button.dataset.key = key;
     }
   }
@@ -244,7 +255,7 @@ const ticketRuns = (() => {
     };
   }
 
-  return { keyIn, start, onResult, progressOf, renderButton, wire, parsePlan, runs };
+  return { keyIn, start, onResult, infoOf, renderButton, wire, parsePlan, runs };
 })();
 
 window.ticketRuns = ticketRuns;

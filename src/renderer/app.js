@@ -3119,9 +3119,9 @@ async function openUnity(cwd) {
   setTimeout(refreshUnity, r.action === 'opened' ? 8000 : 1500);
 }
 hub.onOpenUnity = openUnity;
-// A ticket run's panel shows its progress (ticketrun.js), and the ⑂ button
-// under the message box starts one.
-hub.sectionNote = ticketRuns.progressOf;
+// A ticket run's agents stand in a box of their panel, with the ticket and
+// the run's progress (ticketrun.js); the ⑂ button next to Send starts one.
+hub.runInfo = ticketRuns.infoOf;
 ticketRuns.wire();
 hub.onOpenTactileSvn = openTactileSvn;
 $('composer-tsvn').onclick = () => openTactileSvn($('composer-tsvn').dataset.cwd);

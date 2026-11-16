@@ -3391,7 +3391,18 @@ button.uml-peer-chip:hover { background: color-mix(in srgb, var(--chip, var(--ac
 .pp-panel.compact.open .pp-head { flex-direction: column; align-items: flex-start; gap: 1px; }
 
 /* Ticket runs (ticketrun.js): the ⑂ button and the Approve bar under a finished subtask */
-.composer-split { color: var(--accent); }
+/* The ⑂ Split button stands right of Send and looks like it. */
+.composer-split { white-space: nowrap; }
+/* A ticket run's agents in a box inside their panel (hub.js runBox). */
+.hub-run { display: flex; flex-direction: column; gap: 8px; min-width: 0; flex: 1 1 0; padding: 8px 10px 10px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.hub-run-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 12px; }
+.hub-run-key { flex-shrink: 0; font-weight: 700; color: var(--accent); letter-spacing: 0.02em; }
+.hub-run-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); }
+.hub-run-progress { flex-shrink: 0; color: var(--text-faint); }
+.hub-run-grid { display: flex; gap: 10px; align-items: stretch; min-width: 0; }
+.hub-run-grid .hub-tile { flex: 1 1 0; min-width: 0; max-width: 240px; }
 .ticket-approve { display: flex; align-items: center; gap: 12px; margin: 10px 0 4px; padding: 8px 12px;
   border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); font-size: 13px; }
 .ticket-approve-label { flex: 1; color: var(--text-dim); }

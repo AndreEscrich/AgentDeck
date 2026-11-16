@@ -910,6 +910,8 @@ class Hub {
     const seen = new Set();
     const counts = new Map();
     const firstAt = new Map();   // panel key -> place of its first agent
+    const seenRuns = new Set();  // ticket run boxes that have agents
+    for (const sec of this.sections.values()) for (const box of sec.runs?.values() || []) { box.tiles = 0; box.order = Infinity; }
     let order = 0;
     for (const agent of agents) {
       seen.add(agent.id);
@@ -923,7 +925,15 @@ class Hub {
       if (!firstAt.has(key)) firstAt.set(key, order);
       const sec = this.section(key, groupKey, agent.repo || '');
       if (!seenSections.has(sec)) { seenSections.add(sec); sec.cwd = agent.cwd; sec.root = agent.repoRoot || agent.repo || ''; }
-      const grid = sec.grid;
+      // A ticket run's agents (ticketrun.js) stand together in a box of the panel.
+      const runId = agent.lane?.runId || null;
+      if (runId) {
+        const box = this.runBox(sec, runId);
+        box.tiles++;
+        box.order = Math.min(box.order, order);
+        seenRuns.add(box);
+      }
+      const grid = runId ? this.runBox(sec, runId).grid : sec.grid;
       if (tile.parentNode !== grid) grid.appendChild(tile);
       if (entry.arrival) {
         const info = entry.arrival;
@@ -953,6 +963,24 @@ class Hub {
         this.tiles.delete(id);
       }
     }
+    // Ticket run boxes: their header, their place among the panel's tiles,
+    // and a width that grows with their tiles. A box without agents goes.
+    for (const sec of this.sections.values()) {
+      for (const [runId, box] of sec.runs || []) {
+        if (!seenRuns.has(box)) {
+          box.el.remove();
+          sec.runs.delete(runId);
+          continue;
+        }
+        const info = this.runInfo?.(runId) || {};
+        box.key.textContent = `⑂ ${info.key || 'Ticket'}`;
+        box.title.textContent = info.title || '';
+        box.progress.textContent = info.progress || '';
+        box.el.title = `${info.key || ''} ${info.title || ''}\nAgents of this ticket run: they work on its subtasks at the same time`.trim();
+        box.el.style.order = String(box.order);
+        box.el.style.flexGrow = String(box.tiles);
+      }
+    }
 
     // A panel is a Group: one Category plus one folder; its agents share
     // context. Panels you have dragged stand in the order you gave them
@@ -975,9 +1003,6 @@ class Hub {
       sec.count.textContent = String(n);
       const group = sec.groupKey ? groups.find(g => g.id === sec.groupKey) : null;
       sec.name.textContent = sec.groupKey ? group?.name || 'Category' : 'No category';
-      // A ticket run's progress (ticketrun.js), after its category's name.
-      const runNote = sec.groupKey ? this.sectionNote?.(sec.groupKey) : '';
-      if (runNote) sec.name.textContent += ` · ${runNote}`;
       // No category: a looser, open panel, because its agents do not share what they know.
       sec.el.classList.toggle('loose', !sec.groupKey);
       // Shared notes: only for a category; the number of notes when it has some.
@@ -1259,6 +1284,27 @@ class Hub {
     this.onPickGroup?.(next.groupKey || null, next.cwd);
     next.el.scrollIntoView({ block: 'nearest' });
     return true;
+  }
+
+  // The box of a ticket run inside a panel: a header with the ticket and the
+  // run's progress, and its agents' tiles in a row of their own.
+  runBox(sec, runId) {
+    sec.runs = sec.runs || new Map();
+    let box = sec.runs.get(runId);
+    if (!box) {
+      const el_ = el('div', 'hub-run');
+      const head = el('div', 'hub-run-head');
+      const key = el('span', 'hub-run-key');
+      const title = el('span', 'hub-run-title');
+      const progress = el('span', 'hub-run-progress');
+      head.append(key, title, progress);
+      const grid = el('div', 'hub-run-grid');
+      el_.append(head, grid);
+      sec.grid.appendChild(el_);
+      box = { el: el_, key, title, progress, grid, tiles: 0, order: Infinity };
+      sec.runs.set(runId, box);
+    }
+    return box;
   }
 
   // The tank drains, the tile tips over and shrinks with a puff of
