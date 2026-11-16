@@ -730,6 +730,20 @@ class Hub {
       }
       approve.disabled = laneState === 'approving';
     } else if (approve) approve.remove();
+    // A ticket run's worker: its subtask as a PM card under the title, which
+    // opens the subtask in PM (the tile itself still opens the agent).
+    const ticket = agent.lane?.role === 'worker' ? this.ticketOf?.(agent) : null;
+    let ticketCard = tile.querySelector(':scope .tile-ticket');
+    if (ticket && ticketCard?.dataset.key !== ticket.key) {
+      ticketCard?.remove();
+      ticketCard = el('div', 'tile-ticket');
+      ticketCard.dataset.key = ticket.key;
+      const card = pmCard('https://pm.tactilews.com/pm/items/' + ticket.key, ticket.key);
+      card.querySelector('.jira-summary').textContent = ticket.title;
+      card.title = `Open ${ticket.key} in Tactile PM (a subtask of ${ticket.parent})`;
+      ticketCard.appendChild(card);
+      parts.title.after(ticketCard);
+    } else if (!ticket && ticketCard) ticketCard.remove();
     // A ticket run's approved subtask: its tile gets smaller (ticketrun.js).
     tile.classList.toggle('lane-approved', !!agent.laneApproved);
     // Thinking (no tool running): slow bubbles that gather at the surface.

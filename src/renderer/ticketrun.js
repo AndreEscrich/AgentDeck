@@ -296,6 +296,18 @@ const ticketRuns = (() => {
   }
 
   // A run's box in the Hub (hub.js runBox): the ticket and the progress.
+  // The PM ticket an agent of a run works for: a worker's subtask (with its
+  // parent ticket), or the briefing's ticket. null for any other agent.
+  function ticketOf(agent) {
+    const run = agent?.lane && runs.get(agent.lane.runId);
+    if (!run) return null;
+    if (agent.lane.role === 'worker' && agent.lane.subtask) {
+      const sub = run.subtasks.find(s => s.key === agent.lane.subtask);
+      return { key: agent.lane.subtask, title: sub?.title || '', parent: run.key, parentTitle: run.title || '' };
+    }
+    return { key: run.key, title: run.title || '', parent: null, parentTitle: '' };
+  }
+
   function infoOf(runId) {
     const run = runs.get(runId);
     if (!run) return null;
@@ -343,7 +355,7 @@ const ticketRuns = (() => {
     };
   }
 
-  return { keyIn, start, onResult, infoOf, laneState, approve, renderButton, wire, parsePlan, runs };
+  return { keyIn, start, onResult, infoOf, ticketOf, laneState, approve, renderButton, wire, parsePlan, runs };
 })();
 
 window.ticketRuns = ticketRuns;

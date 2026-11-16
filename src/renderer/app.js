@@ -927,6 +927,7 @@ function show(kind, id) {
     // Its Changes card, when the app has one saved from before it restarted;
     // what its tasks changed since you last looked flies in.
     loadSession(a.view, a.sessionId, a.cwd, a.transcript);
+    renderChatTicket(a);
     playSessionWhenOpen(a);
     // Finished while you were not looking: show its output from the start.
     if (a.unread && a.status === 'idle' && !a.view.place?.away) revealLatest(a.view, a.transcript);
@@ -2192,6 +2193,28 @@ function headerTitle(a) {
 
 // category: the name of the category (for a saved session; an agent's
 // comes from the agent). It stands before the title, as on the Hub.
+// At the top of a ticket run agent's chat: the PM ticket its work is for
+// (a worker's subtask and the ticket it belongs to, or the briefing's
+// ticket), each a card that opens it in PM.
+function renderChatTicket(a) {
+  const ticket = ticketRuns.ticketOf(a);
+  let bar = a.view.querySelector(':scope > .chat-ticket');
+  const id = ticket ? `${ticket.key}|${ticket.parent}` : '';
+  if (bar?.dataset.id === id) return;
+  bar?.remove();
+  if (!ticket) return;
+  bar = el('div', 'chat-ticket');
+  bar.dataset.id = id;
+  const card = (key, title) => {
+    const c = pmCard('https://pm.tactilews.com/pm/items/' + key, key);
+    if (title) c.querySelector('.jira-summary').textContent = title;
+    return c;
+  };
+  bar.append(el('span', 'chat-ticket-label', ticket.parent ? 'Subtask' : 'Ticket'), card(ticket.key, ticket.title));
+  if (ticket.parent) bar.append(el('span', 'chat-ticket-label', 'of'), card(ticket.parent, ticket.parentTitle));
+  a.view.prepend(bar);
+}
+
 function setHeader(title, subtitle, agent, category = null) {
   const cat = $('view-category');
   const name = category || (agent ? findGroup(agent.groupId || groupOf(agent.sessionId))?.name : null);
@@ -3173,6 +3196,7 @@ hub.onOpenUnity = openUnity;
 hub.runInfo = ticketRuns.infoOf;
 // A finished subtask's tile: "Waiting approval" and its Approve button.
 hub.laneState = ticketRuns.laneState;
+hub.ticketOf = ticketRuns.ticketOf;
 hub.onApprove = ticketRuns.approve;
 ticketRuns.wire();
 hub.onOpenTactileSvn = openTactileSvn;

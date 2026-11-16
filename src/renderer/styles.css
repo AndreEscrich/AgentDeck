@@ -1719,6 +1719,15 @@ audio.chat-media { width: 100%; max-width: 420px; height: 40px; background: tran
   padding: 1px 6px; border-radius: 4px; background: #3a3d4e; color: #c9ccd8; }
 .jira-status[data-category="indeterminate"] { background: #0c3a75; color: #8fb8f6; }
 .jira-status[data-category="done"] { background: #1c4d33; color: #7ee2a8; }
+/* A ticket run's worker: its subtask on the Hub tile (hub.js), and the
+   ticket at the top of its chat (renderChatTicket). */
+.tile-ticket { display: flex; min-width: 0; margin: 2px 0 0; }
+.tile-ticket .jira-card { font-size: 12px; padding: 2px 8px 2px 6px; margin: 0; min-width: 0; }
+/* The tile's title already names the subtask: the card shows its key and PM status. */
+.tile-ticket .jira-summary { display: none; }
+.chat-ticket { max-width: var(--chat-width); margin: 0 auto; padding: 16px 24px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.chat-ticket-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); }
+.chat-ticket .jira-card { min-width: 0; max-width: 100%; }
 /* Tactile PM task cards (pmCard): Jira's card in PM's orange. */
 .pm-card:hover { border-color: #f08a3c; }
 .pm-card .jira-key { color: #f5a26a; }
