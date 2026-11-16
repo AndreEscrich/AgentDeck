@@ -316,6 +316,47 @@ function openSettings(config, { onSaved } = {}) {
   const extraArgs = settingsText((config.extraArgs || []).join('\n'), 'One flag or value per line, for example\n--add-dir\nC:\\Some\\Folder');
   const env = settingsText(Object.entries(config.env || {}).map(([k, v]) => `${k}=${v}`).join('\n'), 'One per line: NAME=value');
 
+  // Multi-agent: the main switch, and the pipeline's graph and agent types
+  // (pipelineeditor.js). Off: no Pipeline button, and every agent is a normal one.
+  const multiOn = settingsInput('checkbox', !!config.multiAgent?.enabled);
+  // Its token estimate measures in the folder you work in (lastFolder and
+  // recentFolders are app.js's).
+  const pipeline = pipelineEditor(config.multiAgent, {
+    folder: typeof lastFolder === 'function' ? lastFolder() : config.defaultFolder,
+    folders: typeof recentFolders === 'function' ? recentFolders() : [],
+    home: config.home || '',
+  });
+  const openPipeline = el('button', null, 'Edit the pipeline…');
+  openPipeline.type = 'button';
+  const multiRow = el('div', 'settings-inline settings-switch-row');
+  multiRow.append(multiOn, openPipeline);
+  let pipelineWin = null;
+  const closePipeline = () => {
+    pipelineWin?.remove();
+    pipelineWin = null;
+  };
+  openPipeline.onclick = e => {
+    e.preventDefault();
+    if (pipelineWin) return;
+    pipelineWin = el('div', 'pipeline-modal');
+    const win = el('div', 'pipeline-card');
+    const winHead = el('div', 'settings-head');
+    winHead.append(el('div', 'settings-title', 'Multi-agent pipeline'));
+    const winBody = el('div', 'settings-body pipeline-body');
+    winBody.appendChild(pipeline.element);
+    const winFoot = el('div', 'settings-foot');
+    const done = el('button', null, 'Done');
+    done.type = 'button';
+    done.onclick = closePipeline;
+    winFoot.append(el('span', 'settings-hint', 'Kept until you press Save in Settings'), done);
+    win.append(winHead, winBody, winFoot);
+    pipelineWin.appendChild(win);
+    pipelineWin.onclick = ev => { if (ev.target === pipelineWin) closePipeline(); };
+    overlay.appendChild(pipelineWin);
+    requestAnimationFrame(() => pipelineWin?.classList.add('show'));
+    pipeline.show();
+  };
+
   // Settings of a provider that is off are greyed out (see showProviders).
   const providerRows = { claude: [], codex: [] };
   const claudeOnly = row => (providerRows.claude.push(row), row);
@@ -368,7 +409,8 @@ function openSettings(config, { onSaved } = {}) {
         claudeOnly(settingsField('Model', 'Auto picks Opus, Sonnet or Haiku for each task', model)),
         claudeOnly(settingsField('Auto model report', 'What Auto cost against running everything on Opus at medium effort', reportBtn)),
         claudeOnly(settingsField('Effort', 'Auto: with the Auto model, it picks the effort for each task too; with another model, the model\'s default', effort)),
-        claudeOnly(settingsField('Fast mode', 'Faster answers from the same model', fast))),
+        claudeOnly(settingsField('Fast mode', 'Faster answers from the same model', fast)),
+        claudeOnly(settingsField('Multi-agent pipeline', 'Adds a ⛓ Pipeline button under the message box. With it on, the new agent is a governor: it hands each step of the pipeline to its own agents (several at once where a card says so), recaps their work, fixes what is missing between steps, and has the reviewer send the result back until it is right. Off: every agent is a normal one', multiRow))),
       section('Codex',
         settingsField('Use Codex', 'OpenAI\'s Codex CLI, with your ChatGPT login (codex login in a terminal). Its agents read the project\'s CLAUDE.md and your global one', codexOn),
         codexOnly(settingsField('Model', 'Auto picks Sol, Terra or Luna for each task. Each one is its newest version; Astra is for exceptions', codexModel)),
@@ -543,6 +585,7 @@ function openSettings(config, { onSaved } = {}) {
       claudePath: claudePath.value.trim(),
       extraArgs: extraArgs.value.split('\n').map(l => l.trim()).filter(Boolean),
       env: envVars,
+      multiAgent: { ...pipeline.value(), enabled: multiOn.checked },
     };
     if (!next.claudeEnabled && !next.codexEnabled) {
       problem.textContent = 'Keep at least one provider on.';
@@ -564,6 +607,7 @@ function openSettings(config, { onSaved } = {}) {
   const onKey = e => {
     // A card over Settings (signing in, Switch's question) has the keys.
     if (document.querySelector('.quit-modal')) return;
+    if (e.key === 'Escape' && pipelineWin) { e.preventDefault(); e.stopImmediatePropagation(); closePipeline(); return; }
     if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); }
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopImmediatePropagation(); submit(); }
   };
