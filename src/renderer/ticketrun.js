@@ -43,7 +43,7 @@ const ticketRuns = (() => {
       '',
       '1. Read the ticket with pm_get_task and its subtasks with pm_list_subtasks (find the Tactile PM tools with ToolSearch). Read the descriptions and comments that matter. Find out who the user is in PM with pm_whoami, so you can tell which subtasks are assigned to them.',
       '2. Read the code and assets the ticket is about, so the area is understood: the classes, prefabs and data involved, and how they fit together. Do not change any file.',
-      '3. End your answer with the ticket and every subtask, in the ticket\'s order, in a block like this one (the language must be agenthub-subtasks, the content valid JSON):',
+      '3. End your answer with the ticket and every subtask, in the ticket\'s order, in a block like this one (the language must be agenthub-subtasks, the content valid JSON). The run starts its agents only when this block arrives. If you use sub-agents to read the code, wait for their results (do not run them in the background) and write the block in the same answer; do not end your answer before the block is written:',
       '',
       '```agenthub-subtasks',
       '{"ticket": {"key": "ABC-1", "title": "the ticket\'s title"},',
@@ -147,8 +147,15 @@ const ticketRuns = (() => {
   async function startWorkers(run, agent, msg) {
     const plan = parsePlan(msg.result) || parsePlan(agent.transcript.lastFinished?.el?.innerText);
     if (!plan) {
-      run.status = 'failed';
-      agent.transcript.note('The ticket run did not start: the briefing ended without its agenthub-subtasks block. Ask it to write the block, then start the run again.', true);
+      // The run keeps waiting: the briefing may still get its sub-agents'
+      // results (background agents), or you can ask it for the block. Any
+      // later answer with the block starts the agents.
+      if (!run.waitingNoted) {
+        run.waitingNoted = true;
+        agent.transcript.note(agent.status === 'background'
+          ? 'The ticket run waits for the briefing\'s subtask list: it is still waiting for its sub-agents. The agents start as soon as it writes the list.'
+          : 'The ticket run waits for the briefing\'s subtask list (its agenthub-subtasks block). Ask the briefing to write it: the agents start as soon as it does.');
+      }
       return;
     }
     run.title = plan.ticket?.title || '';
