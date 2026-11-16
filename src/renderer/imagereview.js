@@ -41,15 +41,22 @@ function pathData(points) {
   return points.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
 }
 
-function openImageReview(file) {
+// files: the images it was shown among (see messageImagePaths in render.js);
+// when there are more of them, ← and → (or the ‹ › buttons beside the image)
+// open the one before or after. Each image keeps its own notes.
+function openImageReview(file, files = [file]) {
   const marks = imageReviews.get(file) || [];
   imageReviews.set(file, marks);
   const name = file.split(/[\\/]/).pop();
+  const index = Math.max(0, files.indexOf(file));
+  const hasSteps = files.length > 1;
 
   const box = el('div', 'image-review');
   const head = el('div', 'image-review-head');
   const title = el('div', 'image-review-title');
-  title.append(el('span', 'image-review-name', name), el('span', 'image-review-hint', 'Draw on the image, then write what should change there'));
+  title.appendChild(el('span', 'image-review-name', name));
+  if (hasSteps) title.appendChild(el('span', 'image-review-count', `${index + 1} / ${files.length}`));
+  title.appendChild(el('span', 'image-review-hint', 'Draw on the image, then write what should change there'));
   const clearBtn = el('button', null, 'Clear');
   clearBtn.type = 'button';
   clearBtn.title = 'Remove every note';
@@ -62,7 +69,9 @@ function openImageReview(file) {
   head.append(title, clearBtn, sendBtn, closeBtn);
 
   const main = el('div', 'image-review-main');
-  const stage = el('div', 'image-review-stage');
+  // Hidden until fit() gives the image its size: before that the browser
+  // draws it at its own size, which can be wider than the window.
+  const stage = el('div', 'image-review-stage sizing');
   const img = document.createElement('img');
   img.src = mediaUrl(file);
   img.alt = name;
@@ -70,7 +79,10 @@ function openImageReview(file) {
   const svg = reviewSvg('svg', { class: 'image-review-marks', preserveAspectRatio: 'none' });
   stage.append(img, svg);
   const list = el('div', 'image-review-notes');
-  main.append(stage, list);
+  const steps = imageStepButtons(delta => step(delta));
+  steps.update(index, files.length);
+  if (hasSteps) main.append(steps.prev, stage, steps.next, list);
+  else main.append(stage, list);
   box.append(head, main, el('div', 'lightbox-path', file));
 
   let w = 0;
@@ -220,35 +232,52 @@ function openImageReview(file) {
 
   // As large as the window allows beside the notes, also a small sprite
   // (enlarged with its pixels kept sharp), so there is room to draw.
+  // The ‹ › buttons and the gaps beside them take this much of the width.
+  const stepsWidth = hasSteps ? 2 * (40 + 16) : 0;
   const fit = () => {
     if (!w) return;
-    const k = Math.min((window.innerWidth - 36 - 316) / w, (window.innerHeight - 130) / h);
+    const k = Math.min((window.innerWidth - 36 - 316 - stepsWidth) / w, (window.innerHeight - 130) / h);
     img.style.width = `${Math.max(1, Math.round(w * k))}px`;
     img.style.height = `${Math.max(1, Math.round(h * k))}px`;
     img.classList.toggle('pixelated', k >= 2);
+    stage.classList.remove('sizing');
   };
-  img.addEventListener('load', () => {
+  const sizeToImage = () => {
     w = img.naturalWidth;
     h = img.naturalHeight;
     svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
     fit();
     refresh();
-  });
+  };
+  img.addEventListener('load', sizeToImage);
   const onResize = () => { fit(); draw(); };
   window.addEventListener('resize', onResize);
 
-  const close = () => {
+  const remove = () => {
     closeEditor(!!editor?.input.value.trim());
-    window.uiSound?.('tickDown');
     window.removeEventListener('resize', onResize);
     document.removeEventListener('keydown', onKey, true);
     box.remove();
+  };
+  const close = () => {
+    remove();
+    window.uiSound?.('tickDown');
+  };
+  // The image before (-1) or after (1) this one; the note you are writing
+  // is kept, like when you close.
+  const step = delta => {
+    const other = files[index + delta];
+    if (!other) return;
+    remove();
+    openImageReview(other, files);
   };
   const onKey = e => {
     // Esc cancels the note you are writing first, then closes.
     if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); if (editor) closeEditor(false); else close(); }
     // Ctrl+Z (⌘Z) takes back the last note.
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && marks.length && !editor) { e.preventDefault(); marks.pop(); refresh(); }
+    // ← and → open the image before or after; in a note's box they move the cursor.
+    else if (imageStepKey(e) && !editor) { e.preventDefault(); e.stopPropagation(); step(imageStepKey(e)); }
   };
   document.addEventListener('keydown', onKey, true);
   // A click beside the image and the notes closes it.
@@ -270,6 +299,9 @@ function openImageReview(file) {
     }
   };
 
+  // An image the chat already shows is usually decoded at once: then it gets
+  // its size before the view is drawn, and nothing is hidden at all.
+  if (img.complete && img.naturalWidth) sizeToImage();
   document.body.appendChild(box);
   window.uiSound?.('tick');
   refresh();
