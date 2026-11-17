@@ -408,8 +408,9 @@ app.whenReady().then(() => {
   ipcMain.handle('media:before', (_e, cwd, file, snap) => media.mediaBefore(cwd, file, snap, path.join(app.getPath('userData'), 'media-before')).catch(() => null));
   ipcMain.handle('jira:issue', (_e, key) => jira.issue(key));
   // Tactile PM task cards (pmtasks.js), read with the PM connector by Haiku.
-  pmTasks.setup(path.join(app.getPath('userData'), 'pm-tasks.json'), keys => readPmTasks(getConfig(), keys));
+  pmTasks.setup(path.join(app.getPath('userData'), 'pm-tasks.json'), (keys, subtasksOf) => readPmTasks(getConfig(), keys, subtasksOf));
   ipcMain.handle('pm:task', (_e, key) => pmTasks.task(key));
+  ipcMain.handle('pm:split', (_e, key) => pmTasks.splitInfo(key));
   ipcMain.handle('pm:seed', (_e, list) => pmTasks.seed(list));
   // A ticket run's Approve button: the subtask moves to Done in PM.
   const pmKey = k => typeof k === 'string' && /^[A-Z][A-Z0-9]{1,9}-\d+$/.test(k);

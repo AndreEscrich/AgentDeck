@@ -448,15 +448,34 @@ const ticketRuns = (() => {
   }
 
   // The ⑂ button shows when the Hub's message names a PM ticket.
+  // The ⑂ button is only for a Story with several subtasks: PM tells (through
+  // Haiku, pmtasks.js splitInfo) the ticket's type and number of subtasks.
+  // Until it has, the button stays hidden.
+  const splitInfo = new Map();   // key -> { type, subtasks } | 'asking'
+  const splittable = info => !!info && info !== 'asking' && /story/i.test(info.type || '') && (info.subtasks || 0) >= 2;
+  function askSplit(key) {
+    if (splitInfo.has(key) || !window.deck?.pmSplit) return;
+    splitInfo.set(key, 'asking');
+    window.deck.pmSplit(key).then(info => {
+      if (info) splitInfo.set(key, info);
+      else splitInfo.delete(key);   // asked again the next time the key is typed
+      renderButton();
+    }, () => splitInfo.delete(key));
+  }
+
   function renderButton() {
     const button = document.getElementById('composer-split');
     if (!button) return;
     const kind = state.current?.kind;
-    const key = ['hub', 'new'].includes(kind) || !['agent', 'history', 'branches'].includes(kind) ? keyIn(document.getElementById('input').value) : null;
+    let key = ['hub', 'new'].includes(kind) || !['agent', 'history', 'branches'].includes(kind) ? keyIn(document.getElementById('input').value) : null;
+    if (key) {
+      askSplit(key);
+      if (!splittable(splitInfo.get(key))) key = null;
+    }
     button.classList.toggle('hidden', !key);
     if (key) {
       button.textContent = `⑂ Split ${key}`;
-      button.title = `Instead of one agent: one agent per subtask of ${key}, in the category you picked. Subtasks that share no files run at the same time (at most ${state.config.maxTicketAgents || 5} at once, Settings → Ticket runs)`;
+      button.title = `Instead of one agent: one agent per subtask of ${key} (${splitInfo.get(key).subtasks} subtasks), in the category you picked. Subtasks that share no files run at the same time (at most ${state.config.maxTicketAgents || 5} at once, Settings → Ticket runs)`;
       button.dataset.key = key;
     }
   }

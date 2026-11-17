@@ -900,20 +900,27 @@ function pipelineSnapshot(runsDir, sessionId) {
 // Haiku writes afterwards), so titles come as PM has them. Resolves with
 // { KEY: task JSON } for the tasks it could read ({} when it failed).
 const PM_GET_TASK = ['mcp__claude_ai_Tactile_PM__pm_get_task', 'mcp__tactile-pm__pm_get_task', 'mcp__tactile_pm__pm_get_task'];
-function readPmTasks(config, keys) {
+const PM_LIST_SUBTASKS = PM_GET_TASK.map(t => t.replace(/pm_get_task$/, 'pm_list_subtasks'));
+// subtasksOf: the keys whose subtasks are counted too (for the ⑂ Split
+// button, ticketrun.js), which adds pm_list_subtasks for each Story among
+// them. The count is the task's subtaskCount.
+function readPmTasks(config, keys, subtasksOf = []) {
+  subtasksOf = subtasksOf.filter(k => keys.includes(k));
   return new Promise(resolve => {
     const proc = spawnClaude(config.claudePath,
       ['-p', '--model', 'haiku', '--output-format', 'stream-json', '--verbose', '--no-session-persistence',
-        '--tools', 'ToolSearch', '--allowedTools', ['ToolSearch', ...PM_GET_TASK].join(',')],
+        '--tools', 'ToolSearch', '--allowedTools', ['ToolSearch', ...PM_GET_TASK, ...(subtasksOf.length ? PM_LIST_SUBTASKS : [])].join(',')],
       { cwd: os.tmpdir(), env: { ...childEnv(config.env), ENABLE_TOOL_SEARCH: 'true' }, stdio: ['pipe', 'pipe', 'ignore'] });
     helperProcesses.add(proc);
     const tasks = {};
     let buffer = '';
     const timer = setTimeout(() => { killTree(proc); }, 30000 + keys.length * 5000);
+    const lists = [];   // pm_list_subtasks answers: arrays of subtasks with parentTaskId
     const take = text => {
       try {
         const t = JSON.parse(text);
-        if (t && typeof t.key === 'string' && keys.includes(t.key)) tasks[t.key] = t;
+        if (Array.isArray(t)) lists.push(t);
+        else if (t && typeof t.key === 'string' && keys.includes(t.key)) tasks[t.key] = t;
       } catch { /* an error message, not a task */ }
     };
     proc.stdout.on('data', d => {
@@ -936,9 +943,28 @@ function readPmTasks(config, keys) {
     proc.on('close', () => {
       clearTimeout(timer);
       helperProcesses.delete(proc);
+      // Subtasks counted per parent (by the parent's internal id). An empty
+      // list names no parent: it counts as 0 for the one Story asked about.
+      const counts = new Map();
+      let empty = 0;
+      for (const list of lists) {
+        if (!list.length) { empty++; continue; }
+        const parent = list[0]?.parentTaskId;
+        if (parent) counts.set(parent, list.length);
+      }
+      for (const k of subtasksOf) {
+        const t = tasks[k];
+        if (!t) continue;
+        if (counts.has(t._id)) t.subtaskCount = counts.get(t._id);
+        else if (!/story/i.test(t.fieldNames?.taskTypeDefinitionId || t.type || '')) t.subtaskCount = 0;
+        else if (empty && subtasksOf.length === 1) t.subtaskCount = 0;
+      }
       resolve(tasks);
     });
-    proc.stdin.end(`Call the Tactile PM tool pm_get_task once for each of these task keys (find the tool with ToolSearch first): ${keys.join(', ')}. Then reply with only: done`);
+    const counting = subtasksOf.length
+      ? ` For each of ${subtasksOf.join(', ')} whose type is Story, also call pm_list_subtasks with its key.`
+      : '';
+    proc.stdin.end(`Call the Tactile PM tool pm_get_task once for each of these task keys (find the tool with ToolSearch first): ${keys.join(', ')}.${counting} Then reply with only: done`);
   });
 }
 

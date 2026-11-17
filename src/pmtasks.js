@@ -11,6 +11,8 @@
 // minutes is read again for the next time it is shown.
 //
 // task(key) resolves with { key, title, status, category, type } or null.
+// splitInfo(key) resolves with { type, subtasks } (the number of subtasks,
+// counted only for a Story) or null, for the ⑂ Split button.
 
 const fs = require('fs');
 const path = require('path');
@@ -24,6 +26,7 @@ let file = null;
 let saved = null;              // key -> { at, title, status, category, type }
 const failed = new Map();      // key -> when it could not be read
 let queue = new Map();         // key -> [resolve]
+const counting = new Set();    // keys in the queue whose subtasks are counted too
 let timer = null;
 let running = false;
 let read = null;               // keys -> promise of { KEY: task JSON }
@@ -65,6 +68,19 @@ function task(key) {
   return ask(key);
 }
 
+// For the ⑂ Split button: the type, and for a Story its number of subtasks.
+// A kept count younger than FRESH_MS answers at once.
+function splitInfo(key) {
+  if (typeof key !== 'string' || !KEY.test(key) || !read) return Promise.resolve(null);
+  const hit = load()[key];
+  const info = t => (t ? { type: t.type || '', subtasks: typeof t.subtasks === 'number' ? t.subtasks : null } : null);
+  if (hit && typeof hit.subtasks === 'number' && Date.now() - (hit.subAt || 0) < FRESH_MS) return Promise.resolve(info(hit));
+  if (hit && hit.type && !/story/i.test(hit.type)) return Promise.resolve(info(hit));
+  if (Date.now() - (failed.get(key) || 0) < FAILED_MS) return Promise.resolve(info(hit));
+  counting.add(key);
+  return ask(key).then(() => info(saved[key]));
+}
+
 function ask(key) {
   return new Promise(resolve => {
     if (!queue.has(key)) queue.set(key, []);
@@ -79,16 +95,20 @@ async function run() {
   running = true;
   const batch = [...queue.keys()].slice(0, BATCH);
   const waiting = batch.map(k => [k, queue.get(k)]);
-  for (const k of batch) queue.delete(k);
+  const countFor = batch.filter(k => counting.has(k));
+  for (const k of batch) { queue.delete(k); counting.delete(k); }
   let found = {};
-  try { found = await read(batch); } catch { /* none read */ }
+  try { found = await read(batch, countFor); } catch { /* none read */ }
   load();
   for (const [k, resolvers] of waiting) {
     const t = found[k];
     let result = null;
     if (t && typeof t.title === 'string') {
       const status = t.resolvedStatusName || t.status || '';
+      const before = saved[k];
       saved[k] = { at: Date.now(), title: t.title, status, category: category(status), type: t.fieldNames?.taskTypeDefinitionId || t.type || '' };
+      if (typeof t.subtaskCount === 'number') { saved[k].subtasks = t.subtaskCount; saved[k].subAt = Date.now(); }
+      else if (before && typeof before.subtasks === 'number') { saved[k].subtasks = before.subtasks; saved[k].subAt = before.subAt; }
       result = card(k, saved[k]);
       failed.delete(k);
     } else {
@@ -112,11 +132,13 @@ function seed(list) {
   for (const t of list) {
     if (!t || typeof t.key !== 'string' || !KEY.test(t.key) || typeof t.title !== 'string' || !t.title) continue;
     const status = String(t.status || saved[t.key]?.status || '');
-    saved[t.key] = { at: Date.now(), title: t.title, status, category: category(status), type: String(t.type || saved[t.key]?.type || '') };
+    const before = saved[t.key];
+    saved[t.key] = { at: Date.now(), title: t.title, status, category: category(status), type: String(t.type || before?.type || '') };
+    if (typeof before?.subtasks === 'number') { saved[t.key].subtasks = before.subtasks; saved[t.key].subAt = before.subAt; }
     failed.delete(t.key);
     changed = true;
   }
   if (changed) store();
 }
 
-module.exports = { setup, task, category, seed };
+module.exports = { setup, task, splitInfo, category, seed };
