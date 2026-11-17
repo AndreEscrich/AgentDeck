@@ -8,6 +8,9 @@ const os = require('os');
 const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
 const HEAD_BYTES = 256 * 1024;
 const TAIL_BYTES = 64 * 1024;
+// A first message with screenshots is one long line (300 KB for six images)
+// that HEAD_BYTES cuts in half. Then the start is read again, this far.
+const LONG_HEAD_BYTES = 16 * 1024 * 1024;
 
 function readSlice(file, start, length) {
   const fd = fs.openSync(file, 'r');
@@ -49,7 +52,10 @@ function userText(entry) {
 
 function summarize(file) {
   const stat = fs.statSync(file);
-  const head = parseLines(readSlice(file, 0, Math.min(stat.size, HEAD_BYTES)));
+  let head = parseLines(readSlice(file, 0, Math.min(stat.size, HEAD_BYTES)));
+  if (stat.size > HEAD_BYTES && !head.some(e => userText(e))) {
+    head = parseLines(readSlice(file, 0, Math.min(stat.size, LONG_HEAD_BYTES)));
+  }
   const tailStart = Math.max(0, stat.size - TAIL_BYTES);
   const tail = tailStart > 0 ? parseLines(readSlice(file, tailStart, TAIL_BYTES)) : head;
 
@@ -67,6 +73,7 @@ function summarize(file) {
   // message or as Claude Code's "last-prompt" note.
   let lastPrompt = null;
   for (const e of tail) {
+    if (!cwd && e.cwd) cwd = e.cwd;
     if (e.type === 'custom-title') customTitle = e.customTitle;
     if (e.type === 'last-prompt' && e.lastPrompt) lastPrompt = e.lastPrompt;
     else if (!firstPrompt) lastPrompt = userText(e) || lastPrompt;
