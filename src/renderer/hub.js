@@ -1365,7 +1365,13 @@ class Hub {
       const key = el('span', 'hub-run-key');
       const title = el('span', 'hub-run-title');
       const progress = el('span', 'hub-run-progress');
-      head.append(key, title, progress);
+      // ✕ closes the run: every agent of it and the box go (app.js closeRun).
+      const close = el('button', 'hub-run-close');
+      close.type = 'button';
+      close.textContent = '✕';
+      close.title = 'Close this ticket run: its agents stop and leave the Hub with the box (their sessions stay in History)';
+      close.onclick = e => { e.stopPropagation(); this.onCloseRun?.(runId); };
+      head.append(key, title, progress, close);
       // While the briefing reads the ticket, the box itself boots up (its
       // border traces in, a scan line sweeps it) and faded agents take shape
       // inside it, one after another as the briefing works: it is briefing
@@ -1393,6 +1399,19 @@ class Hub {
       sec.runs.set(runId, box);
     }
     return box;
+  }
+
+  // A ticket run's box closes: its tiles drain one after another, then the
+  // box fades and shrinks. Resolves when the animation is over.
+  async removeRun(runId, agentIds) {
+    await this.removeTiles(agentIds);
+    for (const sec of this.sections.values()) {
+      const box = sec.runs?.get(runId);
+      if (!box) continue;
+      box.closing = true;
+      await box.el.animate([{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(0.96)' }],
+        { duration: 260, easing: 'ease-in', fill: 'forwards' }).finished.catch(() => {});
+    }
   }
 
   // The tank drains, the tile tips over and shrinks with a puff of

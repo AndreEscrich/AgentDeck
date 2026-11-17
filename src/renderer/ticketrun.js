@@ -200,6 +200,22 @@ const ticketRuns = (() => {
     }
   }
 
+  // A closed run (✕ on its box, app.js closeRun) is gone for good: its
+  // agents are no longer part of a run, and it is not saved any more.
+  function forget(runId) {
+    runs.delete(runId);
+    save();
+  }
+
+  // The ids of a run's agents on the Hub: running ones (the briefing too)
+  // and parked ones ('p:' + session).
+  function agentIdsOf(runId) {
+    const ids = [];
+    for (const a of state.agents.values()) if (!a.removed && a.lane?.runId === runId) ids.push(a.id);
+    for (const sessionId of state.parked.keys()) if (laneOfSession(sessionId)?.runId === runId) ids.push('p:' + sessionId);
+    return ids;
+  }
+
   // After a restart: runs that were going on start the subtasks that waited
   // (agents that were working continue by themselves, see resumeInterrupted).
   function resumeRuns() {
@@ -460,7 +476,7 @@ const ticketRuns = (() => {
     };
   }
 
-  return { keyIn, start, onResult, infoOf, ticketOf, laneState, save, load, laneOfSession, attach, resumeRuns, noteProof, approve, renderButton, wire, parsePlan, runs };
+  return { keyIn, start, onResult, forget, agentIdsOf, infoOf, ticketOf, laneState, save, load, laneOfSession, attach, resumeRuns, noteProof, approve, renderButton, wire, parsePlan, runs };
 })();
 
 window.ticketRuns = ticketRuns;

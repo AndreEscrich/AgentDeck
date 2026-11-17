@@ -3418,6 +3418,11 @@ button.uml-peer-chip:hover { background: color-mix(in srgb, var(--chip, var(--ac
 .hub-run-key { flex-shrink: 0; font-weight: 700; color: var(--accent); letter-spacing: 0.02em; }
 .hub-run-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); }
 .hub-run-progress { flex-shrink: 0; color: var(--text-faint); }
+/* ✕ closes the run (hub.js runBox): faint until you point at the box. */
+.hub-run-close { flex-shrink: 0; align-self: center; padding: 0 4px; border: 0; border-radius: 6px; background: none;
+  color: var(--text-faint); font-size: 12px; line-height: 18px; cursor: pointer; opacity: 0.5; }
+.hub-run:hover .hub-run-close { opacity: 1; }
+.hub-run-close:hover { color: var(--text); background: color-mix(in srgb, var(--text) 10%, transparent); }
 .hub-run-grid { display: flex; gap: 10px; align-items: stretch; min-width: 0; }
 .hub-run-grid .hub-tile { flex: 1 1 0; min-width: 0; max-width: 240px; }
 /* An approved subtask's tile is smaller, so the ones left to review stand out. */

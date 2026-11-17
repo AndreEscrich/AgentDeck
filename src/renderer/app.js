@@ -2144,6 +2144,31 @@ async function removeSelectedFromHub(ids) {
   saveHub();
 }
 
+// Closes a ticket run (✕ on its box): every agent of it, the briefing too,
+// leaves the Hub and the box goes. Busy agents are stopped, after one
+// question for all of them. Their sessions stay in History.
+async function closeRun(runId) {
+  const ids = ticketRuns.agentIdsOf(runId);
+  const live = ids.filter(id => !id.startsWith('p:')).map(id => state.agents.get(id)).filter(Boolean);
+  if (!(await confirmStop(live, { action: 'Closing the ticket run', label: `Stop and close ${ids.length}` }))) return;
+  if (playSounds()) sounds.groupRemoved(Math.max(1, ids.length));
+  await hub.removeRun(runId, ids);
+  for (const id of ids) {
+    if (id.startsWith('p:')) {
+      state.parked.delete(id.slice(2));
+      continue;
+    }
+    const a = state.agents.get(id);
+    if (!a) continue;
+    a.removed = true;
+    window.deck.closeAgent(id);
+  }
+  ticketRuns.forget(runId);
+  if (state.current?.kind === 'agent' && ids.includes(state.current.id)) show('hub');
+  refreshHub();
+  saveHub();
+}
+
 // Removes every agent of a Hub group (one panel). Busy agents are stopped,
 // after one question for all of them. Their sessions stay in History.
 async function removeGroupFromHub(ids) {
@@ -3179,6 +3204,7 @@ hub.runInfo = ticketRuns.infoOf;
 hub.laneState = ticketRuns.laneState;
 hub.ticketOf = ticketRuns.ticketOf;
 hub.onApprove = ticketRuns.approve;
+hub.onCloseRun = closeRun;
 ticketRuns.wire();
 hub.onOpenTactileSvn = openTactileSvn;
 $('composer-tsvn').onclick = () => openTactileSvn($('composer-tsvn').dataset.cwd);
