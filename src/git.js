@@ -203,6 +203,9 @@ const otherLists = new Map();   // snapshot id -> Set of paths
 async function folderSnapshot(cwd, root, project) {
   const dir = await privateRepo(cwd, root, project);
   return withLock(dir, async () => {
+    // When the snapshot was taken: the other files changed after it are the
+    // task's (otherChanges).
+    const at = Date.now();
     const tree = await recordTree(dir, cwd);
     if (!tree) return null;
     const others = await otherFiles(dir, cwd).catch(() => null);
@@ -219,7 +222,7 @@ async function folderSnapshot(cwd, root, project) {
     }
     // The newest state recorded, for a task that cannot wait for its own (quickSnapshot).
     try { fs.writeFileSync(path.join(dir, LAST), JSON.stringify({ tree, at: Date.now() })); } catch { /* only the quick one misses it */ }
-    return { kind: 'folder', dir, tree, nested, othersId };
+    return { kind: 'folder', dir, tree, nested, othersId, at };
   });
 }
 
@@ -259,22 +262,36 @@ function changedSince(cwd, diff, since) {
   }).join('');
 }
 
-// The other files added or removed since the snapshot, as git diff blocks.
+// The other files (textures, models, sounds: not in the snapshot) added,
+// changed or removed since the snapshot, as git diff blocks. A file is
+// changed when its time on disk is after the snapshot's (a shell command
+// that copies a new picture over it); a quick snapshot has no list of the
+// files before, so there every file written since the task started counts
+// as changed.
 async function otherChanges(cwd, snap) {
   const before = snap.othersId && otherLists.get(snap.othersId);
-  if (!before) return '';
+  const since = snap.since || snap.at || 0;
+  if (!before && !since) return '';
   const now = await otherFiles(snap.dir, cwd).catch(() => null);
   if (!now) return '';
   const blocks = [];
+  let changed = 0;
   for (const p of now) {
-    if (before.has(p)) continue;
-    blocks.push(`diff --git a/${p} b/${p}\nnew file mode 100644\nBinary files /dev/null and b/${p} differ\n`);
-    if (blocks.length >= 300) break;
+    if (before && !before.has(p)) {
+      blocks.push(`diff --git a/${p} b/${p}\nnew file mode 100644\nBinary files /dev/null and b/${p} differ\n`);
+    } else if (since && changed < 500) {
+      const stat = await fs.promises.stat(path.join(cwd, p)).catch(() => null);
+      if (!stat || stat.mtimeMs < since) continue;
+      changed++;
+      blocks.push(`diff --git a/${p} b/${p}\nindex 0000000..0000000 100644\nBinary files a/${p} and b/${p} differ\n`);
+    } else continue;
+    if (blocks.length >= 800) break;
   }
+  if (!before) return blocks.join('');
   for (const p of before) {
     if (now.has(p)) continue;
     blocks.push(`diff --git a/${p} b/${p}\ndeleted file mode 100644\nBinary files a/${p} and /dev/null differ\n`);
-    if (blocks.length >= 600) break;
+    if (blocks.length >= 1100) break;
   }
   return blocks.join('');
 }
