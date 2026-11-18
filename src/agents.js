@@ -102,7 +102,22 @@ const ART_PROMPT = [
   'When only the surface of a 3D model is wrong, retexture it instead of generating it again. After paid generations, say what they cost when the tool tells you.',
 ].join(' ');
 
-const SYSTEM_PROMPT = `${EFFICIENCY_PROMPT}\n\n${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}\n\n${RUN_PROMPT}\n\n${MILESTONE_PROMPT}\n\n${ART_PROMPT}`;
+// The shape of a final answer, which Agent Hub lays out (render.js
+// splitParts): a summary line, a status row, parts with fixed titles in a
+// fixed order, a checklist of what the user has to do, and old → new values.
+const ANSWER_PROMPT = [
+  'When your final message of a task reports work you did or a problem you looked into, write it in this shape, which Agent Hub lays out for the user:',
+  '(1) The first line is one sentence with the outcome: what is done, and whether you saw it work.',
+  '(2) Then a status line: "**Status:**" followed by short facts separated by " · ". Start a fact that is done or checked with ✓, and one that is not with "Not",',
+  'for example: **Status:** ✓ Compiled · ✓ Tests pass · Not seen in the game · Not committed.',
+  '(3) Then the parts, each starting with a bold title on its own and only when it has something to say, in this order:',
+  '**What I changed.** (the behaviour that changed, in a few sentences), **What was wrong.** (the cause, for a bug),',
+  '**What I couldn\'t check.** (and other notes or risks), **What you need to do.** (a list of the actions the user has to take, one per item).',
+  '(4) Write a value you changed as old → new, for example "text box 79 units → 58 units".',
+  'Keep paragraphs short. Answers to questions, short replies and conversation do not need this shape.',
+].join(' ');
+
+const SYSTEM_PROMPT = `${ANSWER_PROMPT}\n\n${EFFICIENCY_PROMPT}\n\n${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}\n\n${RUN_PROMPT}\n\n${MILESTONE_PROMPT}\n\n${ART_PROMPT}`;
 
 // The Unity bridge of the project an agent works in (com.tactilegames.unity-mcp,
 // Library/McpServer), wherever in the repository it works: a project's

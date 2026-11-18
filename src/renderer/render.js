@@ -1031,11 +1031,13 @@ const tableWatch = new ResizeObserver(entries => {
 // changed, then what was wrong, then everything else (checks, notes, next
 // steps). Text before the first part stays on top. Only an answer with two
 // or more parts, one of them about a change or a problem, is split.
+const PART_TODO = /you need to|for you to|your (next )?(steps|turn)|what you (should|can|have to)|to do for you|action items?|next steps for you/i;
 const PART_OTHER = /couldn'?t|could not|not (yet )?(checked|tested|verified)|unchecked|next|left to|still|todo|to do|open question|risk|note|other|also|observ|caveat|verify|test/i;
 const PART_CHANGE = /chang|fix|what i did|implement|solution|added|updated|edited|the patch/i;
 const PART_PROBLEM = /bug|problem|wrong|cause|why|issue|broke|broken|happen|fail|symptom|what was/i;
-const PART_KINDS = { change: { order: 0, icon: '✓' }, problem: { order: 1, icon: '!' }, other: { order: 2, icon: '•' } };
+const PART_KINDS = { change: { order: 0, icon: '✓' }, problem: { order: 1, icon: '!' }, other: { order: 2, icon: '•' }, todo: { order: 3, icon: '☐' } };
 function partKind(lead) {
+  if (PART_TODO.test(lead)) return 'todo';
   if (PART_CHANGE.test(lead) && !PART_OTHER.test(lead)) return 'change';
   if (PART_PROBLEM.test(lead) && !PART_OTHER.test(lead)) return 'problem';
   if (PART_CHANGE.test(lead)) return 'change';
@@ -1067,7 +1069,110 @@ function partLead(node) {
     },
   };
 }
+// "**Status:** ✓ Compiled · Not seen in the game · Not committed": a row of
+// small labels, green for what is done, orange for what is not.
+function statusRow(div) {
+  const p = [...div.children].find(n => n.tagName === 'P' && /^status:?$/i.test(n.querySelector(':scope > strong:first-child, :scope > b:first-child')?.textContent.trim() || ''));
+  if (!p) return null;
+  const text = p.textContent.replace(/^\s*status\s*:?\s*/i, '');
+  const items = text.split(/\s+[·|;]\s+|\s*\n\s*/).map(t => t.trim().replace(/[.]$/, '')).filter(Boolean);
+  if (!items.length) return null;
+  const row = el('div', 'answer-status');
+  for (const item of items) {
+    const no = /^(not|no)\b|✗|✘|❌|fail|couldn'?t|could not|missing|^un(tested|checked|committed|verified)/i.test(item);
+    const ok = !no && /^[✓✔✅]|\b(done|passes|passed|compiled|saved|committed|verified|works)\b/i.test(item);
+    row.appendChild(el('span', no ? 'status-no' : ok ? 'status-ok' : '', ok && !/^[✓✔✅]/.test(item) ? `✓ ${item}` : item.replace(/^[✅✔]/, '✓')));
+  }
+  p.replaceWith(row);
+  return row;
+}
+
+// A checklist item of "What you need to do": ticked ones stay ticked (in this
+// window's storage, by the item's text).
+const TICKS_KEY = 'answerTicks';
+const tickKey = text => { let h = 0; for (const c of text) h = (h * 31 + c.charCodeAt(0)) | 0; return String(h); };
+function tickSet() { try { return new Set(JSON.parse(localStorage.getItem(TICKS_KEY) || '[]')); } catch { return new Set(); } }
+function checklist(body) {
+  for (const li of body.querySelectorAll('li')) {
+    const key = tickKey(li.textContent.trim());
+    const box = el('span', 'answer-tick');
+    li.classList.add('answer-todo');
+    li.prepend(box);
+    if (tickSet().has(key)) li.classList.add('done');
+    li.onclick = e => {
+      if (e.target.closest('a, button, code')) return;
+      const set = tickSet();
+      li.classList.toggle('done');
+      if (li.classList.contains('done')) set.add(key); else set.delete(key);
+      try { localStorage.setItem(TICKS_KEY, JSON.stringify([...set].slice(-500))); } catch { /* not kept */ }
+    };
+  }
+}
+
+// "79 units → 58 units": the old value crossed out, the new one in green.
+const BEFORE_AFTER = /([-+]?\d[\d.,]*\s?(?:[a-z%°]{1,8}\b)?|[#\w.%-]*\d[#\w.%-]*)\s*(?:→|->)\s*([-+]?\d[\d.,]*\s?(?:[a-z%°]{1,8}\b)?|[#\w.%-]*\d[#\w.%-]*)/g;
+function markBeforeAfter(div) {
+  const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT, {
+    acceptNode: n => (n.parentElement.closest('code, pre, a, .answer-ba, .answer-status') || !/→|->/.test(n.textContent) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+  });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    const text = node.textContent;
+    BEFORE_AFTER.lastIndex = 0;
+    if (!BEFORE_AFTER.test(text)) continue;
+    const frag = document.createDocumentFragment();
+    let at = 0;
+    BEFORE_AFTER.lastIndex = 0;
+    for (const m of text.matchAll(BEFORE_AFTER)) {
+      frag.append(text.slice(at, m.index));
+      const chip = el('span', 'answer-ba');
+      chip.append(el('s', null, m[1].trim()), el('span', 'answer-ba-arrow', '→'), el('b', null, m[2].trim()));
+      frag.append(chip);
+      at = m.index + m[0].length;
+    }
+    frag.append(text.slice(at));
+    node.replaceWith(frag);
+  }
+}
+
+// A long "what was wrong" or note part shows its first lines; Show all opens it.
+const FOLD_CHARS = 260;
+function foldPart(box, body) {
+  if (body.textContent.length < FOLD_CHARS) return;
+  body.classList.add('folded');
+  const more = el('button', 'answer-part-more', 'Show all');
+  more.type = 'button';
+  more.onclick = () => {
+    const open = body.classList.toggle('folded');
+    more.textContent = open ? 'Show all' : 'Show less';
+  };
+  box.appendChild(more);
+}
+
+// The files the task changed, as chips in its "What I changed" part; a chip
+// opens the file in the Changes card (diffview.js changesCard calls this).
+function fileChips(answer, card, files) {
+  const body = answer?.querySelector('.answer-part.part-change .answer-part-body');
+  if (!body || !files.length) return;
+  body.querySelector(':scope > .answer-files')?.remove();
+  const row = el('div', 'answer-files');
+  for (const f of files.slice(0, 12)) {
+    const { add, del } = fileStats(f);
+    const chip = el('button', `answer-file status-${f.status}`);
+    chip.type = 'button';
+    chip.title = `${f.path}\nOpen its changes`;
+    chip.append(el('span', null, f.path.split('/').pop()));
+    if (add || del) chip.append(el('span', 'answer-file-lines', `+${add} −${del}`));
+    chip.onclick = () => card.openFile?.(f);
+    row.appendChild(chip);
+  }
+  if (files.length > 12) row.appendChild(el('span', 'answer-file-more', `+${files.length - 12} more`));
+  body.appendChild(row);
+}
+
 function splitParts(div) {
+  statusRow(div);
   const nodes = [...div.children];
   const leads = nodes.map(partLead);
   const parts = [];
@@ -1076,6 +1181,12 @@ function splitParts(div) {
     else if (parts.length) parts[parts.length - 1].nodes.push(nodes[i]);
   }
   if (parts.length < 2 || !parts.some(p => p.kind !== 'other')) return;
+  // The answer's first line, before the parts: its outcome, as a heading.
+  const first = nodes[0];
+  if (first?.tagName === 'P' && !leads[0] && first.textContent.length <= 300) first.classList.add('answer-summary');
+  // The status row stays under the summary.
+  const status = div.querySelector(':scope > .answer-status');
+  if (status && first?.classList.contains('answer-summary')) first.after(status);
   parts.sort((a, b) => PART_KINDS[a.kind].order - PART_KINDS[b.kind].order || a.at - b.at);
   for (const part of parts) {
     const box = el('section', `answer-part part-${part.kind}`);
@@ -1086,6 +1197,8 @@ function splitParts(div) {
     part.lead.strip();
     box.append(head, body);
     div.appendChild(box);
+    if (part.kind === 'todo') checklist(body);
+    if (part.kind === 'problem' || part.kind === 'other') foldPart(box, body);
   }
 }
 
@@ -1127,6 +1240,7 @@ function markdown(text, cwd) {
     if (files.length) code.parentElement.replaceWith(changesCard(files, cwd, { title: 'Diff in the answer' }));
   }
   splitParts(div);
+  markBeforeAfter(div);
   linkPmKeys(div);
   decorateLinks(div);
   markFileLinks(div, cwd);

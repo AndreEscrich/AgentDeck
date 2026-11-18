@@ -287,6 +287,38 @@ body.history-open #drawer-backdrop { opacity: 1; pointer-events: auto; }
 .answer-part-head { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 4px; padding: 1px 8px; border-radius: 6px;
   font-size: 12px; font-weight: 700; color: var(--part); background: color-mix(in srgb, var(--part) 16%, transparent); }
 .answer-part-icon { color: var(--part); font-size: 12px; }
+.answer-part.part-todo { --part: #e0b35a; }
+/* The answer's outcome (its first line) as a heading, and its status row. */
+.msg-text > .answer-summary { font-size: 1.15em; font-weight: 600; color: var(--text-output-strong); line-height: 1.45; margin-bottom: 6px; }
+.answer-status { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+.answer-status span { font-size: 12px; padding: 1px 8px; border-radius: 6px; color: var(--text-dim); background: color-mix(in srgb, var(--text) 8%, transparent); }
+.answer-status .status-ok { color: #6fca8c; background: color-mix(in srgb, #5fbf7f 15%, transparent); }
+.answer-status .status-no { color: #e8a06a; background: color-mix(in srgb, #e0945a 15%, transparent); }
+/* A long part shows its first lines until Show all. */
+.answer-part-body.folded { max-height: 3.3em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 55%, transparent); mask-image: linear-gradient(#000 55%, transparent); }
+.answer-part-more { margin-top: 2px; padding: 0; border: 0; background: none; font-size: 12px; color: var(--accent); cursor: pointer; }
+/* What you need to do: a checklist you can tick. */
+.answer-part.part-todo ul, .answer-part.part-todo ol { list-style: none; padding-left: 0; }
+.answer-todo { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
+.answer-tick { flex: 0 0 auto; width: 14px; height: 14px; margin-top: 0.3em; border: 1.5px solid var(--part); border-radius: 4px; display: grid; place-items: center; font-size: 10px; line-height: 1; color: var(--bg, #1a1714); }
+.answer-todo.done .answer-tick { background: var(--part); }
+.answer-todo.done .answer-tick::before { content: '✓'; }
+.answer-todo.done { color: var(--text-faint); text-decoration: line-through; }
+/* The task's changed files in "What I changed"; a chip opens the file in the Changes card. */
+.answer-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.answer-file { display: inline-flex; align-items: center; gap: 6px; padding: 1px 8px; border-radius: 6px; cursor: pointer;
+  font-family: var(--mono, 'Fira Code', monospace); font-size: 12px; color: var(--text); border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
+  background: color-mix(in srgb, var(--text) 5%, transparent); }
+.answer-file:hover { border-color: color-mix(in srgb, var(--part) 60%, transparent); }
+.answer-file-lines { color: var(--text-faint); font-size: 11px; }
+.answer-file-more { font-size: 12px; color: var(--text-faint); align-self: center; }
+.change-file.flash > summary, .asset-row.flash > summary { background: color-mix(in srgb, var(--accent) 22%, transparent); transition: background 0.6s; }
+/* "79 units → 58 units": the old value crossed out, the new one in green. */
+.answer-ba { display: inline-flex; align-items: baseline; gap: 5px; padding: 0 6px; border-radius: 5px; white-space: nowrap;
+  background: color-mix(in srgb, var(--text) 7%, transparent); font-size: 0.92em; }
+.answer-ba s { color: var(--text-faint); }
+.answer-ba-arrow { color: var(--text-faint); }
+.answer-ba b { color: #6fca8c; font-weight: 600; }
 .answer-part-body > :first-child { margin-top: 0; }
 .answer-part-body > :last-child { margin-bottom: 0; }
 .msg-text code { font-family: var(--mono); font-size: 0.9em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }

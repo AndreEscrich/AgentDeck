@@ -335,6 +335,23 @@ function changesCard(files, cwd, { title = null, animate = false, peer = false }
     wasAll = all;
   };
   card.syncReview = syncReview;
+  // A file chip in the answer (render.js fileChips) opens the file here: a
+  // code file's row, or an asset's row in Asset changes.
+  card.openFile = f => {
+    let row = rows.get(f);
+    if (!row) {
+      const name = f.path.split('/').pop();
+      row = [...card.querySelectorAll('.asset-row')].find(r => r.querySelector('.asset-summary')?.title.split('\n')[0] === f.path)
+        || [...card.querySelectorAll('.asset-row')].find(r => r.querySelector('.asset-name')?.textContent === name);
+    }
+    if (!row) { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+    row.open = true;
+    row.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    row.classList.add('flash');
+    setTimeout(() => row.classList.remove('flash'), 1200);
+  };
+  // A task's own card: its files go into the answer's "What I changed" too.
+  if (!title && !peer) requestAnimationFrame(() => window.fileChips?.(card.parentElement, card, files));
   syncReview();
   // Reviewed from the class diagram (its type's Mark reviewed).
   window.addEventListener('reviewed-change', () => { if (card.isConnected) syncReview(); });
