@@ -1143,38 +1143,6 @@ function markBeforeAfter(div) {
   }
 }
 
-// What changed and what was wrong start with a sentence that says it in
-// short; the paragraphs after it (the details) open with Show all.
-function foldDetails(box, body) {
-  const nodes = [...body.children];
-  if (nodes.length < 2) return foldPart(box, body);
-  const rest = el('div', 'answer-part-rest hidden');
-  rest.append(...nodes.slice(1));
-  body.appendChild(rest);
-  const more = el('button', 'answer-part-more', 'Show all');
-  more.type = 'button';
-  more.onclick = () => {
-    const closed = rest.classList.toggle('hidden');
-    more.textContent = closed ? 'Show all' : 'Show less';
-  };
-  box.appendChild(more);
-}
-
-// A long note part (or a summary written as one long paragraph) shows its
-// first lines; Show all opens it.
-const FOLD_CHARS = 260;
-function foldPart(box, body) {
-  if (body.textContent.length < FOLD_CHARS) return;
-  body.classList.add('folded');
-  const more = el('button', 'answer-part-more', 'Show all');
-  more.type = 'button';
-  more.onclick = () => {
-    const open = body.classList.toggle('folded');
-    more.textContent = open ? 'Show all' : 'Show less';
-  };
-  box.appendChild(more);
-}
-
 // Where the answer names a file the task changed ("QueueHintChecker.cs", or
 // the class name "QueueHintChecker"), the name becomes a link that opens the
 // file in the Changes card (diffview.js changesCard calls this).
@@ -1252,8 +1220,6 @@ function splitParts(div) {
     box.append(head, body);
     div.appendChild(box);
     if (part.kind === 'todo') { checklist(body); if (!body.querySelector('li') && !body.textContent.trim()) box.remove(); }
-    if (part.kind === 'change' || part.kind === 'problem') foldDetails(box, body);
-    if (part.kind === 'other') foldPart(box, body);
   }
 }
 

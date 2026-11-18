@@ -113,7 +113,7 @@ const ANSWER_PROMPT = [
   '(3) Then the parts, each starting with a bold title on its own and only when it has something to say, in this order:',
   '**What I changed.** (the behaviour that changed), **What was wrong.** (the cause, for a bug),',
   '**What I couldn\'t check.** (and other notes or risks), **What you need to do.** (a list of the actions the user has to take, one per item).',
-  'In What I changed and What was wrong, the first paragraph is one sentence of at most two lines that says it all in short; the details follow in further paragraphs, which Agent Hub folds away, and which must not repeat that sentence.',
+  'In What I changed and What was wrong, the first paragraph is one sentence of at most two lines that says it all in short; the details follow in further paragraphs, which must not repeat that sentence.',
   'Never mention committing, pushing, building or rebuilding: not in the status line, not in What you need to do, nowhere (the user does that their own way).',
   '(4) Write a value you changed as old → new, for example "text box 79 units → 58 units".',
   'Keep paragraphs short. Answers to questions, short replies and conversation do not need this shape.',
