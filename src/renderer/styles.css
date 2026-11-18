@@ -300,6 +300,10 @@ body.history-open #drawer-backdrop { opacity: 1; pointer-events: auto; }
 /* What you need to do: a checklist you can tick. */
 .answer-part.part-todo ul, .answer-part.part-todo ol { list-style: none; padding-left: 0; }
 .answer-todo { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
+.answer-todo-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.answer-part-rest { margin-top: 6px; }
+.answer-part-rest.hidden { display: none; }
+.answer-part-body > :has(+ .answer-part-rest.hidden) { margin-bottom: 0; }
 .answer-tick { flex: 0 0 auto; width: 14px; height: 14px; margin-top: 0.3em; border: 1.5px solid var(--part); border-radius: 4px; display: grid; place-items: center; font-size: 10px; line-height: 1; color: var(--bg, #1a1714); }
 .answer-todo.done .answer-tick { background: var(--part); }
 .answer-todo.done .answer-tick::before { content: '✓'; }

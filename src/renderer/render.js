@@ -1071,12 +1071,15 @@ function partLead(node) {
 }
 // "**Status:** ✓ Compiled · Not seen in the game · Not committed": a row of
 // small labels, green for what is done, orange for what is not.
+const NOISE_STATUS = /\b(commit(ted)?|push(ed)?|(re)?buil[dt]|uncommitted)\b/i;
+const NOISE_TODO = /^\s*(commit|push|(re)?build|run (the |a )?(\w+ )?(re)?build|make a build)\b/i;
 function statusRow(div) {
   const p = [...div.children].find(n => n.tagName === 'P' && /^status:?$/i.test(n.querySelector(':scope > strong:first-child, :scope > b:first-child')?.textContent.trim() || ''));
   if (!p) return null;
   const text = p.textContent.replace(/^\s*status\s*:?\s*/i, '');
-  const items = text.split(/\s+[·|;]\s+|\s*\n\s*/).map(t => t.trim().replace(/[.]$/, '')).filter(Boolean);
-  if (!items.length) return null;
+  // Committing and building are the user's business, not news: those facts go.
+  const items = text.split(/\s+[·|;]\s+|\s*\n\s*/).map(t => t.trim().replace(/[.]$/, '')).filter(Boolean).filter(t => !NOISE_STATUS.test(t));
+  if (!items.length) { p.remove(); return null; }
   const row = el('div', 'answer-status');
   for (const item of items) {
     const no = /^(not|no)\b|✗|✘|❌|fail|couldn'?t|could not|missing|^un(tested|checked|committed|verified)/i.test(item);
@@ -1094,10 +1097,14 @@ const tickKey = text => { let h = 0; for (const c of text) h = (h * 31 + c.charC
 function tickSet() { try { return new Set(JSON.parse(localStorage.getItem(TICKS_KEY) || '[]')); } catch { return new Set(); } }
 function checklist(body) {
   for (const li of body.querySelectorAll('li')) {
+    if (NOISE_TODO.test(li.textContent)) { li.remove(); continue; }
     const key = tickKey(li.textContent.trim());
     const box = el('span', 'answer-tick');
     li.classList.add('answer-todo');
-    li.prepend(box);
+    // The item's text and code wrap as one block next to the box.
+    const text = el('span', 'answer-todo-text');
+    text.append(...li.childNodes);
+    li.append(box, text);
     if (tickSet().has(key)) li.classList.add('done');
     li.onclick = e => {
       if (e.target.closest('a, button, code')) return;
@@ -1136,7 +1143,25 @@ function markBeforeAfter(div) {
   }
 }
 
-// A long "what was wrong" or note part shows its first lines; Show all opens it.
+// What changed and what was wrong start with a sentence that says it in
+// short; the paragraphs after it (the details) open with Show all.
+function foldDetails(box, body) {
+  const nodes = [...body.children];
+  if (nodes.length < 2) return foldPart(box, body);
+  const rest = el('div', 'answer-part-rest hidden');
+  rest.append(...nodes.slice(1));
+  body.appendChild(rest);
+  const more = el('button', 'answer-part-more', 'Show all');
+  more.type = 'button';
+  more.onclick = () => {
+    const closed = rest.classList.toggle('hidden');
+    more.textContent = closed ? 'Show all' : 'Show less';
+  };
+  box.appendChild(more);
+}
+
+// A long note part (or a summary written as one long paragraph) shows its
+// first lines; Show all opens it.
 const FOLD_CHARS = 260;
 function foldPart(box, body) {
   if (body.textContent.length < FOLD_CHARS) return;
@@ -1226,8 +1251,9 @@ function splitParts(div) {
     part.lead.strip();
     box.append(head, body);
     div.appendChild(box);
-    if (part.kind === 'todo') checklist(body);
-    if (part.kind === 'problem' || part.kind === 'other') foldPart(box, body);
+    if (part.kind === 'todo') { checklist(body); if (!body.querySelector('li') && !body.textContent.trim()) box.remove(); }
+    if (part.kind === 'change' || part.kind === 'problem') foldDetails(box, body);
+    if (part.kind === 'other') foldPart(box, body);
   }
 }
 
