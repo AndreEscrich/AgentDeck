@@ -1150,25 +1150,54 @@ function foldPart(box, body) {
   box.appendChild(more);
 }
 
-// The files the task changed, as chips in its "What I changed" part; a chip
-// opens the file in the Changes card (diffview.js changesCard calls this).
+// Where the answer names a file the task changed ("QueueHintChecker.cs", or
+// the class name "QueueHintChecker"), the name becomes a link that opens the
+// file in the Changes card (diffview.js changesCard calls this).
 function fileChips(answer, card, files) {
-  const body = answer?.querySelector('.answer-part.part-change .answer-part-body');
-  if (!body || !files.length) return;
-  body.querySelector(':scope > .answer-files')?.remove();
-  const row = el('div', 'answer-files');
-  for (const f of files.slice(0, 12)) {
-    const { add, del } = fileStats(f);
-    const chip = el('button', `answer-file status-${f.status}`);
-    chip.type = 'button';
-    chip.title = `${f.path}\nOpen its changes`;
-    chip.append(el('span', null, f.path.split('/').pop()));
-    if (add || del) chip.append(el('span', 'answer-file-lines', `+${add} −${del}`));
-    chip.onclick = () => card.openFile?.(f);
-    row.appendChild(chip);
+  if (!answer || !files.length) return;
+  const byName = new Map();
+  for (const f of files) {
+    if (/\.meta$/i.test(f.path)) continue;
+    const base = f.path.split('/').pop();
+    if (!byName.has(base)) byName.set(base, f);
+    const stem = base.replace(/\.[^.]+$/, '');
+    if (stem !== base && stem.length >= 4 && !byName.has(stem)) byName.set(stem, f);
   }
-  if (files.length > 12) row.appendChild(el('span', 'answer-file-more', `+${files.length - 12} more`));
-  body.appendChild(row);
+  if (!byName.size) return;
+  const names = [...byName.keys()].sort((a, b) => b.length - a.length);
+  const esc = n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`(?<![\\w.])(${names.map(esc).join('|')})(?!\\w)`, 'g');
+  const link = (node, f) => {
+    node.classList.add('answer-file-link');
+    node.title = `${f.path}\nOpen its changes`;
+    node.onclick = e => { e.preventDefault(); card.openFile?.(f); };
+  };
+  // A name written as inline code: the code element itself becomes the link.
+  for (const code of answer.querySelectorAll('code')) {
+    if (card.contains(code) || code.closest('pre')) continue;
+    const f = byName.get(code.textContent.trim().split('/').pop());
+    if (f) link(code, f);
+  }
+  const walker = document.createTreeWalker(answer, NodeFilter.SHOW_TEXT);
+  const hits = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (card.contains(n) || n.parentElement.closest('pre, code, a, button, .answer-file-link')) continue;
+    re.lastIndex = 0;
+    if (re.test(n.nodeValue)) hits.push(n);
+  }
+  for (const n of hits) {
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    n.nodeValue.replace(re, (m, _g, at) => {
+      frag.append(n.nodeValue.slice(last, at));
+      const span = el('span', null, m);
+      link(span, byName.get(m));
+      frag.append(span);
+      last = at + m.length;
+    });
+    frag.append(n.nodeValue.slice(last));
+    n.replaceWith(frag);
+  }
 }
 
 function splitParts(div) {

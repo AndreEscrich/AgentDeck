@@ -304,14 +304,9 @@ body.history-open #drawer-backdrop { opacity: 1; pointer-events: auto; }
 .answer-todo.done .answer-tick { background: var(--part); }
 .answer-todo.done .answer-tick::before { content: '✓'; }
 .answer-todo.done { color: var(--text-faint); text-decoration: line-through; }
-/* The task's changed files in "What I changed"; a chip opens the file in the Changes card. */
-.answer-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.answer-file { display: inline-flex; align-items: center; gap: 6px; padding: 1px 8px; border-radius: 6px; cursor: pointer;
-  font-family: var(--mono, 'Fira Code', monospace); font-size: 12px; color: var(--text); border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
-  background: color-mix(in srgb, var(--text) 5%, transparent); }
-.answer-file:hover { border-color: color-mix(in srgb, var(--part) 60%, transparent); }
-.answer-file-lines { color: var(--text-faint); font-size: 11px; }
-.answer-file-more { font-size: 12px; color: var(--text-faint); align-self: center; }
+/* A changed file named in the answer: a link that opens it in the Changes card. */
+.answer-file-link { cursor: pointer; text-decoration: underline dotted; text-decoration-color: color-mix(in srgb, var(--accent) 70%, transparent); text-underline-offset: 3px; }
+.answer-file-link:hover { color: var(--accent); text-decoration-style: solid; }
 .change-file.flash > summary, .asset-row.flash > summary { background: color-mix(in srgb, var(--accent) 22%, transparent); transition: background 0.6s; }
 /* "79 units → 58 units": the old value crossed out, the new one in green. */
 .answer-ba { display: inline-flex; align-items: baseline; gap: 5px; padding: 0 6px; border-radius: 5px; white-space: nowrap;

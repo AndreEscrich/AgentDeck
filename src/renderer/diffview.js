@@ -335,7 +335,7 @@ function changesCard(files, cwd, { title = null, animate = false, peer = false }
     wasAll = all;
   };
   card.syncReview = syncReview;
-  // A file chip in the answer (render.js fileChips) opens the file here: a
+  // A file name in the answer (render.js fileChips) opens the file here: a
   // code file's row, or an asset's row in Asset changes.
   card.openFile = f => {
     let row = rows.get(f);
@@ -350,7 +350,7 @@ function changesCard(files, cwd, { title = null, animate = false, peer = false }
     row.classList.add('flash');
     setTimeout(() => row.classList.remove('flash'), 1200);
   };
-  // A task's own card: its files go into the answer's "What I changed" too.
+  // A task's own card: file names in its answer link to the files here.
   if (!title && !peer) requestAnimationFrame(() => window.fileChips?.(card.parentElement, card, files));
   syncReview();
   // Reviewed from the class diagram (its type's Mark reviewed).
