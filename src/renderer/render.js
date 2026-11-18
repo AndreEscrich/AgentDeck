@@ -1024,6 +1024,71 @@ const tableWatch = new ResizeObserver(entries => {
   }
 });
 
+// An answer written as parts with a bold lead-in ("**What the bug is.** …",
+// "**What I changed.** …", "**What I couldn't check.** …") or with small
+// headings reads as one block of text. Each part becomes a box of its own,
+// coloured by what it is about, and the boxes go in a fixed order: what
+// changed, then what was wrong, then everything else (checks, notes, next
+// steps). Text before the first part stays on top. Only an answer with two
+// or more parts, one of them about a change or a problem, is split.
+const PART_OTHER = /couldn'?t|could not|not (yet )?(checked|tested|verified)|unchecked|next|left to|still|todo|to do|open question|risk|note|other|also|observ|caveat|verify|test/i;
+const PART_CHANGE = /chang|fix|what i did|implement|solution|added|updated|edited|the patch/i;
+const PART_PROBLEM = /bug|problem|wrong|cause|why|issue|broke|broken|happen|fail|symptom|what was/i;
+const PART_KINDS = { change: { order: 0, icon: '✓' }, problem: { order: 1, icon: '!' }, other: { order: 2, icon: '•' } };
+function partKind(lead) {
+  if (PART_CHANGE.test(lead) && !PART_OTHER.test(lead)) return 'change';
+  if (PART_PROBLEM.test(lead) && !PART_OTHER.test(lead)) return 'problem';
+  if (PART_CHANGE.test(lead)) return 'change';
+  if (PART_PROBLEM.test(lead)) return 'problem';
+  return 'other';
+}
+// The lead of a part: a heading, or a paragraph that starts with a short bold text.
+function partLead(node) {
+  if (/^H[2-6]$/.test(node.tagName)) {
+    const text = node.textContent.trim();
+    return text && text.length <= 60 ? { text, strip: () => node.remove() } : null;
+  }
+  if (node.tagName !== 'P') return null;
+  let first = node.firstChild;
+  while (first && first.nodeType === 3 && !first.textContent.trim()) first = first.nextSibling;
+  if (!first || !['STRONG', 'B'].includes(first.tagName)) return null;
+  const text = first.textContent.trim();
+  if (!text || text.length > 60) return null;
+  const after = first.nextSibling?.nodeType === 3 ? first.nextSibling.textContent : '';
+  // "**What I changed.** In …" or "**What I changed:**" (a list follows).
+  if (!/[.:]$/.test(text) && !/^\s*[.:—–-]/.test(after) && first.nextSibling) return null;
+  return {
+    text: text.replace(/[\s.:—–-]+$/, ''),
+    strip: () => {
+      first.remove();
+      const t = node.firstChild;
+      if (t?.nodeType === 3) t.textContent = t.textContent.replace(/^\s*[.:—–-]?\s*/, '');
+      if (!node.textContent.trim() && !node.querySelector('img, a, code')) node.remove();
+    },
+  };
+}
+function splitParts(div) {
+  const nodes = [...div.children];
+  const leads = nodes.map(partLead);
+  const parts = [];
+  for (let i = 0; i < nodes.length; i++) {
+    if (leads[i]) parts.push({ lead: leads[i], kind: partKind(leads[i].text), at: parts.length, nodes: [nodes[i]] });
+    else if (parts.length) parts[parts.length - 1].nodes.push(nodes[i]);
+  }
+  if (parts.length < 2 || !parts.some(p => p.kind !== 'other')) return;
+  parts.sort((a, b) => PART_KINDS[a.kind].order - PART_KINDS[b.kind].order || a.at - b.at);
+  for (const part of parts) {
+    const box = el('section', `answer-part part-${part.kind}`);
+    const head = el('div', 'answer-part-head');
+    head.append(el('span', 'answer-part-icon', PART_KINDS[part.kind].icon), el('span', null, part.lead.text));
+    const body = el('div', 'answer-part-body');
+    body.append(...part.nodes);
+    part.lead.strip();
+    box.append(head, body);
+    div.appendChild(box);
+  }
+}
+
 function markdown(text, cwd) {
   const div = el('div', 'msg-text');
   // Text boxes drawn with ╔═╗ characters become cards (see boxcard.js).
@@ -1061,6 +1126,7 @@ function markdown(text, cwd) {
     const files = parsePastedDiff(code.textContent);
     if (files.length) code.parentElement.replaceWith(changesCard(files, cwd, { title: 'Diff in the answer' }));
   }
+  splitParts(div);
   linkPmKeys(div);
   decorateLinks(div);
   markFileLinks(div, cwd);
