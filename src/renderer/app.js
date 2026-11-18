@@ -937,7 +937,7 @@ function show(kind, id) {
     composerPicker.setActual(null);
     composerModePicker.setValue(h.mode || defaultMode());
     composerVerifyPicker.setValue(verifyLevelOf(h));
-    renderChatTicket({ view: h.view, lane: ticketRuns.laneOfSession(h.session.id) });
+    renderChatTicket({ view: h.view, lane: ticketRuns.laneOfSession(h.session.id), pmTicket: state.parked.get(h.session.id)?.pmTicket || null });
     $('input').placeholder = 'Send a message to continue this session…';
     $('input').focus();
   } else {
@@ -1714,6 +1714,7 @@ function hubInfo(a) {
     wasWorking: ['working', 'starting', 'waiting', 'stuck'].includes(a.status),
     // Stopped before it was done (see restartAgent).
     stopped: !!a.stopped,
+    pmTicket: a.pmTicket || undefined,
   };
 }
 
@@ -1741,6 +1742,7 @@ function parkedItem(p) {
     stopped: !!p.stopped,
     // Part of a ticket run (ticketrun.js): it stays in the run's box.
     lane: ticketRuns.laneOfSession(p.sessionId),
+    pmTicket: p.pmTicket || null,
     transcript: { stepCount: 0, tokens: p.lastTurn?.usage || null, turnStartedAt: null, lastTurn: p.lastTurn },
   };
 }
@@ -2203,7 +2205,7 @@ function headerTitle(a) {
 // (a worker's subtask and the ticket it belongs to, or the briefing's
 // ticket), each a card that opens it in PM.
 function renderChatTicket(a) {
-  const ticket = ticketRuns.ticketOf(a);
+  const ticket = ticketRuns.ticketOf(a) || (a.pmTicket ? { key: a.pmTicket, title: '', parent: null } : null);
   let bar = a.view.querySelector(':scope > .chat-ticket');
   const id = ticket ? `${ticket.key}|${ticket.parent}` : '';
   if (bar?.dataset.id === id) return;
@@ -3883,7 +3885,7 @@ async function startFrom(forkFrom, note = flashComposerNote) {
 // note(text) and resolves with any of { prompt, forkFrom, preamble,
 // handoffFrom, cwd, folderNote } to use instead of the ones passed in.
 // folderNote: why the agent works in cwd (Auto game folder), shown in the chat.
-async function startAgent({ cwd, prompt, permissionMode, verify, choice, resume, groupId, fromRect, forkFrom, preamble = '', handoffFrom = null, images = [], ticket = null, rewindAt, prepare = null, folderNote = null, pipeline = false, lane = null }) {
+async function startAgent({ cwd, prompt, permissionMode, verify, choice, resume, groupId, fromRect, forkFrom, preamble = '', handoffFrom = null, images = [], ticket = null, rewindAt, prepare = null, folderNote = null, pipeline = false, lane = null, pmTicket = null }) {
   const title = resume ? resume.session.title : prompt.split('\n')[0].slice(0, 80);
   choice = choice || defaultChoice();
   // An older Codex choice: no model is Auto, a newest model id its family.
@@ -3903,6 +3905,8 @@ async function startAgent({ cwd, prompt, permissionMode, verify, choice, resume,
   const view = resume ? resume.view : makeChatView();
   const transcript = resume ? resume.transcript : new Transcript(view, cwd);
   transcript.onEditPrompt = (index, text, opts) => rewindTo(transcript, index, text, opts);
+  // A resumed agent keeps the PM ticket it started from (its tile's card).
+  if (resume && !pmTicket) pmTicket = state.parked.get(resume.session.id)?.pmTicket || null;
   if (resume) {
     state.history.delete(resume.session.id);
     state.parked.delete(resume.session.id);
@@ -3931,6 +3935,9 @@ async function startAgent({ cwd, prompt, permissionMode, verify, choice, resume,
     if (agent.autoVisual) setTimeout(() => { agent.transcript.note(`Auto picked ${autoPickName(agent)} (visual work: ${agent.autoVisual}).`); showAutoPick(agent); }, 0);
   }
   if (ticket) agent.ticket = ticket;
+  // The Tactile PM ticket your first message linked: a card on its tile and
+  // at the top of its chat, like a ticket run's agents have.
+  if (pmTicket && !lane) agent.pmTicket = pmTicket;
   // An agent of a ticket run (ticketrun.js): the run names it after its subtask.
   // One that runs again on a run's saved session is part of that run again.
   if (!lane && resume?.session?.id) lane = ticketRuns.laneOfSession(resume.session.id);
@@ -5670,7 +5677,7 @@ async function sendFromComposer() {
       return { prompt, ...(await startFrom(forkFrom, note)) };
     };
     if (playSounds()) sounds.created();
-    await startAgent({ cwd, prompt: text, permissionMode: d.mode, verify: d.verify, choice: d.choice, groupId: d.groupId, fromRect, images, ticket, prepare, folderNote: quickGame ? gameNote(quickGame) : null, pipeline: draftPipeline(d) });
+    await startAgent({ cwd, prompt: text, permissionMode: d.mode, verify: d.verify, choice: d.choice, groupId: d.groupId, fromRect, images, ticket, prepare, folderNote: quickGame ? gameNote(quickGame) : null, pipeline: draftPipeline(d), pmTicket: ticketRuns.keyIn(text) });
   } else if (state.current.kind === 'agent') {
     const a = state.agents.get(state.current.id);
     if (QUEUE_WHILE.includes(a.status)) {
