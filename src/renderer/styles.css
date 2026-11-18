@@ -284,9 +284,9 @@ body.history-open #drawer-backdrop { opacity: 1; pointer-events: auto; }
 .answer-part.part-change { --part: #5fbf7f; }
 .answer-part.part-problem { --part: #e0745a; }
 .answer-part.part-other { --part: #7f9cc9; }
-.answer-part-head { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; font-size: 11px; font-weight: 700;
-  letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-faint); }
-.answer-part-icon { color: var(--part); font-size: 11px; text-transform: none; }
+.answer-part-head { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 4px; padding: 1px 8px; border-radius: 6px;
+  font-size: 12px; font-weight: 700; color: var(--part); background: color-mix(in srgb, var(--part) 16%, transparent); }
+.answer-part-icon { color: var(--part); font-size: 12px; }
 .answer-part-body > :first-child { margin-top: 0; }
 .answer-part-body > :last-child { margin-bottom: 0; }
 .msg-text code { font-family: var(--mono); font-size: 0.9em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
