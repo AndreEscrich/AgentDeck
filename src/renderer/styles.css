@@ -1759,7 +1759,10 @@ audio.chat-media { width: 100%; max-width: 420px; height: 40px; background: tran
 /* A ticket run's worker: its subtask on the Hub tile (hub.js), and the
    ticket at the top of its chat (renderChatTicket). */
 .tile-ticket { display: flex; min-width: 0; margin: 2px 0 0; }
-.tile-ticket .jira-card { font-size: 12px; padding: 2px 8px 2px 6px; margin: 0; min-width: 0; }
+.tile-ticket { max-width: 100%; overflow: hidden; }
+.tile-ticket .jira-card { font-size: 12px; padding: 2px 8px 2px 6px; margin: 0; min-width: 0; max-width: 100%; box-sizing: border-box; overflow: hidden; }
+/* On a narrow tile the key gets smaller, then ends in …, inside the tile. */
+.tile-ticket .jira-key { font-size: 11px; flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The tile's title already names the subtask: the card shows only its key. */
 .tile-ticket .jira-summary, .tile-ticket .jira-status { display: none; }
 .chat-ticket { max-width: var(--chat-width); margin: 0 auto; padding: 16px 24px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
