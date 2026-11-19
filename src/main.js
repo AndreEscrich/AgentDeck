@@ -462,6 +462,7 @@ app.whenReady().then(() => {
   ipcMain.handle('pmassist:run', (_e, id, text, context) => pmAssist.run(getConfig(), String(id), String(text || '').slice(0, 4000), { ...(context || {}), space: getConfig().pmSpace || 'Enchanted Inn' }, line => send('pmassist:step', String(id), line)));
   ipcMain.handle('pmassist:stop', (_e, id) => pmAssist.stop(String(id)));
   ipcMain.handle('pmc:statuses', (_e, project) => pmCall(() => pmClient.statuses(String(project || ''))));
+  ipcMain.handle('pmc:workflows', (_e, project) => pmCall(() => pmClient.workflows(String(project || ''))));
   ipcMain.handle('pmc:subtasks', (_e, key) => pmCall(() => pmClient.subtasks(String(key || ''))));
   ipcMain.handle('pmc:options', (_e, project) => pmCall(() => pmClient.options(String(project || ''))));
   ipcMain.handle('pmc:update', (_e, a) => pmWrite(a?.key, () => pmClient.update(a || {})));

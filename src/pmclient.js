@@ -273,7 +273,7 @@ function personName(name, id) {
 function slim(t) {
   const f = t.fieldNames || {};
   return {
-    id: t._id || '', statusId: t.statusId || '',
+    id: t._id || '', statusId: t.statusId || '', typeId: t.taskTypeDefinitionId || '',
     key: t.key, title: t.title || '', type: f.taskTypeDefinitionId || t.type || '',
     status: t.resolvedStatusName || t.lastStatusTransition?.to || (t.doneAt ? 'Done' : 'To Do'),
     category: t.styleMetadata?.status?.lifecycleCategory || (t.doneAt ? 'done' : t.columnId === 'in-progress' ? 'in_progress' : 'todo'),
@@ -562,5 +562,54 @@ async function addComment(a) {
   return comments(a);
 }
 
+// ---------- workflows: which status a ticket may move to ----------
+//
+// PM's tools do not say; PM's website reads it from its own API (found in
+// its code): a project's issue-type scheme maps each ticket type to a status
+// scheme, and a status scheme is either open (any status to any other) or a
+// list of transitions { from, to } plus statuses reachable from any status.
+// This reads the same, with the app's sign-in, and works out the next
+// statuses the way the website does.
+const WEB_API = 'https://pm.tactilews.com/api';
+async function webApi(pathname) {
+  const token = await accessToken();
+  const res = await electron.net.fetch(WEB_API + pathname, { headers: { authorization: `Bearer ${token}`, accept: 'application/json' } });
+  if (!res.ok) throw new Error(`PM's API answered ${res.status} for ${pathname}`);
+  return res.json();
+}
+
+const workflowCache = new Map();   // project key -> { at, value }
+async function workflows(project) {
+  const hit = workflowCache.get(project);
+  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.value;
+  const [p, types, typeSchemes, statusSchemes] = await Promise.all([
+    callTool('pm_get_project', { projectId: project }),
+    callTool('pm_list_task_types', { projectId: project }).catch(() => []),
+    webApi('/pm/issue-type-schemes'),
+    webApi('/pm/status-schemes'),
+  ]);
+  const list = v => (Array.isArray(v) ? v : v?.items || v?.data || []);
+  const scheme = list(typeSchemes).find(s => s._id === p?.issueTypeSchemeId);
+  const byId = new Map(list(statusSchemes).map(s => [s._id, s]));
+  const byType = {};
+  for (const item of scheme?.items || []) {
+    const s = byId.get(item.statusSchemeId);
+    if (!s) continue;
+    const ids = new Set(s.statusIds || []);
+    byType[item.taskTypeDefinitionId] = {
+      name: s.name || '', mode: s.workflowMode || 'open', statusIds: s.statusIds || [],
+      transitions: (s.transitions || []).filter(t => ids.has(t.from) && ids.has(t.to)),
+      allowFromAny: (s.allowFromAnyStatusIds || []).filter(id => ids.has(id)),
+      initial: ids.has(s.initialStatusId) ? s.initialStatusId : (s.statusIds || [])[0] || null,
+    };
+  }
+  // The same by the type's name (Story, Bug), for tickets read before the app kept type ids.
+  const byName = {};
+  for (const tt of Array.isArray(types) ? types : []) if (byType[tt._id]) byName[String(tt.name).toLowerCase()] = byType[tt._id];
+  const value = { byType, byName };
+  workflowCache.set(project, { at: Date.now(), value });
+  return value;
+}
+
 module.exports = { setup, status, connect, disconnect, callTool, tickets, ticket, readTasks, statuses, subtasks, setStatus,
-  options, update, createSubtask, attachments, openAttachment, attach, comments, addComment, personName };
+  options, update, createSubtask, attachments, openAttachment, attach, comments, addComment, personName, workflows };

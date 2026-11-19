@@ -866,9 +866,29 @@ class TicketsView {
 
   openStatusMenu(btn, t) {
     this.openMenu(btn, 'status:' + t.key, async menu => {
-      const list = await this.projectStatuses(t.project || t.key.split('-')[0]);
+      const project = t.project || t.key.split('-')[0];
+      const [all, flows] = await Promise.all([
+        this.projectStatuses(project),
+        t.subtask ? null : window.deck.pmWorkflows(project).catch(() => null),
+      ]);
       if (this.menu !== menu) return;
       menu.replaceChildren();
+      // Only the moves PM's workflow allows from the current status, like PM's
+      // website (pmclient.js workflows): a restricted scheme lists its
+      // transitions and the statuses reachable from any status; an open one,
+      // or a type without a scheme, allows every status. The current status
+      // stays in the list, ticked.
+      const scheme = flows?.byType?.[t.typeId] || flows?.byName?.[String(t.type || '').toLowerCase()];
+      let list = all;
+      if (scheme && scheme.mode !== 'open') {
+        const current = t.statusId || all.find(s => s.name === t.status)?.id;
+        const next = new Set(scheme.allowFromAny);
+        if (current) {
+          for (const tr of scheme.transitions) if (tr.from === current) next.add(tr.to);
+        } else if (scheme.initial) next.add(scheme.initial);
+        list = all.filter(s => s.id === current || (next.has(s.id) && scheme.statusIds.includes(s.id)));
+        if (list.length <= 1) menu.append(el('div', 'gallery-note', 'PM\'s workflow allows no other status from here.'));
+      }
       const names = { todo: 'To do', in_progress: 'In progress', done: 'Done' };
       for (const cat of ['todo', 'in_progress', 'done']) {
         const group = list.filter(s => s.category === cat);

@@ -135,6 +135,7 @@ contextBridge.exposeInMainWorld('deck', {
   pmAssistStop: id => ipcRenderer.invoke('pmassist:stop', id),
   onPmAssistStep: fn => ipcRenderer.on('pmassist:step', (_e, id, line) => fn(id, line)),
   pmStatuses: project => ipcRenderer.invoke('pmc:statuses', project),
+  pmWorkflows: project => ipcRenderer.invoke('pmc:workflows', project),
   pmSubtasks: key => ipcRenderer.invoke('pmc:subtasks', key),
   pmSetStatus: args => ipcRenderer.invoke('pmc:setStatus', args),
   pmOptions: project => ipcRenderer.invoke('pmc:options', project),
