@@ -125,7 +125,8 @@ class TicketsView {
     this.account.type = 'button';
     this.account.onclick = () => this.signOut();
     // The PM account and Sign out live in Settings → Account (pmAccountPanel).
-    bar.append(this.tabs, this.search, this.filterBtn, spacer, this.when, refresh, this.bell);
+    // The filters are on the columns now (renderList): no filter button here.
+    bar.append(this.tabs, this.search, spacer, this.when, refresh, this.bell);
     const body = el('div', 'tickets-body');
     this.bodyEl = body;
     this.listBox = el('section', 'tickets-list scroll');
@@ -137,6 +138,8 @@ class TicketsView {
     this.view.append(bar, body);
     this.list = 'sprint';
     this.type = null;
+    this.titleQ = '';     // the Title column's filter: words a title must have
+    this.sprintPick = null;  // All tickets: one sprint ('' none), or null for any
     this.who = null;     // All tickets: whose (null anyone, '' unassigned, or a name)
     this.sort = { col: 'key', desc: true };
     this.data = {};      // list -> { items, total, at }
@@ -382,22 +385,56 @@ class TicketsView {
   // To do, In progress and Done (a group's tick shows or hides all of it),
   // and the type. The ticket panel's subtasks use the same statuses, with
   // items = the subtasks and no type.
-  fillFilterMenu(menu, { items = this.items(), types: withTypes = true } = {}) {
+  // The filters. only: one column's (status, type, assignee, sprint, title),
+  // from the funnel in its header; without, every one (the subtasks' filter).
+  fillFilterMenu(menu, { items = this.items(), types: withTypes = true, only = null } = {}) {
     menu.replaceChildren();
     menu.classList.add('tickets-filter-menu');
     const redo = () => {
       if (this.menu !== menu) return;
-      this.fillFilterMenu(menu, { items, types: withTypes });
+      this.fillFilterMenu(menu, { items, types: withTypes, only });
       this.renderList();
       this.renderFilterBtn();
       if (this.detailTicket && this.selected === this.detailTicket.key) this.renderDetail(this.detailTicket, null);
     };
-    const known = this.knownStatuses(items, () => { if (this.menu === menu) this.fillFilterMenu(menu, { items, types: withTypes }); });
+    // A column's own filter (only): just its part of the menu.
+    const part = id => !only || only === id;
+    // Title: the words a title must have.
+    if (only === 'title') {
+      menu.append(el('div', 'tickets-status-group', 'Title has'));
+      const input = document.createElement('input');
+      input.type = 'search';
+      input.className = 'tp-epic-search';
+      input.placeholder = 'Words in the title…';
+      input.value = this.titleQ;
+      input.oninput = () => { this.titleQ = input.value; this.renderList(); };
+      input.onkeydown = e => { if (e.key === 'Enter') this.closeStatusMenu(); };
+      menu.append(input);
+      requestAnimationFrame(() => input.focus());
+      return;
+    }
+    // Sprint: one sprint, or tickets in none.
+    if (only === 'sprint') {
+      const sprints = new Map();
+      for (const t of this.items()) if (t.sprint) sprints.set(t.sprint, (sprints.get(t.sprint) || 0) + 1);
+      menu.append(el('div', 'tickets-status-group', 'Sprint'));
+      const choices = [[null, 'Any sprint', this.items().length], ['', 'No sprint', this.items().filter(t => !t.sprint).length],
+        ...[...sprints].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true })).map(([n, c]) => [n, n, c])];
+      for (const [value, label, n] of choices) {
+        const b = el('button', 'tickets-status-item tickets-check' + (this.sprintPick === value ? ' ticked' : ''));
+        b.type = 'button';
+        b.append(el('span', 'tickets-check-box round', this.sprintPick === value ? '●' : ''), el('span', null, label), el('span', 'gallery-cat-count', String(n)));
+        b.onclick = () => { this.sprintPick = value; redo(); };
+        menu.append(b);
+      }
+      return;
+    }
+    const known = part('status') ? this.knownStatuses(items, () => { if (this.menu === menu) this.fillFilterMenu(menu, { items, types: withTypes, only }); }) : new Map();
     const count = new Map();
     for (const t of items) count.set(String(t.status || '').toLowerCase(), (count.get(String(t.status || '').toLowerCase()) || 0) + 1);
     const catOf = t => (t.category in { todo: 1, in_progress: 1, done: 1 } ? t.category : 'todo');
-    menu.append(el('div', 'tickets-status-group', 'Status'));
-    for (const [cat, label] of [['todo', 'To do'], ['in_progress', 'In progress'], ['done', 'Done']]) {
+    if (part('status')) menu.append(el('div', 'tickets-status-group', 'Status'));
+    for (const [cat, label] of part('status') ? [['todo', 'To do'], ['in_progress', 'In progress'], ['done', 'Done']] : []) {
       const names = [...known.entries()].filter(([, v]) => v.category === cat);
       const catOn = this.statusShow.has(cat);
       const shownNames = names.filter(([k]) => !this.hiddenNames.has(k));
@@ -439,7 +476,7 @@ class TicketsView {
     }
     const types = new Map();
     for (const t of this.items()) types.set(t.type || 'Other', (types.get(t.type || 'Other') || 0) + 1);
-    if (withTypes && (types.size > 1 || this.type)) {
+    if (withTypes && part('type') && (types.size > 1 || this.type || only === 'type')) {
       menu.append(el('div', 'tickets-status-group', 'Type'));
       for (const [value, label, n] of [[null, 'All types', this.items().length], ...[...types].sort((a, b) => b[1] - a[1]).map(([k, n]) => [k, k, n])]) {
         const b = el('button', 'tickets-status-item tickets-check' + (this.type === value ? ' ticked' : ''));
@@ -452,7 +489,7 @@ class TicketsView {
       }
     }
     // Whose tickets (All tickets only): anyone, unassigned, yours or one person's.
-    if (withTypes && this.list === 'all') {
+    if (withTypes && part('assignee') && this.list === 'all') {
       const people = new Map();
       for (const t of this.items()) if (t.assignee) people.set(t.assignee, (people.get(t.assignee) || 0) + 1);
       const me = this.email ? [...people.keys()].find(n => n === this.myName?.()) : null;
@@ -468,13 +505,14 @@ class TicketsView {
         menu.append(b);
       }
     }
-    if (this.filtering() || (withTypes && this.type) || (this.list === 'all' && this.who !== null)) {
-      const reset = el('button', 'tp-link tickets-filter-reset', 'Show everything');
+    const on = { status: this.filtering(), type: withTypes && this.type, assignee: this.list === 'all' && this.who !== null };
+    if (only ? on[only] : Object.values(on).some(Boolean)) {
+      const reset = el('button', 'tp-link tickets-filter-reset', only ? 'Show all' : 'Show everything');
       reset.type = 'button';
       reset.onclick = () => {
-        this.resetStatusFilter();
-        this.type = null;
-        this.who = null;
+        if (part('status')) this.resetStatusFilter();
+        if (part('type')) this.type = null;
+        if (part('assignee')) this.who = null;
         redo();
       };
       menu.append(reset);
@@ -506,7 +544,10 @@ class TicketsView {
     if (!d) return;
     const q = this.search.value.trim().toLowerCase();
     const whoOk = t => this.list !== 'all' || this.who === null || (this.who === '' ? !t.assignee : t.assignee === this.who);
-    const shown = this.items().filter(t => (this.type === null || (t.type || 'Other') === this.type) && this.shows(t) && whoOk(t)
+    const sprintOk = t => this.list !== 'all' || this.sprintPick === null || (this.sprintPick === '' ? !t.sprint : t.sprint === this.sprintPick);
+    const words = this.titleQ.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const titleOk = t => words.every(w => t.title.toLowerCase().includes(w));
+    const shown = this.items().filter(t => (this.type === null || (t.type || 'Other') === this.type) && this.shows(t) && whoOk(t) && sprintOk(t) && titleOk(t)
       && (!q || `${t.key} ${t.title} ${t.epic} ${t.sprint} ${t.assignee || 'unassigned'}`.toLowerCase().includes(q)));
     const columns = this.columns();
     if (!columns.some(c => c[0] === this.sort.col)) this.sort = { col: 'key', desc: true };
@@ -518,15 +559,38 @@ class TicketsView {
     });
     const table = el('table', `tickets-table list-${this.list}`);
     const head = el('tr');
+    // Each column's heading: its name, a sort button (↑ ↓, or ↕ when the
+    // list is sorted by another column) and a funnel with that column's filter
+    // (lit while it hides something). Key filters by type.
+    const filterOf = { key: 'type', title: 'title', assignee: 'assignee', status: 'status', sprint: 'sprint' };
+    const active = {
+      type: this.type !== null, title: !!this.titleQ.trim(), assignee: this.who !== null,
+      status: this.filtering(), sprint: this.sprintPick !== null,
+    };
     for (const [id, name] of columns) {
       const th = el('th', `col-${id}`);
-      th.append(el('span', null, name));
-      if (this.sort.col === id) th.append(el('span', 'tickets-sort', this.sort.desc ? '↓' : '↑'));
-      th.title = `Sort by ${name.toLowerCase()}`;
-      th.onclick = () => {
-        this.sort = this.sort.col === id ? { col: id, desc: !this.sort.desc } : { col: id, desc: id === 'key' };
+      const cellBox = el('div', 'tickets-th');
+      const sorted = this.sort.col === id;
+      const sort = el('button', 'tickets-th-btn tickets-sort-btn' + (sorted ? ' on' : ''), sorted ? (this.sort.desc ? '↓' : '↑') : '↕');
+      sort.type = 'button';
+      sort.title = `Sort by ${name.toLowerCase()}`;
+      sort.onclick = e => {
+        e.stopPropagation();
+        this.sort = sorted ? { col: id, desc: !this.sort.desc } : { col: id, desc: id === 'key' };
         this.renderList();
       };
+      cellBox.append(el('span', 'tickets-th-name', name), sort);
+      const only = filterOf[id];
+      if (only) {
+        const f = el('button', 'tickets-th-btn tickets-th-filter' + (active[only] ? ' on' : ''));
+        f.type = 'button';
+        f.innerHTML = FUNNEL;
+        f.title = active[only] ? `Filtering by ${only}` : `Filter by ${only}`;
+        f.onclick = e => { e.stopPropagation(); this.openMenu(f, 'filter:' + only, menu => this.fillFilterMenu(menu, { only })); };
+        cellBox.append(f);
+      }
+      th.append(cellBox);
+      th.onclick = () => sort.click();
       head.appendChild(th);
     }
     const thead = el('thead');
