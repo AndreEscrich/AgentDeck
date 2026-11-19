@@ -3966,3 +3966,7 @@ select option { background: var(--bg-panel); color: var(--text); }
 /* Settings → Account → Tactile PM (pmAccountPanel). */
 .pm-account { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
 .pm-account-email { font-size: 13px; color: var(--text); }
+
+/* A ticket's title opens it (tickets.js row). */
+.tickets-table .tickets-title-open { cursor: pointer; }
+.tickets-table .tickets-title-open:hover > span:last-child, .tickets-table .tickets-title-open:hover .tickets-sub-title { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--text) 40%, transparent); }

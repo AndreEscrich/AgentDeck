@@ -612,16 +612,19 @@ class TicketsView {
       key.append(chev);
     } else key.append(el('span', 'tickets-expand-gap'));
     key.append(typeIcon(t.type), this.keyButton(t), this.notifBell(t), this.agentButton(t));
+    // The title opens the ticket's details, like its key.
+    const title = cell('col-title tickets-title-open', ticketTitle(t.title));
+    title.onclick = e => { e.stopPropagation(); this.select(t); };
     tr.append(
       key,
-      cell('col-title', ticketTitle(t.title)),
+      title,
       cell('col-status', ...(() => {
         // An unseen status change shows as before → after.
         const news = this.statusNews(t.key);
         return news ? [el('span', 'tickets-was', news.from), el('span', 'tickets-was-arrow', '→'), this.statusButton(t)] : [this.statusButton(t)];
       })()));
     if (this.list !== 'sprint') tr.append(cell('col-sprint', el('span', null, t.sprint)));
-    tr.title = story ? `${t.title}\n(click to show or hide the subtasks)` : t.title;
+    tr.title = story ? `${t.title}\n(the title opens the ticket; the rest of the row shows or hides the subtasks)` : t.title;
     if (story) tr.onclick = e => { if (!e.target.closest('a, button')) this.toggleSubs(t); };
     return tr;
   }
@@ -651,7 +654,7 @@ class TicketsView {
       const keyBtn = this.keyButton({ ...s, type: 'Subtask', parentKey: parent.key });
       tr.append(
         cell('col-key', el('span', 'tickets-expand-gap'), icon, keyBtn, this.agentButton({ ...s, parentKey: parent.key })),
-        cell('col-title', ticketTitle(s.title, 'tickets-sub-title')),
+        (() => { const c = cell('col-title tickets-title-open', ticketTitle(s.title, 'tickets-sub-title')); c.onclick = e => { e.stopPropagation(); this.select({ ...s, type: 'Subtask', parentKey: parent.key }); }; return c; })(),
         cell('col-status', this.statusButton(s)));
       if (this.list !== 'sprint') tr.append(cell('col-sprint'));
       tr.title = s.title;
