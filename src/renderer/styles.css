@@ -2534,10 +2534,12 @@ button.tickets-status.saving { opacity: 0.6; cursor: progress; }
    - an open story's subtasks sit sunken (like the message box's well), with
      a rail at their step in, from under the story to its last subtask. */
 .tickets-table .tickets-gap td { height: 14px; padding: 0; border: none; background: none !important; }
-.tickets-table .tickets-group td { padding: 7px 10px; background: #2a221b !important; box-shadow: inset 3px 0 0 #4d3f31; border-top: 1px solid #3d3329; border-bottom: 1px solid #3d3329; }
+.tickets-table .tickets-group td { padding: 7px 10px; background: #2a221b !important; box-shadow: inset 3px 0 0 #4d3f31, inset -3px 0 0 #4d3f31; border-top: 1px solid #3d3329; border-bottom: 1px solid #3d3329; }
 .tickets-table .tickets-group:first-child td { padding-top: 7px; }
 .tickets-table .tickets-group .tickets-group-name { color: var(--text); }
 .tickets-table tbody .tickets-row .col-key { box-shadow: inset 3px 0 0 #3d3329; }
+/* The same rail on the right, so each epic is closed on both sides. */
+.tickets-table tbody .tickets-row td:last-child, .tickets-table .tickets-subnote td:last-child { box-shadow: inset -3px 0 0 #3d3329; }
 .tickets-table tbody .tickets-row.group-end td { border-bottom: 1px solid #3d3329; }
 .tickets-table tbody .tickets-row.expanded td { background: rgba(255, 236, 210, 0.03); border-bottom-color: transparent; }
 .tickets-table .tickets-subrow td, .tickets-table .tickets-subnote td { background: rgba(0, 0, 0, 0.2); border-bottom-color: rgba(255, 236, 210, 0.04); }
@@ -3970,3 +3972,8 @@ select option { background: var(--bg-panel); color: var(--text); }
 /* A ticket's title opens it (tickets.js row). */
 .tickets-table .tickets-title-open { cursor: pointer; }
 .tickets-table .tickets-title-open:hover > span:last-child, .tickets-table .tickets-title-open:hover .tickets-sub-title { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--text) 40%, transparent); }
+
+/* All tickets: who has each ticket (tickets.js). */
+.tickets-table .col-assignee { width: 150px; }
+.tickets-who { color: var(--text-dim); }
+.tickets-who.none { color: var(--text-faint); font-style: italic; }

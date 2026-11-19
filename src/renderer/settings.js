@@ -347,6 +347,7 @@ function openSettings(config, { onSaved } = {}) {
 
   // Gallery (gallery.js)
   const galleryUrl = settingsInput('text', config.galleryUrl || '', { placeholder: 'https://drive.google.com/drive/folders/…' });
+  const pmSpace = settingsInput('text', config.pmSpace || 'Enchanted Inn', { placeholder: 'Enchanted Inn' });
   const galleryFolder = settingsInput('text', config.galleryFolder || '', { placeholder: 'Found from the Drive link' });
   const galleryFolderRow = el('div', 'settings-pick');
   const galleryPick = el('button', 'settings-pick-btn', 'Choose…');
@@ -447,7 +448,8 @@ function openSettings(config, { onSaved } = {}) {
       accountsPanel()),
       section('Tactile PM',
         el('div', 'settings-hint', 'The account the Tickets view reads PM with. It is separate from the PM connector your agents use: signing in or out here does not change it.'),
-        pmAccountPanel())]],
+        pmAccountPanel(),
+        settingsField('Space for All tickets', 'The PM space whose open tickets the Tickets view\'s All tickets lists, whoever has them (its name, like Enchanted Inn, or its key)', pmSpace))]],
     ['agents', 'Agents', [section(null,
       settingsField('Checks before done', 'In a Unity project, after a turn that changed C#, Agent Hub compiles it in the open Editor (through the Unity bridge of the project), and with tests runs the EditMode tests, before the work counts as done; failures go back to the agent to fix (three rounds at most). Each agent can change its own under ⚙ in the message box', verifyLevel),
       settingsField('Tactile knowledge', 'Agents look up Tactile\'s conventions and examples in Tactile Cortex (the Games Knowledge Database, and lessons from earlier agent sessions) before non-trivial game code. Needs the Tactile Cortex connector (Connectors → Tactile)', knowledgeOn),
@@ -647,6 +649,7 @@ function openSettings(config, { onSaved } = {}) {
       svnBranchFilter: settingsList(svnBranchFilter.value),
       githubBranches: githubBranches.checked,
       galleryUrl: galleryUrl.value.trim(),
+      pmSpace: pmSpace.value.trim() || 'Enchanted Inn',
       galleryFolder: galleryFolder.value.trim(),
       claudePath: claudePath.value.trim(),
       extraArgs: extraArgs.value.split('\n').map(l => l.trim()).filter(Boolean),

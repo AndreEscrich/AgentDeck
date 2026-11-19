@@ -276,13 +276,45 @@ const LIST_FIELDS = { descriptionMaxLength: 0, returnFieldNames: true, returnSty
 const LIST_TQL = {
   // Your tickets in the open sprints, done ones too (like PM's sheet).
   sprint: 'assignee = currentUser() AND sprint IN openSprints() ORDER BY updatedAt DESC',
-  // Every ticket of yours that is not done, in a sprint or not.
-  open: 'assignee = currentUser() AND statusCategory != done ORDER BY updatedAt DESC',
+  // Every ticket of the space that is not done, whoever has it (or nobody).
+  all: 'statusCategory != done ORDER BY updatedAt DESC',
 };
 
-// list: 'sprint' or 'open' (see LIST_TQL). Resolves with { items, total }.
-async function tickets(list) {
-  const r = await callTool('pm_search_tasks', { tql: LIST_TQL[list] || LIST_TQL.sprint, ...LIST_FIELDS });
+// The projects of a PM space (Settings → Account → Tactile PM, Enchanted
+// Inn by default), for All tickets. Kept for 30 minutes.
+let spaceProjects = null;
+async function projectsOfSpace(name) {
+  const want = String(name || 'Enchanted Inn').trim().toLowerCase();
+  if (spaceProjects?.name === want && Date.now() - spaceProjects.at < 30 * 60000) return spaceProjects.keys;
+  const [spaces, projects] = await Promise.all([callTool('pm_list_spaces', {}), callTool('pm_list_projects', {})]);
+  const space = (Array.isArray(spaces) ? spaces : []).find(s => [s.name, s.key].some(v => String(v || '').trim().toLowerCase() === want));
+  if (!space) throw new Error(`Tactile PM has no space named "${name}". Change it in Settings → Account → Tactile PM.`);
+  const keys = (Array.isArray(projects) ? projects : []).filter(p => p.spaceId === space._id && !p.isArchived).map(p => p.key).filter(Boolean);
+  if (!keys.length) throw new Error(`The space "${space.name}" has no projects.`);
+  spaceProjects = { name: want, at: Date.now(), keys };
+  return keys;
+}
+
+// All tickets: the space's open tickets, up to 600 (newest changes first).
+async function spaceTickets(space) {
+  const projectIds = await projectsOfSpace(space);
+  const items = [];
+  let total = 0;
+  for (let offset = 0; offset < 600; offset += 200) {
+    const r = await callTool('pm_search_tasks', { tql: LIST_TQL.all, projectIds, ...LIST_FIELDS, offset });
+    const page = r.items || [];
+    total = r.total || total;
+    items.push(...page);
+    if (page.length < 200 || items.length >= total) break;
+  }
+  items.forEach(learn);
+  return { items: items.map(slim), total: Math.max(total, items.length) };
+}
+
+// list: 'sprint' (yours) or 'all' (the space's). Resolves with { items, total }.
+async function tickets(list, { space } = {}) {
+  if (list === 'all') return spaceTickets(space);
+  const r = await callTool('pm_search_tasks', { tql: LIST_TQL.sprint, ...LIST_FIELDS });
   (r.items || []).forEach(learn);
   // These are all yours, so their assignee id is yours: your sign-in email
   // (the reporter of your tickets) gets your name too.

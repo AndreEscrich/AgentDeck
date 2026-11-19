@@ -455,7 +455,7 @@ app.whenReady().then(() => {
   ipcMain.handle('pmc:status', () => pmClient.status());
   ipcMain.handle('pmc:connect', () => pmCall(async () => { const r = await pmClient.connect(); pmNotify.check().catch(() => {}); return r; }));
   ipcMain.handle('pmc:disconnect', () => pmClient.disconnect());
-  ipcMain.handle('pmc:tickets', (_e, list) => pmCall(() => pmClient.tickets(list === 'open' ? 'open' : 'sprint')));
+  ipcMain.handle('pmc:tickets', (_e, list) => pmCall(() => pmClient.tickets(list === 'all' ? 'all' : 'sprint', { space: getConfig().pmSpace || 'Enchanted Inn' })));
   ipcMain.handle('pmc:ticket', (_e, key) => pmCall(() => pmClient.ticket(String(key || ''))));
   ipcMain.handle('pmc:statuses', (_e, project) => pmCall(() => pmClient.statuses(String(project || ''))));
   ipcMain.handle('pmc:subtasks', (_e, key) => pmCall(() => pmClient.subtasks(String(key || ''))));

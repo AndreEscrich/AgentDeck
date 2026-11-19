@@ -18,12 +18,16 @@
 // The last lists are kept, so the view shows them at once and reads them
 // again in the background.
 
-const TICKET_LISTS = [['sprint', 'This sprint'], ['open', 'All open']];
+// Sprint: yours in the open sprints. All tickets: every open ticket of the
+// space (Settings → Account → Tactile PM; Enchanted Inn by default), whoever
+// has it, so you can find unassigned ones and take them (Assign to me).
+const TICKET_LISTS = [['sprint', 'Sprint'], ['all', 'All tickets']];
 const CATEGORY_ORDER = { todo: 0, in_progress: 1, done: 2 };
 // The table's columns: [id, name, the value it sorts by].
 const TICKET_COLUMNS = [
   ['key', 'Key', t => t.seq],
   ['title', 'Title', t => t.title.toLowerCase()],
+  ['assignee', 'Assignee', t => (t.assignee || '\uffff').toLowerCase()],
   ['status', 'Status', t => `${CATEGORY_ORDER[t.category] ?? 1}${t.status}`],
   ['sprint', 'Sprint', t => t.sprint.toLowerCase()],
 ];
@@ -133,6 +137,7 @@ class TicketsView {
     this.view.append(bar, body);
     this.list = 'sprint';
     this.type = null;
+    this.who = null;     // All tickets: whose (null anyone, '' unassigned, or a name)
     this.sort = { col: 'key', desc: true };
     this.data = {};      // list -> { items, total, at }
     this.selected = null;
@@ -446,12 +451,30 @@ class TicketsView {
         menu.append(b);
       }
     }
-    if (this.filtering() || (withTypes && this.type)) {
+    // Whose tickets (All tickets only): anyone, unassigned, yours or one person's.
+    if (withTypes && this.list === 'all') {
+      const people = new Map();
+      for (const t of this.items()) if (t.assignee) people.set(t.assignee, (people.get(t.assignee) || 0) + 1);
+      const me = this.email ? [...people.keys()].find(n => n === this.myName?.()) : null;
+      menu.append(el('div', 'tickets-status-group', 'Assignee'));
+      const choices = [[null, 'Anyone', this.items().length], ['', 'Unassigned', this.items().filter(t => !t.assignee).length],
+        ...(me ? [[me, `Me (${me})`, people.get(me)]] : []),
+        ...[...people].filter(([n]) => n !== me).sort((a, b) => a[0].localeCompare(b[0])).map(([n, c]) => [n, n, c])];
+      for (const [value, label, n] of choices) {
+        const b = el('button', 'tickets-status-item tickets-check' + (this.who === value ? ' ticked' : ''));
+        b.type = 'button';
+        b.append(el('span', 'tickets-check-box round', this.who === value ? '●' : ''), el('span', null, label), el('span', 'gallery-cat-count', String(n)));
+        b.onclick = () => { this.who = value; redo(); };
+        menu.append(b);
+      }
+    }
+    if (this.filtering() || (withTypes && this.type) || (this.list === 'all' && this.who !== null)) {
       const reset = el('button', 'tp-link tickets-filter-reset', 'Show everything');
       reset.type = 'button';
       reset.onclick = () => {
         this.resetStatusFilter();
         this.type = null;
+        this.who = null;
         redo();
       };
       menu.append(reset);
@@ -463,9 +486,10 @@ class TicketsView {
     for (const [cat, label] of [['todo', 'to do'], ['in_progress', 'in progress'], ['done', 'done']]) if (!this.statusShow.has(cat)) hidden.push(label);
     const known = this.knownStatuses(this.items());
     for (const k of this.hiddenNames) hidden.push(known.get(k)?.name || k);
-    const active = hidden.length || this.type;
+    const whose = this.list === 'all' && this.who !== null ? (this.who ? `only ${this.who}'s` : 'only unassigned') : '';
+    const active = hidden.length || this.type || whose;
     this.filterBtn.classList.toggle('active', !!active);
-    this.filterBtn.title = active ? `Filters: ${[this.type ? `only ${this.type}` : '', hidden.length ? `hiding ${hidden.join(', ')}` : ''].filter(Boolean).join('; ')}` : 'Filters';
+    this.filterBtn.title = active ? `Filters: ${[whose, this.type ? `only ${this.type}` : '', hidden.length ? `hiding ${hidden.join(', ')}` : ''].filter(Boolean).join('; ')}` : 'Filters';
   }
 
   shows(t) {
@@ -481,8 +505,9 @@ class TicketsView {
     const d = this.data[this.list];
     if (!d) return;
     const q = this.search.value.trim().toLowerCase();
-    const shown = this.items().filter(t => (this.type === null || (t.type || 'Other') === this.type) && this.shows(t)
-      && (!q || `${t.key} ${t.title} ${t.epic} ${t.sprint}`.toLowerCase().includes(q)));
+    const whoOk = t => this.list !== 'all' || this.who === null || (this.who === '' ? !t.assignee : t.assignee === this.who);
+    const shown = this.items().filter(t => (this.type === null || (t.type || 'Other') === this.type) && this.shows(t) && whoOk(t)
+      && (!q || `${t.key} ${t.title} ${t.epic} ${t.sprint} ${t.assignee || 'unassigned'}`.toLowerCase().includes(q)));
     const columns = this.columns();
     if (!columns.some(c => c[0] === this.sort.col)) this.sort = { col: 'key', desc: true };
     const by = (columns.find(c => c[0] === this.sort.col) || columns[0])[2];
@@ -568,7 +593,7 @@ class TicketsView {
 
   // This sprint's list needs no Sprint column: every ticket is in it.
   columns() {
-    return TICKET_COLUMNS.filter(c => !(c[0] === 'sprint' && this.list === 'sprint'));
+    return TICKET_COLUMNS.filter(c => !(['sprint', 'assignee'].includes(c[0]) && this.list === 'sprint'));
   }
 
   // The small agent button after a key (an agent's tile in miniature: its
@@ -623,7 +648,11 @@ class TicketsView {
         const news = this.statusNews(t.key);
         return news ? [el('span', 'tickets-was', news.from), el('span', 'tickets-was-arrow', '→'), this.statusButton(t)] : [this.statusButton(t)];
       })()));
-    if (this.list !== 'sprint') tr.append(cell('col-sprint', el('span', null, t.sprint)));
+    if (this.list !== 'sprint') {
+      const who = el('span', 'tickets-who' + (t.assignee ? '' : ' none'), t.assignee || 'Unassigned');
+      tr.insertBefore(cell('col-assignee', who), tr.querySelector('.col-status'));
+      tr.append(cell('col-sprint', el('span', null, t.sprint)));
+    }
     tr.title = story ? `${t.title}\n(the title opens the ticket; the rest of the row shows or hides the subtasks)` : t.title;
     if (story) tr.onclick = e => { if (!e.target.closest('a, button')) this.toggleSubs(t); };
     return tr;
@@ -656,7 +685,10 @@ class TicketsView {
         cell('col-key', el('span', 'tickets-expand-gap'), icon, keyBtn, this.agentButton({ ...s, parentKey: parent.key })),
         (() => { const c = cell('col-title tickets-title-open', ticketTitle(s.title, 'tickets-sub-title')); c.onclick = e => { e.stopPropagation(); this.select({ ...s, type: 'Subtask', parentKey: parent.key }); }; return c; })(),
         cell('col-status', this.statusButton(s)));
-      if (this.list !== 'sprint') tr.append(cell('col-sprint'));
+      if (this.list !== 'sprint') {
+        tr.insertBefore(cell('col-assignee', el('span', 'tickets-who' + (s.assignee ? '' : ' none'), s.assignee || '')), tr.querySelector('.col-status'));
+        tr.append(cell('col-sprint'));
+      }
       tr.title = s.title;
       return tr;
     });
