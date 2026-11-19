@@ -225,6 +225,7 @@ async function callTool(name, args) {
 function slim(t) {
   const f = t.fieldNames || {};
   return {
+    id: t._id || '', statusId: t.statusId || '',
     key: t.key, title: t.title || '', type: f.taskTypeDefinitionId || t.type || '',
     status: t.resolvedStatusName || t.lastStatusTransition?.to || (t.doneAt ? 'Done' : 'To Do'),
     category: t.styleMetadata?.status?.lifecycleCategory || (t.doneAt ? 'done' : t.columnId === 'in-progress' ? 'in_progress' : 'todo'),
@@ -255,19 +256,76 @@ async function ticket(key) {
     callTool('pm_list_subtasks', { key }).catch(() => []),
   ]);
   if (!t || typeof t !== 'object') throw new Error(`${key} was not found.`);
+  const base = slim(t);
+  const subtask = t.itemType === 'subtask';
+  // A subtask comes without status colours, so its status comes from the
+  // project's statuses, like the subtasks in a list.
+  const st = (await statuses(base.project).catch(() => [])).find(s => s.id === t.statusId);
+  if (st) Object.assign(base, { status: st.name, category: st.category, color: st.color, textColor: st.text });
   return {
-    ...slim(t),
+    ...base,
+    subtask,
     itemType: t.itemType || 'task',
     description: t.description || '',
     author: t.author || '',
     assignee2: t.assignee2 || '',
     epicName: t.epic?.name || t.fieldNames?.epicId || '',
     media: (t.inlineMedia || []).map(m => ({ id: m.mediaId, name: m.fileName, type: m.contentType, url: m.previewUrl })),
-    subtasks: (Array.isArray(subs) ? subs : []).map(s => ({
-      key: s.key, title: s.title || '', assignee: s.assignee || '', priority: s.priority || '',
-      status: s.lastStatusTransition?.to || (s.doneAt ? 'Done' : 'To Do'), done: !!s.doneAt,
-    })),
+    subtasks: subtask ? [] : await slimSubtasks(subs, base.project),
   };
+}
+
+// ---------- statuses, subtasks and status changes ----------
+
+// A project's statuses (pm_list_statuses), kept 10 minutes: { id, name,
+// category (todo | in_progress | done), color, text }, in PM's order.
+const statusCache = new Map();   // project key -> { at, list }
+async function statuses(project) {
+  const hit = statusCache.get(project);
+  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.list;
+  const r = await callTool('pm_list_statuses', { projectId: project });
+  const list = (Array.isArray(r) ? r : []).map(s => ({ id: s._id, name: s.name, category: s.lifecycleCategory || 'todo', color: s.color || null, text: s.text || null }));
+  statusCache.set(project, { at: Date.now(), list });
+  return list;
+}
+
+// Subtasks as the view needs them. A subtask's own "status" field is stale
+// (it says TODO on done ones), so the name comes from its statusId and the
+// project's statuses.
+async function slimSubtasks(subs, project) {
+  subs = Array.isArray(subs) ? subs : [];
+  const list = subs.length ? await statuses(project).catch(() => []) : [];
+  const byId = new Map(list.map(s => [s.id, s]));
+  return subs.map(s => {
+    const st = byId.get(s.statusId);
+    const done = st ? st.category === 'done' : !!s.doneAt;
+    return {
+      id: s._id || '', key: s.key, title: s.title || '', assignee: s.assignee || '', priority: s.priority || '',
+      statusId: s.statusId || '', status: st?.name || s.lastStatusTransition?.to || (s.doneAt ? 'Done' : 'To Do'),
+      category: st?.category || (done ? 'done' : s.columnId === 'in-progress' ? 'in_progress' : 'todo'),
+      color: st?.color || null, textColor: st?.text || null, done,
+      project, subtask: true, seq: s.sequenceNumber || Number((s.key || '').split('-')[1]) || 0,
+    };
+  });
+}
+
+async function subtasks(key) {
+  const subs = await callTool('pm_list_subtasks', { key });
+  return slimSubtasks(subs, (key || '').split('-')[0]);
+}
+
+// Moves a ticket or a subtask to another status. Resolves with the status
+// it has now ({ statusId, status, category, color, textColor, done }).
+async function setStatus({ key, id, project, statusId, subtask }) {
+  const st = (await statuses(project)).find(s => s.id === statusId);
+  if (!st) throw new Error('PM does not know that status.');
+  // The tools take PM's id; tickets kept from before the app read ids have
+  // only their key.
+  if (!id) id = (await callTool('pm_get_task', { key }))?._id;
+  if (!id) throw new Error(`${key} was not found.`);
+  if (subtask) await callTool('pm_update_subtask', { projectId: project, subtaskId: id, statusId });
+  else await callTool('pm_update_task', { projectId: project, taskId: id, statusId });
+  return { statusId, status: st.name, category: st.category, color: st.color, textColor: st.text, done: st.category === 'done' };
 }
 
 // The same answer as readPmTasks in agents.js, read directly: { KEY: task }
@@ -286,4 +344,4 @@ async function readTasks(keys, subtasksOf = []) {
   return out;
 }
 
-module.exports = { setup, status, connect, disconnect, callTool, tickets, ticket, readTasks };
+module.exports = { setup, status, connect, disconnect, callTool, tickets, ticket, readTasks, statuses, subtasks, setStatus };

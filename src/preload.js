@@ -131,6 +131,9 @@ contextBridge.exposeInMainWorld('deck', {
   pmDisconnect: () => ipcRenderer.invoke('pmc:disconnect'),
   pmTickets: list => ipcRenderer.invoke('pmc:tickets', list),
   pmTicket: key => ipcRenderer.invoke('pmc:ticket', key),
+  pmStatuses: project => ipcRenderer.invoke('pmc:statuses', project),
+  pmSubtasks: key => ipcRenderer.invoke('pmc:subtasks', key),
+  pmSetStatus: args => ipcRenderer.invoke('pmc:setStatus', args),
   // A new folder (category) and images copied into one; files: paths, or none to pick them.
   galleryMakeFolder: name => ipcRenderer.invoke('gallery:mkdir', name),
   galleryAdd: (category, files) => ipcRenderer.invoke('gallery:add', category, files),

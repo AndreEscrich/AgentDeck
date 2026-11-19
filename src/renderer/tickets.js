@@ -6,9 +6,14 @@
 // Your tickets as a table like PM's sheet (key, type, title, status, epic,
 // sprint; a click on a column's name sorts by it), in two lists: This
 // sprint (yours in the open sprints, done ones too) and All open (yours
-// that are not done). A click on a row shows the ticket's details on the right: its description, its subtasks
-// and Start agent, which puts the ticket's link on the Hub's message box
-// (a Story with two or more open subtasks then gets the ⑂ Split button).
+// that are not done). A click on a row shows the ticket's details on the
+// right: its description, its subtasks and Start agent, which puts the
+// ticket's link on the Hub's message box (a Story with two or more open
+// subtasks then gets the ⑂ Split button). A click on a Story also opens its
+// subtasks as rows below it, like PM's sheet; the ▸ in front of the key
+// opens and closes them without the details.
+// A click on a status opens the project's statuses; picking one changes the
+// ticket or subtask in PM (pm_update_task / pm_update_subtask).
 // The last lists are kept, so the view shows them at once and reads them
 // again in the background.
 
@@ -37,9 +42,9 @@ function typeIcon(type) {
   span.title = type || 'Task';
   return span;
 }
-function statusBadge(t) {
-  return el('span', `tickets-status status-${t.category || 'todo'}`, t.status);
-}
+const CHEVRON = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1.5L6.5 5 3 8.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const SUBTASK_ICON = '<svg width="14" height="14" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4" fill="#4c9aff"/><rect x="7" y="7" width="6" height="6" rx="1" fill="none" stroke="#fff" stroke-width="2"/><rect x="11" y="11" width="6" height="6" rx="1" fill="#fff"/></svg>';
+const isStory = t => !t.subtask && /story/i.test(t.type || '');
 const REFRESH_MS = 5 * 60 * 1000;
 
 function pmItemUrl(key) { return 'https://pm.tactilews.com/pm/items/' + key; }
@@ -84,6 +89,10 @@ class TicketsView {
     this.sort = { col: 'key', desc: true };
     this.data = {};      // list -> { items, total, at }
     this.selected = null;
+    this.detailTicket = null;  // the ticket the details show
+    this.expanded = new Set(); // Stories whose subtasks show below them
+    this.subs = new Map();     // key -> { items, loading, error }
+    this.statusLists = new Map(); // project -> its statuses
     this.loading = new Set();
     this.connected = null;
     try { this.data = JSON.parse(localStorage.getItem('pmTicketLists') || '{}'); } catch { this.data = {}; }
@@ -227,7 +236,10 @@ class TicketsView {
     const thead = el('thead');
     thead.appendChild(head);
     const body = el('tbody');
-    for (const t of shown) body.appendChild(this.row(t));
+    for (const t of shown) {
+      body.appendChild(this.row(t));
+      if (this.expanded.has(t.key)) for (const r of this.subRows(t)) body.appendChild(r);
+    }
     table.append(thead, body);
     const frag = document.createDocumentFragment();
     frag.appendChild(table);
@@ -240,20 +252,202 @@ class TicketsView {
     const tr = el('tr', 'tickets-row' + (this.selected === t.key ? ' selected' : '') + (t.category === 'done' ? ' done' : ''));
     tr.dataset.key = t.key;
     const cell = (cls, ...kids) => { const td = el('td', cls); td.append(...kids); return td; };
+    const key = cell('col-key');
+    if (isStory(t)) {
+      const open = this.expanded.has(t.key);
+      const chev = el('button', 'tickets-expand' + (open ? ' open' : ''));
+      chev.type = 'button';
+      chev.innerHTML = CHEVRON;
+      chev.title = open ? 'Hide the subtasks' : 'Show the subtasks';
+      chev.onclick = e => { e.stopPropagation(); this.toggleSubs(t); };
+      key.append(chev);
+    } else key.append(el('span', 'tickets-expand-gap'));
+    key.append(el('span', 'tickets-key', t.key));
     tr.append(
-      cell('col-key', el('span', 'tickets-key', t.key)),
+      key,
       cell('col-type', typeIcon(t.type)),
       cell('col-title', el('span', null, t.title)),
-      cell('col-status', statusBadge(t)),
+      cell('col-status', this.statusButton(t)),
       cell('col-epic', el('span', null, t.epic)),
       cell('col-sprint', el('span', null, t.sprint)));
     tr.title = t.title;
-    tr.onclick = () => (this.selected === t.key ? this.closeDetail() : this.select(t));
+    tr.onclick = () => {
+      if (this.selected === t.key) {
+        if (isStory(t)) this.expanded.delete(t.key);
+        this.closeDetail();
+        this.renderList();
+        return;
+      }
+      if (isStory(t) && !this.expanded.has(t.key)) this.toggleSubs(t);
+      this.select(t);
+    };
     return tr;
+  }
+
+  // The rows under an open Story: its subtasks, or what is happening.
+  subRows(parent) {
+    const d = this.subs.get(parent.key);
+    const note = text => {
+      const tr = el('tr', 'tickets-subnote');
+      const td = el('td', null, text);
+      td.colSpan = TICKET_COLUMNS.length;
+      tr.append(td);
+      return [tr];
+    };
+    if (!d || (d.loading && !d.items)) return note('Reading the subtasks…');
+    if (d.error && !d.items) return note(d.error);
+    if (!d.items.length) return note('No subtasks.');
+    return d.items.map(s => {
+      const tr = el('tr', 'tickets-row tickets-subrow' + (this.selected === s.key ? ' selected' : '') + (s.done ? ' done' : ''));
+      tr.dataset.key = s.key;
+      const cell = (cls, ...kids) => { const td = el('td', cls); td.append(...kids); return td; };
+      const icon = el('span', 'tickets-type-icon');
+      icon.innerHTML = SUBTASK_ICON;
+      icon.title = 'Subtask';
+      const who = s.assignee ? el('span', 'tickets-sub-who', s.assignee) : '';
+      tr.append(
+        cell('col-key', el('span', 'tickets-expand-gap'), el('span', 'tickets-key', s.key)),
+        cell('col-type', icon),
+        cell('col-title', el('span', 'tickets-sub-title', s.title), who),
+        cell('col-status', this.statusButton(s)),
+        cell('col-epic'),
+        cell('col-sprint'));
+      tr.title = s.title;
+      tr.onclick = () => (this.selected === s.key ? (this.closeDetail(), this.renderList()) : this.select({ ...s, type: 'Subtask', parentKey: parent.key }));
+      return tr;
+    });
+  }
+
+  toggleSubs(t) {
+    if (this.expanded.has(t.key)) this.expanded.delete(t.key);
+    else {
+      this.expanded.add(t.key);
+      this.loadSubs(t.key);
+    }
+    this.renderList();
+  }
+
+  async loadSubs(key) {
+    const d = this.subs.get(key) || {};
+    if (d.loading) return;
+    this.subs.set(key, { ...d, loading: true, error: null });
+    const r = await window.deck.pmSubtasks(key).catch(err => ({ error: String(err?.message || err) }));
+    if (r?.notConnected) return this.setConnected({ connected: false });
+    const now = this.subs.get(key) || {};
+    this.subs.set(key, Array.isArray(r) ? { items: r, loading: false } : { ...now, loading: false, error: r?.error || 'PM sent no subtasks.' });
+    if (this.expanded.has(key)) this.renderList();
+  }
+
+  // ---------- statuses ----------
+
+  // A ticket's status as a button: a click lists the project's statuses.
+  statusButton(t) {
+    const b = el('button', `tickets-status status-${t.category || 'todo'}` + (t.saving ? ' saving' : ''));
+    b.type = 'button';
+    b.append(el('span', null, t.status), el('span', 'tickets-status-caret', '▾'));
+    b.title = 'Change the status';
+    b.onclick = e => { e.stopPropagation(); e.preventDefault(); this.openStatusMenu(b, t); };
+    return b;
+  }
+
+  async projectStatuses(project) {
+    if (this.statusLists.has(project)) return this.statusLists.get(project);
+    const r = await window.deck.pmStatuses(project).catch(err => ({ error: String(err?.message || err) }));
+    if (!Array.isArray(r)) throw new Error(r?.error || 'PM sent no statuses.');
+    this.statusLists.set(project, r);
+    return r;
+  }
+
+  closeStatusMenu() {
+    this.menu?.remove();
+    this.menu = null;
+    document.removeEventListener('mousedown', this.menuAway, true);
+    document.removeEventListener('keydown', this.menuKey, true);
+  }
+
+  async openStatusMenu(btn, t) {
+    const again = this.menu?.dataset.key === t.key;
+    this.closeStatusMenu();
+    if (again) return;
+    const menu = el('div', 'tickets-status-menu');
+    menu.dataset.key = t.key;
+    menu.append(el('div', 'gallery-note', 'Reading the statuses…'));
+    document.body.appendChild(menu);
+    this.menu = menu;
+    const place = () => {
+      const r = btn.getBoundingClientRect();
+      const h = menu.offsetHeight;
+      const below = window.innerHeight - r.bottom - 8;
+      menu.style.left = Math.min(r.left, window.innerWidth - menu.offsetWidth - 8) + 'px';
+      menu.style.top = (below >= h || below > r.top ? r.bottom + 4 : Math.max(8, r.top - h - 4)) + 'px';
+      menu.style.maxHeight = Math.max(160, below >= h || below > r.top ? below : r.top - 12) + 'px';
+    };
+    place();
+    this.menuAway = e => { if (!menu.contains(e.target) && !btn.contains(e.target)) this.closeStatusMenu(); };
+    this.menuKey = e => { if (e.key === 'Escape') { e.stopPropagation(); this.closeStatusMenu(); } };
+    document.addEventListener('mousedown', this.menuAway, true);
+    document.addEventListener('keydown', this.menuKey, true);
+    let list;
+    try { list = await this.projectStatuses(t.project || t.key.split('-')[0]); }
+    catch (err) { if (this.menu === menu) menu.replaceChildren(el('div', 'tickets-error', err.message)); return; }
+    if (this.menu !== menu) return;
+    menu.replaceChildren();
+    const names = { todo: 'To do', in_progress: 'In progress', done: 'Done' };
+    for (const cat of ['todo', 'in_progress', 'done']) {
+      const group = list.filter(s => s.category === cat);
+      if (!group.length) continue;
+      menu.append(el('div', 'tickets-status-group', names[cat]));
+      for (const st of group) {
+        const item = el('button', 'tickets-status-item' + (st.id === t.statusId || (!t.statusId && st.name === t.status) ? ' on' : ''));
+        item.type = 'button';
+        item.append(el('span', `tickets-status status-${st.category}`, st.name));
+        item.onclick = () => { this.closeStatusMenu(); this.changeStatus(t, st); };
+        menu.append(item);
+      }
+    }
+    place();
+    menu.querySelector('.on')?.scrollIntoView({ block: 'nearest' });
+  }
+
+  // Every copy of a ticket the view holds (the lists, the subtask rows, the
+  // details), so a change shows everywhere at once.
+  copies(key) {
+    const out = [];
+    for (const d of Object.values(this.data)) for (const t of d.items || []) if (t.key === key) out.push(t);
+    for (const d of this.subs.values()) for (const t of d.items || []) if (t.key === key) out.push(t);
+    const dt = this.detailTicket;
+    if (dt?.key === key) out.push(dt);
+    for (const t of dt?.subtasks || []) if (t.key === key) out.push(t);
+    return out;
+  }
+
+  async changeStatus(t, st) {
+    if (st.id === t.statusId) return;
+    const fields = ['statusId', 'status', 'category', 'color', 'textColor', 'done'];
+    const before = Object.fromEntries(fields.map(f => [f, t[f]]));
+    const apply = v => { for (const c of this.copies(t.key)) Object.assign(c, v); this.redraw(); };
+    apply({ statusId: st.id, status: st.name, category: st.category, color: st.color, textColor: st.text, done: st.category === 'done', saving: true });
+    const r = await window.deck.pmSetStatus({ key: t.key, id: t.id, project: t.project || t.key.split('-')[0], statusId: st.id, subtask: !!t.subtask })
+      .catch(err => ({ error: String(err?.message || err) }));
+    if (r?.notConnected) return this.setConnected({ connected: false });
+    if (r?.error) {
+      apply({ ...before, saving: false });
+      this.renderWhen(`${t.key}: ${r.error}`);
+      return;
+    }
+    apply({ ...r, saving: false });
+    window.uiSound?.('done');
+    try { localStorage.setItem('pmTicketLists', JSON.stringify(this.data)); } catch { /* shown anyway */ }
+  }
+
+  redraw() {
+    this.renderList();
+    if (this.detailTicket && this.selected === this.detailTicket.key) this.renderDetail(this.detailTicket, null);
   }
 
   closeDetail() {
     this.selected = null;
+    this.detailTicket = null;
     this.view.classList.remove('detail-open');
     for (const r of this.listBox.querySelectorAll('.tickets-row')) r.classList.remove('selected');
     this.showDetailEmpty();
@@ -271,10 +465,14 @@ class TicketsView {
     const full = await window.deck.pmTicket(t.key).catch(err => ({ error: String(err?.message || err) }));
     if (this.selected !== t.key) return;
     if (full.notConnected) return this.setConnected({ connected: false });
+    if (!full.error && full.subtasks?.length) this.subs.set(full.key, { items: full.subtasks, loading: false });
+    if (!full.error && t.parentKey) full.parentKey = t.parentKey;
     this.renderDetail(full.error ? t : full, full.error || null);
+    if (!full.error && this.expanded.has(full.key)) this.renderList();
   }
 
   renderDetail(t, error) {
+    this.detailTicket = t;
     const box = el('div', 'ticket-detail');
     const head = el('div', 'ticket-head');
     const link = el('a', 'ticket-key', t.key);
@@ -285,9 +483,11 @@ class TicketsView {
     close.type = 'button';
     close.title = 'Close';
     close.onclick = () => this.closeDetail();
-    head.append(typeIcon(t.type), link, statusBadge(t), close);
+    const icon = t.subtask ? el('span', 'tickets-type-icon') : typeIcon(t.type);
+    if (t.subtask) { icon.innerHTML = SUBTASK_ICON; icon.title = 'Subtask'; }
+    head.append(icon, link, this.statusButton(t), close);
     box.append(head, el('h2', 'ticket-title', t.title));
-    const facts = [['Assignee', t.assignee], ['Also', t.assignee2], ['Sprint', t.sprint], ['Epic', t.epicName || t.epic], ['Priority', t.priority], ['Reporter', t.author]].filter(([, v]) => v);
+    const facts = [['Subtask of', t.parentKey], ['Assignee', t.assignee], ['Also', t.assignee2], ['Sprint', t.sprint], ['Epic', t.epicName || t.epic], ['Priority', t.priority], ['Reporter', t.author]].filter(([, v]) => v);
     if (facts.length) {
       const grid = el('div', 'ticket-facts');
       for (const [k, v] of facts) grid.append(el('span', 'ticket-fact-name', k), el('span', null, v));
@@ -315,7 +515,7 @@ class TicketsView {
         const row = el('a', 'ticket-sub' + (s.done ? ' done' : ''));
         row.href = pmItemUrl(s.key);
         row.target = '_blank';
-        row.append(el('span', 'tickets-key', s.key), el('span', 'ticket-sub-title', s.title), el('span', 'ticket-sub-status', s.status));
+        row.append(el('span', 'tickets-key', s.key), el('span', 'ticket-sub-title', s.title), this.statusButton(s));
         subs.append(row);
       }
       box.append(subs);
