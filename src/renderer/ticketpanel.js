@@ -94,7 +94,7 @@
   // Everyone the view has seen, for the assignee fields' suggestions.
   P.people = function () {
     const names = new Set();
-    const add = t => { for (const n of [t?.assignee, t?.assignee2, t?.author]) if (n) names.add(n); };
+    const add = t => { for (const n of [t?.assignee, t?.assignee2, t?.author]) if (n && !n.includes('@')) names.add(n); };
     for (const d of Object.values(this.data)) (d.items || []).forEach(add);
     for (const d of this.subs.values()) (d.items || []).forEach(add);
     add(this.detailTicket);
@@ -548,7 +548,8 @@
     field('Reporter', reporter);
     const me = el('button', 'tp-link', 'Assign to me');
     me.type = 'button';
-    me.onclick = () => this.saveFields(t, { assignee: this.email || this.myName() });
+    // Your name, not your email: PM shows the text it is given.
+    me.onclick = () => this.saveFields(t, { assignee: this.myName() });
     field('Assignee', person(t.assignee, 'assignee'), me);
     field('Assignee 2', person(t.assignee2, 'assignee2'));
 

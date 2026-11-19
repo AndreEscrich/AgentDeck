@@ -222,6 +222,43 @@ async function callTool(name, args) {
 // ---------- the Tickets view (renderer/tickets.js) ----------
 
 // A ticket as the view needs it.
+// ---------- people's names ----------
+//
+// PM keeps an assignee as the text it was given plus the person's id. So a
+// ticket assigned with an email (an agent or a person typed the email) shows
+// "andree@tactile.dk", while the same person on another ticket shows
+// "André Escrich González". The app learns each id's name from the tickets
+// it reads, and shows that name for the email too.
+const nameById = new Map();    // assigneeId -> the name PM shows
+const emailById = new Map();   // assigneeId -> an email it was given as
+function learn(t) {
+  for (const [name, id] of [[t?.assignee, t?.assigneeId], [t?.assignee2, t?.assignee2Id]]) {
+    if (!name || !id) continue;
+    if (name.includes('@')) emailById.set(id, name.toLowerCase());
+    else nameById.set(id, name);
+  }
+}
+// Your own id, read once, so your sign-in email gets your name even before
+// a list was read.
+let meRead = null;
+function learnMe() {
+  if (!auth?.email) return Promise.resolve();
+  meRead ||= callTool('pm_search_tasks', { tql: 'assignee = currentUser() ORDER BY updatedAt DESC', limit: 1, descriptionMaxLength: 0 })
+    .then(r => { const t = r?.items?.[0]; if (t) { learn(t); if (t.assigneeId) emailById.set(t.assigneeId, auth.email.toLowerCase()); } })
+    .catch(() => { meRead = null; });
+  return meRead;
+}
+
+function personName(name, id) {
+  if (!name) return '';
+  if (id && nameById.has(id)) return nameById.get(id);
+  if (name.includes('@')) {
+    const email = name.toLowerCase();
+    for (const [i, e] of emailById) if (e === email && nameById.has(i)) return nameById.get(i);
+  }
+  return name;
+}
+
 function slim(t) {
   const f = t.fieldNames || {};
   return {
@@ -230,7 +267,7 @@ function slim(t) {
     status: t.resolvedStatusName || t.lastStatusTransition?.to || (t.doneAt ? 'Done' : 'To Do'),
     category: t.styleMetadata?.status?.lifecycleCategory || (t.doneAt ? 'done' : t.columnId === 'in-progress' ? 'in_progress' : 'todo'),
     color: t.styleMetadata?.status?.color || null, textColor: t.styleMetadata?.status?.text || null,
-    priority: t.priority || '', assignee: t.assignee || '', sprint: f.sprintId || '', epic: f.epicId || '',
+    priority: t.priority || '', assignee: personName(t.assignee, t.assigneeId), assigneeId: t.assigneeId || '', sprint: f.sprintId || '', epic: f.epicId || '',
     project: (t.key || '').split('-')[0], projectId: t.projectId || '', updatedAt: t.updatedAt || '', seq: t.sequenceNumber || Number((t.key || '').split('-')[1]) || 0,
   };
 }
@@ -246,6 +283,11 @@ const LIST_TQL = {
 // list: 'sprint' or 'open' (see LIST_TQL). Resolves with { items, total }.
 async function tickets(list) {
   const r = await callTool('pm_search_tasks', { tql: LIST_TQL[list] || LIST_TQL.sprint, ...LIST_FIELDS });
+  (r.items || []).forEach(learn);
+  // These are all yours, so their assignee id is yours: your sign-in email
+  // (the reporter of your tickets) gets your name too.
+  const mine = (r.items || []).find(t => t.assigneeId)?.assigneeId;
+  if (mine && auth?.email) emailById.set(mine, auth.email.toLowerCase());
   return { items: (r.items || []).map(slim), total: r.total || 0 };
 }
 
@@ -256,6 +298,9 @@ async function ticket(key) {
     callTool('pm_list_subtasks', { key }).catch(() => []),
   ]);
   if (!t || typeof t !== 'object') throw new Error(`${key} was not found.`);
+  await learnMe();
+  learn(t);
+  if (Array.isArray(subs)) subs.forEach(learn);
   const base = slim(t);
   const subtask = t.itemType === 'subtask';
   // A subtask comes without status colours, so its status comes from the
@@ -267,8 +312,8 @@ async function ticket(key) {
     subtask,
     itemType: t.itemType || 'task',
     description: t.description || '',
-    author: t.author || '',
-    assignee2: t.assignee2 || '',
+    author: personName(t.author),
+    assignee2: personName(t.assignee2, t.assignee2Id), assignee2Id: t.assignee2Id || '',
     epicName: t.epic?.name || t.fieldNames?.epicId || '',
     epicKey: t.epic?.key || '',
     // The fields the ticket panel shows and edits.
@@ -300,13 +345,14 @@ async function statuses(project) {
 // project's statuses.
 async function slimSubtasks(subs, project) {
   subs = Array.isArray(subs) ? subs : [];
+  subs.forEach(learn);
   const list = subs.length ? await statuses(project).catch(() => []) : [];
   const byId = new Map(list.map(s => [s.id, s]));
   return subs.map(s => {
     const st = byId.get(s.statusId);
     const done = st ? st.category === 'done' : !!s.doneAt;
     return {
-      id: s._id || '', key: s.key, title: s.title || '', assignee: s.assignee || '', priority: s.priority || '',
+      id: s._id || '', key: s.key, title: s.title || '', assignee: personName(s.assignee, s.assigneeId), assigneeId: s.assigneeId || '', priority: s.priority || '',
       statusId: s.statusId || '', status: st?.name || s.lastStatusTransition?.to || (s.doneAt ? 'Done' : 'To Do'),
       category: st?.category || (done ? 'done' : s.columnId === 'in-progress' ? 'in_progress' : 'todo'),
       color: st?.color || null, textColor: st?.text || null, done,
