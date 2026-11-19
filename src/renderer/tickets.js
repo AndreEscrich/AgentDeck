@@ -70,10 +70,16 @@ class TicketsView {
     this.search.placeholder = 'Filter by key, title, epic or sprint…';
     this.search.className = 'tickets-search';
     this.search.oninput = () => this.renderList();
-    this.types = el('div', 'gallery-cats tickets-types');
+    // The filters (which statuses show, which type) sit in a menu behind a
+    // small funnel button; it shows a dot while a filter hides something.
+    this.filterBtn = el('button', 'icon tickets-filter-btn');
+    this.filterBtn.type = 'button';
+    this.filterBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24"><path d="M4 5h16l-6.2 7.4V19l-3.6-1.8v-4.8z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></svg>';
+    this.filterBtn.title = 'Filters';
+    this.filterBtn.onclick = () => this.openMenu(this.filterBtn, 'filters', menu => this.fillFilterMenu(menu));
+    const spacer = el('span', 'tickets-spacer');
     // Which statuses show (To do, In progress, Done): a click on one hides
     // or shows those tickets and subtasks. Remembered.
-    this.statusBox = el('div', 'tickets-statusfilter');
     try { this.statusShow = new Set(JSON.parse(localStorage.getItem('pmTicketStatusShow') || 'null') || ['todo', 'in_progress', 'done']); } catch { this.statusShow = new Set(['todo', 'in_progress', 'done']); }
     try { this.foldedEpics = new Set(JSON.parse(localStorage.getItem('pmTicketFoldedEpics') || '[]')); } catch { this.foldedEpics = new Set(); }
     this.when = el('span', 'tickets-when');
@@ -84,7 +90,7 @@ class TicketsView {
     this.account = el('button', 'tickets-account');
     this.account.type = 'button';
     this.account.onclick = () => this.signOut();
-    bar.append(this.tabs, this.search, this.statusBox, this.types, this.when, refresh, this.account);
+    bar.append(this.tabs, this.search, this.filterBtn, spacer, this.when, refresh, this.account);
     const body = el('div', 'tickets-body');
     this.listBox = el('section', 'tickets-list scroll');
     this.detail = el('section', 'tickets-detail scroll');
@@ -212,24 +218,61 @@ class TicketsView {
     return this.data[this.list]?.items || [];
   }
 
-  renderStatusFilter() {
-    this.statusBox.replaceChildren();
+  // The filter menu: the statuses to show (ticked ones show) and the type.
+  fillFilterMenu(menu) {
+    menu.replaceChildren();
+    menu.classList.add('tickets-filter-menu');
+    const redo = () => { this.fillFilterMenu(menu); this.renderList(); this.renderFilterBtn(); };
     const counts = { todo: 0, in_progress: 0, done: 0 };
     for (const t of this.items()) counts[t.category in counts ? t.category : 'todo']++;
+    menu.append(el('div', 'tickets-status-group', 'Status'));
     for (const [cat, label] of [['todo', 'To do'], ['in_progress', 'In progress'], ['done', 'Done']]) {
       const on = this.statusShow.has(cat);
-      const b = el('button', `tickets-statuschip status-${cat}` + (on ? ' on' : ''));
+      const b = el('button', `tickets-status-item tickets-check status-${cat}` + (on ? ' ticked' : ''));
       b.type = 'button';
-      b.append(el('span', 'tickets-statuschip-box', on ? '✓' : ''), el('span', null, label), el('span', 'gallery-cat-count', String(counts[cat])));
-      b.title = on ? `Hide the ${label.toLowerCase()} tickets` : `Show the ${label.toLowerCase()} tickets`;
+      b.append(el('span', 'tickets-check-box', on ? '✓' : ''), el('span', null, label), el('span', 'gallery-cat-count', String(counts[cat])));
       b.onclick = () => {
         if (on) this.statusShow.delete(cat); else this.statusShow.add(cat);
         try { localStorage.setItem('pmTicketStatusShow', JSON.stringify([...this.statusShow])); } catch { /* this run only */ }
-        this.renderStatusFilter();
-        this.renderList();
+        redo();
       };
-      this.statusBox.append(b);
+      menu.append(b);
     }
+    const types = new Map();
+    for (const t of this.items()) types.set(t.type || 'Other', (types.get(t.type || 'Other') || 0) + 1);
+    if (types.size > 1 || this.type) {
+      menu.append(el('div', 'tickets-status-group', 'Type'));
+      for (const [value, label, n] of [[null, 'All types', this.items().length], ...[...types].sort((a, b) => b[1] - a[1]).map(([k, n]) => [k, k, n])]) {
+        const b = el('button', 'tickets-status-item tickets-check' + (this.type === value ? ' ticked' : ''));
+        b.type = 'button';
+        const icon = value ? typeIcon(value) : el('span', 'tickets-check-box round', this.type === null ? '●' : '');
+        if (value) icon.classList.add(this.type === value ? 'picked' : 'unpicked');
+        b.append(icon, el('span', null, label), el('span', 'gallery-cat-count', String(n)));
+        b.onclick = () => { this.type = value; redo(); };
+        menu.append(b);
+      }
+    }
+    if (this.statusShow.size < 3 || this.type) {
+      const reset = el('button', 'tp-link tickets-filter-reset', 'Show everything');
+      reset.type = 'button';
+      reset.onclick = () => {
+        this.statusShow = new Set(['todo', 'in_progress', 'done']);
+        this.type = null;
+        try { localStorage.removeItem('pmTicketStatusShow'); } catch { /* this run only */ }
+        redo();
+      };
+      menu.append(reset);
+    }
+  }
+
+  renderFilterBtn() {
+    const hidden = [];
+    if (!this.statusShow.has('todo')) hidden.push('to do');
+    if (!this.statusShow.has('in_progress')) hidden.push('in progress');
+    if (!this.statusShow.has('done')) hidden.push('done');
+    const active = hidden.length || this.type;
+    this.filterBtn.classList.toggle('active', !!active);
+    this.filterBtn.title = active ? `Filters: ${[this.type ? `only ${this.type}` : '', hidden.length ? `hiding ${hidden.join(', ')}` : ''].filter(Boolean).join('; ')}` : 'Filters';
   }
 
   shows(t) {
@@ -237,20 +280,7 @@ class TicketsView {
   }
 
   renderTypes() {
-    this.renderStatusFilter();
-    this.types.replaceChildren();
-    const counts = new Map();
-    for (const t of this.items()) counts.set(t.type || 'Other', (counts.get(t.type || 'Other') || 0) + 1);
-    if (counts.size < 2) return;
-    const chip = (label, value, n) => {
-      const b = el('button', 'gallery-cat' + (this.type === value ? ' on' : ''));
-      b.type = 'button';
-      b.append(el('span', null, label), el('span', 'gallery-cat-count', String(n)));
-      b.onclick = () => { this.type = value; this.renderTypes(); this.renderList(); };
-      this.types.appendChild(b);
-    };
-    chip('All', null, this.items().length);
-    for (const [type, n] of [...counts].sort((a, b) => b[1] - a[1])) chip(type, type, n);
+    this.renderFilterBtn();
   }
 
   renderList() {

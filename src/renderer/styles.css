@@ -2464,7 +2464,7 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .tickets-sort { margin-left: 4px; color: var(--accent); }
 .tickets-table td { padding: 6px 10px; border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
 .tickets-table th + th, .tickets-table td + td { border-left: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
-.tickets-table .col-key { width: 104px; }
+.tickets-table .col-key { width: 150px; }
 .tickets-table .col-key .tickets-type-icon { margin-right: 6px; }
 .tickets-table .tickets-row:not(.story) { cursor: default; }
 button.tickets-key { padding: 0; border: none; background: none; cursor: pointer; }
@@ -2475,7 +2475,6 @@ button.tickets-key:hover { text-decoration: underline; }
 .tickets-expand.open svg { transform: rotate(90deg); }
 .tickets-expand-gap { display: inline-block; width: 20px; }
 .tickets-table .tickets-subrow td { background: color-mix(in srgb, var(--bg-panel) 55%, transparent); font-size: 12.5px; }
-.tickets-table .tickets-subrow .col-key { padding-left: 22px; }
 .tickets-table .tickets-subrow .tickets-key { font-weight: 400; }
 .tickets-table .tickets-subrow.done .tickets-sub-title { color: var(--text-faint); }
 .tickets-sub-who { margin-left: 8px; font-size: 11.5px; color: var(--text-faint); }
@@ -2496,21 +2495,34 @@ button.tickets-status.saving { opacity: 0.6; cursor: progress; }
 .tickets-table .col-status { width: 168px; }
 .tickets-table .col-epic { width: 16%; color: var(--text-dim); }
 .tickets-table .col-sprint { width: 22%; color: var(--text-dim); }
-.tickets-table .tickets-group td { padding: 14px 10px 6px; border-bottom: 1px solid var(--border); background: none !important; cursor: pointer; font-size: 12.5px; }
-.tickets-table .tickets-group td + td { border-left: none; }
-.tickets-table .tickets-group:first-child td { padding-top: 8px; }
-.tickets-group-flag { margin: 0 6px 0 2px; color: var(--text-faint); }
-.tickets-group-name { font-weight: 700; color: var(--text); }
-.tickets-group-count { margin-left: 10px; color: var(--text-faint); font-size: 11.5px; }
-.tickets-group:hover .tickets-group-name { text-decoration: underline; }
-.tickets-statusfilter { display: flex; gap: 4px; flex-shrink: 0; }
-.tickets-statuschip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 6px; border-radius: 99px; border: 1px solid var(--border); background: none; color: var(--text-faint); font-size: 12px; }
-.tickets-statuschip.on { color: var(--text); background: var(--bg-panel); }
-.tickets-statuschip-box { display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; border-radius: 4px; border: 1px solid var(--text-faint); font-size: 9.5px; line-height: 1; }
-.tickets-statuschip.on.status-todo .tickets-statuschip-box { background: color-mix(in srgb, var(--text) 30%, transparent); border-color: transparent; }
-.tickets-statuschip.on.status-in_progress .tickets-statuschip-box { background: #3b6fe0; border-color: transparent; color: #fff; }
-.tickets-statuschip.on.status-done .tickets-statuschip-box { background: #22a55a; border-color: transparent; color: #fff; }
-.tickets-statuschip:not(.on) > span:nth-child(2) { text-decoration: line-through; }
+.tickets-table .tickets-group td { padding: 12px 10px 4px; border-bottom: none; background: none !important; cursor: pointer; font-size: 11.5px; color: var(--text-faint); }
+.tickets-table .tickets-group:first-child td { padding-top: 6px; }
+.tickets-group .tickets-expand { width: 14px; height: 14px; margin-right: 2px; }
+.tickets-group-flag { margin: 0 5px 0 0; font-size: 10px; }
+.tickets-group-name { font-weight: 600; letter-spacing: 0.02em; color: var(--text-dim); }
+.tickets-group-count { margin-left: 8px; }
+.tickets-group:hover .tickets-group-name { color: var(--text); }
+/* A staircase: epic, then its tickets one step in, then their subtasks two steps in. */
+.tickets-table tbody .tickets-row .col-key { padding-left: 26px; }
+.tickets-table tbody .tickets-subrow .col-key { padding-left: 50px; }
+.tickets-table .tickets-subnote td { padding-left: 90px; }
+.tickets-spacer { flex: 1; }
+.tickets-filter-btn { position: relative; padding: 5px 7px; color: var(--text-faint); border-radius: 7px; }
+.tickets-filter-btn:hover { color: var(--text); background: var(--bg-hover); }
+.tickets-filter-btn.active { color: var(--accent); }
+.tickets-filter-btn.active::after { content: ''; position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.tickets-filter-menu { min-width: 210px; }
+.tickets-check { gap: 8px; color: var(--text); font-size: 12.5px; }
+.tickets-check .gallery-cat-count { margin-left: auto; }
+.tickets-check-box { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--text-faint); font-size: 9.5px; line-height: 1; flex-shrink: 0; }
+.tickets-check-box.round { border-radius: 50%; font-size: 7px; }
+.tickets-check.ticked .tickets-check-box { border-color: transparent; color: #fff; background: var(--accent); }
+.tickets-check.status-todo.ticked .tickets-check-box { background: color-mix(in srgb, var(--text) 35%, transparent); }
+.tickets-check.status-in_progress.ticked .tickets-check-box { background: #3b6fe0; }
+.tickets-check.status-done.ticked .tickets-check-box { background: #22a55a; }
+.tickets-check:not(.ticked) > span:nth-child(2) { color: var(--text-faint); }
+.tickets-check .tickets-type-icon.unpicked { opacity: 0.45; }
+.tickets-filter-reset { margin: 6px 8px 4px; }
 .tickets-table tbody .tickets-row { cursor: pointer; }
 .tickets-table tbody .tickets-row:hover td { background: var(--bg-hover); }
 .tickets-table tbody .tickets-row.selected td { background: var(--bg-active); }
