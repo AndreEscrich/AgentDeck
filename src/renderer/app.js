@@ -839,6 +839,62 @@ const attachments = new Attachments($('composer-attachments'), {
 }
 
 // A short note over the message box that fades out again.
+// Start agent from the Tickets view: the ticket's row wraps into its key
+// (a copy of the row shrinks into the key's cell, its title fading), then
+// the view goes to the Hub and the ticket flies from there into the message
+// box, which lights up: the ticket is ready for an agent.
+function ticketChip(t) {
+  const chip = el('div', 'ticket-fly');
+  chip.append(el('span', 'ticket-fly-key', t.key), el('span', 'ticket-fly-title', t.title || ''));
+  document.body.appendChild(chip);
+  return chip;
+}
+const placeChip = (chip, r) => Object.assign(chip.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+function wrapTicket(t, row, keyCell) {
+  const from = row.getBoundingClientRect();
+  const to = keyCell.getBoundingClientRect();
+  const chip = ticketChip(t);
+  placeChip(chip, from);
+  sfx('tick');
+  const ease = 'cubic-bezier(.55,0,.25,1)';
+  chip.querySelector('.ticket-fly-title').animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, easing: 'ease-in', fill: 'forwards' });
+  const a = chip.animate([
+    { left: from.left + 'px', top: from.top + 'px', width: from.width + 'px', height: from.height + 'px', borderRadius: '6px' },
+    { left: to.left + 'px', top: to.top + 'px', width: to.width + 'px', height: to.height + 'px', borderRadius: '9px' },
+  ], { duration: 420, easing: ease, fill: 'forwards' });
+  return { chip, done: a.finished.then(() => { placeChip(chip, to); a.cancel(); }) };
+}
+function flyTicketToComposer(t, chip) {
+  const boxEl = document.querySelector('#composer .composer-box');
+  if (!boxEl) { chip?.remove(); return; }
+  requestAnimationFrame(() => {
+    const box = boxEl.getBoundingClientRect();
+    chip ||= ticketChip(t);
+    chip.classList.add('flying');
+    chip.querySelector('.ticket-fly-title').style.opacity = '0';
+    const from = chip.style.left ? { left: parseFloat(chip.style.left), top: parseFloat(chip.style.top), width: parseFloat(chip.style.width), height: parseFloat(chip.style.height) }
+      : { left: box.left + box.width / 2 - 60, top: box.top - 160, width: 120, height: 30 };
+    const w = Math.max(110, Math.min(from.width, 220));
+    const to = { left: box.left + 14, top: box.top + 12, width: w, height: 30 };
+    const mid = { left: (from.left + to.left) / 2, top: Math.min(from.top, to.top) - 60 };
+    const f = chip.animate([
+      { left: from.left + 'px', top: from.top + 'px', width: from.width + 'px', height: from.height + 'px', opacity: 1, transform: 'scale(1)' },
+      { left: mid.left + 'px', top: mid.top + 'px', width: w + 'px', height: '30px', opacity: 1, transform: 'scale(1.08)', offset: 0.5 },
+      { left: to.left + 'px', top: to.top + 'px', width: w + 'px', height: '30px', opacity: 1, transform: 'scale(1)', offset: 0.85 },
+      { left: to.left + 'px', top: to.top + 'px', width: w + 'px', height: '30px', opacity: 0, transform: 'scale(0.92)' },
+    ], { duration: 820, easing: 'cubic-bezier(.45,0,.3,1)', fill: 'forwards' });
+    f.finished.then(() => {
+      chip.remove();
+      boxEl.classList.remove('ticket-landed');
+      void boxEl.offsetWidth;
+      boxEl.classList.add('ticket-landed');
+      setTimeout(() => boxEl.classList.remove('ticket-landed'), 1000);
+      sfx('select');
+      flashComposerNote(`${t.key} is ready for an agent: say what it should do, then send.`);
+    });
+  });
+}
+
 function flashComposerNote(text) {
   const note = el('div', 'composer-flash', text);
   document.querySelector('.composer-box').appendChild(note);
@@ -1234,16 +1290,23 @@ hub.onOpenGallery = () => { sfx('open'); show('gallery'); };
 // The Tickets view: your Tactile PM tickets (renderer/tickets.js). Start
 // agent puts the ticket's link on the Hub's message box.
 const ticketsView = new TicketsView({
-  onStart: t => {
+  onStart: (t, from = {}) => {
     learnPmPrefix(t.project);
-    sfx('close');
-    show('hub');
-    const input = $('input');
-    const link = pmItemUrl(t.key);
-    if (!input.value.includes(link)) input.value = [input.value.trim(), `${link} `].filter(Boolean).join('\n\n');
-    input.dispatchEvent(new Event('input'));
-    input.focus();
-    input.setSelectionRange(input.value.length, input.value.length);
+    // The ticket on its way (flyTicketToComposer): its row wraps into its key
+    // here, before the view changes.
+    const flight = from.row && from.key ? wrapTicket(t, from.row, from.key) : null;
+    const go = () => {
+      sfx('close');
+      show('hub');
+      const input = $('input');
+      const link = pmItemUrl(t.key);
+      if (!input.value.includes(link)) input.value = [input.value.trim(), `${link} `].filter(Boolean).join('\n\n');
+      input.dispatchEvent(new Event('input'));
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+      flyTicketToComposer(t, flight?.chip);
+    };
+    if (flight) flight.done.then(go); else go();
   },
 });
 hub.onOpenTickets = () => { sfx('open'); show('tickets'); };

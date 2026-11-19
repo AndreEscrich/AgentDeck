@@ -596,15 +596,15 @@ class TicketsView {
     return TICKET_COLUMNS.filter(c => !(['sprint', 'assignee'].includes(c[0]) && this.list === 'sprint'));
   }
 
-  // The small agent button after a key (an agent's tile in miniature: its
-  // tank and its title): starts an agent on the ticket (its link goes on the
-  // Hub's message box, like Start agent in the details). Always in view.
+  // The small robot-head button after a key: starts an agent on the ticket.
+  // The row wraps into its key, the view goes to the Hub, and the ticket
+  // flies into the message box (app.js onStart). Always in view.
   agentButton(t) {
     const b = el('button', 'tickets-agent');
     b.type = 'button';
-    b.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="1" width="13" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="3.5" y="3" width="9" height="6.5" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.1"/><path d="M3.9 6.6q2-1 4.1 0t4.1 0V8.3a1.2 1.2 0 0 1-1.2 1.2H5.1a1.2 1.2 0 0 1-1.2-1.2z" fill="currentColor" class="tickets-agent-liquid"/><path d="M4 12h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
+    b.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6v2.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="1.6" r="1" fill="currentColor"/><rect x="2.3" y="3.8" width="11.4" height="9.4" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="5.7" cy="7.8" r="1.25" fill="currentColor" class="tickets-agent-eye"/><circle cx="10.3" cy="7.8" r="1.25" fill="currentColor" class="tickets-agent-eye"/><path d="M6 10.9h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M1 7.2v2.4M15 7.2v2.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
     b.title = `Start an agent on ${t.key}: its link goes on the Hub's message box, where you say what to do`;
-    b.onclick = e => { e.stopPropagation(); this.onStart?.(t); };
+    b.onclick = e => { e.stopPropagation(); this.onStart?.(t, { row: b.closest('tr'), key: b.closest('td') }); };
     return b;
   }
 
