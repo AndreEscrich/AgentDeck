@@ -727,10 +727,17 @@ app.whenReady().then(() => {
   // Clicking a notification opens its agent. The app keeps each notification
   // until it closes, or Windows would forget the click handler.
   const shown = new Set();
+  // Windows lets only the app in front bring a window forward, and a click
+  // on the corner notification (a window that never takes the focus) does not
+  // make the app the one in front: on top for a moment, the window comes anyway.
   const openFrom = id => {
     if (win.isMinimized()) win.restore();
+    const behind = !win.isFocused();
+    if (behind) win.setAlwaysOnTop(true);
     win.show();
+    win.moveTop();
     win.focus();
+    if (behind) win.setAlwaysOnTop(false);
     send('notification:open', id);
   };
   const openClicked = id => { notified.length = 0; openFrom(id); };
@@ -743,15 +750,15 @@ app.whenReady().then(() => {
     const id = notified.pop();
     keyOpenedAt = Date.now();
     if (id) toast.remove(id);
-    const behind = !win.isFocused();
-    if (behind) win.setAlwaysOnTop(true);
     if (id) openFrom(id);
     else {
       if (win.isMinimized()) win.restore();
+      const behind = !win.isFocused();
+      if (behind) win.setAlwaysOnTop(true);
       win.show();
       win.focus();
+      if (behind) win.setAlwaysOnTop(false);
     }
-    if (behind) win.setAlwaysOnTop(false);
   };
   registerNotifyKey();
   // extra: { tile, theme }, the agent's Hub tile for the app's own notification,
