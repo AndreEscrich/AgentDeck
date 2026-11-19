@@ -2444,13 +2444,15 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .tickets-account:hover { color: var(--text); text-decoration: underline; }
 .tickets-view.signed-out .tickets-tabs, .tickets-view.signed-out .tickets-search, .tickets-view.signed-out .tickets-types,
 .tickets-view.signed-out .tickets-when, .tickets-view.signed-out .gallery-refresh, .tickets-view.signed-out .tickets-account { visibility: hidden; }
-.tickets-body { flex: 1; min-height: 0; display: flex; }
+.tickets-body { flex: 1; min-height: 0; display: flex; position: relative; }
 /* Like the Hub: on a wide window the view stays in the middle, 1400px at most. */
 /* (Padding, not a max-width, so the scrolling areas still reach the window's edges.) */
 .tickets-bar, .gallery-bar, .gallery-main { padding-left: max(24px, calc((100% - 1352px) / 2)); padding-right: max(24px, calc((100% - 1352px) / 2)); }
 .tickets-body { padding: 0 max(0px, calc((100% - 1400px) / 2)); }
 .tickets-list { flex: 1; min-width: 0; padding: 14px 24px 40px; }
-.tickets-detail { display: none; width: 46%; min-width: 420px; max-width: 760px; flex-shrink: 0; padding: 20px 28px 40px; border-left: 1px solid var(--border); }
+.tickets-detail { display: none; position: absolute; z-index: 5; top: 10px; bottom: 14px; right: calc(max(0px, (100% - 1400px) / 2) + 14px);
+  width: min(680px, calc(100% - 60px)); box-sizing: border-box; padding: 20px 26px 32px; border-radius: 14px;
+  border: 1px solid var(--border); background: var(--bg-panel); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3); }
 .tickets-view.detail-open .tickets-detail { display: block; }
 /* The table, like PM's sheet. */
 .tickets-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
@@ -2460,7 +2462,11 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .tickets-sort { margin-left: 4px; color: var(--accent); }
 .tickets-table td { padding: 6px 10px; border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
 .tickets-table th + th, .tickets-table td + td { border-left: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
-.tickets-table .col-key { width: 116px; }
+.tickets-table .col-key { width: 104px; }
+.tickets-table .col-key .tickets-type-icon { margin-right: 6px; }
+.tickets-table .tickets-row:not(.story) { cursor: default; }
+button.tickets-key { padding: 0; border: none; background: none; cursor: pointer; }
+button.tickets-key:hover { text-decoration: underline; }
 .tickets-expand { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-right: 4px; padding: 0; border: none; border-radius: 4px; background: none; color: var(--text-faint); vertical-align: -2px; }
 .tickets-expand:hover { background: var(--bg-hover); color: var(--text); }
 .tickets-expand svg { transition: transform 0.12s; }
@@ -2485,11 +2491,9 @@ button.tickets-status.saving { opacity: 0.6; cursor: progress; }
 .tickets-status-item.on { background: var(--bg-active); }
 .tickets-status-item.on::after { content: '✓'; margin-left: auto; padding-left: 10px; color: var(--accent); font-size: 12px; }
 .tickets-status-menu .gallery-note, .tickets-status-menu .tickets-error { padding: 8px 10px; }
-.tickets-table .col-type { width: 52px; }
 .tickets-table .col-status { width: 168px; }
 .tickets-table .col-epic { width: 16%; color: var(--text-dim); }
 .tickets-table .col-sprint { width: 20%; color: var(--text-dim); }
-.tickets-view.detail-open .tickets-table .col-epic, .tickets-view.detail-open .tickets-table .col-sprint { display: none; }
 .tickets-table tbody .tickets-row { cursor: pointer; }
 .tickets-table tbody .tickets-row:hover td { background: var(--bg-hover); }
 .tickets-table tbody .tickets-row.selected td { background: var(--bg-active); }

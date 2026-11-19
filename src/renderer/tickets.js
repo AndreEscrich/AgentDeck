@@ -6,12 +6,13 @@
 // Your tickets as a table like PM's sheet (key, type, title, status, epic,
 // sprint; a click on a column's name sorts by it), in two lists: This
 // sprint (yours in the open sprints, done ones too) and All open (yours
-// that are not done). A click on a row shows the ticket's details on the
-// right: its description, its subtasks and Start agent, which puts the
-// ticket's link on the Hub's message box (a Story with two or more open
-// subtasks then gets the ⑂ Split button). A click on a Story also opens its
-// subtasks as rows below it, like PM's sheet; the ▸ in front of the key
-// opens and closes them without the details.
+// that are not done). Keys show without the project's prefix, after the
+// type's mark. A click on a key opens the ticket's details in a floating
+// panel on the right, like PM's: its description, its subtasks and Start
+// agent, which puts the ticket's link on the Hub's message box (a Story
+// with two or more open subtasks then gets the ⑂ Split button). A click
+// anywhere else on a Story's row opens or closes its subtasks as rows below
+// it, like PM's sheet.
 // A click on a status opens the project's statuses; picking one changes the
 // ticket or subtask in PM (pm_update_task / pm_update_subtask).
 // The last lists are kept, so the view shows them at once and reads them
@@ -22,7 +23,6 @@ const CATEGORY_ORDER = { todo: 0, in_progress: 1, done: 2 };
 // The table's columns: [id, name, the value it sorts by].
 const TICKET_COLUMNS = [
   ['key', 'Key', t => t.seq],
-  ['type', 'Type', t => t.type],
   ['title', 'Title', t => t.title.toLowerCase()],
   ['status', 'Status', t => `${CATEGORY_ORDER[t.category] ?? 1}${t.status}`],
   ['epic', 'Epic', t => t.epic.toLowerCase()],
@@ -44,6 +44,8 @@ function typeIcon(type) {
 }
 const CHEVRON = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1.5L6.5 5 3 8.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const SUBTASK_ICON = '<svg width="14" height="14" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4" fill="#4c9aff"/><rect x="7" y="7" width="6" height="6" rx="1" fill="none" stroke="#fff" stroke-width="2"/><rect x="11" y="11" width="6" height="6" rx="1" fill="#fff"/></svg>';
+// The key without the project's prefix (M2S-3612 shows as 3612).
+const shortKey = key => String(key || '').replace(/^[A-Za-z][A-Za-z0-9]*-/, '');
 const isStory = t => !t.subtask && /story/i.test(t.type || '');
 const REFRESH_MS = 5 * 60 * 1000;
 
@@ -98,6 +100,14 @@ class TicketsView {
     try { this.data = JSON.parse(localStorage.getItem('pmTicketLists') || '{}'); } catch { this.data = {}; }
     this.renderTabs();
     this.showDetailEmpty();
+    // Escape closes the floating details (and the status menu first).
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape' || this.menu || this.view.classList.contains('hidden') || !this.view.classList.contains('detail-open')) return;
+      if (document.querySelector('.lightbox, .gallery-preview')) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      this.closeDetail();
+    }, true);
   }
 
   async open() {
@@ -248,12 +258,26 @@ class TicketsView {
     this.listBox.replaceChildren(frag);
   }
 
+  // The key as a link that opens the details (a second click closes them).
+  keyButton(t) {
+    const b = el('button', 'tickets-key', shortKey(t.key));
+    b.type = 'button';
+    b.title = `${t.key}: show the details`;
+    b.onclick = e => {
+      e.stopPropagation();
+      if (this.selected === t.key) { this.closeDetail(); return; }
+      this.select(t);
+    };
+    return b;
+  }
+
   row(t) {
-    const tr = el('tr', 'tickets-row' + (this.selected === t.key ? ' selected' : '') + (t.category === 'done' ? ' done' : ''));
+    const story = isStory(t);
+    const tr = el('tr', 'tickets-row' + (this.selected === t.key ? ' selected' : '') + (t.category === 'done' ? ' done' : '') + (story ? ' story' : ''));
     tr.dataset.key = t.key;
     const cell = (cls, ...kids) => { const td = el('td', cls); td.append(...kids); return td; };
     const key = cell('col-key');
-    if (isStory(t)) {
+    if (story) {
       const open = this.expanded.has(t.key);
       const chev = el('button', 'tickets-expand' + (open ? ' open' : ''));
       chev.type = 'button';
@@ -262,25 +286,15 @@ class TicketsView {
       chev.onclick = e => { e.stopPropagation(); this.toggleSubs(t); };
       key.append(chev);
     } else key.append(el('span', 'tickets-expand-gap'));
-    key.append(el('span', 'tickets-key', t.key));
+    key.append(typeIcon(t.type), this.keyButton(t));
     tr.append(
       key,
-      cell('col-type', typeIcon(t.type)),
       cell('col-title', el('span', null, t.title)),
       cell('col-status', this.statusButton(t)),
       cell('col-epic', el('span', null, t.epic)),
       cell('col-sprint', el('span', null, t.sprint)));
-    tr.title = t.title;
-    tr.onclick = () => {
-      if (this.selected === t.key) {
-        if (isStory(t)) this.expanded.delete(t.key);
-        this.closeDetail();
-        this.renderList();
-        return;
-      }
-      if (isStory(t) && !this.expanded.has(t.key)) this.toggleSubs(t);
-      this.select(t);
-    };
+    tr.title = story ? `${t.title}\n(click to show or hide the subtasks)` : t.title;
+    if (story) tr.onclick = e => { if (!e.target.closest('a, button')) this.toggleSubs(t); };
     return tr;
   }
 
@@ -305,15 +319,14 @@ class TicketsView {
       icon.innerHTML = SUBTASK_ICON;
       icon.title = 'Subtask';
       const who = s.assignee ? el('span', 'tickets-sub-who', s.assignee) : '';
+      const keyBtn = this.keyButton({ ...s, type: 'Subtask', parentKey: parent.key });
       tr.append(
-        cell('col-key', el('span', 'tickets-expand-gap'), el('span', 'tickets-key', s.key)),
-        cell('col-type', icon),
+        cell('col-key', el('span', 'tickets-expand-gap'), icon, keyBtn),
         cell('col-title', el('span', 'tickets-sub-title', s.title), who),
         cell('col-status', this.statusButton(s)),
         cell('col-epic'),
         cell('col-sprint'));
       tr.title = s.title;
-      tr.onclick = () => (this.selected === s.key ? (this.closeDetail(), this.renderList()) : this.select({ ...s, type: 'Subtask', parentKey: parent.key }));
       return tr;
     });
   }
@@ -475,10 +488,10 @@ class TicketsView {
     this.detailTicket = t;
     const box = el('div', 'ticket-detail');
     const head = el('div', 'ticket-head');
-    const link = el('a', 'ticket-key', t.key);
+    const link = el('a', 'ticket-key', shortKey(t.key));
     link.href = pmItemUrl(t.key);
     link.target = '_blank';
-    link.title = 'Open it in PM';
+    link.title = `Open ${t.key} in PM`;
     const close = el('button', 'icon ticket-close', '✕');
     close.type = 'button';
     close.title = 'Close';
@@ -487,7 +500,7 @@ class TicketsView {
     if (t.subtask) { icon.innerHTML = SUBTASK_ICON; icon.title = 'Subtask'; }
     head.append(icon, link, this.statusButton(t), close);
     box.append(head, el('h2', 'ticket-title', t.title));
-    const facts = [['Subtask of', t.parentKey], ['Assignee', t.assignee], ['Also', t.assignee2], ['Sprint', t.sprint], ['Epic', t.epicName || t.epic], ['Priority', t.priority], ['Reporter', t.author]].filter(([, v]) => v);
+    const facts = [['Subtask of', t.parentKey && shortKey(t.parentKey)], ['Assignee', t.assignee], ['Also', t.assignee2], ['Sprint', t.sprint], ['Epic', t.epicName || t.epic], ['Priority', t.priority], ['Reporter', t.author]].filter(([, v]) => v);
     if (facts.length) {
       const grid = el('div', 'ticket-facts');
       for (const [k, v] of facts) grid.append(el('span', 'ticket-fact-name', k), el('span', null, v));
@@ -515,7 +528,7 @@ class TicketsView {
         const row = el('a', 'ticket-sub' + (s.done ? ' done' : ''));
         row.href = pmItemUrl(s.key);
         row.target = '_blank';
-        row.append(el('span', 'tickets-key', s.key), el('span', 'ticket-sub-title', s.title), this.statusButton(s));
+        row.append(el('span', 'tickets-key', shortKey(s.key)), el('span', 'ticket-sub-title', s.title), this.statusButton(s));
         subs.append(row);
       }
       box.append(subs);
