@@ -449,6 +449,22 @@ app.whenReady().then(() => {
   ipcMain.handle('pmc:ticket', (_e, key) => pmCall(() => pmClient.ticket(String(key || ''))));
   ipcMain.handle('pmc:statuses', (_e, project) => pmCall(() => pmClient.statuses(String(project || ''))));
   ipcMain.handle('pmc:subtasks', (_e, key) => pmCall(() => pmClient.subtasks(String(key || ''))));
+  ipcMain.handle('pmc:options', (_e, project) => pmCall(() => pmClient.options(String(project || ''))));
+  ipcMain.handle('pmc:update', (_e, a) => pmCall(() => pmClient.update(a || {})));
+  ipcMain.handle('pmc:createSubtask', (_e, a) => pmCall(() => pmClient.createSubtask(a || {})));
+  ipcMain.handle('pmc:attachments', (_e, a) => pmCall(() => pmClient.attachments(a || {})));
+  ipcMain.handle('pmc:openAttachment', (_e, a) => pmCall(() => pmClient.openAttachment(a || {})));
+  ipcMain.handle('pmc:attach', (e, a) => pmCall(async () => {
+    let paths = Array.isArray(a?.paths) ? a.paths.filter(p => typeof p === 'string' && p) : [];
+    if (!paths.length) {
+      const r = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), { title: 'Attach files', properties: ['openFile', 'multiSelections'] });
+      if (r.canceled || !r.filePaths.length) return { canceled: true };
+      paths = r.filePaths;
+    }
+    return pmClient.attach({ ...a, paths });
+  }));
+  ipcMain.handle('pmc:comments', (_e, a) => pmCall(() => pmClient.comments(a || {})));
+  ipcMain.handle('pmc:addComment', (_e, a) => pmCall(() => pmClient.addComment(a || {})));
   ipcMain.handle('pmc:setStatus', (_e, a) => pmCall(() => pmClient.setStatus({ key: String(a?.key || ''), id: String(a?.id || ''), project: String(a?.project || ''), statusId: String(a?.statusId || ''), subtask: !!a?.subtask })));
   // The Gallery (gallery.js): the art folder on disk and its images.
   gallery.setup(app.getPath('userData'), id => readDrivePath(getConfig(), id));

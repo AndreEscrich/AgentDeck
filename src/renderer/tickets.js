@@ -107,6 +107,8 @@ class TicketsView {
     document.addEventListener('keydown', e => {
       if (e.key !== 'Escape' || this.menu || this.view.classList.contains('hidden') || !this.view.classList.contains('detail-open')) return;
       if (document.querySelector('.lightbox, .gallery-preview')) return;
+      const a = document.activeElement;
+      if (this.detail.contains(a) && a.matches('input, textarea, select, [contenteditable="true"]')) return;  // the field handles it
       e.preventDefault();
       e.stopImmediatePropagation();
       this.closeDetail();
@@ -128,6 +130,7 @@ class TicketsView {
   setConnected(st) {
     this.connected = !!st.connected;
     this.view.classList.toggle('signed-out', !this.connected);
+    this.email = st.email || null;
     this.account.textContent = st.email ? `${st.email} · Sign out` : 'Sign out';
     this.account.title = 'Sign Agent Hub out of Tactile PM (your agents keep their connector)';
     if (!this.connected) this.showConnect();
@@ -381,48 +384,58 @@ class TicketsView {
     document.removeEventListener('keydown', this.menuKey, true);
   }
 
-  async openStatusMenu(btn, t) {
-    const again = this.menu?.dataset.key === t.key;
+  // A small menu under (or above) an element: fill(menu) puts its items in,
+  // and may wait for PM first. A second click on the same element closes it.
+  openMenu(anchor, key, fill) {
+    const again = this.menu?.dataset.key === key;
     this.closeStatusMenu();
     if (again) return;
     const menu = el('div', 'tickets-status-menu');
-    menu.dataset.key = t.key;
-    menu.append(el('div', 'gallery-note', 'Reading the statuses…'));
+    menu.dataset.key = key;
+    menu.append(el('div', 'gallery-note', 'Reading…'));
     document.body.appendChild(menu);
     this.menu = menu;
     const place = () => {
-      const r = btn.getBoundingClientRect();
+      const r = anchor.getBoundingClientRect();
+      menu.style.maxHeight = '';
       const h = menu.offsetHeight;
       const below = window.innerHeight - r.bottom - 8;
-      menu.style.left = Math.min(r.left, window.innerWidth - menu.offsetWidth - 8) + 'px';
-      menu.style.top = (below >= h || below > r.top ? r.bottom + 4 : Math.max(8, r.top - h - 4)) + 'px';
-      menu.style.maxHeight = Math.max(160, below >= h || below > r.top ? below : r.top - 12) + 'px';
+      const down = below >= h || below > r.top;
+      menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px';
+      menu.style.top = (down ? r.bottom + 4 : Math.max(8, r.top - h - 4)) + 'px';
+      menu.style.maxHeight = Math.max(160, down ? below : r.top - 12) + 'px';
     };
     place();
-    this.menuAway = e => { if (!menu.contains(e.target) && !btn.contains(e.target)) this.closeStatusMenu(); };
+    this.menuAway = e => { if (!menu.contains(e.target) && !anchor.contains(e.target)) this.closeStatusMenu(); };
     this.menuKey = e => { if (e.key === 'Escape') { e.stopPropagation(); this.closeStatusMenu(); } };
     document.addEventListener('mousedown', this.menuAway, true);
     document.addEventListener('keydown', this.menuKey, true);
-    let list;
-    try { list = await this.projectStatuses(t.project || t.key.split('-')[0]); }
-    catch (err) { if (this.menu === menu) menu.replaceChildren(el('div', 'tickets-error', err.message)); return; }
-    if (this.menu !== menu) return;
-    menu.replaceChildren();
-    const names = { todo: 'To do', in_progress: 'In progress', done: 'Done' };
-    for (const cat of ['todo', 'in_progress', 'done']) {
-      const group = list.filter(s => s.category === cat);
-      if (!group.length) continue;
-      menu.append(el('div', 'tickets-status-group', names[cat]));
-      for (const st of group) {
-        const item = el('button', 'tickets-status-item' + (st.id === t.statusId || (!t.statusId && st.name === t.status) ? ' on' : ''));
-        item.type = 'button';
-        item.append(el('span', `tickets-status status-${st.category}`, st.name));
-        item.onclick = () => { this.closeStatusMenu(); this.changeStatus(t, st); };
-        menu.append(item);
+    Promise.resolve().then(() => fill(menu)).then(() => {
+      if (this.menu !== menu) return;
+      place();
+      menu.querySelector('.on')?.scrollIntoView({ block: 'nearest' });
+    }).catch(err => { if (this.menu === menu) menu.replaceChildren(el('div', 'tickets-error', err.message)); });
+  }
+
+  openStatusMenu(btn, t) {
+    this.openMenu(btn, 'status:' + t.key, async menu => {
+      const list = await this.projectStatuses(t.project || t.key.split('-')[0]);
+      if (this.menu !== menu) return;
+      menu.replaceChildren();
+      const names = { todo: 'To do', in_progress: 'In progress', done: 'Done' };
+      for (const cat of ['todo', 'in_progress', 'done']) {
+        const group = list.filter(s => s.category === cat);
+        if (!group.length) continue;
+        menu.append(el('div', 'tickets-status-group', names[cat]));
+        for (const st of group) {
+          const item = el('button', 'tickets-status-item' + (st.id === t.statusId || (!t.statusId && st.name === t.status) ? ' on' : ''));
+          item.type = 'button';
+          item.append(el('span', `tickets-status status-${st.category}`, st.name));
+          item.onclick = () => { this.closeStatusMenu(); this.changeStatus(t, st); };
+          menu.append(item);
+        }
       }
-    }
-    place();
-    menu.querySelector('.on')?.scrollIntoView({ block: 'nearest' });
+    });
   }
 
   // Every copy of a ticket the view holds (the lists, the subtask rows, the
@@ -485,82 +498,6 @@ class TicketsView {
     if (!full.error && t.parentKey) full.parentKey = t.parentKey;
     this.renderDetail(full.error ? t : full, full.error || null);
     if (!full.error && this.expanded.has(full.key)) this.renderList();
-  }
-
-  renderDetail(t, error) {
-    this.detailTicket = t;
-    const box = el('div', 'ticket-detail');
-    const head = el('div', 'ticket-head');
-    const link = el('a', 'ticket-key', shortKey(t.key));
-    link.href = pmItemUrl(t.key);
-    link.target = '_blank';
-    link.title = `Open ${t.key} in PM`;
-    const close = el('button', 'icon ticket-close', '✕');
-    close.type = 'button';
-    close.title = 'Close';
-    close.onclick = () => this.closeDetail();
-    const icon = t.subtask ? el('span', 'tickets-type-icon') : typeIcon(t.type);
-    if (t.subtask) { icon.innerHTML = SUBTASK_ICON; icon.title = 'Subtask'; }
-    head.append(icon, link, this.statusButton(t), close);
-    box.append(head, el('h2', 'ticket-title', t.title));
-    const facts = [['Subtask of', t.parentKey && shortKey(t.parentKey)], ['Assignee', t.assignee], ['Also', t.assignee2], ['Sprint', t.sprint], ['Epic', t.epicName || t.epic], ['Priority', t.priority], ['Reporter', t.author]].filter(([, v]) => v);
-    if (facts.length) {
-      const grid = el('div', 'ticket-facts');
-      for (const [k, v] of facts) grid.append(el('span', 'ticket-fact-name', k), el('span', null, v));
-      box.append(grid);
-    }
-    const actions = el('div', 'ticket-actions');
-    const start = el('button', 'gallery-use', 'Start agent');
-    start.type = 'button';
-    start.title = 'Put the ticket on the Hub\'s message box: say what to do and send. A Story with two or more subtasks gets the ⑂ Split button there.';
-    start.onclick = () => this.onStart?.(t);
-    const open = el('a', 'gallery-action', 'Open in PM');
-    open.href = pmItemUrl(t.key);
-    open.target = '_blank';
-    actions.append(start, open);
-    box.append(actions);
-    if (error) box.append(el('div', 'tickets-error', error));
-    if (t.description === undefined && !error) box.append(el('div', 'gallery-note ticket-loading', 'Reading the ticket…'));
-    if (t.description) box.append(this.description(t));
-    else if (t.description === '') box.append(el('div', 'ticket-empty', 'No description.'));
-    if (t.subtasks?.length) {
-      const open = t.subtasks.filter(s => !s.done).length;
-      const subs = el('div', 'ticket-subtasks');
-      subs.append(el('h3', null, `Subtasks · ${open} open of ${t.subtasks.length}`));
-      for (const s of t.subtasks) {
-        const row = el('a', 'ticket-sub' + (s.done ? ' done' : ''));
-        row.href = pmItemUrl(s.key);
-        row.target = '_blank';
-        row.append(el('span', 'tickets-key', shortKey(s.key)), el('span', 'ticket-sub-title', s.title), this.statusButton(s));
-        subs.append(row);
-      }
-      box.append(subs);
-    }
-    this.detail.replaceChildren(box);
-  }
-
-  // The description is PM's HTML: cleaned, with its images and videos as
-  // PM's short-lived links (videos open in the browser).
-  description(t) {
-    const div = el('div', 'ticket-desc msg-text');
-    div.innerHTML = DOMPurify.sanitize(t.description, { ADD_ATTR: ['data-media-id', 'data-file-name', 'target'] });
-    const media = new Map((t.media || []).map(m => [m.id, m]));
-    for (const img of div.querySelectorAll('img[data-media-id]')) {
-      const m = media.get(img.dataset.mediaId);
-      if (m?.url) {
-        img.src = m.url;
-        img.onclick = () => openImageOverlay(m.url, [...div.querySelectorAll('img')].map(i => i.src));
-      } else img.replaceWith(el('div', 'ticket-media', `🖼 ${img.dataset.fileName || 'Image'}`));
-    }
-    for (const video of div.querySelectorAll('video')) {
-      const name = video.dataset.fileName || 'Video';
-      const a = el('a', 'ticket-media', `▶ ${name} (open in PM)`);
-      a.href = pmItemUrl(t.key);
-      a.target = '_blank';
-      video.replaceWith(a);
-    }
-    for (const a of div.querySelectorAll('a[href]')) a.target = '_blank';
-    return div;
   }
 }
 

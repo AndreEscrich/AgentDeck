@@ -270,6 +270,12 @@ async function ticket(key) {
     author: t.author || '',
     assignee2: t.assignee2 || '',
     epicName: t.epic?.name || t.fieldNames?.epicId || '',
+    epicKey: t.epic?.key || '',
+    // The fields the ticket panel shows and edits.
+    priority: t.priority || '', storyPoints: t.storyPoints ?? null, estimate: t.estimate ?? null,
+    epicId: t.epicId || '', sprintId: t.sprintId || '', teamId: t.teamId || '', team: t.fieldNames?.teamId || '',
+    componentIds: t.componentIds || [], customFields: t.customFields || {}, typeId: t.taskTypeDefinitionId || '',
+    parentId: t.parentTaskId || '', watchers: (t.watchers || []).length,
     media: (t.inlineMedia || []).map(m => ({ id: m.mediaId, name: m.fileName, type: m.contentType, url: m.previewUrl })),
     subtasks: subtask ? [] : await slimSubtasks(subs, base.project),
   };
@@ -344,4 +350,104 @@ async function readTasks(keys, subtasksOf = []) {
   return out;
 }
 
-module.exports = { setup, status, connect, disconnect, callTool, tickets, ticket, readTasks, statuses, subtasks, setStatus };
+// ---------- the ticket panel: options, edits, attachments, comments ----------
+
+const optionCache = new Map();   // project key -> { at, value }
+// What the panel's fields can be set to: epics, open sprints, teams,
+// components, custom fields and statuses of a project. Kept 10 minutes.
+async function options(project) {
+  const hit = optionCache.get(project);
+  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.value;
+  const list = (name, args) => callTool(name, { projectId: project, ...args }).then(r => (Array.isArray(r) ? r : r?.items || [])).catch(() => []);
+  const [epics, sprints, teams, components, fields, sts] = await Promise.all([
+    list('pm_list_epics'), list('pm_list_sprints', { status: 'open' }), list('pm_list_teams'),
+    list('pm_list_components'), list('pm_list_custom_fields'), statuses(project).catch(() => []),
+  ]);
+  const value = {
+    epics: epics.filter(e => !e.isArchived && !e.deletedAt).map(e => ({ id: e._id, key: e.key || '', name: e.name || e.title || e.key || '', color: e.color || null, done: !!(e.doneAt || /done|closed/i.test(e.status || '')) })),
+    sprints: sprints.map(x => ({ id: x._id, name: x.name, status: x.status || '' })),
+    teams: teams.map(x => ({ id: x._id, name: x.name })),
+    components: components.map(x => ({ id: x._id, name: x.name })),
+    fields: fields.map(f => ({ id: f._id, name: f.name, type: f.fieldType, values: f.values || f.options || f.allowedValues || [], types: (f.taskTypes || []).map(tt => tt._id) })),
+    statuses: sts,
+  };
+  optionCache.set(project, { at: Date.now(), value });
+  return value;
+}
+
+const TASK_FIELDS = ['title', 'description', 'assignee', 'assignee2', 'epicId', 'sprintId', 'team', 'componentIds', 'estimate', 'priority', 'storyPoints', 'customFields', 'statusId'];
+const SUBTASK_FIELDS = ['title', 'description', 'assignee', 'assignee2', 'estimate', 'priority', 'storyPoints', 'statusId'];
+
+async function idOf(key, id) {
+  if (id) return id;
+  id = (await callTool('pm_get_task', { key }))?._id;
+  if (!id) throw new Error(`${key} was not found.`);
+  return id;
+}
+
+// Changes some fields of a ticket or subtask and resolves with the ticket
+// read again, so names (epic, sprint, team) come back resolved.
+async function update({ key, id, project, subtask, fields }) {
+  const allowed = subtask ? SUBTASK_FIELDS : TASK_FIELDS;
+  const args = {};
+  for (const f of allowed) if (fields && f in fields) args[f] = fields[f];
+  if (!Object.keys(args).length) throw new Error('Nothing to change.');
+  id = await idOf(key, id);
+  if (subtask) await callTool('pm_update_subtask', { projectId: project, subtaskId: id, ...args });
+  else await callTool('pm_update_task', { projectId: project, taskId: id, ...args });
+  return ticket(key);
+}
+
+async function createSubtask({ key, id, project, title }) {
+  id = await idOf(key, id);
+  await callTool('pm_create_subtask', { projectId: project, taskId: id, title });
+  return ticket(key);
+}
+
+async function attachments({ project, id }) {
+  const r = await callTool('pm_list_task_attachments', { projectId: project, taskId: id });
+  return (Array.isArray(r) ? r : r?.items || []).map(a => ({
+    id: a._id || a.id, name: a.fileName || a.name || 'File', type: a.contentType || a.type || '', size: a.size || 0, at: a.createdAt || '',
+  }));
+}
+
+async function openAttachment({ project, attachmentId }) {
+  const r = await callTool('pm_get_attachment_download_url', { projectId: project, attachmentId });
+  const url = r?.previewUrl || r?.downloadUrl;
+  if (!url) throw new Error('PM sent no link.');
+  await electron.shell.openExternal(url);
+  return { ok: true };
+}
+
+const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', pdf: 'application/pdf', txt: 'text/plain', log: 'text/plain', json: 'application/json', zip: 'application/zip', csv: 'text/csv' };
+// Uploads files (paths on this computer) as attachments of a ticket.
+async function attach({ project, projectId, id, paths }) {
+  for (const file of paths) {
+    const fileName = path.basename(file);
+    const contentType = MIME[path.extname(file).slice(1).toLowerCase()] || 'application/octet-stream';
+    const bytes = fs.readFileSync(file);
+    const up = await callTool('pm_request_task_attachment_upload', { projectId: project, taskId: id, fileName, contentType });
+    if (!up?.signedUrl) throw new Error('PM gave no upload link.');
+    const res = await electron.net.fetch(up.signedUrl, { method: 'PUT', headers: { 'content-type': contentType }, body: bytes });
+    if (!res.ok) throw new Error(`The upload of ${fileName} failed (${res.status}).`);
+    await callTool('pm_confirm_task_attachment', { projectId, taskId: id, fileName, contentType, storagePath: up.storagePath, size: bytes.length });
+  }
+  return attachments({ project, id });
+}
+
+// Comments of a ticket, or of a subtask (which PM finds by its id).
+const commentTarget = ({ key, id, project, subtask }) => (subtask && id ? { subtaskId: id, projectId: project } : { key });
+async function comments(a) {
+  const r = await callTool('pm_list_comments', commentTarget(a));
+  return (Array.isArray(r) ? r : r?.items || []).map(c => ({
+    id: c._id || c.id, author: c.authorName || c.author || '', content: c.content || '', at: c.createdAt || '', parentId: c.parentCommentId || null, deleted: !!c.deletedAt,
+  }));
+}
+
+async function addComment(a) {
+  await callTool('pm_create_comment', { ...commentTarget(a), content: a.content, authorName: a.authorName || auth?.email || 'Agent Hub' });
+  return comments(a);
+}
+
+module.exports = { setup, status, connect, disconnect, callTool, tickets, ticket, readTasks, statuses, subtasks, setStatus,
+  options, update, createSubtask, attachments, openAttachment, attach, comments, addComment };

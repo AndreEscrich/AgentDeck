@@ -2453,7 +2453,7 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .tickets-backdrop { display: none; position: absolute; inset: 0; z-index: 4; background: rgba(0, 0, 0, 0.45); }
 .tickets-view.detail-open .tickets-backdrop { display: block; }
 .tickets-detail { display: none; position: absolute; z-index: 5; top: 16px; bottom: 20px; left: 50%; transform: translateX(-50%);
-  width: min(860px, calc(100% - 48px)); box-sizing: border-box; padding: 20px 26px 32px; border-radius: 14px;
+  width: min(1180px, calc(100% - 48px)); box-sizing: border-box; padding: 20px 26px 32px; border-radius: 14px;
   border: 1px solid var(--border); background: var(--bg-panel); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3); }
 .tickets-view.detail-open .tickets-detail { display: block; }
 /* The table, like PM's sheet. */
@@ -3703,3 +3703,110 @@ button.uml-peer-chip:hover { background: color-mix(in srgb, var(--chip, var(--ac
 /* A finished subtask waiting for your approval: a purple tank and an Approve button. */
 .hub-tile.lane-review { --c1: #c3a6f5; --c2: #7a52c9; --glow: rgba(150, 110, 230, 0.35); }
 .tile-approve { align-self: stretch; margin-top: 4px; padding: 3px 10px; font-size: 12px; border-radius: 7px; }
+
+/* ---------- the ticket panel (ticketpanel.js), laid out like PM's ---------- */
+.tp { display: flex; flex-direction: column; gap: 6px; }
+.tp.busy { cursor: progress; }
+.tp.busy .tp-cols { opacity: 0.7; pointer-events: none; }
+.tp-top { display: flex; align-items: center; gap: 10px; }
+.tp-crumbs { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; font-size: 12.5px; color: var(--text-dim); }
+.tp-crumb { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.tp-crumb-link { border: none; background: none; padding: 0; color: var(--text-dim); font: 500 12.5px var(--mono); cursor: pointer; }
+.tp-crumb-link:hover { color: var(--text); text-decoration: underline; }
+.tp-sep { color: var(--text-faint); }
+.tp-key { font: 600 12.5px var(--mono); color: var(--text-dim); text-decoration: none; }
+.tp-key:hover { color: var(--text); text-decoration: underline; }
+.tp-tools { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.tp-tools .gallery-use { padding: 5px 14px; }
+.tp-title-row { display: flex; align-items: center; gap: 8px; margin: 6px 0 4px; }
+.tp-title { margin: 0; font-size: 22px; line-height: 1.3; color: var(--text); }
+.tp-title-input { flex: 1; font-size: 20px; font-weight: 600; padding: 4px 8px; }
+.tp-pencil { color: var(--text-faint); padding: 2px 4px; }
+.tp-pencil:hover { color: var(--text); }
+.tp-error { color: var(--err); font-size: 12.5px; padding: 6px 10px; border-radius: 8px; background: color-mix(in srgb, var(--err) 12%, transparent); }
+.tp-cols { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 28px; margin-top: 8px; border-top: 1px solid var(--border); padding-top: 14px; }
+.tp-main { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.tp-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.tp-fold { display: inline-flex; align-items: center; gap: 8px; border: none; background: none; padding: 0; color: var(--text-dim); font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; }
+.tp-fold:hover { color: var(--text); }
+.tp-fold svg { transform: rotate(90deg); transition: transform 0.12s; }
+.tp-section.folded .tp-fold svg { transform: none; }
+.tp-section.folded .tp-section-body { display: none; }
+.tp-count { font-size: 11px; color: var(--text-faint); }
+.tp-add { font-size: 16px; line-height: 1; padding: 0 5px; color: var(--text-faint); }
+.tp-add:hover { color: var(--text); }
+.tp-desc { padding: 10px 12px; border-radius: 8px; background: color-mix(in srgb, var(--text) 5%, transparent); font-size: 13.5px; line-height: 1.55; overflow-wrap: anywhere; }
+.tp-desc > :first-child { margin-top: 0; }
+.tp-desc > :last-child { margin-bottom: 0; }
+.tp-desc img { max-width: 100%; border-radius: 6px; cursor: zoom-in; }
+.tp-empty { color: var(--text-faint); font-style: italic; cursor: text; }
+.tp-desc-edit { outline: 1px solid var(--accent); min-height: 90px; cursor: text; }
+.tp-editbar { display: flex; gap: 4px; margin-bottom: 6px; }
+.tp-editbtn { min-width: 28px; padding: 2px 8px; font-weight: 700; }
+.tp-edit-actions { display: flex; gap: 8px; margin-top: 8px; }
+.tp-edit-actions .gallery-use { padding: 5px 16px; }
+.tp-files { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.tp-file { display: inline-flex; align-items: center; gap: 6px; max-width: 280px; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 12.5px; }
+.tp-file:hover { background: var(--bg-hover); }
+.tp-file.busy { opacity: 0.6; cursor: progress; }
+.tp-file-icon { display: inline-flex; color: var(--text-faint); }
+.tp-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-file-size { color: var(--text-faint); font-size: 11px; white-space: nowrap; }
+.tp-drop { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; padding: 14px; border-radius: 10px; border: 1.5px dashed color-mix(in srgb, var(--text-faint) 70%, transparent); background: none; color: var(--text-dim); font-size: 13px; cursor: pointer; }
+.tp-drop:hover, .tp-drop.over { border-color: var(--accent); color: var(--text); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.tp-drop-icon { display: inline-flex; }
+.tp-progress { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.tp-progress-track { flex: 1; height: 6px; border-radius: 99px; background: color-mix(in srgb, var(--text) 12%, transparent); overflow: hidden; }
+.tp-progress-fill { height: 100%; border-radius: 99px; background: #4cc38a; }
+.tp-progress-text { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.tp-subs { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 8px; }
+.tp-sub { display: flex; align-items: center; gap: 9px; padding: 6px 10px; font-size: 13px; cursor: pointer; }
+.tp-sub + .tp-sub { border-top: 1px solid var(--border); }
+.tp-sub:hover { background: var(--bg-hover); }
+.tp-sub-key { font: 500 12px var(--mono); color: var(--text-dim); flex-shrink: 0; }
+.tp-sub.done .tp-sub-key { text-decoration: line-through; color: var(--text-faint); }
+.tp-sub-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.tp-sub .tickets-status { flex-shrink: 0; }
+.tp-priority { display: inline-flex; width: 18px; justify-content: center; flex-shrink: 0; color: var(--text-faint); font-size: 12px; }
+.tp-avatar { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0; font-size: 9.5px; font-weight: 700; color: #fff; }
+.tp-avatar.none { border: 1px dashed var(--text-faint); }
+.tp-empty-line { color: var(--text-faint); font-size: 12.5px; margin-bottom: 6px; }
+.tp-input { width: 100%; box-sizing: border-box; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; font-size: 13px; outline: none; }
+.tp-input:focus { border-color: var(--accent); }
+.tp-input::placeholder { color: var(--text-faint); }
+.tp-input.bad { outline: 1px solid var(--err); }
+.tp-comment { padding: 8px 0; border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
+.tp-comment.reply { margin-left: 30px; }
+.tp-comment-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 12.5px; }
+.tp-comment-author { font-weight: 600; color: var(--text); }
+.tp-comment-time { color: var(--text-faint); font-size: 11.5px; }
+.tp-comment .tp-desc { background: none; padding: 0 0 0 30px; }
+.tp-comment-new { display: flex; gap: 8px; align-items: flex-end; margin-top: 8px; }
+.tp-comment-input { resize: vertical; min-height: 40px; font: inherit; }
+.tp-comment-new .gallery-use { padding: 6px 14px; flex-shrink: 0; }
+.tp-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.tp-status { align-self: flex-start; font-size: 11.5px; padding: 3px 10px; }
+.tp-field { display: flex; flex-direction: column; gap: 5px; }
+.tp-label { font-size: 12px; font-weight: 600; color: var(--text-dim); }
+.tp-static { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); padding: 4px 0; }
+.tp-faint { color: var(--text-faint); font-size: 12px; }
+.tp-person { display: flex; align-items: center; gap: 8px; padding: 0 0 0 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.tp-person:focus-within { border-color: var(--accent); }
+.tp-person .tp-input { border: none; background: none; outline: none; padding: 7px 8px 7px 0; }
+.tp-link { align-self: flex-start; border: none; background: none; padding: 0; color: #8f96ff; font-size: 12.5px; cursor: pointer; }
+.tp-link:hover { text-decoration: underline; }
+.tp-select { display: flex; align-items: center; gap: 8px; padding: 0 0 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 13px; }
+.tp-select:focus-within { border-color: var(--accent); }
+.tp-select select { flex: 1; min-width: 0; border: none; background: none; color: inherit; font: inherit; padding: 7px 8px 7px 0; outline: none; cursor: pointer; }
+.tp-select-button { padding: 7px 10px; text-align: left; cursor: pointer; }
+.tp-select-button:disabled { cursor: default; color: var(--text-faint); }
+.tp-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-faint); flex-shrink: 0; }
+.tp-points { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.tp-point { flex: 1; padding: 6px 0; border: none; border-radius: 0; background: var(--bg); color: var(--text); font-size: 12.5px; }
+.tp-point + .tp-point { border-left: 1px solid var(--border); }
+.tp-point:hover { background: var(--bg-hover); }
+.tp-point.on { background: var(--accent); color: #1d1813; font-weight: 700; }
+.tp-loading { padding: 4px 0; }
+.tp-watchers { margin-top: 4px; }
+.tp-menu-save { margin: 6px 4px 2px; padding: 4px 14px; }
+
