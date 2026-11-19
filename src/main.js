@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const pmTasks = require('./pmtasks');
-const { AgentManager, measurePipeline, pipelineSnapshot, fetchModels, summarizeTitle, rateTask, pickGame, readPmTasks, readDrivePath, setPmTasksDone, postPmProof, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited } = require('./agents');
+const { AgentManager, measurePipeline, pipelineSnapshot, fetchModels, summarizeTitle, rateTask, pickGame, readPmTasks, readDrivePath, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited } = require('./agents');
 const { CodexManager, fetchCodexModels, fetchCodexUsage, listCodexThreads, loadCodexThread } = require('./codex');
 const { listSessions, loadTranscript, PROJECTS_DIR } = require('./sessions');
 const git = require('./git');
@@ -501,13 +501,6 @@ app.whenReady().then(() => {
     return gallery.addImages(where.folder, String(category || ''), Array.isArray(files) ? files : []);
   });
   ipcMain.handle('pm:seed', (_e, list) => pmTasks.seed(list));
-  // A ticket run's Approve button: the subtask moves to Done in PM.
-  const pmKey = k => typeof k === 'string' && /^[A-Z][A-Z0-9]{1,9}-\d+$/.test(k);
-  ipcMain.handle('pm:done', (_e, keys, parent) => setPmTasksDone(getConfig(), (Array.isArray(keys) ? keys : [keys]).filter(pmKey), pmKey(parent) ? parent : ''));
-  // And its visual proof, as a comment on the subtask (screenshots from verify-shots only).
-  ipcMain.handle('pm:proof', (_e, info) => (pmKey(info?.key) && Array.isArray(info.proof)
-    ? postPmProof(getConfig(), { key: info.key, summary: String(info.summary || ''), proof: info.proof, shotsDir: path.join(app.getPath('userData'), 'verify-shots') }).catch(() => false)
-    : false));
   ipcMain.handle('gdoc:title', (_e, url) => require('./gdocs').title(url));
   ipcMain.handle('github:lookup', (_e, what) => require('./github').lookup(what));
   ipcMain.handle('jira:details', (_e, key) => jira.details(key));

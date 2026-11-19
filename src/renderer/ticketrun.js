@@ -13,12 +13,13 @@
 //    files and the subtasks it waits for are done, so independent subtasks
 //    run at the same time. Settings → Agents at once (maxTicketAgents) is a
 //    ceiling on top, for your usage limits. A finished agent stays in the
-//    run's box with its one subtask, for review.
+//    run's box with its one subtask, like any finished agent: you tell it
+//    what to do next, if anything.
 // 3. Workers change files under the file locks (src/filelocks.js), in case
 //    the briefing missed a file: a file another worker is changing makes
 //    them wait; their tile says for which file.
-// 4. Each worker posts a comment on its subtask in PM. Under each finished
-//    subtask, the chat has an Approve button that moves it to Done.
+// 4. Each worker posts a comment on its subtask in PM. It does not change
+//    the subtask's status: you do that, or tell the agent to.
 //
 // Runs are saved (localStorage "ticketRuns", see save and load) with the
 // session of the briefing and of each worker, so after a restart the agents,
@@ -81,7 +82,7 @@ const ticketRuns = (() => {
       `Work only on ${sub.key}. Other agents are working on other subtasks of ${run.key} in this folder at the same time:\n`
         + '- When a file you want to change is being changed by one of them, Agent Hub makes you wait until it is free. If you are told a file is in use, do the parts that do not need it first.\n'
         + '- Do not undo, revert or reformat changes you did not make for this subtask.',
-      `When you are done: post a comment on ${sub.key} in Tactile PM (pm_create_comment) with a short summary of what you changed and which files, then end your answer with the same summary. Do not change the subtask's status: the user approves it in Agent Hub.`,
+      `When you are done: post a comment on ${sub.key} in Tactile PM (pm_create_comment) with a short summary of what you changed and which files, then end your answer with the same summary. Do not change the subtask's status unless the user asks you to.`,
     ];
     return paragraphs.filter(Boolean).join('\n\n');
   }
@@ -126,7 +127,7 @@ const ticketRuns = (() => {
       key, title: '', cwd: d.folder, groupId: d.groupId || null,
       choice: d.choice, mode: d.mode,
       status: 'briefing', briefing: null,
-      subtasks: [],            // { key, title, description, notes, files, after, state: queued | working | review | approved | failed | skipped, agentId }
+      subtasks: [],            // { key, title, description, notes, files, after, state: queued | working | finished | failed | skipped, agentId }
       forkFrom: null,          // the briefing, which every worker is a fork of
     };
     runs.set(run.id, run);
@@ -160,7 +161,7 @@ const ticketRuns = (() => {
       list.push({
         id: run.id, key: run.key, title: run.title, cwd: run.cwd, groupId: run.groupId, choice: run.choice, mode: run.mode,
         status: run.status, forkFrom: run.forkFrom, briefingSession: run.briefingSession, createdAt: run.createdAt || Date.now(),
-        subtasks: run.subtasks.map(({ bars, agentId, approveFailed, ...s }) => s),
+        subtasks: run.subtasks.map(({ agentId, ...s }) => s),
       });
     }
     try { localStorage.setItem('ticketRuns', JSON.stringify(list)); } catch { /* kept for this window */ }
@@ -172,7 +173,8 @@ const ticketRuns = (() => {
     const since = Date.now() - KEEP_DAYS * 24 * 3600 * 1000;
     for (const r of list) {
       if (!r?.id || (r.createdAt || 0) < since) continue;
-      const subtasks = (r.subtasks || []).map(s => ({ ...s, state: s.state === 'approving' ? 'review' : s.state, agentId: null }));
+      // Runs saved while subtasks waited for an approval: those are finished.
+      const subtasks = (r.subtasks || []).map(s => ({ ...s, state: ['review', 'approving', 'approved'].includes(s.state) ? 'finished' : s.state, agentId: null }));
       runs.set(r.id, { ...r, subtasks, briefing: null });
     }
   }
@@ -196,7 +198,7 @@ const ticketRuns = (() => {
     if (agent.lane.role === 'briefing') run.briefing = agent;
     else {
       const sub = subOf(run, agent);
-      if (sub) { sub.agentId = agent.id; agent.laneApproved = sub.state === 'approved'; }
+      if (sub) sub.agentId = agent.id;
     }
   }
 
@@ -238,7 +240,7 @@ const ticketRuns = (() => {
   // and whenever a subtask finishes.
   function schedule(run) {
     if (run.status !== 'running') return;
-    const finished = new Set(run.subtasks.filter(s => ['review', 'approving', 'approved', 'failed', 'skipped'].includes(s.state)).map(s => s.key));
+    const finished = new Set(run.subtasks.filter(s => ['finished', 'failed', 'skipped'].includes(s.state)).map(s => s.key));
     const known = new Set(run.subtasks.map(s => s.key));
     const ceiling = Math.max(1, Number(state.config.maxTicketAgents) || 5);
     const running = run.subtasks.filter(s => s.state === 'working');
@@ -252,7 +254,7 @@ const ticketRuns = (() => {
     }
     if (!run.subtasks.some(s => ['queued', 'working'].includes(s.state))) {
       run.status = 'done';
-      toast?.(`${run.key}: every subtask is done. Approve them on their tiles in the Hub.`);
+      toast?.(`${run.key}: every subtask is done.`);
     }
     save();
     refreshHub();
@@ -304,95 +306,6 @@ const ticketRuns = (() => {
     agent.transcript.note(`Ticket run: ${todo.length} subtask${todo.length === 1 ? '' : 's'}, each on an agent of its own. ${now} start${now === 1 ? 's' : ''} now; the others start when the subtasks that share their files, or that they wait for, are done (at most ${Math.max(1, Number(state.config.maxTicketAgents) || 5)} at once, Settings → Ticket runs).`);
   }
 
-  // Approves a finished subtask: it moves to Done in PM. From the Approve
-  // button on its tile (hub.js) or under its answer in the chat.
-  async function approve(agentId) {
-    // A parked tile (after a restart) has the id "p:" + its session.
-    const agent = state.agents.get(agentId)
-      || (String(agentId).startsWith('p:') ? { id: agentId, lane: laneOfSession(String(agentId).slice(2)) } : null);
-    const run = agent?.lane && runs.get(agent.lane.runId);
-    const sub = run && subOf(run, agent);
-    if (!sub || sub.state !== 'review') return;
-    sub.state = 'approving';
-    renderBars(sub);
-    refreshHub();
-    const moved = await window.deck.pmDone([sub.key], run.key).catch(() => ({}));
-    sub.state = moved?.[sub.key] ? 'approved' : 'review';
-    sub.approveFailed = !moved?.[sub.key];
-    if (sub.state === 'approved') agent.laneApproved = true;
-    save();
-    renderBars(sub);
-    refreshHub();
-    if (sub.state === 'approved' && sub.proof?.length && !sub.proofPosted) postProof(run, sub, agent);
-  }
-
-  // The screenshots that proved a worker's latest work (verifyTurn in app.js).
-  function noteProof(agent, proof) {
-    const run = agent?.lane && runs.get(agent.lane.runId);
-    const sub = run && subOf(run, agent);
-    if (!sub || !proof?.length) return;
-    sub.proof = proof;
-    sub.proofPosted = false;
-    save();
-    // Approved before its checks were done: the proof follows now.
-    if (sub.state === 'approved') postProof(run, sub, agent);
-  }
-
-  // Done in PM, with visual proof: the screenshots go on the subtask as a
-  // comment, with what changed (src/agents.js postPmProof).
-  async function postProof(run, sub, agent) {
-    const live = state.agents.get(agent.id);
-    const count = sub.proof.reduce((n, p) => n + p.files.length, 0);
-    live?.transcript.note('Posting the visual proof (' + count + ' screenshot' + (count === 1 ? '' : 's') + ') on ' + sub.key + ' in PM…');
-    const ok = await window.deck.pmProof({ key: sub.key, summary: sub.summary || '', proof: sub.proof }).catch(() => false);
-    sub.proofPosted = !!ok;
-    save();
-    if (ok) live?.transcript.note('Posted the visual proof on ' + sub.key + ' in PM, with what changed.');
-    else {
-      live?.transcript.note('Could not post the visual proof on ' + sub.key + ' in PM.', true);
-      toast?.(sub.key + ': the visual proof could not be posted in PM.');
-    }
-  }
-
-  // The Approve bar under a finished subtask's answer, kept in step with the
-  // subtask's state (the tile's button changes it too).
-  function renderBars(sub) {
-    for (const bar of sub.bars || []) {
-      const label = bar.querySelector('.ticket-approve-label');
-      const button = bar.querySelector('button');
-      bar.classList.toggle('approved', sub.state === 'approved');
-      if (sub.state === 'approved') {
-        label.textContent = `${sub.key} is approved and in Done.`;
-        button?.remove();
-      } else if (sub.state === 'approving') {
-        label.textContent = `Moving ${sub.key} to Done…`;
-        if (button) button.disabled = true;
-      } else {
-        label.textContent = sub.approveFailed
-          ? `${sub.key} could not be moved to Done in PM. Try again, or move it there yourself.`
-          : `${sub.key} is waiting for your approval. Approve it to move it to Done in PM.`;
-        if (button) { button.disabled = false; button.textContent = 'Approve → Done'; }
-      }
-    }
-  }
-
-  function approveBar(run, sub, agent) {
-    const bar = el('div', 'ticket-approve');
-    const button = el('button', 'primary', 'Approve → Done');
-    button.onclick = () => approve(agent.id);
-    bar.append(el('span', 'ticket-approve-label'), button);
-    (sub.bars = sub.bars || []).push(bar);
-    renderBars(sub);
-    const turn = agent.transcript.lastFinished?.el;
-    (turn || agent.view).appendChild(bar);
-  }
-
-  // A worker's subtask state, for its tile (hub.js): review is "Waiting approval".
-  function laneState(agent) {
-    const run = agent?.lane && runs.get(agent.lane.runId);
-    return (run && subOf(run, agent)?.state) || null;
-  }
-
   function onResult(agent, msg) {
     const lane = agent?.lane;
     const run = lane && runs.get(lane.runId);
@@ -404,15 +317,7 @@ const ticketRuns = (() => {
     // A worker keeps its one subtask: when you write to it afterwards, its
     // next answer counts for the same subtask.
     const sub = subOf(run, agent);
-    // What it changed (its answer) and its visual proof, for the comment on
-    // the subtask when you approve it (postProof).
-    if (sub && !msg.is_error) {
-      if (msg.result) sub.summary = String(msg.result).slice(0, 4000);
-    }
-    if (sub && sub.state === 'working') {
-      sub.state = msg.is_error ? 'failed' : 'review';
-      if (!msg.is_error) approveBar(run, sub, agent);
-    }
+    if (sub && sub.state === 'working') sub.state = msg.is_error ? 'failed' : 'finished';
     schedule(run);
   }
 
@@ -438,9 +343,8 @@ const ticketRuns = (() => {
   function progressOf(run) {
     if (run.status === 'briefing') return 'briefing…';
     const count = st => run.subtasks.filter(s => s.state === st).length;
-    const parts = [`${count('approved') + count('review') + count('approving')}/${run.subtasks.length - count('skipped')} done`];
+    const parts = [`${count('finished')}/${run.subtasks.length - count('skipped')} done`];
     if (count('working')) parts.push(`${count('working')} working`);
-    if (count('review') + count('approving')) parts.push(`${count('review') + count('approving')} waiting approval`);
     if (count('queued')) parts.push(`${count('queued')} waiting`);
     if (count('failed')) parts.push(`${count('failed')} failed`);
     if (count('skipped')) parts.push(`${count('skipped')} skipped`);
@@ -495,7 +399,7 @@ const ticketRuns = (() => {
     };
   }
 
-  return { keyIn, start, onResult, forget, agentIdsOf, infoOf, ticketOf, laneState, save, load, laneOfSession, attach, resumeRuns, noteProof, approve, renderButton, wire, parsePlan, runs };
+  return { keyIn, start, onResult, forget, agentIdsOf, infoOf, ticketOf, save, load, laneOfSession, attach, resumeRuns, renderButton, wire, parsePlan, runs };
 })();
 
 window.ticketRuns = ticketRuns;

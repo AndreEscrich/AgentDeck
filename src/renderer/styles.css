@@ -3670,12 +3670,7 @@ button.uml-peer-chip:hover { background: color-mix(in srgb, var(--chip, var(--ac
 .hub-run-grid { display: flex; gap: 10px; align-items: stretch; min-width: 0; }
 .hub-run-grid .hub-tile { flex: 1 1 0; min-width: 0; max-width: 240px; }
 /* An approved subtask's tile is smaller, so the ones left to review stand out. */
-.hub-run-grid .hub-tile.lane-approved { flex: 0.5 1 0; max-width: 130px; opacity: 0.7; }
-.ticket-approve { display: flex; align-items: center; gap: 12px; margin: 10px 0 4px; padding: 8px 12px;
   border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); font-size: 13px; }
-.ticket-approve-label { flex: 1; color: var(--text-dim); }
-.ticket-approve.approved { border-color: rgba(76, 175, 122, 0.5); }
-.ticket-approve.approved .ticket-approve-label { color: var(--ok); }
 
 /* A ticket run booting up (hub.js bootUp): while the briefing reads the
    ticket, the box itself powers on: its border lights up and breathes, a scan
@@ -3732,8 +3727,6 @@ button.uml-peer-chip:hover { background: color-mix(in srgb, var(--chip, var(--ac
 .hub-run.has-briefing .hub-run-head { cursor: pointer; }
 .hub-run.has-briefing .hub-run-head:hover .hub-run-title { color: var(--text); text-decoration: underline; }
 /* A finished subtask waiting for your approval: a purple tank and an Approve button. */
-.hub-tile.lane-review { --c1: #c3a6f5; --c2: #7a52c9; --glow: rgba(150, 110, 230, 0.35); }
-.tile-approve { align-self: stretch; margin-top: 4px; padding: 3px 10px; font-size: 12px; border-radius: 7px; }
 
 /* ---------- the ticket panel (ticketpanel.js), laid out like PM's ---------- */
 .tp { display: flex; flex-direction: column; gap: 6px; }

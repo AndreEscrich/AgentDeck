@@ -737,22 +737,6 @@ class Hub {
       entry.status = agent.status;
     }
     tile.classList.toggle('current', agent.id === currentId);
-    // A ticket run's finished subtask waits for your approval (ticketrun.js):
-    // a purple tank, "Waiting approval" and an Approve button on the tile.
-    const laneState = agent.lane?.role === 'worker' ? this.laneState?.(agent) : null;
-    tile.classList.toggle('lane-review', laneState === 'review' || laneState === 'approving');
-    let approve = tile.querySelector(':scope .tile-approve');
-    if (laneState === 'review' || laneState === 'approving') {
-      if (!approve) {
-        approve = el('button', 'primary tile-approve', '✓ Approve');
-        approve.type = 'button';
-        approve.title = 'Approve this subtask: it moves to Done in PM';
-        approve.onclick = e => { e.stopPropagation(); this.onApprove?.(agent.id); };
-        // Its own row under the status, so "Waiting approval" keeps its room.
-        parts.statusText.parentElement.after(approve);
-      }
-      approve.disabled = laneState === 'approving';
-    } else if (approve) approve.remove();
     // A ticket run's worker: its subtask as a PM card under the title, which
     // opens the subtask in PM (the tile itself still opens the agent). An
     // agent whose first message linked a PM ticket shows that ticket.
@@ -769,8 +753,6 @@ class Hub {
       ticketCard.appendChild(card);
       parts.title.after(ticketCard);
     } else if (!ticket && ticketCard) ticketCard.remove();
-    // A ticket run's approved subtask: its tile gets smaller (ticketrun.js).
-    tile.classList.toggle('lane-approved', !!agent.laneApproved || laneState === 'approved');
     // Thinking (no tool running): slow bubbles that gather at the surface.
     tile.classList.toggle('thinking', agent.status === 'working' && agent.transcript?.liveStep === 'Thinking…');
     tile.classList.toggle('unread', !!agent.unread);
@@ -855,11 +837,6 @@ class Hub {
       parts.stale.textContent = `${ago} ago`;
       if (agent.status === 'idle' && !agent.stopped) parts.statusText.textContent = `Stale · ${ago} ago`;
       parts.statusText.title = `Finished ${ago} ago`;
-    }
-    // A finished subtask's state wins over Completed and Stale.
-    if (laneState === 'review' || laneState === 'approving' || laneState === 'approved') {
-      parts.statusText.textContent = laneState === 'review' ? 'Waiting approval' : laneState === 'approving' ? 'Moving to Done…' : 'Done in PM';
-      parts.statusText.title = laneState === 'review' ? 'Approve moves the subtask to Done in PM' : '';
     }
     this.updateTimer(agent, parts.timer);
     const model = this.modelOf?.(agent) || null;
