@@ -4027,3 +4027,22 @@ button.tp-sub:hover { background: var(--bg-hover); }
 .tickets-th-btn:hover { background: var(--bg-hover); color: var(--text); }
 .tickets-th-btn.on { opacity: 1; color: var(--accent); }
 .tickets-th-filter.on { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+
+/* The Tickets view's Haiku box (tickets.js runAssist), under the bar, as wide as the table. */
+.tickets-assist { width: min(900px, calc(100% - 48px)); margin: 10px auto 0; display: flex; flex-direction: column; gap: 6px; }
+.tickets-assist-row { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 10px; border-radius: 12px; background: #2a221b; border: 1px solid #3d3329; }
+.tickets-assist-row:focus-within { border-color: color-mix(in srgb, var(--accent) 60%, #3d3329); }
+.tickets-assist-mark { flex-shrink: 0; padding: 1px 7px; border-radius: 99px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+input.tickets-assist-input { flex: 1; min-width: 0; border: none; background: none; padding: 6px 4px; font-size: 13px; }
+input.tickets-assist-input:focus { border: none; }
+.tickets-assist.busy input.tickets-assist-input { color: var(--text-faint); }
+.tickets-assist-out { position: relative; padding: 10px 34px 10px 12px; border-radius: 12px; background: rgba(0, 0, 0, 0.2); border: 1px solid #3d3329; font-size: 13px; }
+.tickets-assist-asked { color: var(--text-faint); font-size: 12px; margin-bottom: 6px; }
+.tickets-assist-working { display: flex; align-items: center; gap: 10px; color: var(--text-dim); }
+.tickets-assist-step { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tickets-assist-answer { color: var(--text); }
+.tickets-assist-answer .msg-text > :first-child { margin-top: 0; }
+.tickets-assist-answer .msg-text > :last-child { margin-bottom: 0; }
+.tickets-assist-answer.err { color: var(--err); }
+.tickets-assist-close { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; font-size: 16px; line-height: 1; }
+.tickets-view.signed-out .tickets-assist { display: none; }

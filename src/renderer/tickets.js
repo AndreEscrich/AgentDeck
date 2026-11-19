@@ -127,6 +127,21 @@ class TicketsView {
     // The PM account and Sign out live in Settings → Account (pmAccountPanel).
     // The filters are on the columns now (renderList): no filter button here.
     bar.append(this.tabs, this.search, spacer, this.when, refresh, this.bell);
+    // Haiku for tickets (src/pmassist.js): say what to do or ask; it only
+    // reads tickets and makes changes you can undo, nothing else.
+    this.assist = el('div', 'tickets-assist');
+    this.assistInput = document.createElement('input');
+    this.assistInput.type = 'text';
+    this.assistInput.className = 'tickets-assist-input';
+    this.assistInput.placeholder = 'Ask Haiku about tickets: "assign M2S-3644 to me", "which of my tickets are in QA?"… (↩)';
+    this.assistInput.title = 'Haiku with the Tactile PM connector, for ticket work only. It can read tickets and make changes you can undo (fields, status, assignee, comments, new tickets and subtasks), never delete or archive anything, touch sprints, projects or epics, or start agents.';
+    const mark = el('span', 'tickets-assist-mark', 'Haiku');
+    this.assistOut = el('div', 'tickets-assist-out hidden');
+    const row = el('div', 'tickets-assist-row');
+    row.append(mark, this.assistInput);
+    this.assist.append(row, this.assistOut);
+    this.assistInput.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.runAssist(); } if (e.key === 'Escape') this.assistInput.blur(); };
+    window.deck.onPmAssistStep?.((id, line) => { if (id === this.assistId) this.assistStep.textContent = line; });
     const body = el('div', 'tickets-body');
     this.bodyEl = body;
     this.listBox = el('section', 'tickets-list scroll');
@@ -135,7 +150,7 @@ class TicketsView {
     this.backdrop = el('div', 'tickets-backdrop');
     this.backdrop.onclick = () => this.closeDetail();
     body.append(this.listBox, this.backdrop, this.detail);
-    this.view.append(bar, body);
+    this.view.append(bar, this.assist, body);
     this.list = 'sprint';
     this.type = null;
     this.titleQ = '';     // the Title column's filter: words a title must have
@@ -871,6 +886,45 @@ class TicketsView {
     if (dt?.key === key) out.push(dt);
     for (const t of dt?.subtasks || []) if (t.key === key) out.push(t);
     return out;
+  }
+
+  // The Haiku box: one request at a time; its answer shows under the box,
+  // and the lists (and the open ticket) read PM again after it.
+  async runAssist() {
+    const text = this.assistInput.value.trim();
+    if (!text) return;
+    if (this.assistId) { window.deck.pmAssistStop(this.assistId); return; }
+    const id = 'assist-' + Date.now();
+    this.assistId = id;
+    this.assist.classList.add('busy');
+    this.assistInput.disabled = true;
+    this.assistStep = el('span', 'tickets-assist-step', 'Thinking…');
+    const stop = el('button', 'tp-link', 'Stop');
+    stop.type = 'button';
+    stop.onclick = () => window.deck.pmAssistStop(id);
+    const asked = el('div', 'tickets-assist-asked', text);
+    const working = el('div', 'tickets-assist-working');
+    working.append(el('span', 'pm-signin-spin'), this.assistStep, stop);
+    this.assistOut.replaceChildren(asked, working);
+    this.assistOut.classList.remove('hidden');
+    const r = await window.deck.pmAssist(id, text, { selected: this.selected || null, list: this.list }).catch(err => ({ error: String(err?.message || err) }));
+    this.assistId = null;
+    this.assist.classList.remove('busy');
+    this.assistInput.disabled = false;
+    this.assistInput.value = '';
+    this.assistInput.focus();
+    const answer = el('div', 'tickets-assist-answer' + (r.error ? ' err' : ''));
+    if (r.error) answer.textContent = r.error;
+    else answer.append(typeof markdown === 'function' ? markdown(r.result) : document.createTextNode(r.result));
+    const close = el('button', 'icon tickets-assist-close', '×');
+    close.type = 'button';
+    close.title = 'Close';
+    close.onclick = () => this.assistOut.classList.add('hidden');
+    this.assistOut.replaceChildren(close, asked, answer);
+    window.uiSound?.(r.error ? 'error' : 'done');
+    // What it changed shows: the lists and the open ticket read PM again.
+    this.load(true);
+    if (this.detailTicket && this.selected === this.detailTicket.key) this.select(this.detailTicket);
   }
 
   async changeStatus(t, st) {

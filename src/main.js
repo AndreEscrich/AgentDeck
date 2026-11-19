@@ -457,6 +457,10 @@ app.whenReady().then(() => {
   ipcMain.handle('pmc:disconnect', () => pmClient.disconnect());
   ipcMain.handle('pmc:tickets', (_e, list) => pmCall(() => pmClient.tickets(list === 'all' ? 'all' : 'sprint', { space: getConfig().pmSpace || 'Enchanted Inn' })));
   ipcMain.handle('pmc:ticket', (_e, key) => pmCall(() => pmClient.ticket(String(key || ''))));
+  // The Tickets view's Haiku box (pmassist.js): ticket work only, nothing it cannot undo.
+  const pmAssist = require('./pmassist');
+  ipcMain.handle('pmassist:run', (_e, id, text, context) => pmAssist.run(getConfig(), String(id), String(text || '').slice(0, 4000), { ...(context || {}), space: getConfig().pmSpace || 'Enchanted Inn' }, line => send('pmassist:step', String(id), line)));
+  ipcMain.handle('pmassist:stop', (_e, id) => pmAssist.stop(String(id)));
   ipcMain.handle('pmc:statuses', (_e, project) => pmCall(() => pmClient.statuses(String(project || ''))));
   ipcMain.handle('pmc:subtasks', (_e, key) => pmCall(() => pmClient.subtasks(String(key || ''))));
   ipcMain.handle('pmc:options', (_e, project) => pmCall(() => pmClient.options(String(project || ''))));
