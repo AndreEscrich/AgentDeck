@@ -133,7 +133,7 @@ class TicketsView {
     this.assistInput = document.createElement('input');
     this.assistInput.type = 'text';
     this.assistInput.className = 'tickets-assist-input';
-    this.assistInput.placeholder = 'Ask Haiku about tickets: "assign M2S-3644 to me", "which of my tickets are in QA?"… (↩)';
+    this.assistInput.placeholder = 'Ask Haiku: "Create a ticket for …", "Assign M2S-3644 to me"… (↩)';
     this.assistInput.title = 'Haiku with the Tactile PM connector, for ticket work only. It can read tickets and make changes you can undo (fields, status, assignee, comments, new tickets and subtasks), never delete or archive anything, touch sprints, projects or epics, or start agents.';
     const mark = el('span', 'tickets-assist-mark', 'Haiku');
     this.assistOut = el('div', 'tickets-assist-out hidden');
