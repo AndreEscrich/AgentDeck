@@ -794,7 +794,6 @@
         else side.append(custom(f));
       }
     }
-    if (t.watchers) side.append(el('div', 'tp-faint tp-watchers', `${t.watchers} watching`));
   };
 
   // Components: a list to tick in a menu (a ticket can have several).
