@@ -289,7 +289,9 @@ class TicketsView {
     const q = this.search.value.trim().toLowerCase();
     const shown = this.items().filter(t => (this.type === null || (t.type || 'Other') === this.type) && this.shows(t)
       && (!q || `${t.key} ${t.title} ${t.epic} ${t.sprint}`.toLowerCase().includes(q)));
-    const by = (TICKET_COLUMNS.find(c => c[0] === this.sort.col) || TICKET_COLUMNS[0])[2];
+    const columns = this.columns();
+    if (!columns.some(c => c[0] === this.sort.col)) this.sort = { col: 'key', desc: true };
+    const by = (columns.find(c => c[0] === this.sort.col) || columns[0])[2];
     shown.sort((a, b) => {
       const x = by(a), y = by(b);
       const c = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true });
@@ -297,7 +299,7 @@ class TicketsView {
     });
     const table = el('table', 'tickets-table');
     const head = el('tr');
-    for (const [id, name] of TICKET_COLUMNS) {
+    for (const [id, name] of columns) {
       const th = el('th', `col-${id}`);
       th.append(el('span', null, name));
       if (this.sort.col === id) th.append(el('span', 'tickets-sort', this.sort.desc ? '↓' : '↑'));
@@ -325,7 +327,7 @@ class TicketsView {
       const folded = this.foldedEpics.has(name);
       const tr = el('tr', 'tickets-group' + (folded ? ' folded' : ''));
       const td = el('td');
-      td.colSpan = TICKET_COLUMNS.length;
+      td.colSpan = this.columns().length;
       const chev = el('span', 'tickets-expand' + (folded ? '' : ' open'));
       chev.innerHTML = CHEVRON;
       const done = list.filter(t => t.category === 'done').length;
@@ -351,6 +353,22 @@ class TicketsView {
     if (!shown.length) frag.appendChild(el('div', 'gallery-note', q || this.type || this.statusShow.size < 3 ? 'No ticket matches.' : this.list === 'sprint' ? 'You have no tickets in an open sprint.' : 'No open tickets.'));
     if (d.total > d.items.length) frag.appendChild(el('div', 'gallery-note', `Showing ${d.items.length} of ${d.total} tickets.`));
     this.listBox.replaceChildren(frag);
+  }
+
+  // This sprint's list needs no Sprint column: every ticket is in it.
+  columns() {
+    return TICKET_COLUMNS.filter(c => !(c[0] === 'sprint' && this.list === 'sprint'));
+  }
+
+  // The ▶ after a key: starts an agent on the ticket (its link goes on the
+  // Hub's message box, like Start agent in the details).
+  agentButton(t) {
+    const b = el('button', 'tickets-agent');
+    b.type = 'button';
+    b.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg>';
+    b.title = `Start an agent on ${t.key}`;
+    b.onclick = e => { e.stopPropagation(); this.onStart?.(t); };
+    return b;
   }
 
   // The key as a link that opens the details (a second click closes them).
@@ -381,12 +399,12 @@ class TicketsView {
       chev.onclick = e => { e.stopPropagation(); this.toggleSubs(t); };
       key.append(chev);
     } else key.append(el('span', 'tickets-expand-gap'));
-    key.append(typeIcon(t.type), this.keyButton(t));
+    key.append(typeIcon(t.type), this.keyButton(t), this.agentButton(t));
     tr.append(
       key,
       cell('col-title', el('span', null, t.title)),
-      cell('col-status', this.statusButton(t)),
-      cell('col-sprint', el('span', null, t.sprint)));
+      cell('col-status', this.statusButton(t)));
+    if (this.list !== 'sprint') tr.append(cell('col-sprint', el('span', null, t.sprint)));
     tr.title = story ? `${t.title}\n(click to show or hide the subtasks)` : t.title;
     if (story) tr.onclick = e => { if (!e.target.closest('a, button')) this.toggleSubs(t); };
     return tr;
@@ -398,7 +416,7 @@ class TicketsView {
     const note = text => {
       const tr = el('tr', 'tickets-subnote');
       const td = el('td', null, text);
-      td.colSpan = TICKET_COLUMNS.length;
+      td.colSpan = this.columns().length;
       tr.append(td);
       return [tr];
     };
@@ -417,10 +435,10 @@ class TicketsView {
       const who = s.assignee ? el('span', 'tickets-sub-who', s.assignee) : '';
       const keyBtn = this.keyButton({ ...s, type: 'Subtask', parentKey: parent.key });
       tr.append(
-        cell('col-key', el('span', 'tickets-expand-gap'), icon, keyBtn),
+        cell('col-key', el('span', 'tickets-expand-gap'), icon, keyBtn, this.agentButton({ ...s, parentKey: parent.key })),
         cell('col-title', el('span', 'tickets-sub-title', s.title), who),
-        cell('col-status', this.statusButton(s)),
-        cell('col-sprint'));
+        cell('col-status', this.statusButton(s)));
+      if (this.list !== 'sprint') tr.append(cell('col-sprint'));
       tr.title = s.title;
       return tr;
     });
