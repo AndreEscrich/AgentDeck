@@ -45,6 +45,7 @@ const CHEVRON = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1.5
 const SUBTASK_ICON = '<svg width="14" height="14" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4" fill="#4c9aff"/><rect x="7" y="7" width="6" height="6" rx="1" fill="none" stroke="#fff" stroke-width="2"/><rect x="11" y="11" width="6" height="6" rx="1" fill="#fff"/></svg>';
 // The key without the project's prefix (M2S-3612 shows as 3612).
 const shortKey = key => String(key || '').replace(/^[A-Za-z][A-Za-z0-9]*-/, '');
+const FUNNEL = '<svg width="15" height="15" viewBox="0 0 24 24"><path d="M4 5h16l-6.2 7.4V19l-3.6-1.8v-4.8z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></svg>';
 const isStory = t => !t.subtask && /story/i.test(t.type || '');
 const REFRESH_MS = 5 * 60 * 1000;
 
@@ -74,7 +75,7 @@ class TicketsView {
     // small funnel button; it shows a dot while a filter hides something.
     this.filterBtn = el('button', 'icon tickets-filter-btn');
     this.filterBtn.type = 'button';
-    this.filterBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24"><path d="M4 5h16l-6.2 7.4V19l-3.6-1.8v-4.8z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></svg>';
+    this.filterBtn.innerHTML = FUNNEL;
     this.filterBtn.title = 'Filters';
     this.filterBtn.onclick = () => this.openMenu(this.filterBtn, 'filters', menu => this.fillFilterMenu(menu));
     const spacer = el('span', 'tickets-spacer');
@@ -219,12 +220,19 @@ class TicketsView {
   }
 
   // The filter menu: the statuses to show (ticked ones show) and the type.
-  fillFilterMenu(menu) {
+  // The ticket panel's subtasks use the same statuses, with items = the
+  // subtasks and no type.
+  fillFilterMenu(menu, { items = this.items(), types: withTypes = true } = {}) {
     menu.replaceChildren();
     menu.classList.add('tickets-filter-menu');
-    const redo = () => { this.fillFilterMenu(menu); this.renderList(); this.renderFilterBtn(); };
+    const redo = () => {
+      this.fillFilterMenu(menu, { items, types: withTypes });
+      this.renderList();
+      this.renderFilterBtn();
+      if (this.detailTicket && this.selected === this.detailTicket.key) this.renderDetail(this.detailTicket, null);
+    };
     const counts = { todo: 0, in_progress: 0, done: 0 };
-    for (const t of this.items()) counts[t.category in counts ? t.category : 'todo']++;
+    for (const t of items) counts[t.category in counts ? t.category : 'todo']++;
     menu.append(el('div', 'tickets-status-group', 'Status'));
     for (const [cat, label] of [['todo', 'To do'], ['in_progress', 'In progress'], ['done', 'Done']]) {
       const on = this.statusShow.has(cat);
@@ -240,7 +248,7 @@ class TicketsView {
     }
     const types = new Map();
     for (const t of this.items()) types.set(t.type || 'Other', (types.get(t.type || 'Other') || 0) + 1);
-    if (types.size > 1 || this.type) {
+    if (withTypes && (types.size > 1 || this.type)) {
       menu.append(el('div', 'tickets-status-group', 'Type'));
       for (const [value, label, n] of [[null, 'All types', this.items().length], ...[...types].sort((a, b) => b[1] - a[1]).map(([k, n]) => [k, k, n])]) {
         const b = el('button', 'tickets-status-item tickets-check' + (this.type === value ? ' ticked' : ''));
@@ -252,7 +260,7 @@ class TicketsView {
         menu.append(b);
       }
     }
-    if (this.statusShow.size < 3 || this.type) {
+    if (this.statusShow.size < 3 || (withTypes && this.type)) {
       const reset = el('button', 'tp-link tickets-filter-reset', 'Show everything');
       reset.type = 'button';
       reset.onclick = () => {
@@ -432,11 +440,10 @@ class TicketsView {
       const icon = el('span', 'tickets-type-icon');
       icon.innerHTML = SUBTASK_ICON;
       icon.title = 'Subtask';
-      const who = s.assignee ? el('span', 'tickets-sub-who', s.assignee) : '';
       const keyBtn = this.keyButton({ ...s, type: 'Subtask', parentKey: parent.key });
       tr.append(
         cell('col-key', el('span', 'tickets-expand-gap'), icon, keyBtn, this.agentButton({ ...s, parentKey: parent.key })),
-        cell('col-title', el('span', 'tickets-sub-title', s.title), who),
+        cell('col-title', el('span', 'tickets-sub-title', s.title)),
         cell('col-status', this.statusButton(s)));
       if (this.list !== 'sprint') tr.append(cell('col-sprint'));
       tr.title = s.title;

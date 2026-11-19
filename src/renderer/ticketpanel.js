@@ -405,6 +405,13 @@
     add.type = 'button';
     add.title = 'Add a subtask';
     add.onclick = () => { this.editing = 'subtask'; this.renderDetail(t, null); };
+    // The same status filter as the list (hiding Done hides done subtasks
+    // in both).
+    const filter = el('button', 'icon tickets-filter-btn tp-filter' + (this.statusShow.size < 3 ? ' active' : ''));
+    filter.type = 'button';
+    filter.innerHTML = FUNNEL;
+    filter.title = this.statusShow.size < 3 ? 'Filters: some statuses are hidden' : 'Filter the subtasks by status';
+    filter.onclick = () => this.openMenu(filter, 'subfilters:' + t.key, menu => this.fillFilterMenu(menu, { items: t.subtasks || [], types: false }));
     if (subs.length) {
       const done = subs.filter(s => s.done).length;
       const pct = Math.round(done * 100 / subs.length);
@@ -415,8 +422,9 @@
       track.append(fill);
       bar.append(track, el('span', 'tp-progress-text', `${pct}% Done`));
       body.append(bar);
+      const shown = subs.filter(s => this.shows(s));
       const list = el('div', 'tp-subs');
-      for (const s of subs) {
+      for (const s of shown) {
         const row = el('div', 'tp-sub' + (s.done ? ' done' : ''));
         const icon = el('span', 'tickets-type-icon');
         icon.innerHTML = SUBTASK_ICON;
@@ -426,7 +434,20 @@
         row.onclick = e => { if (!e.target.closest('button')) this.select({ ...s, type: 'Subtask', parentKey: t.key }); };
         list.append(row);
       }
-      body.append(list);
+      if (shown.length) body.append(list);
+      if (shown.length < subs.length) {
+        const n = subs.length - shown.length;
+        const note = el('button', 'tp-link tp-hidden-note', `${n} subtask${n === 1 ? '' : 's'} hidden by the status filter · Show all`);
+        note.type = 'button';
+        note.onclick = () => {
+          this.statusShow = new Set(['todo', 'in_progress', 'done']);
+          try { localStorage.removeItem('pmTicketStatusShow'); } catch { /* this run only */ }
+          this.renderList();
+          this.renderFilterBtn();
+          this.renderDetail(t, null);
+        };
+        body.append(note);
+      }
     }
     if (this.editing === 'subtask') {
       const input = document.createElement('input');
@@ -446,7 +467,7 @@
       body.append(input);
       requestAnimationFrame(() => input.focus());
     } else if (!subs.length) body.append(el('div', 'tp-empty-line', 'No subtasks.'));
-    return this.panelSection('subtasks', 'Subtasks', body, add);
+    return this.panelSection('subtasks', 'Subtasks', body, add, ...(subs.length ? [filter] : []));
   };
 
   P.panelComments = function (t) {

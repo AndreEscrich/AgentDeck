@@ -3840,4 +3840,6 @@ button.uml-peer-chip:hover { background: color-mix(in srgb, var(--chip, var(--ac
 .tp-loading { padding: 4px 0; }
 .tp-watchers { margin-top: 4px; }
 .tp-menu-save { margin: 6px 4px 2px; padding: 4px 14px; }
-
+.tp-filter { padding: 2px 4px; }
+.tp-filter svg { width: 13px; height: 13px; }
+.tp-hidden-note { margin: 2px 0 6px; font-size: 12px; color: var(--text-faint); }
