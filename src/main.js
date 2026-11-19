@@ -17,6 +17,7 @@ const voice = require('./voice');
 const agentList = require('./agentlist');
 const { runDiff } = require('./branchdiff');
 const gallery = require('./gallery');
+const pmClient = require('./pmclient');
 const commands = require('./commands');
 const svnBranches = require('./svnbranches');
 const handoff = require('./handoff');
@@ -431,9 +432,21 @@ app.whenReady().then(() => {
   ipcMain.handle('media:before', (_e, cwd, file, snap) => media.mediaBefore(cwd, file, snap, path.join(app.getPath('userData'), 'media-before')).catch(() => null));
   ipcMain.handle('jira:issue', (_e, key) => jira.issue(key));
   // Tactile PM task cards (pmtasks.js), read with the PM connector by Haiku.
-  pmTasks.setup(path.join(app.getPath('userData'), 'pm-tasks.json'), (keys, subtasksOf) => readPmTasks(getConfig(), keys, subtasksOf));
+  // With the app's own PM sign-in (pmclient.js) the cards read PM directly,
+  // without tokens; otherwise Haiku reads them with the connector.
+  pmTasks.setup(path.join(app.getPath('userData'), 'pm-tasks.json'), (keys, subtasksOf) => (pmClient.status().connected
+    ? pmClient.readTasks(keys, subtasksOf).catch(() => readPmTasks(getConfig(), keys, subtasksOf))
+    : readPmTasks(getConfig(), keys, subtasksOf)));
   ipcMain.handle('pm:task', (_e, key) => pmTasks.task(key));
   ipcMain.handle('pm:split', (_e, key) => pmTasks.splitInfo(key));
+  // Agent Hub's own sign-in to Tactile PM and the Tickets view (pmclient.js).
+  pmClient.setup(app.getPath('userData'));
+  const pmCall = fn => fn().catch(err => ({ error: err.message, notConnected: !!err.notConnected }));
+  ipcMain.handle('pmc:status', () => pmClient.status());
+  ipcMain.handle('pmc:connect', () => pmCall(() => pmClient.connect()));
+  ipcMain.handle('pmc:disconnect', () => pmClient.disconnect());
+  ipcMain.handle('pmc:tickets', (_e, list) => pmCall(() => pmClient.tickets(list === 'sprint' ? 'sprint' : 'mine')));
+  ipcMain.handle('pmc:ticket', (_e, key) => pmCall(() => pmClient.ticket(String(key || ''))));
   // The Gallery (gallery.js): the art folder on disk and its images.
   gallery.setup(app.getPath('userData'), id => readDrivePath(getConfig(), id));
   ipcMain.handle('gallery:list', async (_e, again) => {

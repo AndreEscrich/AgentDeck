@@ -125,6 +125,12 @@ contextBridge.exposeInMainWorld('deck', {
   pmSplit: key => ipcRenderer.invoke('pm:split', key),
   // The Gallery's images (src/gallery.js); again: ask Drive for the folder again.
   galleryList: again => ipcRenderer.invoke('gallery:list', again),
+  // Agent Hub's own Tactile PM sign-in and the Tickets view (src/pmclient.js).
+  pmStatus: () => ipcRenderer.invoke('pmc:status'),
+  pmConnect: () => ipcRenderer.invoke('pmc:connect'),
+  pmDisconnect: () => ipcRenderer.invoke('pmc:disconnect'),
+  pmTickets: list => ipcRenderer.invoke('pmc:tickets', list),
+  pmTicket: key => ipcRenderer.invoke('pmc:ticket', key),
   // A new folder (category) and images copied into one; files: paths, or none to pick them.
   galleryMakeFolder: name => ipcRenderer.invoke('gallery:mkdir', name),
   galleryAdd: (category, files) => ipcRenderer.invoke('gallery:add', category, files),

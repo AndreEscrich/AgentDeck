@@ -383,7 +383,7 @@ function rememberPipeline(sessionId, profile) {
 
 function renderPipelineButton() {
   const button = $('composer-pipeline');
-  const startsAgent = !['agent', 'history', 'branches', 'gallery'].includes(state.current?.kind);
+  const startsAgent = !['agent', 'history', 'branches', 'gallery', 'tickets'].includes(state.current?.kind);
   $('composer-pipeline-row').classList.toggle('hidden', !pipelineEnabled() || !startsAgent);
   if (!pipelineEnabled()) return;
   const d = ensureDraft();
@@ -636,7 +636,7 @@ function makeChatView() {
 
 // The pipeline profile the next agent from the Hub runs ('' for none).
 function shownPipeline() {
-  return ['agent', 'history', 'branches', 'gallery'].includes(state.current?.kind) ? '' : draftPipeline(ensureDraft());
+  return ['agent', 'history', 'branches', 'gallery', 'tickets'].includes(state.current?.kind) ? '' : draftPipeline(ensureDraft());
 }
 
 function renderSettingsButton() {
@@ -884,13 +884,13 @@ function show(kind, id) {
   document.getElementById('close-selected')?.classList.toggle('hidden', kind !== 'hub' || hub.selected.size < 2);
   // Back on the Hub: an update that waited for it can come now.
   if (kind === 'hub') setTimeout(offerUpdate, 400);
-  $('back-to-hub').classList.toggle('hidden', !['agent', 'history', 'branches', 'gallery'].includes(kind));
+  $('back-to-hub').classList.toggle('hidden', !['agent', 'history', 'branches', 'gallery', 'tickets'].includes(kind));
   for (const v of $('views').children) v.classList.add('hidden');
 
   // The Hub also has the message box: a message there starts a new agent.
   const startsAgent = !['agent', 'history'].includes(kind);
   // The Branches view and the Gallery have no message box.
-  $('composer').classList.toggle('hidden', kind === 'branches' || kind === 'gallery');
+  $('composer').classList.toggle('hidden', kind === 'branches' || kind === 'gallery' || kind === 'tickets');
   $('composer-folder').classList.toggle('hidden', !startsAgent);
   $('composer-group').classList.toggle('hidden', !startsAgent);
   $('composer-fork').classList.toggle('hidden', !startsAgent);
@@ -924,6 +924,10 @@ function show(kind, id) {
     const projects = svnProjectList(state.config || {});
     setHeader('Branch diff', `${(state.config?.svnServer || '').replace(/\/+$/, '')}/${!projects.length ? '*' : projects.length > 1 ? `{${projects.join(',')}}` : projects[0]}/branches`, null);
     branchesView.open(JSON.stringify([projects, state.config?.svnBranchFilter || [], !!state.config?.githubBranches]));
+  } else if (kind === 'tickets') {
+    ticketsView.view.classList.remove('hidden');
+    setHeader('Tickets', 'Tactile PM', null);
+    ticketsView.open();
   } else if (kind === 'gallery') {
     galleryView.view.classList.remove('hidden');
     const c = state.config || {};
@@ -1227,6 +1231,22 @@ const galleryView = new GalleryView({
   },
 });
 hub.onOpenGallery = () => { sfx('open'); show('gallery'); };
+// The Tickets view: your Tactile PM tickets (renderer/tickets.js). Start
+// agent puts the ticket's link on the Hub's message box.
+const ticketsView = new TicketsView({
+  onStart: t => {
+    learnPmPrefix(t.project);
+    sfx('close');
+    show('hub');
+    const input = $('input');
+    const link = pmItemUrl(t.key);
+    if (!input.value.includes(link)) input.value = [input.value.trim(), `${link} `].filter(Boolean).join('\n\n');
+    input.dispatchEvent(new Event('input'));
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  },
+});
+hub.onOpenTickets = () => { sfx('open'); show('tickets'); };
 hub.onOpenNotes = groupId => openNotesEditor(findGroup(groupId));
 
 // Dragging a tile onto another agent's tank pours its result into that agent
@@ -6559,7 +6579,7 @@ document.addEventListener('keydown', e => {
   }
   // Esc leaves an agent (or a saved session, a new agent, or the branch
   // diff view) for the Hub. The Stop button in the top bar stops a running turn.
-  if (e.key === 'Escape' && !e.popupWasOpen && ['agent', 'history', 'new', 'branches', 'gallery'].includes(state.current?.kind) && !document.querySelector('.gallery-preview')) {
+  if (e.key === 'Escape' && !e.popupWasOpen && ['agent', 'history', 'new', 'branches', 'gallery', 'tickets'].includes(state.current?.kind) && !document.querySelector('.gallery-preview')) {
     e.preventDefault();
     backToHub();
   }
