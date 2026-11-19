@@ -496,4 +496,4 @@ async function addComment(a) {
 }
 
 module.exports = { setup, status, connect, disconnect, callTool, tickets, ticket, readTasks, statuses, subtasks, setStatus,
-  options, update, createSubtask, attachments, openAttachment, attach, comments, addComment };
+  options, update, createSubtask, attachments, openAttachment, attach, comments, addComment, personName };

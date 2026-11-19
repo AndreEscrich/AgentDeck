@@ -3843,3 +3843,28 @@ button.uml-peer-chip:hover { background: color-mix(in srgb, var(--chip, var(--ac
 .tp-filter { padding: 2px 4px; }
 .tp-filter svg { width: 13px; height: 13px; }
 .tp-hidden-note { margin: 2px 0 6px; font-size: 12px; color: var(--text-faint); }
+
+/* PM notifications: the red count on the Hub's Tickets button and on the bell. */
+.hub-tickets-btn { position: relative; }
+.hub-badge { position: absolute; top: -5px; right: -6px; min-width: 16px; height: 16px; box-sizing: border-box; padding: 0 4px; border-radius: 99px;
+  background: #e5493a; color: #fff; font: 700 10px/16px var(--font, system-ui); text-align: center; box-shadow: 0 0 0 2px var(--bg); pointer-events: none; }
+.hub-badge.hidden { display: none; }
+.tickets-bell { position: relative; padding: 5px 7px; color: var(--text-faint); border-radius: 7px; }
+.tickets-bell:hover { color: var(--text); background: var(--bg-hover); }
+.tickets-bell .hub-badge { top: -3px; right: -4px; }
+.tickets-notif-menu { width: 420px; padding: 0; }
+.tickets-notif-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border); background: var(--bg-panel); font-weight: 700; font-size: 13px; color: var(--text); }
+.tickets-notif-actions { display: flex; gap: 12px; font-weight: 400; }
+.tickets-notif-empty { padding: 16px 14px; font-size: 12.5px; color: var(--text-faint); line-height: 1.5; }
+.tickets-notif { display: block; width: 100%; padding: 9px 12px 9px 22px; border: none; border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); background: none; text-align: left; position: relative; cursor: pointer; }
+.tickets-notif:hover { background: var(--bg-hover); }
+.tickets-notif.unread::before { content: ''; position: absolute; left: 9px; top: 15px; width: 7px; height: 7px; border-radius: 50%; background: #e5493a; }
+.tickets-notif-top { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.tickets-notif-kind { width: 16px; text-align: center; color: var(--text-faint); font-size: 12px; }
+.tickets-notif-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.tickets-notif.unread .tickets-notif-title { font-weight: 600; }
+.tickets-notif-time { color: var(--text-faint); font-size: 11px; white-space: nowrap; }
+.tickets-notif-text { margin: 3px 0 0 22px; font-size: 12px; color: var(--text-dim); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.tickets-notif-text.status-done { color: #7fdc9f; }
+.tickets-notif-text.status-in_progress { color: #9cbcff; }
+

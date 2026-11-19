@@ -18,6 +18,7 @@ const agentList = require('./agentlist');
 const { runDiff } = require('./branchdiff');
 const gallery = require('./gallery');
 const pmClient = require('./pmclient');
+const pmNotify = require('./pmnotify');
 const commands = require('./commands');
 const svnBranches = require('./svnbranches');
 const handoff = require('./handoff');
@@ -441,17 +442,26 @@ app.whenReady().then(() => {
   ipcMain.handle('pm:split', (_e, key) => pmTasks.splitInfo(key));
   // Agent Hub's own sign-in to Tactile PM and the Tickets view (pmclient.js).
   pmClient.setup(app.getPath('userData'));
+  // PM notifications (pmnotify.js): the Hub's Tickets button and the bell in
+  // the Tickets view show them.
+  pmNotify.setup(app.getPath('userData'), summary => send('pm:notifications', summary));
   const pmCall = fn => fn().catch(err => ({ error: err.message, notConnected: !!err.notConnected }));
+  // A change made here is not news to you: the notifier leaves it out.
+  const pmWrite = (key, fn) => { if (key) pmNotify.wrote(String(key)); return pmCall(fn); };
+  ipcMain.handle('pmn:list', () => pmNotify.summary());
+  ipcMain.handle('pmn:check', () => pmCall(() => pmNotify.check()));
+  ipcMain.handle('pmn:read', (_e, ids) => pmNotify.markRead(Array.isArray(ids) ? ids.map(String) : null));
+  ipcMain.handle('pmn:clear', () => pmNotify.clear());
   ipcMain.handle('pmc:status', () => pmClient.status());
-  ipcMain.handle('pmc:connect', () => pmCall(() => pmClient.connect()));
+  ipcMain.handle('pmc:connect', () => pmCall(async () => { const r = await pmClient.connect(); pmNotify.check().catch(() => {}); return r; }));
   ipcMain.handle('pmc:disconnect', () => pmClient.disconnect());
   ipcMain.handle('pmc:tickets', (_e, list) => pmCall(() => pmClient.tickets(list === 'open' ? 'open' : 'sprint')));
   ipcMain.handle('pmc:ticket', (_e, key) => pmCall(() => pmClient.ticket(String(key || ''))));
   ipcMain.handle('pmc:statuses', (_e, project) => pmCall(() => pmClient.statuses(String(project || ''))));
   ipcMain.handle('pmc:subtasks', (_e, key) => pmCall(() => pmClient.subtasks(String(key || ''))));
   ipcMain.handle('pmc:options', (_e, project) => pmCall(() => pmClient.options(String(project || ''))));
-  ipcMain.handle('pmc:update', (_e, a) => pmCall(() => pmClient.update(a || {})));
-  ipcMain.handle('pmc:createSubtask', (_e, a) => pmCall(() => pmClient.createSubtask(a || {})));
+  ipcMain.handle('pmc:update', (_e, a) => pmWrite(a?.key, () => pmClient.update(a || {})));
+  ipcMain.handle('pmc:createSubtask', (_e, a) => pmWrite(a?.key, () => pmClient.createSubtask(a || {})));
   ipcMain.handle('pmc:attachments', (_e, a) => pmCall(() => pmClient.attachments(a || {})));
   ipcMain.handle('pmc:openAttachment', (_e, a) => pmCall(() => pmClient.openAttachment(a || {})));
   ipcMain.handle('pmc:attach', (e, a) => pmCall(async () => {
@@ -461,11 +471,12 @@ app.whenReady().then(() => {
       if (r.canceled || !r.filePaths.length) return { canceled: true };
       paths = r.filePaths;
     }
+    pmNotify.wrote(String(a?.key || ''));
     return pmClient.attach({ ...a, paths });
   }));
   ipcMain.handle('pmc:comments', (_e, a) => pmCall(() => pmClient.comments(a || {})));
-  ipcMain.handle('pmc:addComment', (_e, a) => pmCall(() => pmClient.addComment(a || {})));
-  ipcMain.handle('pmc:setStatus', (_e, a) => pmCall(() => pmClient.setStatus({ key: String(a?.key || ''), id: String(a?.id || ''), project: String(a?.project || ''), statusId: String(a?.statusId || ''), subtask: !!a?.subtask })));
+  ipcMain.handle('pmc:addComment', (_e, a) => pmWrite(a?.key, () => pmClient.addComment(a || {})));
+  ipcMain.handle('pmc:setStatus', (_e, a) => pmWrite(a?.key, () => pmClient.setStatus({ key: String(a?.key || ''), id: String(a?.id || ''), project: String(a?.project || ''), statusId: String(a?.statusId || ''), subtask: !!a?.subtask })));
   // The Gallery (gallery.js): the art folder on disk and its images.
   gallery.setup(app.getPath('userData'), id => readDrivePath(getConfig(), id));
   ipcMain.handle('gallery:list', async (_e, again) => {

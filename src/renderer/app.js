@@ -1247,6 +1247,15 @@ const ticketsView = new TicketsView({
   },
 });
 hub.onOpenTickets = () => { sfx('open'); show('tickets'); };
+// PM notifications: the red count on the Hub's Tickets button and the bell
+// in the Tickets view.
+const showPmNotifications = summary => {
+  if (!summary) return;
+  hub.setPmUnread(summary.unread);
+  ticketsView.setNotifications(summary);
+};
+window.deck.pmNotifications().then(showPmNotifications).catch(() => {});
+window.deck.onPmNotifications(showPmNotifications);
 hub.onOpenNotes = groupId => openNotesEditor(findGroup(groupId));
 
 // Dragging a tile onto another agent's tank pours its result into that agent

@@ -79,6 +79,15 @@ class TicketsView {
     this.filterBtn.title = 'Filters';
     this.filterBtn.onclick = () => this.openMenu(this.filterBtn, 'filters', menu => this.fillFilterMenu(menu));
     const spacer = el('span', 'tickets-spacer');
+    // The bell: PM notifications (src/pmnotify.js), with a red count.
+    this.bell = el('button', 'icon tickets-bell');
+    this.bell.type = 'button';
+    this.bell.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/><path d="M10 20.5a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>';
+    this.bellCount = el('span', 'hub-badge hidden');
+    this.bell.append(this.bellCount);
+    this.bell.title = 'Notifications';
+    this.bell.onclick = () => this.openMenu(this.bell, 'notifications', menu => this.fillNotifications(menu));
+    this.notifications = { unread: 0, items: [] };
     // Which statuses show (To do, In progress, Done): a click on one hides
     // or shows those tickets and subtasks. Remembered.
     try { this.statusShow = new Set(JSON.parse(localStorage.getItem('pmTicketStatusShow') || 'null') || ['todo', 'in_progress', 'done']); } catch { this.statusShow = new Set(['todo', 'in_progress', 'done']); }
@@ -91,7 +100,7 @@ class TicketsView {
     this.account = el('button', 'tickets-account');
     this.account.type = 'button';
     this.account.onclick = () => this.signOut();
-    bar.append(this.tabs, this.search, this.filterBtn, spacer, this.when, refresh, this.account);
+    bar.append(this.tabs, this.search, this.filterBtn, spacer, this.when, refresh, this.bell, this.account);
     const body = el('div', 'tickets-body');
     this.listBox = el('section', 'tickets-list scroll');
     this.detail = el('section', 'tickets-detail scroll');
@@ -217,6 +226,66 @@ class TicketsView {
 
   items() {
     return this.data[this.list]?.items || [];
+  }
+
+  // ---------- notifications ----------
+
+  setNotifications(summary) {
+    this.notifications = summary || { unread: 0, items: [] };
+    const n = this.notifications.unread;
+    this.bellCount.textContent = n > 99 ? '99+' : String(n || '');
+    this.bellCount.classList.toggle('hidden', !n);
+    this.bell.title = n ? `${n} new notification${n === 1 ? '' : 's'}` : 'Notifications';
+    if (this.menu?.dataset.key === 'notifications') this.fillNotifications(this.menu);
+  }
+
+  // The bell's list: the newest first; unread ones have a dot. A click
+  // opens the ticket and marks it read.
+  fillNotifications(menu) {
+    menu.replaceChildren();
+    menu.classList.add('tickets-notif-menu');
+    const head = el('div', 'tickets-notif-head');
+    head.append(el('span', null, 'Notifications'));
+    const actions = el('span', 'tickets-notif-actions');
+    const check = el('button', 'tp-link', 'Check now');
+    check.type = 'button';
+    check.onclick = async () => {
+      check.textContent = 'Checking…';
+      const r = await window.deck.pmCheckNotifications();
+      if (r?.error) check.textContent = 'Could not check';
+      else this.setNotifications(r);
+    };
+    actions.append(check);
+    if (this.notifications.unread) {
+      const all = el('button', 'tp-link', 'Mark all read');
+      all.type = 'button';
+      all.onclick = async () => this.setNotifications(await window.deck.pmReadNotifications(null));
+      actions.append(all);
+    }
+    head.append(actions);
+    menu.append(head);
+    const items = this.notifications.items || [];
+    if (!items.length) {
+      menu.append(el('div', 'tickets-notif-empty', 'Nothing new. The app looks at PM every 2 minutes for changes to your tickets: status changes, comments, new subtasks and tickets assigned to you.'));
+      return;
+    }
+    const icons = { status: '⇄', comment: '💬', subtask: '＋', assigned: '→', new: '★' };
+    for (const n of items.slice(0, 60)) {
+      const row = el('button', 'tickets-notif' + (n.read ? '' : ' unread'));
+      row.type = 'button';
+      const top = el('div', 'tickets-notif-top');
+      top.append(el('span', 'tickets-notif-kind', icons[n.kind] || '•'), typeIcon(n.type), el('span', 'tickets-key', shortKey(n.key)),
+        el('span', 'tickets-notif-title', n.title), el('span', 'tickets-notif-time', typeof timeAgo === 'function' ? timeAgo(new Date(n.at).getTime()) : ''));
+      const text = el('div', 'tickets-notif-text' + (n.kind === 'status' ? ` status-${n.category || 'todo'}` : ''), n.text);
+      row.append(top, text);
+      row.title = new Date(n.at).toLocaleString();
+      row.onclick = async () => {
+        this.closeStatusMenu();
+        if (!n.read) window.deck.pmReadNotifications([n.id]).then(r => this.setNotifications(r));
+        this.select({ key: n.key, project: n.key.split('-')[0], title: n.title, type: n.type });
+      };
+      menu.append(row);
+    }
   }
 
   // The filter menu: the statuses to show (ticked ones show) and the type.

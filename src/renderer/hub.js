@@ -189,6 +189,9 @@ class Hub {
     // Tactile PM's own mark: a ring above two curved bands, in PM's blue.
     this.ticketsBtn.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#5b63f2" stroke-linecap="round"><circle cx="12" cy="5.6" r="2.4" stroke-width="2"/><path d="M4.5 11.2Q12 16.4 19.5 11.2" stroke-width="3.2"/><path d="M4.5 16.6Q12 21.8 19.5 16.6" stroke-width="3.2"/></svg>';
     this.ticketsBtn.onclick = () => { this.rail.classList.remove('open'); this.onOpenTickets?.(); };
+    // A red count of unread PM notifications (pmnotify.js).
+    this.ticketsBadge = el('span', 'hub-badge hidden');
+    this.ticketsBtn.append(this.ticketsBadge);
     // The floating bar on the left edge: Settings on its own at the top, then
     // the branch diff, the Gallery, Tickets and Usage together.
     const nav = el('nav', 'hub-nav');
@@ -226,6 +229,13 @@ class Hub {
     container.addEventListener('pointerdown', e => this.marquee(e), true);
     new ResizeObserver(() => requestAnimationFrame(() => this.fitToHeight())).observe(container);
     this.setUsage(null);
+  }
+
+  // The red count on the Tickets button: unread PM notifications.
+  setPmUnread(n) {
+    this.ticketsBadge.textContent = n > 99 ? '99+' : String(n || '');
+    this.ticketsBadge.classList.toggle('hidden', !n);
+    this.ticketsBtn.title = n ? `Tickets: ${n} new notification${n === 1 ? '' : 's'} from Tactile PM` : 'Tickets: your Tactile PM tickets';
   }
 
   // usage: { claude, codex, tokens: tokens your agents used since the app

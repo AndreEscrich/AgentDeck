@@ -142,6 +142,11 @@ contextBridge.exposeInMainWorld('deck', {
   pmAttach: args => ipcRenderer.invoke('pmc:attach', args),
   pmComments: args => ipcRenderer.invoke('pmc:comments', args),
   pmAddComment: args => ipcRenderer.invoke('pmc:addComment', args),
+  pmNotifications: () => ipcRenderer.invoke('pmn:list'),
+  pmCheckNotifications: () => ipcRenderer.invoke('pmn:check'),
+  pmReadNotifications: ids => ipcRenderer.invoke('pmn:read', ids),
+  pmClearNotifications: () => ipcRenderer.invoke('pmn:clear'),
+  onPmNotifications: fn => on('pm:notifications', fn),
   // A new folder (category) and images copied into one; files: paths, or none to pick them.
   galleryMakeFolder: name => ipcRenderer.invoke('gallery:mkdir', name),
   galleryAdd: (category, files) => ipcRenderer.invoke('gallery:add', category, files),
