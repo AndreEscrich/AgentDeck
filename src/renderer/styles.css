@@ -2461,7 +2461,7 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
   border: 1px solid var(--border); background: var(--bg-panel); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3); }
 .tickets-view.detail-open .tickets-detail { display: block; }
 /* The table, like PM's sheet. */
-.tickets-table { width: auto; margin: 0 auto; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
+.tickets-table { width: auto; margin: 0 auto; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 13px; }
 /* Columns as wide as they need: the title too, so the table is compact. */
 .tickets-table .col-title { width: 380px; }
 .tickets-table th { position: sticky; top: -14px; z-index: 1; background: var(--bg); text-align: left; padding: 7px 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
@@ -2534,7 +2534,7 @@ button.tickets-status.saving { opacity: 0.6; cursor: progress; }
    - an open story's subtasks sit sunken (like the message box's well), with
      a rail at their step in, from under the story to its last subtask. */
 .tickets-table .tickets-gap td { height: 14px; padding: 0; border: none; background: none !important; }
-.tickets-table .tickets-group td { padding: 7px 10px; background: #2a221b !important; box-shadow: inset 3px 0 0 #4d3f31; border-top: 1px solid #3d3329; border-bottom: 1px solid #3d3329; }
+.tickets-table .tickets-group td { padding: 7px 12px; background: #2a221b !important; box-shadow: inset 3px 0 0 #4d3f31; border: 1px solid #3d3329; border-radius: 10px; }
 .tickets-table .tickets-group:first-child td { padding-top: 7px; }
 .tickets-table .tickets-group .tickets-group-name { color: var(--text); }
 .tickets-table tbody .tickets-row .col-key { box-shadow: inset 3px 0 0 #3d3329; }
@@ -2546,6 +2546,15 @@ button.tickets-status.saving { opacity: 0.6; cursor: progress; }
   content: ''; position: absolute; left: 40px; top: 0; bottom: 0; width: 2px; background: #4d3f31; }
 .tickets-table .tickets-subrow.sub-last .col-key::before { bottom: 50%; border-radius: 0 0 2px 2px; }
 .tickets-table .tickets-subrow.sub-last td { border-bottom: 1px solid #3d3329; }
+/* The sunken subtask block and the open story above it have round corners, like the app's panels. */
+.tickets-table tbody .tickets-row.expanded td:first-child { border-top-left-radius: 10px; }
+.tickets-table tbody .tickets-row.expanded td:last-child { border-top-right-radius: 10px; }
+.tickets-table .tickets-subrow.sub-last td:first-child { border-bottom-left-radius: 10px; }
+.tickets-table .tickets-subrow.sub-last td:last-child { border-bottom-right-radius: 10px; }
+.tickets-table tbody .tickets-row.group-end td:first-child { border-bottom-left-radius: 10px; }
+.tickets-table tbody .tickets-row.group-end td:last-child { border-bottom-right-radius: 10px; }
+.tickets-table tbody .tickets-row.selected td:first-child { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
+.tickets-table tbody .tickets-row.selected td:last-child { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
 /* A staircase: epic, then its tickets one step in, then their subtasks two steps in. */
 .tickets-table tbody .tickets-row .col-key { padding-left: 26px; }
 .tickets-table tbody .tickets-subrow .col-key { padding-left: 50px; }
