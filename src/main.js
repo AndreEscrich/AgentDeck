@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const pmTasks = require('./pmtasks');
-const { AgentManager, measurePipeline, pipelineSnapshot, fetchModels, summarizeTitle, rateTask, pickGame, readPmTasks, setPmTasksDone, postPmProof, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited } = require('./agents');
+const { AgentManager, measurePipeline, pipelineSnapshot, fetchModels, summarizeTitle, rateTask, pickGame, readPmTasks, readDrivePath, setPmTasksDone, postPmProof, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited } = require('./agents');
 const { CodexManager, fetchCodexModels, fetchCodexUsage, listCodexThreads, loadCodexThread } = require('./codex');
 const { listSessions, loadTranscript, PROJECTS_DIR } = require('./sessions');
 const git = require('./git');
@@ -16,6 +16,7 @@ const accounts = require('./accounts');
 const voice = require('./voice');
 const agentList = require('./agentlist');
 const { runDiff } = require('./branchdiff');
+const gallery = require('./gallery');
 const commands = require('./commands');
 const svnBranches = require('./svnbranches');
 const handoff = require('./handoff');
@@ -96,6 +97,8 @@ const DEFAULT_CONFIG = {
   svnProjects: ['MergeTavern'],         // empty: every project on the server (older settings: svnProject, one project)
   svnBranchFilter: [],                  // only branches whose names start with one of these (all when empty)
   githubBranches: false,                // also list your GitHub pull requests and branches (githubbranches.js)
+  galleryUrl: '',                       // the Gallery: the Google Drive link of the game's art folder (gallery.js)
+  galleryFolder: '',                    // the Gallery's folder on this computer, picked by hand (empty: found from galleryUrl)
   theme: 'default',                     // default | mother (the retro terminal of Alien)
   curvedScreen: true,                   // the retro theme bends the picture like a tube's glass
   // The multi-agent pipeline (pipeline.js): off by default. Its agent types,
@@ -411,6 +414,12 @@ app.whenReady().then(() => {
   pmTasks.setup(path.join(app.getPath('userData'), 'pm-tasks.json'), (keys, subtasksOf) => readPmTasks(getConfig(), keys, subtasksOf));
   ipcMain.handle('pm:task', (_e, key) => pmTasks.task(key));
   ipcMain.handle('pm:split', (_e, key) => pmTasks.splitInfo(key));
+  // The Gallery (gallery.js): the art folder on disk and its images.
+  gallery.setup(app.getPath('userData'), id => readDrivePath(getConfig(), id));
+  ipcMain.handle('gallery:list', async (_e, again) => {
+    const where = await gallery.locate(getConfig(), { again: !!again });
+    return where.folder ? gallery.list(where.folder) : where;
+  });
   ipcMain.handle('pm:seed', (_e, list) => pmTasks.seed(list));
   // A ticket run's Approve button: the subtask moves to Done in PM.
   const pmKey = k => typeof k === 'string' && /^[A-Z][A-Z0-9]{1,9}-\d+$/.test(k);

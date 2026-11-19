@@ -182,7 +182,7 @@ class Attachments {
     for (const file of files) {
       const kind = kindOfFile(file);
       if (!kind) { skipped.push(file.name); continue; }
-      const item = { id: this.nextId++, kind, name: file.name || ({ image: 'Pasted image', video: 'Video', audio: 'Sound', sheet: 'Spreadsheet' })[kind], path: window.deck.pathForFile?.(file) || null, images: [], thumb: null, ready: null };
+      const item = { id: this.nextId++, kind, name: file.name || ({ image: 'Pasted image', video: 'Video', audio: 'Sound', sheet: 'Spreadsheet' })[kind], path: file.deckPath || window.deck.pathForFile?.(file) || null, images: [], thumb: null, ready: null };
       item.ready = ({ image: readImage, video: readVideo, audio: readAudio, sheet: readSheet })[kind](file, item.path)
         .then(r => Object.assign(item, r, { done: true }))
         .catch(err => { item.error = err?.message || 'Could not read this file.'; })

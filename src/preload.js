@@ -123,6 +123,8 @@ contextBridge.exposeInMainWorld('deck', {
   // A Tactile PM task for its card: { key, title, status, category, type } or null.
   pmTask: key => ipcRenderer.invoke('pm:task', key),
   pmSplit: key => ipcRenderer.invoke('pm:split', key),
+  // The Gallery's images (src/gallery.js); again: ask Drive for the folder again.
+  galleryList: again => ipcRenderer.invoke('gallery:list', again),
   pmSeed: list => ipcRenderer.invoke('pm:seed', list),
   pmDone: (keys, parent) => ipcRenderer.invoke('pm:done', keys, parent),
   pmProof: info => ipcRenderer.invoke('pm:proof', info),

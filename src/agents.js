@@ -176,7 +176,7 @@ function claudeArgs(config, { cwd, resumeId, forkSession, resumeSessionAt, permi
     // Without this flag the CLI refuses a later switch to bypass mode.
     '--allow-dangerously-skip-permissions',
     // Tactile's knowledge in Cortex, through its knowledge-retriever helper (knowledge.js).
-    '--append-system-prompt', [SYSTEM_PROMPT, knowledge.knowledgePrompt(config, cwd, { helper: !!retriever }), governed ? pipeline.governorPrompt(run) : ''].filter(Boolean).join('\n\n'),
+    '--append-system-prompt', [SYSTEM_PROMPT, knowledge.knowledgePrompt(config, cwd, { helper: !!retriever }), require('./gallery').galleryPrompt(config), governed ? pipeline.governorPrompt(run) : ''].filter(Boolean).join('\n\n'),
     ...(Object.keys(agents).length ? ['--agents', JSON.stringify(agents)] : []),
     ...unityBridgeArgs(cwd),
   ];
@@ -985,6 +985,70 @@ function readPmTasks(config, keys, subtasksOf = []) {
   });
 }
 
+// Where a Google Drive folder is (the Gallery, see src/gallery.js): Haiku
+// reads the folder and the folders above it with the Google Drive
+// connector, and the shared drive's name when it is on one. Resolves with
+// { drive: shared drive name or null, folders: [names from the top down] },
+// or null when the connector could not read it.
+const DRIVE_SERVERS = ['mcp__claude_ai_Google_Drive__', 'mcp__google-drive__', 'mcp__google_drive__'];
+const DRIVE_TOOLS = DRIVE_SERVERS.flatMap(s => ['get_file_metadata', 'get_shared_drive_metadata'].map(t => s + t));
+function readDrivePath(config, folderId) {
+  return new Promise(resolve => {
+    const proc = spawnClaude(config.claudePath,
+      ['-p', '--model', 'haiku', '--output-format', 'stream-json', '--verbose', '--no-session-persistence',
+        '--tools', 'ToolSearch', '--allowedTools', ['ToolSearch', ...DRIVE_TOOLS].join(',')],
+      { cwd: os.tmpdir(), env: { ...childEnv(config.env), ENABLE_TOOL_SEARCH: 'true' }, stdio: ['pipe', 'pipe', 'ignore'] });
+    helperProcesses.add(proc);
+    const files = new Map();    // id -> { title, parentId, sharedDriveId }
+    const drives = new Map();   // shared drive id -> name
+    let buffer = '';
+    const timer = setTimeout(() => { killTree(proc); }, 90000);
+    const take = text => {
+      try {
+        const t = JSON.parse(text);
+        if (t && typeof t.id === 'string' && typeof t.title === 'string') files.set(t.id, t);
+        else if (t && typeof t.id === 'string' && typeof t.name === 'string') drives.set(t.id, t.name);
+      } catch { /* an error message */ }
+    };
+    proc.stdout.on('data', d => {
+      buffer += d;
+      let nl;
+      while ((nl = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, nl);
+        buffer = buffer.slice(nl + 1);
+        let msg;
+        try { msg = JSON.parse(line); } catch { continue; }
+        if (msg.type !== 'user' || !Array.isArray(msg.message?.content)) continue;
+        for (const block of msg.message.content) {
+          if (block.type !== 'tool_result') continue;
+          if (typeof block.content === 'string') take(block.content);
+          else for (const c of block.content || []) if (c.type === 'text') take(c.text);
+        }
+      }
+    });
+    proc.on('error', () => resolve(null));
+    proc.on('close', () => {
+      clearTimeout(timer);
+      helperProcesses.delete(proc);
+      // From the folder up to the top: a shared drive's top has the drive's
+      // id as its parent; My Drive's top folder ("My Drive") is left out.
+      const folders = [];
+      let f = files.get(folderId);
+      const shared = f?.sharedDriveId || null;
+      for (let guard = 0; f && guard < 30; guard++) {
+        if (!f.parentId && !shared) break;   // My Drive itself
+        folders.unshift(f.title);
+        if (shared && f.parentId === shared) break;
+        f = files.get(f.parentId);
+        if (!f) return resolve(null);   // a folder above it was not read
+      }
+      if (!folders.length || (shared && !drives.has(shared))) return resolve(null);
+      resolve({ drive: shared ? drives.get(shared) : null, folders });
+    });
+    proc.stdin.end(`With the Google Drive tools (find them with ToolSearch first): call get_file_metadata with fileId ${folderId}. Then call get_file_metadata again with the parentId of each answer, until the parentId equals the sharedDriveId or there is no parentId. If the folder has a sharedDriveId, also call get_shared_drive_metadata with it. Use excludeContentSnippets true. Then reply with only: done`);
+  });
+}
+
 // Moves Tactile PM tasks to their project's Done column, for the Approve
 // button of a ticket run's subtasks (ticketrun.js). Haiku does it with the PM
 // connector, like readPmTasks. A ticket run's subtasks are PM subtasks, which
@@ -1133,4 +1197,4 @@ async function postPmProof(config, { key, summary, proof, shotsDir }) {
   return Object.values(posted).some(c => /pm_create_comment$/.test(c.name) && !c.error && c.result);
 }
 
-module.exports = { AgentManager, measurePipeline, pipelineSnapshot, fetchModels, findClaude, summarizeTitle, rateTask, pickGame, readPmTasks, setPmTasksDone, postPmProof, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited, compactTokens, SYSTEM_PROMPT, EDIT_PROMPT, READ_TOOLS_PROMPT };
+module.exports = { AgentManager, measurePipeline, pipelineSnapshot, fetchModels, findClaude, summarizeTitle, rateTask, pickGame, readPmTasks, readDrivePath, setPmTasksDone, postPmProof, mergeNotes, suggestFollowUps, fetchUsage, setProviderLimited, compactTokens, SYSTEM_PROMPT, EDIT_PROMPT, READ_TOOLS_PROMPT };

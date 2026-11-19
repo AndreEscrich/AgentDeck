@@ -309,6 +309,19 @@ function openSettings(config, { onSaved } = {}) {
   const svnBranchFilter = settingsInput('text', (config.svnBranchFilter || []).join(', '), { placeholder: 'Every branch' });
   const githubBranches = settingsInput('checkbox', config.githubBranches);
 
+  // Gallery (gallery.js)
+  const galleryUrl = settingsInput('text', config.galleryUrl || '', { placeholder: 'https://drive.google.com/drive/folders/…' });
+  const galleryFolder = settingsInput('text', config.galleryFolder || '', { placeholder: 'Found from the Drive link' });
+  const galleryFolderRow = el('div', 'settings-pick');
+  const galleryPick = el('button', 'settings-pick-btn', 'Choose…');
+  galleryPick.type = 'button';
+  galleryPick.onclick = async e => {
+    e.preventDefault();
+    const dir = await window.deck.pickFolder();
+    if (dir) galleryFolder.value = dir;
+  };
+  galleryFolderRow.append(galleryFolder, galleryPick);
+
   // Stuck agents
   const stuckAfter = settingsInput('number', config.stuckAfterSeconds, { min: 5, step: 5 });
 
@@ -441,6 +454,9 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('Projects', `The Branches view lists ${(config.svnServer || 'svn+ssh://svn@tactile.build').replace(/\/+$/, '')}/<project>/branches for each one. Separate them with commas. Empty: every project someone committed to in the last year`, svnProjects),
       settingsField('Branch names', 'Only branches whose names start with one of these. Separate them with commas. Empty: every branch', svnBranchFilter),
       settingsField('GitHub', 'Also list your open pull requests and the branches you pushed in the last 90 days, for the account gh is signed in with', githubBranches))]],
+    ['gallery', 'Gallery', [section(null,
+      settingsField('Drive folder', 'The Google Drive link of your game\'s art folder. Each folder in it is a category of the Gallery (the picture button on the Hub\'s left side). The app reads it through Google Drive for desktop', galleryUrl),
+      settingsField('Folder on this computer', 'Only when the app cannot find the Drive folder, or for a folder that is not on Drive. Empty: found from the Drive link', galleryFolderRow))]],
     ['advanced', 'Advanced', [
       section('Claude Code',
         claudeOnly(settingsField('Claude Code program', 'Empty: the app finds it', claudePath)),
@@ -591,6 +607,8 @@ function openSettings(config, { onSaved } = {}) {
       svnProjects: settingsList(svnProjects.value).map(p => p.replace(/^\/+|\/+$/g, '')).filter(Boolean),
       svnBranchFilter: settingsList(svnBranchFilter.value),
       githubBranches: githubBranches.checked,
+      galleryUrl: galleryUrl.value.trim(),
+      galleryFolder: galleryFolder.value.trim(),
       claudePath: claudePath.value.trim(),
       extraArgs: extraArgs.value.split('\n').map(l => l.trim()).filter(Boolean),
       env: envVars,

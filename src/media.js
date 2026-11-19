@@ -70,9 +70,17 @@ function convertedPreview(file, cacheDir) {
 // Serves media://file/?path=<absolute path> to the window.
 function registerProtocol(protocol, net, cacheDir) {
   protocol.handle('media', async request => {
-    const file = new URL(request.url).searchParams.get('path') || '';
+    const url = new URL(request.url);
+    const file = url.searchParams.get('path') || '';
     const kind = kindOf(file);
     if (!kind || !path.isAbsolute(file) || !fs.existsSync(file)) return new Response('Not found', { status: 404 });
+    // &thumb=<pixels>: a small copy of an image (the Gallery's grid), made
+    // once per file version, so a big PNG is not decoded for every tile.
+    const thumb = Number(url.searchParams.get('thumb'));
+    if (thumb && kind === 'image' && IMAGE.has(extensionOf(file))) {
+      const small = await thumbnail(file, Math.min(1024, Math.max(32, thumb)), path.join(cacheDir, 'thumbs'));
+      if (small) return net.fetch(pathToFileURL(small).toString());
+    }
     let source = file;
     if (CONVERT.has(extensionOf(file))) {
       source = await convertedPreview(file, cacheDir);
@@ -81,6 +89,38 @@ function registerProtocol(protocol, net, cacheDir) {
     if (kind === 'video' || kind === 'audio') return videoResponse(source, request.headers.get('range'));
     return net.fetch(pathToFileURL(source).toString());
   });
+}
+
+// A small PNG of an image, at most size pixels on its longest side, made
+// with the system's own thumbnail maker (Electron's nativeImage) and kept.
+const thumbsMaking = new Map();
+function thumbnail(file, size, dir) {
+  let stat;
+  try { stat = fs.statSync(file); } catch { return Promise.resolve(null); }
+  const key = crypto.createHash('sha1').update(`${file}|${stat.mtimeMs}|${stat.size}|${size}`).digest('hex');
+  const out = path.join(dir, key + '.png');
+  if (fs.existsSync(out)) return Promise.resolve(out);
+  if (!thumbsMaking.has(out)) {
+    thumbsMaking.set(out, (async () => {
+      try {
+        const { nativeImage } = require('electron');
+        let img = nativeImage.createThumbnailFromPath
+          ? await nativeImage.createThumbnailFromPath(file, { width: size, height: size }).catch(() => null)
+          : null;
+        if (!img || img.isEmpty()) {
+          img = nativeImage.createFromPath(file);
+          if (img.isEmpty()) return null;
+          const { width, height } = img.getSize();
+          const scale = Math.min(1, size / Math.max(width, height));
+          if (scale < 1) img = img.resize({ width: Math.round(width * scale), height: Math.round(height * scale), quality: 'good' });
+        }
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(out, img.toPNG());
+        return out;
+      } catch { return null; } finally { thumbsMaking.delete(out); }
+    })());
+  }
+  return thumbsMaking.get(out);
 }
 
 // A video player jumps to a point in the clip by asking for that part of the

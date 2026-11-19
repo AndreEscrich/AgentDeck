@@ -383,7 +383,7 @@ function rememberPipeline(sessionId, profile) {
 
 function renderPipelineButton() {
   const button = $('composer-pipeline');
-  const startsAgent = !['agent', 'history', 'branches'].includes(state.current?.kind);
+  const startsAgent = !['agent', 'history', 'branches', 'gallery'].includes(state.current?.kind);
   $('composer-pipeline-row').classList.toggle('hidden', !pipelineEnabled() || !startsAgent);
   if (!pipelineEnabled()) return;
   const d = ensureDraft();
@@ -636,7 +636,7 @@ function makeChatView() {
 
 // The pipeline profile the next agent from the Hub runs ('' for none).
 function shownPipeline() {
-  return ['agent', 'history', 'branches'].includes(state.current?.kind) ? '' : draftPipeline(ensureDraft());
+  return ['agent', 'history', 'branches', 'gallery'].includes(state.current?.kind) ? '' : draftPipeline(ensureDraft());
 }
 
 function renderSettingsButton() {
@@ -884,13 +884,13 @@ function show(kind, id) {
   document.getElementById('close-selected')?.classList.toggle('hidden', kind !== 'hub' || hub.selected.size < 2);
   // Back on the Hub: an update that waited for it can come now.
   if (kind === 'hub') setTimeout(offerUpdate, 400);
-  $('back-to-hub').classList.toggle('hidden', !['agent', 'history', 'branches'].includes(kind));
+  $('back-to-hub').classList.toggle('hidden', !['agent', 'history', 'branches', 'gallery'].includes(kind));
   for (const v of $('views').children) v.classList.add('hidden');
 
   // The Hub also has the message box: a message there starts a new agent.
   const startsAgent = !['agent', 'history'].includes(kind);
-  // The Branches view has no message box.
-  $('composer').classList.toggle('hidden', kind === 'branches');
+  // The Branches view and the Gallery have no message box.
+  $('composer').classList.toggle('hidden', kind === 'branches' || kind === 'gallery');
   $('composer-folder').classList.toggle('hidden', !startsAgent);
   $('composer-group').classList.toggle('hidden', !startsAgent);
   $('composer-fork').classList.toggle('hidden', !startsAgent);
@@ -924,6 +924,11 @@ function show(kind, id) {
     const projects = svnProjectList(state.config || {});
     setHeader('Branch diff', `${(state.config?.svnServer || '').replace(/\/+$/, '')}/${!projects.length ? '*' : projects.length > 1 ? `{${projects.join(',')}}` : projects[0]}/branches`, null);
     branchesView.open(JSON.stringify([projects, state.config?.svnBranchFilter || [], !!state.config?.githubBranches]));
+  } else if (kind === 'gallery') {
+    galleryView.view.classList.remove('hidden');
+    const c = state.config || {};
+    setHeader('Gallery', c.galleryFolder || c.galleryUrl || 'Settings → Gallery', null);
+    galleryView.open(JSON.stringify([c.galleryUrl || '', c.galleryFolder || '']));
   } else if (kind === 'history') {
     const h = state.history.get(id);
     h.view.classList.remove('hidden');
@@ -1198,6 +1203,30 @@ hub.onOpenBranches = () => { sfx('open'); show('branches'); };
 // A group's branch tag: the Branch diff view, with that branch picked.
 hub.onOpenBranch = b => { sfx('open'); show('branches'); branchesView.openBranch(b); };
 hub.onOpenSettings = () => showSettings();
+// The Gallery: the game's art library (renderer/gallery.js). Use as
+// reference puts the images you picked on the Hub's message box.
+const galleryView = new GalleryView({
+  onOpenSettings: () => showSettings(),
+  onUse: async paths => {
+    const files = [];
+    for (const p of paths) {
+      try {
+        const pic = await window.deck.pictureData(p);
+        if (!pic) continue;
+        const bytes = Uint8Array.from(atob(pic.data), c => c.charCodeAt(0));
+        const file = new File([bytes], p.split(/[\\/]/).pop(), { type: pic.mediaType });
+        file.deckPath = p;
+        files.push(file);
+      } catch { /* gone from Drive since */ }
+    }
+    sfx('close');
+    show('hub');
+    if (files.length) attachments.add(files);
+    flashComposerNote(`${files.length === 1 ? 'The image is' : `${files.length} images are`} on the message box as references. Say what art you need.`);
+    $('input').focus();
+  },
+});
+hub.onOpenGallery = () => { sfx('open'); show('gallery'); };
 hub.onOpenNotes = groupId => openNotesEditor(findGroup(groupId));
 
 // Dragging a tile onto another agent's tank pours its result into that agent
@@ -6530,7 +6559,7 @@ document.addEventListener('keydown', e => {
   }
   // Esc leaves an agent (or a saved session, a new agent, or the branch
   // diff view) for the Hub. The Stop button in the top bar stops a running turn.
-  if (e.key === 'Escape' && !e.popupWasOpen && ['agent', 'history', 'new', 'branches'].includes(state.current?.kind)) {
+  if (e.key === 'Escape' && !e.popupWasOpen && ['agent', 'history', 'new', 'branches', 'gallery'].includes(state.current?.kind) && !document.querySelector('.gallery-preview')) {
     e.preventDefault();
     backToHub();
   }
