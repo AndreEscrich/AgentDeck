@@ -440,13 +440,14 @@ class TicketsView {
     return TICKET_COLUMNS.filter(c => !(c[0] === 'sprint' && this.list === 'sprint'));
   }
 
-  // The ▶ after a key: starts an agent on the ticket (its link goes on the
-  // Hub's message box, like Start agent in the details).
+  // The "Start agent" pill after a key: starts an agent on the ticket (its
+  // link goes on the Hub's message box, like Start agent in the details).
   agentButton(t) {
     const b = el('button', 'tickets-agent');
     b.type = 'button';
-    b.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg>';
-    b.title = `Start an agent on ${t.key}`;
+    b.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="11" rx="3" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 4v4M9.5 13h.01M14.5 13h.01" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
+    b.append(el('span', null, 'Start agent'));
+    b.title = `Start an agent on ${t.key}: its link goes on the Hub's message box, where you say what to do`;
     b.onclick = e => { e.stopPropagation(); this.onStart?.(t); };
     return b;
   }
