@@ -411,7 +411,7 @@ async function options(project) {
     list('pm_list_components'), list('pm_list_custom_fields'), statuses(project).catch(() => []),
   ]);
   const value = {
-    epics: epics.filter(e => !e.isArchived && !e.deletedAt).map(e => ({ id: e._id, key: e.key || '', name: e.name || e.title || e.key || '', color: e.color || null, done: !!(e.doneAt || /done|closed/i.test(e.status || '')) })),
+    epics: epics.filter(e => !e.isArchived && !e.deletedAt).map(e => ({ id: e._id, key: e.key || '', name: e.name || e.title || e.key || '', color: e.color || null, createdAt: e.createdAt || '', done: !!(e.doneAt || /done|closed/i.test(e.status || '')) })),
     sprints: sprints.map(x => ({ id: x._id, name: x.name, status: x.status || '' })),
     teams: teams.map(x => ({ id: x._id, name: x.name })),
     components: components.map(x => ({ id: x._id, name: x.name })),

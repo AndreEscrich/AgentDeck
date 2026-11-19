@@ -242,20 +242,62 @@
         for (let i = 0; i < 40 && !o?.epics; i++) { await new Promise(r => setTimeout(r, 250)); o = this.panelOptions(projectOf(t)); }
         if (!o?.epics) throw new Error('Could not read the project\'s epics.');
         menu.replaceChildren();
+        menu.classList.add('tp-epic-menu');
         const pick = id => { this.closeStatusMenu(); if ((id || null) !== (t.epicId || null)) this.saveFields(t, { epicId: id }); };
+        // Newest epics first: by when they were made (PM's createdAt, else
+        // the time in the epic's id).
+        const made = e => Date.parse(e.createdAt) || (parseInt(String(e.id).slice(0, 8), 16) * 1000) || 0;
+        const epics = o.epics.filter(e => !e.done || e.id === t.epicId).sort((a, b) => made(b) - made(a));
+        // A search box on top: typing filters the list, and the first epic
+        // left is the one Enter picks (↑ ↓ move).
+        const search = document.createElement('input');
+        search.type = 'search';
+        search.className = 'tp-epic-search';
+        search.placeholder = 'Search epics…';
+        const list = el('div', 'tp-epic-list');
+        menu.append(search, list);
+        const items = [];
         const none = el('button', 'tickets-status-item' + (t.epicId ? '' : ' on'), 'No epic');
         none.type = 'button';
         none.onclick = () => pick(null);
-        menu.append(none);
-        for (const e of o.epics.filter(e => !e.done || e.id === t.epicId)) {
+        items.push({ el: none, text: 'no epic', id: null });
+        for (const e of epics) {
           const item = el('button', 'tickets-status-item tp-epic-item' + (e.id === t.epicId ? ' on' : ''));
           item.type = 'button';
           const dot = el('span', 'tp-dot');
           if (e.color) dot.style.background = e.color;
           item.append(dot, el('span', null, e.name));
           item.onclick = () => pick(e.id);
-          menu.append(item);
+          items.push({ el: item, text: `${e.name} ${e.key}`.toLowerCase(), id: e.id });
         }
+        list.append(...items.map(i => i.el));
+        let shown = items;
+        let at = 0;
+        const mark = () => {
+          items.forEach(i => i.el.classList.remove('focus'));
+          const cur = shown[at];
+          if (cur) { cur.el.classList.add('focus'); if (search.value) cur.el.scrollIntoView({ block: 'nearest' }); }
+        };
+        search.oninput = () => {
+          const q = search.value.trim().toLowerCase();
+          shown = q ? items.filter(i => i.id && q.split(/\s+/).every(w => i.text.includes(w))) : items;
+          for (const i of items) i.el.classList.toggle('hidden', !shown.includes(i));
+          at = 0;
+          list.scrollTop = 0;
+          mark();
+        };
+        search.onkeydown = e => {
+          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (!shown.length) return;
+            at = (at + (e.key === 'ArrowDown' ? 1 : shown.length - 1)) % shown.length;
+            mark();
+          } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (shown[at]) pick(shown[at].id);
+          }
+        };
+        requestAnimationFrame(() => search.focus());
       });
       crumbs.append(epic, sep());
     }
@@ -731,14 +773,16 @@
     if (!t.subtask && o) {
       const teams = (o.teams || []).map(x => [x.id, x.name]);
       field('Team', select(t.teamId, teams, v => this.saveFields(t, { team: v })));
+      // Shorter names for some of PM's fields (saving still uses PM's name).
+      const labelOf = f => (/^testable revision$/i.test(f.name.trim()) ? 'Revision' : f.name);
       const custom = f => {
         const value = t.customFields?.[f.id] ?? t.customFields?.[f.name] ?? '';
         const save = v => this.saveFields(t, { customFields: { [f.name]: v } });
         if ((f.type === 'select' || f.type === 'multiSelect') && f.values.length) {
           const choices = f.values.map(v => (typeof v === 'string' ? [v, v] : [v.value ?? v.label, v.label ?? v.value]));
-          return fieldEl(f.name, select(Array.isArray(value) ? value[0] : value, choices, save));
+          return fieldEl(labelOf(f), select(Array.isArray(value) ? value[0] : value, choices, save));
         }
-        return fieldEl(f.name, text(Array.isArray(value) ? value.join(', ') : String(value), save));
+        return fieldEl(labelOf(f), text(Array.isArray(value) ? value.join(', ') : String(value), save));
       };
       const fields = (o.fields || []).filter(f => f.types.includes(t.typeId) && !/^found in$/i.test(f.name.trim()));
       // Branch and Testable revision side by side; the others one a row.
