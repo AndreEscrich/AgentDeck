@@ -296,7 +296,7 @@
       save.type = 'button';
       save.onclick = () => {
         const copy = box.cloneNode(true);
-        for (const img of copy.querySelectorAll('img[data-media-id]')) img.removeAttribute('src');   // PM's links expire; PM stores the id
+        for (const m of copy.querySelectorAll('img[data-media-id], video[data-media-id]')) m.removeAttribute('src');   // PM's links expire; PM stores the id
         this.editing = null;
         this.saveFields(t, { description: copy.innerHTML });
       };
@@ -323,7 +323,7 @@
   // open in PM).
   P.description = function (t, html = t.description) {
     const div = el('div', 'tp-desc msg-text');
-    div.innerHTML = DOMPurify.sanitize(html, { ADD_ATTR: ['data-media-id', 'data-file-name', 'target'] });
+    div.innerHTML = DOMPurify.sanitize(html, { ADD_TAGS: ['video'], ADD_ATTR: ['data-media-id', 'data-file-name', 'target'] });
     const media = new Map((t.media || []).map(m => [m.id, m]));
     for (const img of div.querySelectorAll('img[data-media-id]')) {
       const m = media.get(img.dataset.mediaId);
@@ -339,6 +339,16 @@
       }
     }
     for (const video of div.querySelectorAll('video')) {
+      const m = media.get(video.dataset.mediaId);
+      if (m?.url) {
+        // PM's link plays here (it lasts about a day; the panel reads a new one each time it opens).
+        video.src = m.url;
+        video.controls = true;
+        video.muted = true;
+        video.playsInline = true;
+        video.className = 'tp-video';
+        continue;
+      }
       const a = el('a', 'ticket-media', `▶ ${video.dataset.fileName || 'Video'} (open in PM)`);
       a.href = pmItemUrl(t.key);
       a.dataset.external = '1';

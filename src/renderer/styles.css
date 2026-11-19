@@ -3867,4 +3867,4 @@ button.uml-peer-chip:hover { background: color-mix(in srgb, var(--chip, var(--ac
 .tickets-notif-text { margin: 3px 0 0 22px; font-size: 12px; color: var(--text-dim); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .tickets-notif-text.status-done { color: #7fdc9f; }
 .tickets-notif-text.status-in_progress { color: #9cbcff; }
-
+.tp-video { display: block; max-width: 100%; max-height: 420px; border-radius: 8px; background: #000; margin: 4px 0; }
