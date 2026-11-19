@@ -2543,10 +2543,6 @@ button.tickets-status.saving { opacity: 0.6; cursor: progress; }
 .tickets-table tbody .tickets-row.group-end td { border-bottom: 1px solid #3d3329; }
 .tickets-table tbody .tickets-row.expanded td { background: rgba(255, 236, 210, 0.03); border-bottom-color: transparent; }
 .tickets-table .tickets-subrow td, .tickets-table .tickets-subnote td { background: rgba(0, 0, 0, 0.2); border-bottom-color: rgba(255, 236, 210, 0.04); }
-.tickets-table .tickets-subrow .col-key, .tickets-table .tickets-subnote td:first-child { position: relative; }
-.tickets-table .tickets-subrow .col-key::before, .tickets-table .tickets-subnote td:first-child::before {
-  content: ''; position: absolute; left: 40px; top: 0; bottom: 0; width: 2px; background: #4d3f31; }
-.tickets-table .tickets-subrow.sub-last .col-key::before { bottom: 50%; border-radius: 0 0 2px 2px; }
 .tickets-table .tickets-subrow.sub-last td { border-bottom: 1px solid #3d3329; }
 /* A staircase: epic, then its tickets one step in, then their subtasks two steps in. */
 .tickets-table tbody .tickets-row .col-key { padding-left: 26px; }
