@@ -813,12 +813,7 @@
     if (!t.subtask) {
       if (!o) side.append(el('div', 'tp-faint tp-loading', 'Reading the project\'s fields…'));
       else {
-        const epics = (o.epics || []).filter(e => !e.done || e.id === t.epicId).map(e => [e.id, e.name]);
-        if (t.epicId && !epics.some(e => e[0] === t.epicId)) epics.unshift([t.epicId, t.epicName || t.epic || 'Epic']);
-        const epicColor = (o.epics || []).find(e => e.id === t.epicId)?.color;
-        const dot = el('span', 'tp-dot');
-        if (epicColor) dot.style.background = epicColor;
-        field('Epic', select(t.epicId, epics, v => this.saveFields(t, { epicId: v }), { prefix: dot }));
+        // The epic is in the chain at the top left (its ▾ changes it), not here.
         const sprints = (o.sprints || []).map(x => [x.id, x.name + (x.status === 'ACTIVE' ? ' (Active)' : '')]);
         if (t.sprintId && !sprints.some(x => x[0] === t.sprintId)) sprints.unshift([t.sprintId, t.sprint || 'Sprint']);
         field('Sprint', select(t.sprintId, sprints, v => this.saveFields(t, { sprintId: v }), { none: 'Backlog' }));
