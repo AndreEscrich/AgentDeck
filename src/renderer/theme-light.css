@@ -7,6 +7,7 @@
    the rules after them cover the places that use a fixed dark colour. */
 
 :root {
+  color-scheme: light;
   --bg: #faf8f5;
   --bg-sidebar: #f2eee8;
   --bg-panel: #ffffff;
