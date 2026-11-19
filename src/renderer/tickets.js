@@ -8,7 +8,7 @@
 // sprint (yours in the open sprints, done ones too) and All open (yours
 // that are not done). Keys show without the project's prefix, after the
 // type's mark. A click on a key opens the ticket's details in a floating
-// panel on the right, like PM's: its description, its subtasks and Start
+// panel in the middle of the view, like PM's: its description, its subtasks and Start
 // agent, which puts the ticket's link on the Hub's message box (a Story
 // with two or more open subtasks then gets the ⑂ Split button). A click
 // anywhere else on a Story's row opens or closes its subtasks as rows below
@@ -84,7 +84,10 @@ class TicketsView {
     const body = el('div', 'tickets-body');
     this.listBox = el('section', 'tickets-list scroll');
     this.detail = el('section', 'tickets-detail scroll');
-    body.append(this.listBox, this.detail);
+    // Behind the details: dims the table, and a click on it closes them.
+    this.backdrop = el('div', 'tickets-backdrop');
+    this.backdrop.onclick = () => this.closeDetail();
+    body.append(this.listBox, this.backdrop, this.detail);
     this.view.append(bar, body);
     this.list = 'sprint';
     this.type = null;

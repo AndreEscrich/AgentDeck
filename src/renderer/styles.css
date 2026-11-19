@@ -2450,8 +2450,10 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .tickets-bar, .gallery-bar, .gallery-main { padding-left: max(24px, calc((100% - 1352px) / 2)); padding-right: max(24px, calc((100% - 1352px) / 2)); }
 .tickets-body { padding: 0 max(0px, calc((100% - 1400px) / 2)); }
 .tickets-list { flex: 1; min-width: 0; padding: 14px 24px 40px; }
-.tickets-detail { display: none; position: absolute; z-index: 5; top: 10px; bottom: 14px; right: calc(max(0px, (100% - 1400px) / 2) + 14px);
-  width: min(680px, calc(100% - 60px)); box-sizing: border-box; padding: 20px 26px 32px; border-radius: 14px;
+.tickets-backdrop { display: none; position: absolute; inset: 0; z-index: 4; background: rgba(0, 0, 0, 0.45); }
+.tickets-view.detail-open .tickets-backdrop { display: block; }
+.tickets-detail { display: none; position: absolute; z-index: 5; top: 16px; bottom: 20px; left: 50%; transform: translateX(-50%);
+  width: min(860px, calc(100% - 48px)); box-sizing: border-box; padding: 20px 26px 32px; border-radius: 14px;
   border: 1px solid var(--border); background: var(--bg-panel); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3); }
 .tickets-view.detail-open .tickets-detail { display: block; }
 /* The table, like PM's sheet. */
