@@ -2437,7 +2437,9 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .tickets-tab { padding: 3px 12px; border-radius: 6px; border: none; background: none; color: var(--text-dim); font-weight: 600; }
 .tickets-tab.on { background: var(--bg-active); color: var(--text); }
 .tickets-search { width: 240px; flex-shrink: 0; }
-.tickets-types { flex: 1; }
+/* The bar's parts stand together in the middle, above the table. */
+.tickets-types { flex: 0 0 16px; }
+.tickets-bar { justify-content: center; }
 .tickets-when { font-size: 12px; color: var(--text-faint); white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .tickets-when.err { color: var(--err); }
 .tickets-account { border: none; background: none; color: var(--text-faint); font-size: 12px; white-space: nowrap; padding: 0 4px; }
@@ -2457,7 +2459,7 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
   border: 1px solid var(--border); background: var(--bg-panel); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3); }
 .tickets-view.detail-open .tickets-detail { display: block; }
 /* The table, like PM's sheet. */
-.tickets-table { width: auto; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
+.tickets-table { width: auto; margin: 0 auto; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
 /* Columns as wide as they need: the title too, so the table is compact. */
 .tickets-table .col-title { width: 380px; }
 .tickets-table th { position: sticky; top: -14px; z-index: 1; background: var(--bg); text-align: left; padding: 7px 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
@@ -2526,7 +2528,7 @@ button.tickets-status.saving { opacity: 0.6; cursor: progress; }
 .tickets-table tbody .tickets-row .col-key { padding-left: 26px; }
 .tickets-table tbody .tickets-subrow .col-key { padding-left: 50px; }
 .tickets-table .tickets-subnote td { padding-left: 90px; }
-.tickets-spacer { flex: 1; }
+.tickets-spacer { flex: 0 0 24px; }
 .tickets-filter-btn { position: relative; padding: 5px 7px; color: var(--text-faint); border-radius: 7px; }
 .tickets-filter-btn:hover { color: var(--text); background: var(--bg-hover); }
 .tickets-filter-btn.active { color: var(--accent); }
