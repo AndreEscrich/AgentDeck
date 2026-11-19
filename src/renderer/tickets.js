@@ -978,6 +978,16 @@ class TicketsView {
     try { localStorage.setItem('pmTicketLists', JSON.stringify(this.data)); } catch { /* shown anyway */ }
   }
 
+  // A deleted ticket leaves every list and every story's subtasks at once
+  // (the lists read PM again after).
+  forget(key) {
+    for (const d of Object.values(this.data)) if (d.items) d.items = d.items.filter(t => t.key !== key);
+    for (const d of this.subs.values()) if (d.items) d.items = d.items.filter(t => t.key !== key);
+    const dt = this.detailTicket;
+    if (dt?.subtasks) dt.subtasks = dt.subtasks.filter(t => t.key !== key);
+    this.renderList();
+  }
+
   redraw() {
     this.renderList();
     if (this.detailTicket && this.selected === this.detailTicket.key) this.renderDetail(this.detailTicket, null);

@@ -562,6 +562,16 @@ async function addComment(a) {
   return comments(a);
 }
 
+// Deletes a ticket (with its subtasks) or a subtask, from the ticket panel's
+// Delete. PM keeps it 60 days: it can be brought back from PM's deleted items.
+async function remove({ key, id, project, subtask }) {
+  if (!id) id = (await callTool('pm_get_task', { key }))?._id;
+  if (!id) throw new Error(`${key} was not found.`);
+  if (subtask) await callTool('pm_delete_subtask', { projectId: project, subtaskId: id });
+  else await callTool('pm_delete_task', { projectId: project, taskId: id });
+  return { deleted: true };
+}
+
 // ---------- workflows: which status a ticket may move to ----------
 //
 // PM's tools do not say; PM's website reads it from its own API (found in
@@ -612,4 +622,4 @@ async function workflows(project) {
 }
 
 module.exports = { setup, status, connect, disconnect, callTool, tickets, ticket, readTasks, statuses, subtasks, setStatus,
-  options, update, createSubtask, attachments, openAttachment, attach, comments, addComment, personName, workflows };
+  options, update, createSubtask, attachments, openAttachment, attach, comments, addComment, personName, workflows, remove };

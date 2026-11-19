@@ -463,6 +463,7 @@ app.whenReady().then(() => {
   ipcMain.handle('pmassist:stop', (_e, id) => pmAssist.stop(String(id)));
   ipcMain.handle('pmc:statuses', (_e, project) => pmCall(() => pmClient.statuses(String(project || ''))));
   ipcMain.handle('pmc:workflows', (_e, project) => pmCall(() => pmClient.workflows(String(project || ''))));
+  ipcMain.handle('pmc:remove', (_e, t) => pmCall(() => pmClient.remove({ key: String(t?.key || ''), id: String(t?.id || ''), project: String(t?.project || ''), subtask: !!t?.subtask })));
   ipcMain.handle('pmc:subtasks', (_e, key) => pmCall(() => pmClient.subtasks(String(key || ''))));
   ipcMain.handle('pmc:options', (_e, project) => pmCall(() => pmClient.options(String(project || ''))));
   ipcMain.handle('pmc:update', (_e, a) => pmWrite(a?.key, () => pmClient.update(a || {})));

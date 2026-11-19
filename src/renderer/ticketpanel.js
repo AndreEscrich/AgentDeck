@@ -204,7 +204,7 @@
     if (t.isEpic) return this.renderEpic(t, error);
     const same = this.detailTicket?.key === t.key;
     const scroll = same ? this.detail.scrollTop : 0;
-    if (!same) { this.panelError = null; this.editing = null; this.news = null; this.descTab = 'description'; }
+    if (!same) { this.panelError = null; this.editing = null; this.news = null; this.descTab = 'description'; this.deleting = null; }
     this.newsOf(t);
     this.detailTicket = t;
     const box = el('div', 'tp' + (this.panelBusy ? ' busy' : ''));
@@ -387,8 +387,44 @@
     close.type = 'button';
     close.title = 'Close (Escape)';
     close.onclick = () => this.closeDetail();
-    tools.append(start, open, close);
-    top.append(crumbs, tools);
+    // Delete: asks first, in its place (what goes, and that PM keeps it 60
+    // days), then the panel goes up a level: a subtask's story, a ticket's
+    // epic, or closes.
+    const del = el('button', 'icon tp-delete');
+    del.type = 'button';
+    del.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    del.title = t.subtask ? 'Delete this subtask' : 'Delete this ticket';
+    // The question stays while the panel redraws (more of the ticket arrives).
+    const askDelete = () => {
+      const ask = el('div', 'tp-delete-ask');
+      const subs = t.subtasks?.length || 0;
+      ask.append(el('span', null, `Delete ${t.key}${!t.subtask && subs ? ` and its ${subs} subtask${subs === 1 ? '' : 's'}` : ''}? PM keeps it 60 days.`));
+      const yes = el('button', 'tp-delete-yes', 'Delete');
+      yes.type = 'button';
+      const no = el('button', 'gallery-action', 'Cancel');
+      no.type = 'button';
+      no.onclick = () => { this.deleting = null; ask.replaceWith(tools); };
+      yes.onclick = async () => {
+        yes.disabled = no.disabled = true;
+        yes.textContent = 'Deleting…';
+        this.deleting = null;
+        const r = await window.deck.pmRemove({ key: t.key, id: t.id, project: projectOf(t), subtask: !!t.subtask }).catch(err => ({ error: String(err?.message || err) }));
+        if (r?.notConnected) return this.setConnected({ connected: false });
+        if (r?.error) { this.panelError = r.error; this.renderDetail(t, null); return; }
+        window.uiSound?.('close');
+        window.toast?.(`${t.key} deleted. PM keeps it 60 days, so it can be brought back there.`);
+        this.forget(t.key);
+        if (t.subtask && t.parentKey) this.select({ key: t.parentKey, project: projectOf(t), title: t.parentTitle || '', type: t.parentType || 'Story' });
+        else if (!t.subtask && t.epicKey) this.select({ key: t.epicKey, project: t.epicKey.split('-')[0], isEpic: true, title: t.epicName || '' });
+        else this.closeDetail();
+        this.load(true);
+      };
+      ask.append(yes, no);
+      return ask;
+    };
+    del.onclick = () => { this.deleting = t.key; tools.replaceWith(askDelete()); };
+    tools.append(start, open, del, close);
+    top.append(crumbs, this.deleting === t.key ? askDelete() : tools);
     return top;
   };
 
