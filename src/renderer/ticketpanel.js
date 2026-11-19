@@ -203,7 +203,7 @@
   P.renderDetail = function (t, error) {
     const same = this.detailTicket?.key === t.key;
     const scroll = same ? this.detail.scrollTop : 0;
-    if (!same) { this.panelError = null; this.editing = null; this.news = null; }
+    if (!same) { this.panelError = null; this.editing = null; this.news = null; this.descTab = 'description'; }
     this.newsOf(t);
     this.detailTicket = t;
     const box = el('div', 'tp' + (this.panelBusy ? ' busy' : ''));
@@ -230,7 +230,35 @@
     const top = el('div', 'tp-top');
     const crumbs = el('div', 'tp-crumbs');
     const sep = () => el('span', 'tp-sep', '›');
-    if (t.epicName || t.epic) crumbs.append(el('span', 'tp-crumb', '⚑ ' + (t.epicName || t.epic)), sep());
+    // The epic: a click picks another one (a subtask follows its ticket's).
+    if (t.subtask) {
+      if (t.epicName || t.epic) crumbs.append(el('span', 'tp-crumb', '⚑ ' + (t.epicName || t.epic)), sep());
+    } else {
+      const epic = el('button', 'tp-crumb tp-crumb-epic', '⚑ ' + (t.epicName || t.epic || 'No epic') + ' ▾');
+      epic.type = 'button';
+      epic.title = 'Change the epic';
+      epic.onclick = () => this.openMenu(epic, 'epic:' + t.key, async menu => {
+        let o = this.panelOptions(projectOf(t));
+        for (let i = 0; i < 40 && !o?.epics; i++) { await new Promise(r => setTimeout(r, 250)); o = this.panelOptions(projectOf(t)); }
+        if (!o?.epics) throw new Error('Could not read the project\'s epics.');
+        menu.replaceChildren();
+        const pick = id => { this.closeStatusMenu(); if ((id || null) !== (t.epicId || null)) this.saveFields(t, { epicId: id }); };
+        const none = el('button', 'tickets-status-item' + (t.epicId ? '' : ' on'), 'No epic');
+        none.type = 'button';
+        none.onclick = () => pick(null);
+        menu.append(none);
+        for (const e of o.epics.filter(e => !e.done || e.id === t.epicId)) {
+          const item = el('button', 'tickets-status-item tp-epic-item' + (e.id === t.epicId ? ' on' : ''));
+          item.type = 'button';
+          const dot = el('span', 'tp-dot');
+          if (e.color) dot.style.background = e.color;
+          item.append(dot, el('span', null, e.name));
+          item.onclick = () => pick(e.id);
+          menu.append(item);
+        }
+      });
+      crumbs.append(epic, sep());
+    }
     if (t.parentKey) {
       const parent = el('button', 'tp-crumb tp-crumb-link', shortKey(t.parentKey));
       parent.type = 'button';
@@ -317,7 +345,28 @@
     return sec;
   };
 
+  // Description and Attachments share a section: two tabs in its heading,
+  // Attachments with how many there are, so you know before you switch.
   P.panelDescription = function (t) {
+    const canAttach = !!t.id && t.description !== undefined;
+    const files = canAttach ? this.panelList('attachLists', t.key, () => window.deck.pmAttachments({ project: projectOf(t), id: t.id })) : null;
+    const tab = canAttach && this.descTab === 'attachments' ? 'attachments' : 'description';
+    const tabs = el('div', 'tp-tabs');
+    const tabButton = (id, label, count = null) => {
+      const b = el('button', 'tp-tab' + (tab === id ? ' on' : ''));
+      b.type = 'button';
+      b.append(el('span', null, label));
+      if (count !== null) b.append(el('span', 'tp-tab-count', String(count)));
+      b.onclick = () => { if (tab !== id) { this.descTab = id; this.editing = null; this.renderDetail(t, null); } };
+      return b;
+    };
+    tabs.append(tabButton('description', 'Description'));
+    if (canAttach) tabs.append(tabButton('attachments', 'Attachments', files?.items ? files.items.length : '…'));
+    if (tab === 'attachments') {
+      const body = el('div', 'tp-section-body');
+      body.append(this.panelAttachments(t, { inTab: true }));
+      return this.panelSection('description', '', body, tabs);
+    }
     const body = el('div', 'tp-section-body');
     const edit = el('button', 'icon tp-pencil');
     edit.type = 'button';
@@ -363,7 +412,7 @@
         body.append(empty);
       }
     }
-    return this.panelSection('description', 'Description', body, edit);
+    return this.panelSection('description', '', body, tabs, edit);
   };
 
   // PM's HTML, cleaned, with its images as PM's short-lived links (videos
@@ -408,12 +457,12 @@
 
   // Attachments: a small field on the right, under the status. Its files
   // open in the browser; + Add (or files dropped on the field) uploads.
-  P.panelAttachments = function (t) {
-    const box = el('div', 'tp-field tp-attach');
+  P.panelAttachments = function (t, { inTab = false } = {}) {
+    const box = el('div', 'tp-field tp-attach' + (inTab ? ' in-tab' : ''));
     const project = projectOf(t);
     const d = this.panelList('attachLists', t.key, () => window.deck.pmAttachments({ project, id: t.id }));
     const head = el('div', 'tp-attach-head');
-    const label = el('span', 'tp-label', 'Attachments' + (d.items?.length ? ` · ${d.items.length}` : ''));
+    const label = el('span', 'tp-label', inTab ? (d.items && !d.items.length ? 'No attachments yet. Add files, or drop them here.' : '') : 'Attachments' + (d.items?.length ? ` · ${d.items.length}` : ''));
     const add = el('button', 'tp-link', this.uploading === t.key ? 'Uploading…' : '+ Add');
     add.type = 'button';
     add.title = 'Attach files (or drop them here)';
@@ -598,12 +647,17 @@
         }, 900);
       }
     }
-    if (t.id && t.description !== undefined) side.append(this.panelAttachments(t));
-    const field = (label, ...kids) => {
+    const fieldEl = (label, ...kids) => {
       const f = el('div', 'tp-field');
       f.append(el('div', 'tp-label', label), ...kids);
-      side.append(f);
       return f;
+    };
+    const field = (label, ...kids) => side.appendChild(fieldEl(label, ...kids));
+    // Two fields next to each other.
+    const pair = (...fields) => {
+      const row = el('div', 'tp-pair');
+      row.append(...fields);
+      side.append(row);
     };
     const select = (value, choices, onChange, { none = 'None', prefix } = {}) => {
       const wrap = el('div', 'tp-select');
@@ -654,8 +708,7 @@
     me.type = 'button';
     // Your name, not your email: PM shows the text it is given.
     me.onclick = () => this.saveFields(t, { assignee: this.myName() });
-    field('Assignee', person(t.assignee, 'assignee'), me);
-    field('Assignee 2', person(t.assignee2, 'assignee2'));
+    pair(fieldEl('Assignee', person(t.assignee, 'assignee'), me), fieldEl('Assignee 2', person(t.assignee2, 'assignee2')));
 
     const o = this.panelOptions(projectOf(t));
     if (!t.subtask) {
@@ -670,30 +723,31 @@
         const sprints = (o.sprints || []).map(x => [x.id, x.name + (x.status === 'ACTIVE' ? ' (Active)' : '')]);
         if (t.sprintId && !sprints.some(x => x[0] === t.sprintId)) sprints.unshift([t.sprintId, t.sprint || 'Sprint']);
         field('Sprint', select(t.sprintId, sprints, v => this.saveFields(t, { sprintId: v }), { none: 'Backlog' }));
-        field('Components', this.componentsPicker(t, o.components || []));
       }
     }
-    field('Estimate', text(minutesText(t.estimate), v => this.saveFields(t, { estimate: v }), { placeholder: 'e.g. 2h 30m', parse: parseMinutes }));
     field('Priority', select(t.priority, PRIORITIES.map(p => [p, p]), v => this.saveFields(t, { priority: v }), { prefix: priorityIcon(t.priority) }));
-    const points = el('div', 'tp-points');
-    for (const n of POINTS) {
-      const b = el('button', 'tp-point' + (t.storyPoints === n ? ' on' : ''), String(n));
-      b.type = 'button';
-      b.title = t.storyPoints === n ? 'Clear the story points' : `${n} story points`;
-      b.onclick = () => this.saveFields(t, { storyPoints: t.storyPoints === n ? null : n });
-      points.append(b);
-    }
-    field('Story Points', points);
+    // Components, Estimate, Story Points and Found in are not shown (the team
+    // does not use them here); PM keeps whatever they hold.
     if (!t.subtask && o) {
       const teams = (o.teams || []).map(x => [x.id, x.name]);
       field('Team', select(t.teamId, teams, v => this.saveFields(t, { team: v })));
-      for (const f of (o.fields || []).filter(f => f.types.includes(t.typeId))) {
+      const custom = f => {
         const value = t.customFields?.[f.id] ?? t.customFields?.[f.name] ?? '';
         const save = v => this.saveFields(t, { customFields: { [f.name]: v } });
         if ((f.type === 'select' || f.type === 'multiSelect') && f.values.length) {
           const choices = f.values.map(v => (typeof v === 'string' ? [v, v] : [v.value ?? v.label, v.label ?? v.value]));
-          field(f.name, select(Array.isArray(value) ? value[0] : value, choices, save));
-        } else field(f.name, text(Array.isArray(value) ? value.join(', ') : String(value), save));
+          return fieldEl(f.name, select(Array.isArray(value) ? value[0] : value, choices, save));
+        }
+        return fieldEl(f.name, text(Array.isArray(value) ? value.join(', ') : String(value), save));
+      };
+      const fields = (o.fields || []).filter(f => f.types.includes(t.typeId) && !/^found in$/i.test(f.name.trim()));
+      // Branch and Testable revision side by side; the others one a row.
+      const branch = fields.find(f => /^branch$/i.test(f.name.trim()));
+      const revision = fields.find(f => /revision/i.test(f.name));
+      for (const f of fields) {
+        if (f === branch && revision) pair(custom(branch), custom(revision));
+        else if (f === revision && branch) continue;
+        else side.append(custom(f));
       }
     }
     if (t.watchers) side.append(el('div', 'tp-faint tp-watchers', `${t.watchers} watching`));

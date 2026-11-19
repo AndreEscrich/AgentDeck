@@ -3757,6 +3757,12 @@ button.uml-peer-chip:hover { background: color-mix(in srgb, var(--chip, var(--ac
 .tp-crumb { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
 .tp-crumb-link { border: none; background: none; padding: 0; color: var(--text-dim); font: 500 12.5px var(--mono); cursor: pointer; }
 .tp-crumb-link:hover { color: var(--text); text-decoration: underline; }
+.tp-crumb-epic { border: none; background: none; padding: 1px 4px; margin-left: -4px; border-radius: 5px; color: inherit; font: inherit; cursor: pointer; }
+.tp-crumb-epic:hover { color: var(--text); background: var(--bg-hover); }
+.tp-epic-item { display: flex; align-items: center; gap: 8px; }
+/* Two fields side by side (Assignee and Assignee 2, Branch and Testable revision). */
+.tp-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tp-pair > .tp-field { min-width: 0; }
 .tp-sep { color: var(--text-faint); }
 .tp-key { font: 600 12.5px var(--mono); color: var(--text-dim); text-decoration: none; }
 .tp-key:hover { color: var(--text); text-decoration: underline; }
@@ -3837,7 +3843,7 @@ input.tp-title-input::selection { background: color-mix(in srgb, var(--accent) 3
 .tp-faint { color: var(--text-faint); font-size: 12px; }
 .tp-person { display: flex; align-items: center; gap: 8px; padding: 0 0 0 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
 .tp-person:focus-within { border-color: var(--accent); }
-.tp-person .tp-input { border: none; background: none; outline: none; padding: 7px 8px 7px 0; }
+.tp-person .tp-input { border: none; background: none; outline: none; padding: 7px 8px 7px 0; min-width: 0; text-overflow: ellipsis; }
 .tp-link { align-self: flex-start; border: none; background: none; padding: 0; color: #8f96ff; font-size: 12.5px; cursor: pointer; }
 .tp-link:hover { text-decoration: underline; }
 .tp-select { display: flex; align-items: center; gap: 8px; padding: 0 0 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 13px; }
@@ -3893,6 +3899,15 @@ select option { background: var(--bg-panel); color: var(--text); }
 .tp-attach { gap: 3px; padding: 6px 8px; margin: 0 -8px; border-radius: 8px; border: 1px dashed transparent; }
 .tp-attach.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .tp-attach-head { display: flex; align-items: center; justify-content: space-between; }
+/* Description | Attachments 3: the tabs in the section's heading. */
+.tp-tabs { display: inline-flex; gap: 14px; }
+.tp-tab { display: inline-flex; align-items: center; gap: 6px; border: none; background: none; padding: 2px 0; border-bottom: 2px solid transparent;
+  color: var(--text-faint); font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; }
+.tp-tab:hover { color: var(--text-dim); }
+.tp-tab.on { color: var(--text); border-bottom-color: var(--accent); }
+.tp-tab-count { min-width: 16px; padding: 0 5px; border-radius: 99px; background: var(--bg-hover); color: var(--text-dim); font-size: 10.5px; letter-spacing: 0; text-align: center; line-height: 16px; }
+.tp-tab.on .tp-tab-count { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--text); }
+.tp-attach.in-tab { margin: 0; padding: 8px 10px; min-height: 60px; border: 1px dashed var(--border); background: rgba(0, 0, 0, 0.12); }
 .tp-attach .tp-file { max-width: none; width: 100%; padding: 3px 8px; font-size: 12px; background: none; border-color: transparent; }
 .tp-attach .tp-file:hover { background: var(--bg-hover); border-color: var(--border); }
 
