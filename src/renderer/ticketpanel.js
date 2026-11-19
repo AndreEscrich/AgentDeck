@@ -269,6 +269,7 @@
     const row = el('div', 'tp-title-row');
     if (this.editing === 'title') {
       const input = document.createElement('input');
+      input.type = 'text';
       input.className = 'tp-title-input';
       input.value = t.title;
       const done = save => {

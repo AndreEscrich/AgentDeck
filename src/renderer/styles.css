@@ -3762,7 +3762,11 @@ button.uml-peer-chip:hover { background: color-mix(in srgb, var(--chip, var(--ac
 .tp-tools .gallery-use { padding: 5px 14px; }
 .tp-title-row { display: flex; align-items: center; gap: 8px; margin: 6px 0 4px; }
 .tp-title { margin: 0; font-size: 22px; line-height: 1.3; color: var(--text); }
-.tp-title-input { flex: 1; font-size: 20px; font-weight: 600; padding: 4px 8px; }
+/* Editing the title: the title as it was, in a dark field with an orange edge. */
+input.tp-title-input { flex: 1; min-width: 0; margin-left: -9px; padding: 2px 8px; font-size: 22px; font-weight: 600; line-height: 1.3; font-family: inherit;
+  color: var(--text); background: rgba(0, 0, 0, 0.22); border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 8px; outline: none; }
+input.tp-title-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+input.tp-title-input::selection { background: color-mix(in srgb, var(--accent) 38%, transparent); color: var(--text); }
 .tp-pencil { color: var(--text-faint); padding: 2px 4px; }
 .tp-pencil:hover { color: var(--text); }
 .tp-error { color: var(--err); font-size: 12.5px; padding: 6px 10px; border-radius: 8px; background: color-mix(in srgb, var(--err) 12%, transparent); }
