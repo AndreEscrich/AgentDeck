@@ -44,10 +44,9 @@ function ticketTitle(title, cls = null) {
   const m = text.match(/^\s*((?:\[[^\[\]]{1,40}\]\s*)+)(.*)$/);
   if (!m || !m[2].trim()) { span.textContent = text; return span; }
   for (const [, name] of m[1].matchAll(/\[([^\[\]]+)\]/g)) {
-    const tag = el('span', 'ticket-tag', name.trim());
     let h = 0;
-    for (const c of name.trim().toLowerCase()) h = (h * 31 + c.charCodeAt(0)) % 360;
-    tag.style.setProperty('--tag-hue', String(h));
+    for (const c of name.trim().toLowerCase()) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    const tag = el('span', 'ticket-tag c' + (h % 8), name.trim());
     span.appendChild(tag);
   }
   span.append(m[2].trim());

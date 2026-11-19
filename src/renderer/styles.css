@@ -2464,7 +2464,7 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .tickets-sort { margin-left: 4px; color: var(--accent); }
 .tickets-table td { padding: 6px 10px; border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
 .tickets-table th + th, .tickets-table td + td { border-left: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
-.tickets-table .col-key { width: 220px; }
+.tickets-table .col-key { width: 150px; }
 /* The small agent button after a key: a tile in miniature, always in view. */
 .tickets-agent { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-left: 6px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: none; color: var(--text-faint); vertical-align: -6px; }
 .tickets-agent .tickets-agent-liquid { color: #74d39d; opacity: 0.8; }
@@ -2472,8 +2472,17 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .tickets-agent:hover { background: var(--accent); border-color: var(--accent); color: #1d1813 !important; }
 .tickets-agent:hover .tickets-agent-liquid { color: #1d1813; }
 /* "[UI] Streak calendar": the bracketed names as tags (ticketTitle in tickets.js). */
-.ticket-tag { display: inline-block; margin-right: 5px; padding: 0 6px; border-radius: 5px; font-size: 0.82em; font-weight: 600; line-height: 1.5; vertical-align: 0.08em;
-  color: hsl(var(--tag-hue, 30) 70% 72%); background: hsl(var(--tag-hue, 30) 45% 50% / 0.16); border: 1px solid hsl(var(--tag-hue, 30) 45% 55% / 0.35); }
+.ticket-tag { display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 99px; font-size: 0.8em; font-weight: 600; line-height: 1.45; vertical-align: 0.08em; letter-spacing: 0.01em;
+  color: var(--tag-fg); background: var(--tag-bg); }
+/* A soft palette; each name always gets the same colour (ticketTitle). */
+.ticket-tag.c0 { --tag-fg: #8fd6c4; --tag-bg: rgba(78, 190, 160, 0.16); }
+.ticket-tag.c1 { --tag-fg: #b6a6f5; --tag-bg: rgba(140, 116, 236, 0.18); }
+.ticket-tag.c2 { --tag-fg: #8cc2f7; --tag-bg: rgba(88, 160, 236, 0.17); }
+.ticket-tag.c3 { --tag-fg: #f2c27a; --tag-bg: rgba(236, 172, 72, 0.16); }
+.ticket-tag.c4 { --tag-fg: #f4a3c4; --tag-bg: rgba(236, 110, 160, 0.16); }
+.ticket-tag.c5 { --tag-fg: #b9dc86; --tag-bg: rgba(150, 204, 90, 0.15); }
+.ticket-tag.c6 { --tag-fg: #f4ab8e; --tag-bg: rgba(238, 130, 92, 0.16); }
+.ticket-tag.c7 { --tag-fg: #9fd9ee; --tag-bg: rgba(90, 196, 230, 0.15); }
 .tickets-table .col-key .tickets-type-icon { margin-right: 6px; }
 .tickets-table .tickets-row:not(.story) { cursor: default; }
 button.tickets-key { padding: 0; border: none; background: none; cursor: pointer; }
@@ -2501,9 +2510,9 @@ button.tickets-status.saving { opacity: 0.6; cursor: progress; }
 .tickets-status-item.on { background: var(--bg-active); }
 .tickets-status-item.on::after { content: '✓'; margin-left: auto; padding-left: 10px; color: var(--accent); font-size: 12px; }
 .tickets-status-menu .gallery-note, .tickets-status-menu .tickets-error { padding: 8px 10px; }
-.tickets-table .col-status { width: 250px; }
-.tickets-table .col-epic { width: 16%; color: var(--text-dim); }
-.tickets-table .col-sprint { width: 22%; color: var(--text-dim); }
+.tickets-table .col-status { width: 160px; }
+.tickets-table .col-epic { width: 10%; color: var(--text-dim); }
+.tickets-table .col-sprint { width: 12%; color: var(--text-dim); }
 .tickets-table .tickets-group td { padding: 12px 10px 4px; border-bottom: none; background: none !important; cursor: pointer; font-size: 11.5px; color: var(--text-faint); }
 .tickets-table .tickets-group:first-child td { padding-top: 6px; }
 .tickets-group .tickets-expand { width: 14px; height: 14px; margin-right: 2px; }
