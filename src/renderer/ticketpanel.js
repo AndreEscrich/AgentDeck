@@ -464,10 +464,10 @@
     add.onclick = () => { this.editing = 'subtask'; this.renderDetail(t, null); };
     // The same status filter as the list (hiding Done hides done subtasks
     // in both).
-    const filter = el('button', 'icon tickets-filter-btn tp-filter' + (this.statusShow.size < 3 ? ' active' : ''));
+    const filter = el('button', 'icon tickets-filter-btn tp-filter' + (this.filtering() ? ' active' : ''));
     filter.type = 'button';
     filter.innerHTML = FUNNEL;
-    filter.title = this.statusShow.size < 3 ? 'Filters: some statuses are hidden' : 'Filter the subtasks by status';
+    filter.title = this.filtering() ? 'Filters: some statuses are hidden' : 'Filter the subtasks by status';
     filter.onclick = () => this.openMenu(filter, 'subfilters:' + t.key, menu => this.fillFilterMenu(menu, { items: t.subtasks || [], types: false }));
     if (subs.length) {
       const done = subs.filter(s => s.done).length;
@@ -498,8 +498,7 @@
         const note = el('button', 'tp-link tp-hidden-note', `${n} subtask${n === 1 ? '' : 's'} hidden by the status filter · Show all`);
         note.type = 'button';
         note.onclick = () => {
-          this.statusShow = new Set(['todo', 'in_progress', 'done']);
-          try { localStorage.removeItem('pmTicketStatusShow'); } catch { /* this run only */ }
+          this.resetStatusFilter();
           this.renderList();
           this.renderFilterBtn();
           this.renderDetail(t, null);
