@@ -3858,6 +3858,10 @@ input.tp-title-input::selection { background: color-mix(in srgb, var(--accent) 3
 select option { background: var(--bg-panel); color: var(--text); }
 .tp-select-button { padding: 7px 10px; text-align: left; cursor: pointer; }
 .tp-select-button:disabled { cursor: default; color: var(--text-faint); }
+.tp-prio-button { display: flex; align-items: center; gap: 8px; width: 100%; font: inherit; font-size: 13px; }
+.tp-prio-name { flex: 1; }
+.tp-prio-caret { color: var(--text-faint); font-size: 10px; }
+.tp-prio-item { gap: 8px; min-width: 150px; }
 .tp-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-faint); flex-shrink: 0; }
 .tp-points { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .tp-point { flex: 1; padding: 6px 0; border: none; border-radius: 0; background: var(--bg); color: var(--text); font-size: 12.5px; }

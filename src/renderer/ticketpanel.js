@@ -767,7 +767,21 @@
         field('Sprint', select(t.sprintId, sprints, v => this.saveFields(t, { sprintId: v }), { none: 'Backlog' }));
       }
     }
-    field('Priority', select(t.priority, PRIORITIES.map(p => [p, p]), v => this.saveFields(t, { priority: v }), { prefix: priorityIcon(t.priority) }));
+    // Priority: a menu of its own (not a dropdown), so each choice shows its icon.
+    const prio = el('button', 'tp-select tp-select-button tp-prio-button');
+    prio.type = 'button';
+    prio.append(priorityIcon(t.priority), el('span', 'tp-prio-name', t.priority || 'None'), el('span', 'tp-prio-caret', '▾'));
+    prio.onclick = () => this.openMenu(prio, 'priority:' + t.key, menu => {
+      menu.replaceChildren();
+      for (const p of [...PRIORITIES, null]) {
+        const item = el('button', 'tickets-status-item tp-prio-item' + ((t.priority || null) === p ? ' on' : ''));
+        item.type = 'button';
+        item.append(priorityIcon(p), el('span', null, p || 'None'));
+        item.onclick = () => { this.closeStatusMenu(); if ((t.priority || null) !== p) this.saveFields(t, { priority: p }); };
+        menu.append(item);
+      }
+    });
+    field('Priority', prio);
     // Components, Estimate, Story Points and Found in are not shown (the team
     // does not use them here); PM keeps whatever they hold.
     if (!t.subtask && o) {
