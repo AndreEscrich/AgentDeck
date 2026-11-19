@@ -390,6 +390,26 @@ app.whenReady().then(() => {
   // An Excel file you attach: its sheets as CSV text (see spreadsheet.js).
   ipcMain.handle('media:spreadsheet', (_e, file) => require('./spreadsheet').read(file));
   ipcMain.handle('media:find', (_e, cwd, name) => media.findMedia(cwd, name).catch(() => null));
+  // The download button on an agent's image (render.js downloadable): a save
+  // dialog that starts in Downloads, then a copy of the file, or the image
+  // from its web address. Resolves with { saved } or { error }; null when you cancel.
+  ipcMain.handle('media:save', async (_e, source) => {
+    source = String(source || '');
+    const web = /^https:\/\//i.test(source);
+    if (!web && (!path.isAbsolute(source) || media.kindOf(source) !== 'image' || !fs.existsSync(source))) return { error: 'The image is not there any more.' };
+    let name = web ? decodeURIComponent(new URL(source).pathname.split('/').pop() || '') : path.basename(source);
+    if (!/\.(png|jpe?g|webp|gif|bmp|svg|tga|psd|tiff?)$/i.test(name)) name = (name || 'image') + '.png';
+    const r = await dialog.showSaveDialog(win, { title: 'Download image', defaultPath: path.join(app.getPath('downloads'), name) });
+    if (r.canceled || !r.filePath) return null;
+    try {
+      if (web) {
+        const res = await net.fetch(source);
+        if (!res.ok) return { error: `Could not download it (${res.status}).` };
+        fs.writeFileSync(r.filePath, Buffer.from(await res.arrayBuffer()));
+      } else fs.copyFileSync(source, r.filePath);
+    } catch (err) { return { error: `Could not save it: ${err.message}` }; }
+    return { saved: r.filePath };
+  });
   ipcMain.handle('media:picture', (_e, file) => media.pictureData(file, path.join(app.getPath('userData'), 'media-previews')));
   // Checking an agent's work in a Unity project after a turn that changed its C# (verify.js).
   ipcMain.handle('verify:run', (_e, cwd, level) => require('./verify').run(getConfig(), cwd, level));

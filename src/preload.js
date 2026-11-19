@@ -142,6 +142,8 @@ contextBridge.exposeInMainWorld('deck', {
   findMedia: (cwd, name) => ipcRenderer.invoke('media:find', cwd, name),
   // An image's bytes ({ mediaType, data } in base64), for the image review.
   pictureData: file => ipcRenderer.invoke('media:picture', file),
+  // The download button on an agent's image: a save dialog, then the copy.
+  saveImage: source => ipcRenderer.invoke('media:save', source),
   // Checks an agent's work in a Unity project at a level (compile | tests): { ok, blocked, kind, gates } (verify.js).
   verify: (cwd, level) => ipcRenderer.invoke('verify:run', cwd, level),
   // 'unity' when cwd is a Unity project with the Unity bridge, else null.

@@ -1442,6 +1442,14 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
 .msg-text .chat-media { display: block; max-width: 100%; max-height: 420px; border-radius: 8px; margin: 6px 0;
   background: repeating-conic-gradient(#342b22 0% 25%, #2a231c 0% 50%) 0 0 / 16px 16px; }
 img.chat-media { cursor: zoom-in; }
+.image-wrap { position: relative; display: block; width: fit-content; max-width: 100%; }
+.media-item .image-wrap { width: 100%; }
+.image-download { position: absolute; top: 12px; right: 6px; width: 28px; height: 28px; padding: 0; display: grid; place-items: center; border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.18); background: rgba(16, 13, 10, 0.72); color: #f3ead9; cursor: pointer; opacity: 0; transition: opacity 0.12s; }
+.media-item .image-download { top: 6px; }
+.image-wrap:hover .image-download, .image-download:focus-visible { opacity: 1; }
+.image-download:hover { background: rgba(16, 13, 10, 0.9); border-color: var(--accent); }
+.image-download.done { opacity: 1; color: var(--ok); border-color: var(--ok); }
 video.chat-media { background: #000; }
 audio.chat-media { width: 100%; max-width: 420px; height: 40px; background: transparent; }
 .media-missing { font-size: 12px; color: var(--text-faint); font-style: italic; }

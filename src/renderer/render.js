@@ -336,14 +336,44 @@ function mediaElement(file, caption, cwd) {
         return;
       }
     }
-    (node.closest('.video-wrap') || node).replaceWith(el('div', 'media-missing', `Cannot ${node.tagName === 'IMG' ? 'show' : 'play'} ${name}: it is not in the agent's folder`));
+    (node.closest('.video-wrap, .image-wrap') || node).replaceWith(el('div', 'media-missing', `Cannot ${node.tagName === 'IMG' ? 'show' : 'play'} ${name}: it is not in the agent's folder`));
   });
   node.classList.add('chat-media');
   if (node.tagName === 'AUDIO') node.classList.add('chat-audio');
   node.dataset.path = file;
+  if (node.tagName === 'IMG') return downloadable(node, () => node.dataset.path);
   if (node.tagName !== 'VIDEO') return node;
   const wrap = el('span', 'video-wrap');
   wrap.append(node, videoBar(node));
+  return wrap;
+}
+
+// An image with a download button in its corner: Save (a save dialog that
+// starts in Downloads, see media:save in main.js). source() is the image's
+// file, or its web address for an image from the web.
+const DOWNLOAD_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>';
+function downloadable(img, source) {
+  const wrap = el('span', 'image-wrap');
+  const btn = el('button', 'image-download');
+  btn.type = 'button';
+  btn.title = 'Download';
+  btn.innerHTML = DOWNLOAD_ICON;
+  btn.onclick = async e => {
+    e.stopPropagation();
+    const src = source();
+    if (!src || !window.deck?.saveImage) return;
+    const r = await window.deck.saveImage(src).catch(err => ({ error: String(err?.message || err) }));
+    if (r?.saved) {
+      btn.classList.add('done');
+      btn.title = `Saved to ${r.saved}`;
+      window.uiSound?.('attach');
+      setTimeout(() => btn.classList.remove('done'), 1600);
+    } else if (r?.error) {
+      btn.title = r.error;
+      window.uiSound?.('refuse');
+    }
+  };
+  wrap.append(img, btn);
   return wrap;
 }
 
@@ -1278,6 +1308,13 @@ function markdown(text, cwd) {
   for (const img of div.querySelectorAll('img')) {
     const file = resolveMediaPath(img.getAttribute('src'), cwd);
     if (file) img.replaceWith(mediaElement(file, img.getAttribute('alt'), cwd));
+    // An image from the web (an address Create Art gave, for example).
+    else if (/^https:\/\//i.test(img.getAttribute('src') || '') && !img.closest('a')) {
+      const holder = document.createComment('');
+      img.replaceWith(holder);
+      img.classList.add('chat-media');
+      holder.replaceWith(downloadable(img, () => img.src));
+    }
   }
   return div;
 }
