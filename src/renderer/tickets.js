@@ -25,7 +25,6 @@ const TICKET_COLUMNS = [
   ['key', 'Key', t => t.seq],
   ['title', 'Title', t => t.title.toLowerCase()],
   ['status', 'Status', t => `${CATEGORY_ORDER[t.category] ?? 1}${t.status}`],
-  ['epic', 'Epic', t => t.epic.toLowerCase()],
   ['sprint', 'Sprint', t => t.sprint.toLowerCase()],
 ];
 // The type's mark, like PM's: a green bookmark for a Story, a red dot for a
@@ -72,6 +71,11 @@ class TicketsView {
     this.search.className = 'tickets-search';
     this.search.oninput = () => this.renderList();
     this.types = el('div', 'gallery-cats tickets-types');
+    // Which statuses show (To do, In progress, Done): a click on one hides
+    // or shows those tickets and subtasks. Remembered.
+    this.statusBox = el('div', 'tickets-statusfilter');
+    try { this.statusShow = new Set(JSON.parse(localStorage.getItem('pmTicketStatusShow') || 'null') || ['todo', 'in_progress', 'done']); } catch { this.statusShow = new Set(['todo', 'in_progress', 'done']); }
+    try { this.foldedEpics = new Set(JSON.parse(localStorage.getItem('pmTicketFoldedEpics') || '[]')); } catch { this.foldedEpics = new Set(); }
     this.when = el('span', 'tickets-when');
     const refresh = el('button', 'icon gallery-refresh', '↻');
     refresh.type = 'button';
@@ -80,7 +84,7 @@ class TicketsView {
     this.account = el('button', 'tickets-account');
     this.account.type = 'button';
     this.account.onclick = () => this.signOut();
-    bar.append(this.tabs, this.search, this.types, this.when, refresh, this.account);
+    bar.append(this.tabs, this.search, this.statusBox, this.types, this.when, refresh, this.account);
     const body = el('div', 'tickets-body');
     this.listBox = el('section', 'tickets-list scroll');
     this.detail = el('section', 'tickets-detail scroll');
@@ -208,7 +212,32 @@ class TicketsView {
     return this.data[this.list]?.items || [];
   }
 
+  renderStatusFilter() {
+    this.statusBox.replaceChildren();
+    const counts = { todo: 0, in_progress: 0, done: 0 };
+    for (const t of this.items()) counts[t.category in counts ? t.category : 'todo']++;
+    for (const [cat, label] of [['todo', 'To do'], ['in_progress', 'In progress'], ['done', 'Done']]) {
+      const on = this.statusShow.has(cat);
+      const b = el('button', `tickets-statuschip status-${cat}` + (on ? ' on' : ''));
+      b.type = 'button';
+      b.append(el('span', 'tickets-statuschip-box', on ? '✓' : ''), el('span', null, label), el('span', 'gallery-cat-count', String(counts[cat])));
+      b.title = on ? `Hide the ${label.toLowerCase()} tickets` : `Show the ${label.toLowerCase()} tickets`;
+      b.onclick = () => {
+        if (on) this.statusShow.delete(cat); else this.statusShow.add(cat);
+        try { localStorage.setItem('pmTicketStatusShow', JSON.stringify([...this.statusShow])); } catch { /* this run only */ }
+        this.renderStatusFilter();
+        this.renderList();
+      };
+      this.statusBox.append(b);
+    }
+  }
+
+  shows(t) {
+    return this.statusShow.has(t.category in { todo: 1, in_progress: 1, done: 1 } ? t.category : 'todo');
+  }
+
   renderTypes() {
+    this.renderStatusFilter();
     this.types.replaceChildren();
     const counts = new Map();
     for (const t of this.items()) counts.set(t.type || 'Other', (counts.get(t.type || 'Other') || 0) + 1);
@@ -228,7 +257,7 @@ class TicketsView {
     const d = this.data[this.list];
     if (!d) return;
     const q = this.search.value.trim().toLowerCase();
-    const shown = this.items().filter(t => (this.type === null || (t.type || 'Other') === this.type)
+    const shown = this.items().filter(t => (this.type === null || (t.type || 'Other') === this.type) && this.shows(t)
       && (!q || `${t.key} ${t.title} ${t.epic} ${t.sprint}`.toLowerCase().includes(q)));
     const by = (TICKET_COLUMNS.find(c => c[0] === this.sort.col) || TICKET_COLUMNS[0])[2];
     shown.sort((a, b) => {
@@ -252,14 +281,44 @@ class TicketsView {
     const thead = el('thead');
     thead.appendChild(head);
     const body = el('tbody');
+    // Grouped by epic, like PM's sheet: epics by name, then the tickets
+    // without one. A click on an epic's row folds it (remembered).
+    const groups = new Map();
     for (const t of shown) {
-      body.appendChild(this.row(t));
-      if (this.expanded.has(t.key)) for (const r of this.subRows(t)) body.appendChild(r);
+      const name = t.epic || '';
+      if (!groups.has(name)) groups.set(name, []);
+      groups.get(name).push(t);
+    }
+    const names = [...groups.keys()].sort((a, b) => (!a) - (!b) || a.localeCompare(b));
+    for (const name of names) {
+      const list = groups.get(name);
+      const folded = this.foldedEpics.has(name);
+      const tr = el('tr', 'tickets-group' + (folded ? ' folded' : ''));
+      const td = el('td');
+      td.colSpan = TICKET_COLUMNS.length;
+      const chev = el('span', 'tickets-expand' + (folded ? '' : ' open'));
+      chev.innerHTML = CHEVRON;
+      const done = list.filter(t => t.category === 'done').length;
+      td.append(chev, el('span', 'tickets-group-flag', '⚑'), el('span', 'tickets-group-name', name || 'No epic'),
+        el('span', 'tickets-group-count', `${list.length} ticket${list.length === 1 ? '' : 's'}` + (done ? ` · ${done} done` : '')));
+      tr.append(td);
+      tr.title = folded ? 'Show this epic\'s tickets' : 'Hide this epic\'s tickets';
+      tr.onclick = () => {
+        if (folded) this.foldedEpics.delete(name); else this.foldedEpics.add(name);
+        try { localStorage.setItem('pmTicketFoldedEpics', JSON.stringify([...this.foldedEpics])); } catch { /* this run only */ }
+        this.renderList();
+      };
+      body.appendChild(tr);
+      if (folded) continue;
+      for (const t of list) {
+        body.appendChild(this.row(t));
+        if (this.expanded.has(t.key)) for (const r of this.subRows(t)) body.appendChild(r);
+      }
     }
     table.append(thead, body);
     const frag = document.createDocumentFragment();
     frag.appendChild(table);
-    if (!shown.length) frag.appendChild(el('div', 'gallery-note', q || this.type ? 'No ticket matches.' : this.list === 'sprint' ? 'You have no tickets in an open sprint.' : 'No open tickets.'));
+    if (!shown.length) frag.appendChild(el('div', 'gallery-note', q || this.type || this.statusShow.size < 3 ? 'No ticket matches.' : this.list === 'sprint' ? 'You have no tickets in an open sprint.' : 'No open tickets.'));
     if (d.total > d.items.length) frag.appendChild(el('div', 'gallery-note', `Showing ${d.items.length} of ${d.total} tickets.`));
     this.listBox.replaceChildren(frag);
   }
@@ -297,7 +356,6 @@ class TicketsView {
       key,
       cell('col-title', el('span', null, t.title)),
       cell('col-status', this.statusButton(t)),
-      cell('col-epic', el('span', null, t.epic)),
       cell('col-sprint', el('span', null, t.sprint)));
     tr.title = story ? `${t.title}\n(click to show or hide the subtasks)` : t.title;
     if (story) tr.onclick = e => { if (!e.target.closest('a, button')) this.toggleSubs(t); };
@@ -317,7 +375,9 @@ class TicketsView {
     if (!d || (d.loading && !d.items)) return note('Reading the subtasks…');
     if (d.error && !d.items) return note(d.error);
     if (!d.items.length) return note('No subtasks.');
-    return d.items.map(s => {
+    const items = d.items.filter(s => this.shows(s));
+    if (!items.length) return note(`All ${d.items.length} subtasks are hidden by the status filter.`);
+    return items.map(s => {
       const tr = el('tr', 'tickets-row tickets-subrow' + (this.selected === s.key ? ' selected' : '') + (s.done ? ' done' : ''));
       tr.dataset.key = s.key;
       const cell = (cls, ...kids) => { const td = el('td', cls); td.append(...kids); return td; };
@@ -330,7 +390,6 @@ class TicketsView {
         cell('col-key', el('span', 'tickets-expand-gap'), icon, keyBtn),
         cell('col-title', el('span', 'tickets-sub-title', s.title), who),
         cell('col-status', this.statusButton(s)),
-        cell('col-epic'),
         cell('col-sprint'));
       tr.title = s.title;
       return tr;
