@@ -106,7 +106,7 @@ async function run() {
     if (t && typeof t.title === 'string') {
       const status = t.resolvedStatusName || t.status || '';
       const before = saved[k];
-      saved[k] = { at: Date.now(), title: t.title, status, category: category(status), type: t.fieldNames?.taskTypeDefinitionId || t.type || '' };
+      saved[k] = { at: Date.now(), title: t.title, status, category: category(status), type: t.itemType === 'subtask' ? 'Subtask' : t.fieldNames?.taskTypeDefinitionId || t.type || '' };
       if (typeof t.subtaskCount === 'number') { saved[k].subtasks = t.subtaskCount; saved[k].subAt = Date.now(); }
       else if (before && typeof before.subtasks === 'number') { saved[k].subtasks = before.subtasks; saved[k].subAt = before.subAt; }
       result = card(k, saved[k]);

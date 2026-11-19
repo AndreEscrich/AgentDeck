@@ -476,14 +476,29 @@ function pmCard(href, key) {
   a.className = 'jira-card pm-card';
   a.href = href;
   a.title = `Open ${key} in Tactile PM`;
-  const logo = el('span', 'jira-logo');
-  logo.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14"><rect x="0.5" y="0.5" width="15" height="15" rx="3.5" fill="#f08a3c"/><rect x="3" y="3.5" width="2.6" height="9" rx="1" fill="#fff"/><rect x="6.7" y="3.5" width="2.6" height="6" rx="1" fill="#fff"/><rect x="10.4" y="3.5" width="2.6" height="4" rx="1" fill="#fff"/></svg>';
+  // Like the Tickets view: the ticket's type (Epic, Story, Bug, Task,
+  // Subtask) as its mark, and its number without the project's prefix
+  // (the whole key is in the card's tooltip). Until PM says the type, a
+  // neutral mark.
+  const epic = /-E\d+$/.test(key);
+  const logo = el('span', 'jira-logo pm-type');
+  const setType = type => {
+    if (!type || typeof typeIcon !== 'function') return;
+    if (/subtask/i.test(type) && typeof SUBTASK_ICON === 'string') logo.innerHTML = SUBTASK_ICON;
+    else logo.innerHTML = typeIcon(type).innerHTML;
+    logo.title = type;
+  };
+  logo.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14"><rect x="1" y="1" width="14" height="14" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.4" opacity="0.5"/></svg>';
+  if (epic) setType('epic');
   const summary = el('span', 'jira-summary');
   const status = el('span', 'jira-status');
-  a.append(logo, el('span', 'jira-key', key), summary, status);
+  a.append(logo, el('span', 'jira-key', key.replace(/^[A-Z][A-Z0-9]*-/, '')), summary, status);
   window.deck?.pmTask?.(key).then(task => {
     if (!task) return;
-    summary.textContent = task.title;
+    setType(task.type || (epic ? 'epic' : 'task'));
+    // A title's [Name] labels as tags, like the Tickets view.
+    if (typeof ticketTitle === 'function') summary.replaceChildren(...ticketTitle(task.title).childNodes);
+    else summary.textContent = task.title;
     status.textContent = task.status;
     status.dataset.category = task.category;
     a.title = `${task.type ? task.type + ' ' : ''}${key}: ${task.title}\n${task.status} · open in Tactile PM`;

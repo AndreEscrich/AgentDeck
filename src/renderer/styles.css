@@ -1774,8 +1774,11 @@ audio.chat-media { width: 100%; max-width: 420px; height: 40px; background: tran
 .chat-ticket-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); }
 .chat-ticket .jira-card { min-width: 0; max-width: 100%; }
 /* Tactile PM task cards (pmCard): Jira's card in PM's orange. */
-.pm-card:hover { border-color: #f08a3c; }
-.pm-card .jira-key { color: #f5a26a; }
+.pm-card:hover { border-color: #8f96ff; }
+.pm-card .jira-key { color: #8f96ff; }
+/* The ticket's type, like the Tickets view (pmCard). */
+.pm-card .pm-type { color: var(--text-faint); }
+.pm-card .pm-type svg { width: 14px; height: 14px; display: block; }
 .msg-user a, .note a, pre a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .msg-user .jira-card { background: rgba(0, 0, 0, 0.2); }
 
