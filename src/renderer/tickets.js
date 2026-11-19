@@ -516,9 +516,17 @@ class TicketsView {
       groups.get(name).push(t);
     }
     const names = [...groups.keys()].sort((a, b) => (!a) - (!b) || a.localeCompare(b));
-    for (const name of names) {
+    names.forEach((name, gi) => {
       const list = groups.get(name);
       const folded = this.foldedEpics.has(name);
+      // A gap between epics, so each one's start and end are plain to see.
+      if (gi) {
+        const gap = el('tr', 'tickets-gap');
+        const gtd = el('td');
+        gtd.colSpan = this.columns().length;
+        gap.append(gtd);
+        body.appendChild(gap);
+      }
       const tr = el('tr', 'tickets-group' + (folded ? ' folded' : ''));
       const td = el('td');
       td.colSpan = this.columns().length;
@@ -535,12 +543,21 @@ class TicketsView {
         this.renderList();
       };
       body.appendChild(tr);
-      if (folded) continue;
+      if (folded) return;
+      let last = null;
       for (const t of list) {
-        body.appendChild(this.row(t));
-        if (this.expanded.has(t.key)) for (const r of this.subRows(t)) body.appendChild(r);
+        last = this.row(t);
+        body.appendChild(last);
+        if (this.expanded.has(t.key)) {
+          last.classList.add('expanded');
+          const subs = this.subRows(t);
+          subs[0]?.classList.add('sub-first');
+          if (subs.length) { subs[subs.length - 1].classList.add('sub-last'); last = subs[subs.length - 1]; }
+          for (const r of subs) body.appendChild(r);
+        }
       }
-    }
+      last?.classList.add('group-end');
+    });
     table.append(thead, body);
     const frag = document.createDocumentFragment();
     frag.appendChild(table);

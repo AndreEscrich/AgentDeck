@@ -2526,6 +2526,25 @@ button.tickets-status.saving { opacity: 0.6; cursor: progress; }
 .tickets-group-name { font-weight: 600; letter-spacing: 0.02em; color: var(--text-dim); }
 .tickets-group-count { margin-left: 8px; }
 .tickets-group:hover .tickets-group-name { color: var(--text); }
+/* Where an epic, a story and its subtasks start and end (renderList):
+   - an epic is a band with a violet edge, and a violet rail runs down the
+     left of its tickets to its last row, which closes it with a line; a gap
+     separates it from the next epic;
+   - an open story's subtasks sit in a blue-tinted block with a blue rail
+     at their step in, from under the story's row to its last subtask. */
+.tickets-table .tickets-gap td { height: 14px; padding: 0; border: none; background: none !important; }
+.tickets-table .tickets-group td { padding: 7px 10px; background: rgba(143, 126, 231, 0.10) !important; box-shadow: inset 3px 0 0 #8f7ee7; border-radius: 0; }
+.tickets-table .tickets-group:first-child td { padding-top: 7px; }
+.tickets-table .tickets-group .tickets-group-name { color: var(--text); }
+.tickets-table tbody .tickets-row .col-key { box-shadow: inset 3px 0 0 rgba(143, 126, 231, 0.45); }
+.tickets-table tbody .tickets-row.group-end td { border-bottom: 1px solid rgba(143, 126, 231, 0.45); }
+.tickets-table tbody .tickets-row.expanded td { background: rgba(76, 154, 255, 0.06); border-bottom-color: transparent; }
+.tickets-table .tickets-subrow td, .tickets-table .tickets-subnote td { background: rgba(76, 154, 255, 0.09); }
+.tickets-table .tickets-subrow .col-key, .tickets-table .tickets-subnote td:first-child { position: relative; }
+.tickets-table .tickets-subrow .col-key::before, .tickets-table .tickets-subnote td:first-child::before {
+  content: ''; position: absolute; left: 40px; top: 0; bottom: 0; width: 2px; background: rgba(76, 154, 255, 0.75); }
+.tickets-table .tickets-subrow.sub-last .col-key::before { bottom: 50%; border-radius: 0 0 2px 2px; }
+.tickets-table .tickets-subrow.sub-last td { border-bottom: 1px solid rgba(76, 154, 255, 0.35); }
 /* A staircase: epic, then its tickets one step in, then their subtasks two steps in. */
 .tickets-table tbody .tickets-row .col-key { padding-left: 26px; }
 .tickets-table tbody .tickets-subrow .col-key { padding-left: 50px; }
