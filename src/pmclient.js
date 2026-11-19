@@ -230,28 +230,22 @@ function slim(t) {
     category: t.styleMetadata?.status?.lifecycleCategory || (t.doneAt ? 'done' : t.columnId === 'in-progress' ? 'in_progress' : 'todo'),
     color: t.styleMetadata?.status?.color || null, textColor: t.styleMetadata?.status?.text || null,
     priority: t.priority || '', assignee: t.assignee || '', sprint: f.sprintId || '', epic: f.epicId || '',
-    project: (t.key || '').split('-')[0], projectId: t.projectId || '', updatedAt: t.updatedAt || '',
+    project: (t.key || '').split('-')[0], projectId: t.projectId || '', updatedAt: t.updatedAt || '', seq: t.sequenceNumber || Number((t.key || '').split('-')[1]) || 0,
   };
 }
 
 const LIST_FIELDS = { descriptionMaxLength: 0, returnFieldNames: true, returnStyleMetadata: true, limit: 200 };
-let mine = null;   // the last "Mine" answer: its sprints and projects make the "Sprint" list
+const LIST_TQL = {
+  // Your tickets in the open sprints, done ones too (like PM's sheet).
+  sprint: 'assignee = currentUser() AND sprint IN openSprints() ORDER BY updatedAt DESC',
+  // Every ticket of yours that is not done, in a sprint or not.
+  open: 'assignee = currentUser() AND statusCategory != done ORDER BY updatedAt DESC',
+};
 
-// list: 'mine' (assigned to you, not done) or 'sprint' (every ticket in the
-// open sprints your tickets are in). Resolves with { items, total }.
+// list: 'sprint' or 'open' (see LIST_TQL). Resolves with { items, total }.
 async function tickets(list) {
-  if (list === 'sprint') {
-    if (!mine) await tickets('mine');
-    const sprints = [...new Set(mine.items.map(t => t.sprint).filter(Boolean))];
-    const projects = [...new Set(mine.items.map(t => t.projectId).filter(Boolean))];
-    if (!sprints.length) return { items: [], total: 0, note: 'None of your open tickets is in a sprint.' };
-    const tql = `sprint IN (${sprints.map(s => JSON.stringify(s)).join(', ')}) ORDER BY rank`;
-    const r = await callTool('pm_search_tasks', { tql, projectIds: projects, ...LIST_FIELDS });
-    return { items: (r.items || []).map(slim), total: r.total || 0, sprints };
-  }
-  const r = await callTool('pm_search_tasks', { tql: 'assignee = currentUser() AND statusCategory != done ORDER BY updatedAt DESC', ...LIST_FIELDS });
-  mine = { items: (r.items || []).map(slim), total: r.total || 0 };
-  return mine;
+  const r = await callTool('pm_search_tasks', { tql: LIST_TQL[list] || LIST_TQL.sprint, ...LIST_FIELDS });
+  return { items: (r.items || []).map(slim), total: r.total || 0 };
 }
 
 // One ticket in full: its description (HTML), epic, links and subtasks.

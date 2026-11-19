@@ -445,7 +445,7 @@ app.whenReady().then(() => {
   ipcMain.handle('pmc:status', () => pmClient.status());
   ipcMain.handle('pmc:connect', () => pmCall(() => pmClient.connect()));
   ipcMain.handle('pmc:disconnect', () => pmClient.disconnect());
-  ipcMain.handle('pmc:tickets', (_e, list) => pmCall(() => pmClient.tickets(list === 'sprint' ? 'sprint' : 'mine')));
+  ipcMain.handle('pmc:tickets', (_e, list) => pmCall(() => pmClient.tickets(list === 'open' ? 'open' : 'sprint')));
   ipcMain.handle('pmc:ticket', (_e, key) => pmCall(() => pmClient.ticket(String(key || ''))));
   // The Gallery (gallery.js): the art folder on disk and its images.
   gallery.setup(app.getPath('userData'), id => readDrivePath(getConfig(), id));

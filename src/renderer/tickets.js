@@ -3,16 +3,43 @@
 // so it costs no tokens. Until you connect, it shows a Connect button that
 // opens PM's sign-in page in your browser.
 //
-// Two lists: Mine (assigned to you and not done) and Sprint (every ticket
-// in the open sprints your tickets are in), grouped by status. A click
-// shows the ticket's details on the right: its description, its subtasks
+// Your tickets as a table like PM's sheet (key, type, title, status, epic,
+// sprint; a click on a column's name sorts by it), in two lists: This
+// sprint (yours in the open sprints, done ones too) and All open (yours
+// that are not done). A click on a row shows the ticket's details on the right: its description, its subtasks
 // and Start agent, which puts the ticket's link on the Hub's message box
 // (a Story with two or more open subtasks then gets the ⑂ Split button).
 // The last lists are kept, so the view shows them at once and reads them
 // again in the background.
 
-const TICKET_LISTS = [['mine', 'Mine'], ['sprint', 'Sprint']];
-const CATEGORY_ORDER = { in_progress: 0, todo: 1, done: 2 };
+const TICKET_LISTS = [['sprint', 'This sprint'], ['open', 'All open']];
+const CATEGORY_ORDER = { todo: 0, in_progress: 1, done: 2 };
+// The table's columns: [id, name, the value it sorts by].
+const TICKET_COLUMNS = [
+  ['key', 'Key', t => t.seq],
+  ['type', 'Type', t => t.type],
+  ['title', 'Title', t => t.title.toLowerCase()],
+  ['status', 'Status', t => `${CATEGORY_ORDER[t.category] ?? 1}${t.status}`],
+  ['epic', 'Epic', t => t.epic.toLowerCase()],
+  ['sprint', 'Sprint', t => t.sprint.toLowerCase()],
+];
+// The type's mark, like PM's: a green bookmark for a Story, a red dot for a
+// Bug, a blue check for anything else.
+const TYPE_ICONS = {
+  story: '<svg width="14" height="14" viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4.5L6 21z" fill="#36b37e"/></svg>',
+  bug: '<svg width="14" height="14" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4" fill="#e5493a"/><circle cx="12" cy="12" r="4" fill="#fff"/></svg>',
+  task: '<svg width="14" height="14" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4" fill="#4c9aff"/><path d="M7.5 12.5l3 3 6-6.5" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  epic: '<svg width="14" height="14" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4" fill="#8f7ee7"/><path d="M13 6l-5 7h4l-1 5 5-7h-4z" fill="#fff"/></svg>',
+};
+function typeIcon(type) {
+  const span = el('span', 'tickets-type-icon');
+  span.innerHTML = TYPE_ICONS[(type || '').toLowerCase()] || TYPE_ICONS.task;
+  span.title = type || 'Task';
+  return span;
+}
+function statusBadge(t) {
+  return el('span', `tickets-status status-${t.category || 'todo'}`, t.status);
+}
 const REFRESH_MS = 5 * 60 * 1000;
 
 function pmItemUrl(key) { return 'https://pm.tactilews.com/pm/items/' + key; }
@@ -34,7 +61,7 @@ class TicketsView {
     }
     this.search = document.createElement('input');
     this.search.type = 'search';
-    this.search.placeholder = 'Filter by key, title or epic…';
+    this.search.placeholder = 'Filter by key, title, epic or sprint…';
     this.search.className = 'tickets-search';
     this.search.oninput = () => this.renderList();
     this.types = el('div', 'gallery-cats tickets-types');
@@ -52,8 +79,9 @@ class TicketsView {
     this.detail = el('section', 'tickets-detail scroll');
     body.append(this.listBox, this.detail);
     this.view.append(bar, body);
-    this.list = 'mine';
+    this.list = 'sprint';
     this.type = null;
+    this.sort = { col: 'key', desc: true };
     this.data = {};      // list -> { items, total, at }
     this.selected = null;
     this.loading = new Set();
@@ -176,41 +204,59 @@ class TicketsView {
     if (!d) return;
     const q = this.search.value.trim().toLowerCase();
     const shown = this.items().filter(t => (this.type === null || (t.type || 'Other') === this.type)
-      && (!q || `${t.key} ${t.title} ${t.epic} ${t.assignee}`.toLowerCase().includes(q)));
-    const groups = new Map();
-    for (const t of shown) {
-      if (!groups.has(t.status)) groups.set(t.status, { category: t.category, color: t.color, text: t.textColor, items: [] });
-      groups.get(t.status).items.push(t);
+      && (!q || `${t.key} ${t.title} ${t.epic} ${t.sprint}`.toLowerCase().includes(q)));
+    const by = (TICKET_COLUMNS.find(c => c[0] === this.sort.col) || TICKET_COLUMNS[0])[2];
+    shown.sort((a, b) => {
+      const x = by(a), y = by(b);
+      const c = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true });
+      return (this.sort.desc ? -c : c) || b.seq - a.seq;
+    });
+    const table = el('table', 'tickets-table');
+    const head = el('tr');
+    for (const [id, name] of TICKET_COLUMNS) {
+      const th = el('th', `col-${id}`);
+      th.append(el('span', null, name));
+      if (this.sort.col === id) th.append(el('span', 'tickets-sort', this.sort.desc ? '↓' : '↑'));
+      th.title = `Sort by ${name.toLowerCase()}`;
+      th.onclick = () => {
+        this.sort = this.sort.col === id ? { col: id, desc: !this.sort.desc } : { col: id, desc: id === 'key' };
+        this.renderList();
+      };
+      head.appendChild(th);
     }
+    const thead = el('thead');
+    thead.appendChild(head);
+    const body = el('tbody');
+    for (const t of shown) body.appendChild(this.row(t));
+    table.append(thead, body);
     const frag = document.createDocumentFragment();
-    const order = [...groups].sort((a, b) => (CATEGORY_ORDER[a[1].category] ?? 1) - (CATEGORY_ORDER[b[1].category] ?? 1));
-    for (const [status, g] of order) {
-      const section = el('div', 'tickets-group');
-      const head = el('div', 'tickets-group-head');
-      const badge = el('span', 'tickets-status', status);
-      if (g.color) { badge.style.background = g.color; badge.style.color = g.text || '#222'; }
-      head.append(badge, el('span', 'gallery-cat-count', String(g.items.length)));
-      section.append(head);
-      for (const t of g.items) section.appendChild(this.row(t));
-      frag.appendChild(section);
-    }
-    if (!shown.length) frag.appendChild(el('div', 'gallery-note', d.note || (q || this.type ? 'No ticket matches.' : 'No open tickets.')));
+    frag.appendChild(table);
+    if (!shown.length) frag.appendChild(el('div', 'gallery-note', q || this.type ? 'No ticket matches.' : this.list === 'sprint' ? 'You have no tickets in an open sprint.' : 'No open tickets.'));
     if (d.total > d.items.length) frag.appendChild(el('div', 'gallery-note', `Showing ${d.items.length} of ${d.total} tickets.`));
     this.listBox.replaceChildren(frag);
   }
 
   row(t) {
-    const row = el('button', 'tickets-row' + (this.selected === t.key ? ' selected' : ''));
-    row.type = 'button';
-    row.dataset.key = t.key;
-    const top = el('div', 'tickets-row-top');
-    top.append(el('span', 'tickets-key', t.key), el('span', `tickets-type type-${(t.type || '').toLowerCase()}`, t.type || ''));
-    if (t.priority && !/^medium$/i.test(t.priority)) top.append(el('span', `tickets-prio prio-${t.priority.toLowerCase()}`, t.priority));
-    row.append(top, el('div', 'tickets-title', t.title));
-    const meta = [t.epic, this.list === 'sprint' ? t.assignee || 'Unassigned' : t.sprint].filter(Boolean).join(' · ');
-    if (meta) row.append(el('div', 'tickets-meta', meta));
-    row.onclick = () => this.select(t);
-    return row;
+    const tr = el('tr', 'tickets-row' + (this.selected === t.key ? ' selected' : '') + (t.category === 'done' ? ' done' : ''));
+    tr.dataset.key = t.key;
+    const cell = (cls, ...kids) => { const td = el('td', cls); td.append(...kids); return td; };
+    tr.append(
+      cell('col-key', el('span', 'tickets-key', t.key)),
+      cell('col-type', typeIcon(t.type)),
+      cell('col-title', el('span', null, t.title)),
+      cell('col-status', statusBadge(t)),
+      cell('col-epic', el('span', null, t.epic)),
+      cell('col-sprint', el('span', null, t.sprint)));
+    tr.title = t.title;
+    tr.onclick = () => (this.selected === t.key ? this.closeDetail() : this.select(t));
+    return tr;
+  }
+
+  closeDetail() {
+    this.selected = null;
+    this.view.classList.remove('detail-open');
+    for (const r of this.listBox.querySelectorAll('.tickets-row')) r.classList.remove('selected');
+    this.showDetailEmpty();
   }
 
   showDetailEmpty() {
@@ -219,6 +265,7 @@ class TicketsView {
 
   async select(t) {
     this.selected = t.key;
+    this.view.classList.add('detail-open');
     for (const r of this.listBox.querySelectorAll('.tickets-row')) r.classList.toggle('selected', r.dataset.key === t.key);
     this.renderDetail(t, null);
     const full = await window.deck.pmTicket(t.key).catch(err => ({ error: String(err?.message || err) }));
@@ -234,9 +281,11 @@ class TicketsView {
     link.href = pmItemUrl(t.key);
     link.target = '_blank';
     link.title = 'Open it in PM';
-    const badge = el('span', 'tickets-status', t.status);
-    if (t.color) { badge.style.background = t.color; badge.style.color = t.textColor || '#222'; }
-    head.append(link, el('span', `tickets-type type-${(t.type || '').toLowerCase()}`, t.type || ''), badge);
+    const close = el('button', 'icon ticket-close', '✕');
+    close.type = 'button';
+    close.title = 'Close';
+    close.onclick = () => this.closeDetail();
+    head.append(typeIcon(t.type), link, statusBadge(t), close);
     box.append(head, el('h2', 'ticket-title', t.title));
     const facts = [['Assignee', t.assignee], ['Also', t.assignee2], ['Sprint', t.sprint], ['Epic', t.epicName || t.epic], ['Priority', t.priority], ['Reporter', t.author]].filter(([, v]) => v);
     if (facts.length) {
