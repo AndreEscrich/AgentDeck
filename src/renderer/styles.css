@@ -2457,7 +2457,9 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
   border: 1px solid var(--border); background: var(--bg-panel); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3); }
 .tickets-view.detail-open .tickets-detail { display: block; }
 /* The table, like PM's sheet. */
-.tickets-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
+.tickets-table { width: auto; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
+/* Columns as wide as they need: the title too, so the table is compact. */
+.tickets-table .col-title { width: 380px; }
 .tickets-table th { position: sticky; top: -14px; z-index: 1; background: var(--bg); text-align: left; padding: 7px 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
   text-transform: uppercase; color: var(--text-dim); border-bottom: 1px solid var(--border); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: none; }
 .tickets-table th:hover { color: var(--text); }
@@ -2511,8 +2513,8 @@ button.tickets-status.saving { opacity: 0.6; cursor: progress; }
 .tickets-status-item.on::after { content: '✓'; margin-left: auto; padding-left: 10px; color: var(--accent); font-size: 12px; }
 .tickets-status-menu .gallery-note, .tickets-status-menu .tickets-error { padding: 8px 10px; }
 .tickets-table .col-status { width: 160px; }
-.tickets-table .col-epic { width: 10%; color: var(--text-dim); }
-.tickets-table .col-sprint { width: 12%; color: var(--text-dim); }
+.tickets-table .col-epic { width: 120px; color: var(--text-dim); }
+.tickets-table .col-sprint { width: 140px; color: var(--text-dim); }
 .tickets-table .tickets-group td { padding: 12px 10px 4px; border-bottom: none; background: none !important; cursor: pointer; font-size: 11.5px; color: var(--text-faint); }
 .tickets-table .tickets-group:first-child td { padding-top: 6px; }
 .tickets-group .tickets-expand { width: 14px; height: 14px; margin-right: 2px; }
