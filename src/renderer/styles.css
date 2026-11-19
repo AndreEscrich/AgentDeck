@@ -3961,7 +3961,7 @@ select option { background: var(--bg-panel); color: var(--text); }
 .tickets-check.partly .tickets-check-box { border-color: transparent; color: #fff; background: color-mix(in srgb, var(--text) 30%, transparent); }
 
 
-/* Settings → Account → Tactile PM (pmAccountPanel). */
+/* Settings → Tactile PM (pmAccountPanel). */
 .pm-account { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
 .pm-account-email { font-size: 13px; color: var(--text); }
 

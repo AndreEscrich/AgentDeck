@@ -291,7 +291,7 @@ const LIST_TQL = {
   all: 'statusCategory != done ORDER BY updatedAt DESC',
 };
 
-// The projects of a PM space (Settings → Account → Tactile PM, Enchanted
+// The projects of a PM space (Settings → Tactile PM, Enchanted
 // Inn by default), for All tickets. Kept for 30 minutes.
 let spaceProjects = null;
 async function projectsOfSpace(name) {
@@ -299,7 +299,7 @@ async function projectsOfSpace(name) {
   if (spaceProjects?.name === want && Date.now() - spaceProjects.at < 30 * 60000) return spaceProjects.keys;
   const [spaces, projects] = await Promise.all([callTool('pm_list_spaces', {}), callTool('pm_list_projects', {})]);
   const space = (Array.isArray(spaces) ? spaces : []).find(s => [s.name, s.key].some(v => String(v || '').trim().toLowerCase() === want));
-  if (!space) throw new Error(`Tactile PM has no space named "${name}". Change it in Settings → Account → Tactile PM.`);
+  if (!space) throw new Error(`Tactile PM has no space named "${name}". Change it in Settings → Tactile PM.`);
   const keys = (Array.isArray(projects) ? projects : []).filter(p => p.spaceId === space._id && !p.isArchived).map(p => p.key).filter(Boolean);
   if (!keys.length) throw new Error(`The space "${space.name}" has no projects.`);
   spaceProjects = { name: want, at: Date.now(), keys };

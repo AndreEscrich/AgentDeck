@@ -73,7 +73,7 @@ function settingsList(text) {
 // another one's saved login in place; Add signs in with a new one, and the
 // one you are on stays in the list.
 const PLAN_NAMES = { pro: 'Pro', max: 'Max', team: 'Team', enterprise: 'Enterprise' };
-// Settings → Account → Tactile PM: the account the Tickets view reads PM
+// Settings → Tactile PM: the account the Tickets view reads PM
 // with (src/pmclient.js), with Sign out, or Connect when it is signed out.
 function pmAccountPanel() {
   const box = el('div', 'pm-account');
@@ -445,11 +445,13 @@ function openSettings(config, { onSaved } = {}) {
     // would press the first button in it.
     ['account', 'Account', [section('Claude',
       el('div', 'settings-hint account-intro', 'The account Claude Code and every Claude agent use. The accounts you signed in with before stay in the list, so switching back needs no new sign-in.'),
-      accountsPanel()),
-      section('Tactile PM',
-        el('div', 'settings-hint', 'The account the Tickets view reads PM with. It is separate from the PM connector your agents use: signing in or out here does not change it.'),
-        pmAccountPanel(),
-        settingsField('Space for All tickets', 'The PM space whose open tickets the Tickets view\'s All tickets lists, whoever has them (its name, like Enchanted Inn, or its key)', pmSpace))]],
+      accountsPanel())]],
+    // Tactile PM: the Tickets view's sign-in and what its lists show.
+    ['pm', 'Tactile PM', [section('Account',
+      el('div', 'settings-hint', 'The account the Tickets view reads PM with. It is separate from the PM connector your agents use: signing in or out here does not change it.'),
+      pmAccountPanel()),
+    section('Tickets',
+      settingsField('Space for All tickets', 'The PM space whose open tickets the Tickets view\'s All tickets lists, whoever has them (its name, like Enchanted Inn, or its key)', pmSpace))]],
     ['agents', 'Agents', [section(null,
       settingsField('Checks before done', 'In a Unity project, after a turn that changed C#, Agent Hub compiles it in the open Editor (through the Unity bridge of the project), and with tests runs the EditMode tests, before the work counts as done; failures go back to the agent to fix (three rounds at most). Each agent can change its own under ⚙ in the message box', verifyLevel),
       settingsField('Tactile knowledge', 'Agents look up Tactile\'s conventions and examples in Tactile Cortex (the Games Knowledge Database, and lessons from earlier agent sessions) before non-trivial game code. Needs the Tactile Cortex connector (Connectors → Tactile)', knowledgeOn),

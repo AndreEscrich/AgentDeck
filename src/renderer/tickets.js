@@ -19,7 +19,7 @@
 // again in the background.
 
 // Sprint: yours in the open sprints. All tickets: every open ticket of the
-// space (Settings → Account → Tactile PM; Enchanted Inn by default), whoever
+// space (Settings → Tactile PM; Enchanted Inn by default), whoever
 // has it, so you can find unassigned ones and take them (Assign to me).
 const TICKET_LISTS = [['sprint', 'Sprint'], ['all', 'All tickets']];
 const CATEGORY_ORDER = { todo: 0, in_progress: 1, done: 2 };
