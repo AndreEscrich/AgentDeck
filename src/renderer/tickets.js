@@ -876,7 +876,11 @@ class TicketsView {
     this.renderDetail(t, null);
     const full = await window.deck.pmTicket(t.key).catch(err => ({ error: String(err?.message || err) }));
     if (this.selected !== t.key) return;
-    if (full.notConnected) return this.setConnected({ connected: false });
+    // PM ended the sign-in meanwhile: sign in again, then this ticket opens.
+    if (full.notConnected) {
+      if (window.pmSignIn && await window.pmSignIn(t.key)) return this.select(t);
+      return this.setConnected({ connected: false });
+    }
     if (!full.error && full.subtasks?.length) this.subs.set(full.key, { items: full.subtasks, loading: false });
     if (!full.error && t.parentKey && !full.parentKey) full.parentKey = t.parentKey;
     this.renderDetail(full.error ? t : full, full.error || null);

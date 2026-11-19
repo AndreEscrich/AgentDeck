@@ -1313,9 +1313,48 @@ hub.onOpenTickets = () => { sfx('open'); show('tickets'); };
 // A click on a PM ticket link anywhere in the app (render.js) opens the
 // ticket's panel: over everything, or in the Tickets view when you are there. Without the app's PM sign-in, PM's
 // page opens in the browser as before.
+// Signing Agent Hub in to Tactile PM in the middle of something (a ticket
+// link, a ticket that would not open): PM's sign-in page opens in your
+// browser, a card in the corner says so, and once you are signed in, what you
+// were doing goes on. Resolves with true when signed in; false when it failed
+// or you cancelled (the card's Cancel). Several at once share one sign-in.
+let pmSigningIn = null;
+window.pmSignIn = (what = '') => {
+  if (pmSigningIn) return pmSigningIn.promise;
+  const card = el('div', 'pm-signin');
+  const text = el('div', 'pm-signin-text');
+  text.append(el('strong', null, 'Sign in to Tactile PM'), el('span', null, `Finish the sign-in in your browser${what ? `, and ${what} opens here` : ''}.`));
+  const cancel = el('button', 'gallery-action', 'Cancel');
+  cancel.type = 'button';
+  card.append(el('span', 'pm-signin-spin'), text, cancel);
+  document.body.appendChild(card);
+  let done;
+  const promise = new Promise(r => { done = r; });
+  pmSigningIn = { promise };
+  const finish = ok => {
+    if (!pmSigningIn) return;
+    pmSigningIn = null;
+    card.classList.add('leaving');
+    setTimeout(() => card.remove(), 300);
+    done(ok);
+  };
+  cancel.onclick = () => finish(false);
+  window.deck.pmConnect().then(r => {
+    if (r?.error || !r?.connected) {
+      if (pmSigningIn) toast(`Could not sign in to Tactile PM${r?.error ? `: ${r.error}` : '.'}`);
+      return finish(false);
+    }
+    ticketsView.setConnected(r);
+    sfx('select');
+    finish(true);
+  }).catch(err => { toast(`Could not sign in to Tactile PM: ${err?.message || err}`); finish(false); });
+  return promise;
+};
+
 window.openPmTicket = async (key, href) => {
   const st = await window.deck.pmStatus().catch(() => ({ connected: false }));
-  if (!st.connected) { window.open(href, '_blank'); return; }
+  // Not signed in: sign in first, then the ticket opens as asked.
+  if (!st.connected && !(await window.pmSignIn(key))) return;
   sfx('open');
   const t = { key, project: key.split('-')[0], title: '', type: '' };
   // In the Tickets view, the panel opens there; anywhere else, it pops up
