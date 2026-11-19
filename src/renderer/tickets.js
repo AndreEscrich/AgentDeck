@@ -137,8 +137,16 @@ class TicketsView {
     this.assistInput.title = 'Haiku with the Tactile PM connector, for ticket work only. It can read tickets and make changes you can undo (fields, status, assignee, comments, new tickets and subtasks), never delete or archive anything, touch sprints, projects or epics, or start agents.';
     const mark = el('span', 'tickets-assist-mark', 'Haiku');
     this.assistOut = el('div', 'tickets-assist-out hidden');
+    // Like the Hub's message box: a sunken field in a raised tray, and a bar
+    // under it with what answers (Haiku) and Send.
     const row = el('div', 'tickets-assist-row');
-    row.append(mark, this.assistInput);
+    const send = el('button', 'primary tickets-assist-send', 'Send');
+    send.type = 'button';
+    send.onclick = () => this.runAssist();
+    this.assistSend = send;
+    const under = el('div', 'tickets-assist-bar');
+    under.append(mark, el('span', 'tickets-assist-hint', 'Ticket work only: reads tickets and makes changes you can undo'), send);
+    row.append(this.assistInput, under);
     // At the bottom of the view, like the Hub's message box: the answer shows above the field.
     this.assist.append(this.assistOut, row);
     this.assistInput.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.runAssist(); } if (e.key === 'Escape') this.assistInput.blur(); };

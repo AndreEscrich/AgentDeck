@@ -4031,11 +4031,17 @@ button.tp-sub:hover { background: var(--bg-hover); }
 /* The Tickets view's Haiku box (tickets.js runAssist), under the bar, as wide as the table. */
 .tickets-assist { flex-shrink: 0; box-sizing: border-box; width: 100%; max-width: var(--chat-width); margin: 0 auto; padding: 10px 24px 18px; display: flex; flex-direction: column; gap: 8px; }
 .tickets-assist-out { max-height: 40vh; overflow-y: auto; }
-.tickets-assist-row { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; border-radius: 14px; background: #2a221b; border: 1px solid #3d3329; box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.7); }
-.tickets-assist-row:focus-within { border-color: color-mix(in srgb, var(--accent) 60%, #3d3329); }
+.tickets-assist-row { padding: 6px; border-radius: 14px; background: #2a221b; border: 1px solid #3d3329;
+  box-shadow: inset 0 1px 0 rgba(255, 236, 210, 0.07), 0 8px 18px -8px rgba(0, 0, 0, 0.9); }
+
 .tickets-assist-mark { flex-shrink: 0; padding: 1px 7px; border-radius: 99px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
-input.tickets-assist-input { flex: 1; min-width: 0; border: none; background: none; padding: 6px 4px; font-size: 13px; }
-input.tickets-assist-input:focus { border: none; }
+input.tickets-assist-input { display: block; width: 100%; box-sizing: border-box; padding: 9px 12px; font-size: 13.5px; color: var(--text);
+  background: #110d0a; border: 1px solid #0a0806; border-radius: 10px; box-shadow: inset 0 3px 10px rgba(0, 0, 0, 0.7), 0 1px 0 rgba(255, 236, 210, 0.05); }
+input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
+.tickets-assist-bar { display: flex; align-items: center; gap: 10px; margin-top: 6px; padding: 0 2px 0 6px; }
+.tickets-assist-hint { flex: 1; min-width: 0; font-size: 12px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tickets-assist-send { padding: 4px 14px; border-radius: 8px; }
+.tickets-assist.busy .tickets-assist-send { opacity: 0.5; }
 .tickets-assist.busy input.tickets-assist-input { color: var(--text-faint); }
 .tickets-assist-out { position: relative; padding: 10px 34px 10px 12px; border-radius: 12px; background: rgba(0, 0, 0, 0.2); border: 1px solid #3d3329; font-size: 13px; }
 .tickets-assist-asked { color: var(--text-faint); font-size: 12px; margin-bottom: 6px; }
