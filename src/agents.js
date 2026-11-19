@@ -72,6 +72,7 @@ const DIFF_PROMPT = [
   'Find the right refs first (the current branch, the branch it split off from) when the user does not name them. Add a short summary of what the changes are about.',
   'When one command is not enough (only some folders or files, several parts), put several commands in the block, one per line: they show as one diff.',
   'For an SVN branch, use svn diff with revisions and paths or URLs, for example svn diff -r 771150:771161 ^/branches/name/Unity/Assets/Code.',
+  'Agent Hub always runs the command in the folder your session started in, even after you cd elsewhere. For a git repository in a subfolder of it (for example a package embedded in an SVN project), start the command with git -C and that subfolder, for example git -C Packages/com.example.package diff 484c6afa.',
   'Never paste a diff or parts of one into your message, also not in a diff code block: Agent Hub cannot show a pasted excerpt as well as the real diff.',
 ].join(' ');
 

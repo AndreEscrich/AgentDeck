@@ -5,8 +5,11 @@
 //
 // Only read-only diff commands run: git diff, git show and svn diff, without
 // a shell, and without the options that write files or run other programs.
+// git -C may name a git repository inside the folder (a package embedded in
+// an SVN project, for example), but no folder outside it.
 
 const { execFile } = require('child_process');
+const path = require('path');
 
 // Splits a command line into words; quotes group words.
 function words(command) {
@@ -103,20 +106,48 @@ async function runDiff(cwd, command) {
   }
   // "/diff main" means "git diff main".
   if (w[0] !== 'git' && w[0] !== 'svn') w = ['git', 'diff', ...w];
+  const title = w.join(' ');
+  // git -C sub/folder: runs there, and the diff names its files from the
+  // agent's folder (sub/folder/...), so the Changes card finds them.
+  let gitCwd = cwd;
+  let prefix = '';
+  if (w[0] === 'git' && w[1] === '-C') {
+    const inside = subfolder(cwd, w[2]);
+    if (inside === null) return { ok: false, error: `git -C can only name a folder inside ${cwd}, not "${w[2] || ''}".` };
+    gitCwd = path.resolve(cwd, w[2]);
+    prefix = inside ? inside + '/' : '';
+    w = ['git', ...w.slice(3)];
+  }
   const [tool, sub, ...rest] = w;
   const allowed = tool === 'git' ? ['diff', 'show'].includes(sub) : sub === 'diff';
   if (!allowed) return { ok: false, error: `Only git diff, git show and svn diff can be shown here, not "${w.slice(0, 2).join(' ')}".` };
   const unsafe = rest.find(a => (tool === 'svn' ? SVN_UNSAFE : UNSAFE).test(a));
   if (unsafe) return { ok: false, error: `The option ${unsafe} is not allowed here.` };
-  const title = w.join(' ');
   if (tool === 'svn') {
     const r = await run('svn', ['diff', '--internal-diff', '--non-interactive', ...rest], cwd);
     return r.ok ? { ok: true, diff: svnToGit(r.out, await svnPrefix(cwd, rest)), title } : r;
   }
   const args = ['-c', 'core.quotepath=false', sub, '--no-color', '--no-ext-diff', '--no-textconv',
-    ...(sub === 'show' ? ['--format='] : ['--ignore-cr-at-eol']), ...rest];
-  const r = await run('git', args, cwd);
-  return r.ok ? { ok: true, diff: r.out, title } : r;
+    ...(sub === 'show' ? ['--format='] : ['--ignore-cr-at-eol']),
+    ...(prefix ? [`--src-prefix=a/${prefix}`, `--dst-prefix=b/${prefix}`] : []), ...rest];
+  const r = await run('git', args, gitCwd);
+  return r.ok ? { ok: true, diff: prefixMoves(r.out, prefix), title } : r;
+}
+
+// The folder (with / between parts) that `folder` is inside `cwd`, '' for
+// cwd itself, or null when it is outside.
+function subfolder(cwd, folder) {
+  if (!folder) return null;
+  const rel = path.relative(cwd, path.resolve(cwd, folder));
+  if (rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) return null;
+  return rel.split(path.sep).join('/');
+}
+
+// --src-prefix and --dst-prefix change the a/ and b/ paths, but git writes
+// a moved or copied file's "rename from" and "copy to" lines without them.
+function prefixMoves(diff, prefix) {
+  if (!prefix) return diff;
+  return diff.replace(/^((?:rename|copy) (?:from|to) )/gm, `$1${prefix}`);
 }
 
 module.exports = { runDiff, words, svnToGit };
