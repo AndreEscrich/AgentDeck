@@ -139,7 +139,8 @@ class TicketsView {
     this.assistOut = el('div', 'tickets-assist-out hidden');
     const row = el('div', 'tickets-assist-row');
     row.append(mark, this.assistInput);
-    this.assist.append(row, this.assistOut);
+    // At the bottom of the view, like the Hub's message box: the answer shows above the field.
+    this.assist.append(this.assistOut, row);
     this.assistInput.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.runAssist(); } if (e.key === 'Escape') this.assistInput.blur(); };
     window.deck.onPmAssistStep?.((id, line) => { if (id === this.assistId) this.assistStep.textContent = line; });
     const body = el('div', 'tickets-body');
@@ -150,7 +151,7 @@ class TicketsView {
     this.backdrop = el('div', 'tickets-backdrop');
     this.backdrop.onclick = () => this.closeDetail();
     body.append(this.listBox, this.backdrop, this.detail);
-    this.view.append(bar, this.assist, body);
+    this.view.append(bar, body, this.assist);
     this.list = 'sprint';
     this.type = null;
     this.titleQ = '';     // the Title column's filter: words a title must have
