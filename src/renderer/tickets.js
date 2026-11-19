@@ -120,7 +120,8 @@ class TicketsView {
     this.account = el('button', 'tickets-account');
     this.account.type = 'button';
     this.account.onclick = () => this.signOut();
-    bar.append(this.tabs, this.search, this.filterBtn, spacer, this.when, refresh, this.bell, this.account);
+    // The PM account and Sign out live in Settings → Account (pmAccountPanel).
+    bar.append(this.tabs, this.search, this.filterBtn, spacer, this.when, refresh, this.bell);
     const body = el('div', 'tickets-body');
     this.bodyEl = body;
     this.listBox = el('section', 'tickets-list scroll');
