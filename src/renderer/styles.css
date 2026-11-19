@@ -3990,7 +3990,8 @@ select option { background: var(--bg-panel); color: var(--text); }
 .tp-crumb-name { font: inherit; color: var(--text-dim); }
 .tp-crumb-name:hover { color: var(--text); }
 .tp-crumb-link .tp-crumb-key { font: 500 12.5px var(--mono); margin-right: 6px; }
-.tp-crumb-link .tp-crumb-title { font: inherit; font-size: 12.5px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
+.tp-crumb.tp-crumb-link:has(.tp-crumb-title) { display: inline-flex; align-items: center; min-width: 0; max-width: 460px; }
+.tp-crumb-link .tp-crumb-title { display: block; min-width: 0; font: inherit; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tp-crumb-link .tp-crumb-title .ticket-tag { font-size: 0.75em; }
 .tp-crumb-here { color: var(--text); font-weight: 600; }
 /* An epic opened in the panel (renderEpic). */
