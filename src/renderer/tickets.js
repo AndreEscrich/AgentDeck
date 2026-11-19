@@ -240,6 +240,35 @@ class TicketsView {
     this.bellCount.classList.toggle('hidden', !n);
     this.bell.title = n ? `${n} new notification${n === 1 ? '' : 's'}` : 'Notifications';
     if (this.menu?.dataset.key === 'notifications') this.fillNotifications(this.menu);
+    if (this.data[this.list]) this.renderList();   // the bells next to the keys
+  }
+
+  // A ticket's unread notifications, oldest first.
+  unreadFor(key) {
+    return (this.notifications.items || []).filter(n => n.key === key && !n.read).sort((a, b) => (a.at < b.at ? -1 : 1));
+  }
+
+  // A status change you have not seen: { from, to } (the first unread
+  // change's old status, the last one's new status), or null.
+  statusNews(key) {
+    const moves = this.unreadFor(key).filter(n => n.kind === 'status');
+    if (!moves.length) return null;
+    const split = n => (n.from || n.to ? [n.from, n.to] : String(n.text).split(' → '));
+    const from = split(moves[0])[0];
+    const to = split(moves[moves.length - 1])[1];
+    return from && from !== to ? { from, to } : null;
+  }
+
+  // The red bell next to a key with unread notifications; its tooltip says
+  // what happened.
+  notifBell(t) {
+    const news = this.unreadFor(t.key);
+    if (!news.length) return '';
+    const b = el('span', 'tickets-notif-bell');
+    b.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5z" fill="currentColor"/><path d="M10 20.5a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>';
+    if (news.length > 1) b.append(el('span', 'tickets-notif-bell-n', String(news.length)));
+    b.title = news.map(n => n.text).join('\n') + '\n(open the ticket to see what changed)';
+    return b;
   }
 
   // The bell's list: the newest first; unread ones have a dot. A click
@@ -480,11 +509,15 @@ class TicketsView {
       chev.onclick = e => { e.stopPropagation(); this.toggleSubs(t); };
       key.append(chev);
     } else key.append(el('span', 'tickets-expand-gap'));
-    key.append(typeIcon(t.type), this.keyButton(t), this.agentButton(t));
+    key.append(typeIcon(t.type), this.keyButton(t), this.notifBell(t), this.agentButton(t));
     tr.append(
       key,
       cell('col-title', el('span', null, t.title)),
-      cell('col-status', this.statusButton(t)));
+      cell('col-status', ...(() => {
+        // An unseen status change shows as before → after.
+        const news = this.statusNews(t.key);
+        return news ? [el('span', 'tickets-was', news.from), el('span', 'tickets-was-arrow', '→'), this.statusButton(t)] : [this.statusButton(t)];
+      })()));
     if (this.list !== 'sprint') tr.append(cell('col-sprint', el('span', null, t.sprint)));
     tr.title = story ? `${t.title}\n(click to show or hide the subtasks)` : t.title;
     if (story) tr.onclick = e => { if (!e.target.closest('a, button')) this.toggleSubs(t); };

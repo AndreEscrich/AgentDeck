@@ -119,7 +119,7 @@ function check() {
       }
       const move = t.lastStatusTransition;
       if (move?.changedAt && move.changedAt > since && (!before || before.statusId !== t.statusId) && !byApp(t.key, move.changedAt)) {
-        add(t, 'status', `${move.from || '?'} → ${move.to || t.resolvedStatusName || '?'}`, move.changedAt, { category: t.styleMetadata?.status?.lifecycleCategory || '' });
+        add(t, 'status', `${move.from || '?'} → ${move.to || t.resolvedStatusName || '?'}`, move.changedAt, { category: t.styleMetadata?.status?.lifecycleCategory || '', from: move.from || '', to: move.to || t.resolvedStatusName || '' });
       }
       // Comments and subtasks: read only for the tickets that changed.
       const [comments, subs] = await Promise.all([

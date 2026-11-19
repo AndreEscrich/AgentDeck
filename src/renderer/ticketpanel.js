@@ -153,12 +153,58 @@
     if (this.selected === r.key) this.renderDetail(r, null);
   };
 
+  // ---------- what changed since you last looked ----------
+  //
+  // A ticket with unread notifications (pmnotify.js) shows them when its
+  // panel opens: the status changes from the old one to the new one, and
+  // new comments and subtasks slide in, lit up. A few seconds later they
+  // count as read (the bells and red counts go).
+  P.newsOf = function (t) {
+    if (this.news?.key === t.key) return this.news;
+    const items = this.unreadFor(t.key);
+    const subKey = n => (/added ([A-Z][A-Z0-9]*-\d+)/.exec(n.text) || [])[1];
+    this.news = {
+      key: t.key, ids: items.map(n => n.id), status: this.statusNews(t.key), morphed: false, readTimer: null,
+      comments: new Set(items.filter(n => n.kind === 'comment').map(n => n.at)),
+      subs: new Set(items.filter(n => n.kind === 'subtask').map(subKey).filter(Boolean)),
+      shown: new Set(),    // what already slid in (later renders keep it lit, without sliding again)
+    };
+    return this.news;
+  };
+
+  // Lights up a new comment or subtask row: it slides in the first time,
+  // and stays lit until the news is read.
+  P.markNew = function (row, id, i = 0) {
+    const news = this.news;
+    if (!news || news.read) return;
+    if (news.shown.has(id)) { row.classList.add('tp-new-lit'); return; }
+    news.shown.add(id);
+    row.classList.add('tp-new');
+    row.style.animationDelay = `${0.25 + i * 0.15}s`;
+  };
+
+  // Opening the ticket counts as seeing what changed: its notifications are
+  // read at once (its bell in the list and the red counts go). The panel
+  // keeps the changes lit for a few seconds, then drops "was …" and the
+  // light.
+  P.readNewsSoon = function (t) {
+    const news = this.newsOf(t);
+    if (!news.ids.length || news.sent || t.description === undefined) return;
+    news.sent = true;
+    window.deck.pmReadNotifications(news.ids).then(r => this.setNotifications(r));
+    news.readTimer = setTimeout(() => {
+      news.read = true;
+      if (this.detailTicket?.key === t.key && !this.editing) this.renderDetail(this.detailTicket, null);
+    }, 8000);
+  };
+
   // ---------- the panel ----------
 
   P.renderDetail = function (t, error) {
     const same = this.detailTicket?.key === t.key;
     const scroll = same ? this.detail.scrollTop : 0;
-    if (!same) { this.panelError = null; this.editing = null; }
+    if (!same) { this.panelError = null; this.editing = null; this.news = null; }
+    this.newsOf(t);
     this.detailTicket = t;
     const box = el('div', 'tp' + (this.panelBusy ? ' busy' : ''));
     box.append(this.panelTop(t), this.panelTitle(t));
@@ -177,6 +223,7 @@
     this.panelSide(t, side);
     this.detail.replaceChildren(box);
     this.detail.scrollTop = scroll;
+    this.readNewsSoon(t);
   };
 
   P.panelTop = function (t) {
@@ -436,6 +483,7 @@
       const list = el('div', 'tp-subs');
       for (const s of shown) {
         const row = el('div', 'tp-sub' + (s.done ? ' done' : ''));
+        if (this.news?.subs.has(s.key)) this.markNew(row, 's:' + s.key);
         const icon = el('span', 'tickets-type-icon');
         icon.innerHTML = SUBTASK_ICON;
         row.append(icon, el('span', 'tp-sub-key', shortKey(s.key)), el('span', 'tp-sub-title', s.title),
@@ -488,6 +536,7 @@
     if (d.error) body.append(el('div', 'tickets-error', d.error));
     for (const c of (d.items || []).filter(c => !c.deleted)) {
       const row = el('div', 'tp-comment' + (c.parentId ? ' reply' : ''));
+      if (this.news?.comments.has(c.at)) this.markNew(row, 'c:' + c.id, [...this.news.comments].sort().reverse().indexOf(c.at));
       const head = el('div', 'tp-comment-head');
       const when = c.at ? new Date(c.at) : null;
       head.append(avatar(c.author), el('span', 'tp-comment-author', c.author || 'Someone'), el('span', 'tp-comment-time', when ? when.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''));
@@ -527,6 +576,27 @@
     const status = this.statusButton(t);
     status.classList.add('tp-status');
     side.append(status);
+    // An unseen status change: the old status first, then it turns into the
+    // new one; "was …" stays under it until the news is read.
+    const news = this.news;
+    if (news?.status && !news.read && t.description !== undefined) {
+      const was = el('div', 'tp-was', `was ${news.status.from}`);
+      side.append(was);
+      if (!news.morphed) {
+        news.morphed = true;
+        const old = (this.statusLists.get(projectOf(t)) || []).find(x => x.name === news.status.from);
+        const keep = { cls: status.className, html: status.innerHTML };
+        status.className = `tickets-status tp-status status-${old?.category || 'todo'}`;
+        status.replaceChildren(el('span', null, news.status.from), el('span', 'tickets-status-caret', '▾'));
+        was.classList.add('hidden');
+        setTimeout(() => {
+          status.className = keep.cls + ' tp-morph';
+          status.innerHTML = keep.html;
+          was.classList.remove('hidden');
+          was.classList.add('tp-was-in');
+        }, 900);
+      }
+    }
     if (t.id && t.description !== undefined) side.append(this.panelAttachments(t));
     const field = (label, ...kids) => {
       const f = el('div', 'tp-field');
