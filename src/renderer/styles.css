@@ -3776,9 +3776,6 @@ button.uml-peer-chip:hover { background: color-mix(in srgb, var(--chip, var(--ac
 .tp-file-icon { display: inline-flex; color: var(--text-faint); }
 .tp-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tp-file-size { color: var(--text-faint); font-size: 11px; white-space: nowrap; }
-.tp-drop { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; padding: 14px; border-radius: 10px; border: 1.5px dashed color-mix(in srgb, var(--text-faint) 70%, transparent); background: none; color: var(--text-dim); font-size: 13px; cursor: pointer; }
-.tp-drop:hover, .tp-drop.over { border-color: var(--accent); color: var(--text); background: color-mix(in srgb, var(--accent) 6%, transparent); }
-.tp-drop-icon { display: inline-flex; }
 .tp-progress { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .tp-progress-track { flex: 1; height: 6px; border-radius: 99px; background: color-mix(in srgb, var(--text) 12%, transparent); overflow: hidden; }
 .tp-progress-fill { height: 100%; border-radius: 99px; background: #4cc38a; }
@@ -3867,4 +3864,9 @@ button.uml-peer-chip:hover { background: color-mix(in srgb, var(--chip, var(--ac
 .ticket-overlay.hidden { display: none; }
 .ticket-overlay-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.5); }
 .tickets-detail.global { display: block; position: absolute; top: 4vh; bottom: 4vh; left: 50%; right: auto; transform: translateX(-50%); width: min(1180px, calc(100vw - 48px)); }
+.tp-attach { gap: 3px; padding: 6px 8px; margin: 0 -8px; border-radius: 8px; border: 1px dashed transparent; }
+.tp-attach.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.tp-attach-head { display: flex; align-items: center; justify-content: space-between; }
+.tp-attach .tp-file { max-width: none; width: 100%; padding: 3px 8px; font-size: 12px; background: none; border-color: transparent; }
+.tp-attach .tp-file:hover { background: var(--bg-hover); border-color: var(--border); }
 

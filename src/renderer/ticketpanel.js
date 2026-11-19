@@ -2,10 +2,10 @@
 // Tickets view (tickets.js), laid out like PM's own ticket view.
 //
 // On the left: the title (the pencil edits it), Description (Edit changes
-// it), Attachments (a click opens one in the browser; drop files or click
-// to upload), Subtasks (a progress bar, each subtask's status, priority and
-// assignee; + adds one) and Comments. On the right: the status and the
-// fields, each one editable: Assignee (and Assign to me), Assignee 2, Epic,
+// it), Comments, and Subtasks (a progress bar, each subtask's status,
+// priority and assignee; + adds one). On the right: the status, a small
+// Attachments field (a click opens a file in the browser; + Add or files
+// dropped on it upload), and the fields, each one editable: Assignee (and Assign to me), Assignee 2, Epic,
 // Sprint, Components, Estimate, Priority, Story Points, Team and the
 // project's custom fields for the ticket's type (Testable revision, Branch,
 // Found in, ...). A subtask shows only the fields a subtask has.
@@ -28,7 +28,6 @@
     Lowest: ['#4c9aff', up('M6 7l6 5 6-5') + up('M6 13l6 5 6-5')],
   };
   const PENCIL = '<svg width="14" height="14" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></svg>';
-  const UPLOAD = '<svg width="20" height="20" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.1 9.2 4.5 4.5 0 0 0 7 18z" fill="currentColor" opacity=".55"/><path d="M12 16V10m-3 3l3-3 3 3" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const FILE = '<svg width="14" height="14" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><path d="M14 3v4h4" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>';
 
   function priorityIcon(p) {
@@ -171,10 +170,9 @@
     box.append(cols);
     if (t.description === undefined && !error) main.append(el('div', 'gallery-note', 'Reading the ticket…'));
     else {
-      main.append(this.panelDescription(t));
-      if (t.id) main.append(this.panelAttachments(t));
+      // Description and Comments together; the subtasks after them.
+      main.append(this.panelDescription(t), this.panelComments(t));
       if (!t.subtask) main.append(this.panelSubtasks(t));
-      main.append(this.panelComments(t));
     }
     this.panelSide(t, side);
     this.detail.replaceChildren(box);
@@ -359,57 +357,55 @@
     return div;
   };
 
+  // Attachments: a small field on the right, under the status. Its files
+  // open in the browser; + Add (or files dropped on the field) uploads.
   P.panelAttachments = function (t) {
-    const body = el('div', 'tp-section-body');
+    const box = el('div', 'tp-field tp-attach');
     const project = projectOf(t);
     const d = this.panelList('attachLists', t.key, () => window.deck.pmAttachments({ project, id: t.id }));
-    if (d.error) body.append(el('div', 'tickets-error', d.error));
-    if (d.items?.length) {
-      const list = el('div', 'tp-files');
-      for (const a of d.items) {
-        const b = el('button', 'tp-file');
-        b.type = 'button';
-        const icon = el('span', 'tp-file-icon');
-        icon.innerHTML = FILE;
-        b.append(icon, el('span', 'tp-file-name', a.name), el('span', 'tp-file-size', fileSize(a.size)));
-        b.title = `Open ${a.name} in the browser`;
-        b.onclick = async () => {
-          b.classList.add('busy');
-          const r = await window.deck.pmOpenAttachment({ project, attachmentId: a.id });
-          b.classList.remove('busy');
-          if (r?.error) { this.panelError = r.error; this.renderDetail(t, null); }
-        };
-        list.append(b);
-      }
-      body.append(list);
+    const head = el('div', 'tp-attach-head');
+    const label = el('span', 'tp-label', 'Attachments' + (d.items?.length ? ` · ${d.items.length}` : ''));
+    const add = el('button', 'tp-link', this.uploading === t.key ? 'Uploading…' : '+ Add');
+    add.type = 'button';
+    add.title = 'Attach files (or drop them here)';
+    head.append(label, add);
+    box.append(head);
+    if (d.error) box.append(el('div', 'tickets-error', d.error));
+    for (const a of d.items || []) {
+      const b = el('button', 'tp-file');
+      b.type = 'button';
+      const icon = el('span', 'tp-file-icon');
+      icon.innerHTML = FILE;
+      b.append(icon, el('span', 'tp-file-name', a.name), el('span', 'tp-file-size', fileSize(a.size)));
+      b.title = `Open ${a.name} in the browser`;
+      b.onclick = async () => {
+        b.classList.add('busy');
+        const r = await window.deck.pmOpenAttachment({ project, attachmentId: a.id });
+        b.classList.remove('busy');
+        if (r?.error) { this.panelError = r.error; this.renderDetail(t, null); }
+      };
+      box.append(b);
     }
-    const drop = el('button', 'tp-drop');
-    drop.type = 'button';
-    const icon = el('span', 'tp-drop-icon');
-    icon.innerHTML = UPLOAD;
-    drop.append(icon, el('span', null, this.uploading === t.key ? 'Uploading…' : 'Drop files or click to upload'));
     const upload = async paths => {
       if (this.uploading) return;
       this.uploading = t.key;
       this.renderDetail(t, null);
-      const r = await window.deck.pmAttach({ project, projectId: t.projectId, id: t.id, paths }).catch(err => ({ error: String(err?.message || err) }));
+      const r = await window.deck.pmAttach({ key: t.key, project, projectId: t.projectId, id: t.id, paths }).catch(err => ({ error: String(err?.message || err) }));
       this.uploading = null;
       if (Array.isArray(r)) this.attachLists.set(t.key, { items: r });
       else if (r?.error) this.panelError = r.error;
       if (this.detailTicket?.key === t.key) this.renderDetail(this.detailTicket, null);
     };
-    drop.onclick = () => upload([]);
-    drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
-    drop.ondragleave = () => drop.classList.remove('over');
-    drop.ondrop = e => {
+    add.onclick = () => upload([]);
+    box.ondragover = e => { e.preventDefault(); box.classList.add('over'); };
+    box.ondragleave = e => { if (!box.contains(e.relatedTarget)) box.classList.remove('over'); };
+    box.ondrop = e => {
       e.preventDefault();
-      drop.classList.remove('over');
+      box.classList.remove('over');
       const paths = [...e.dataTransfer.files].map(f => window.deck.pathForFile?.(f)).filter(Boolean);
       if (paths.length) upload(paths);
     };
-    body.append(drop);
-    const count = d.items?.length ? el('span', 'tp-count', String(d.items.length)) : '';
-    return this.panelSection('attachments', 'Attachments', body, count);
+    return box;
   };
 
   P.panelSubtasks = function (t) {
@@ -530,6 +526,7 @@
     const status = this.statusButton(t);
     status.classList.add('tp-status');
     side.append(status);
+    if (t.id && t.description !== undefined) side.append(this.panelAttachments(t));
     const field = (label, ...kids) => {
       const f = el('div', 'tp-field');
       f.append(el('div', 'tp-label', label), ...kids);
