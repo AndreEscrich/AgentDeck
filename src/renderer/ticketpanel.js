@@ -198,6 +198,7 @@
     else icon = typeIcon(t.type);
     const link = el('a', 'tp-key', shortKey(t.key));
     link.href = pmItemUrl(t.key);
+    link.dataset.external = '1';
     link.target = '_blank';
     link.title = `Open ${t.key} in PM`;
     crumbs.append(icon, link);
@@ -208,6 +209,7 @@
     start.onclick = () => this.onStart?.(t);
     const open = el('a', 'gallery-action', 'Open in PM');
     open.href = pmItemUrl(t.key);
+    open.dataset.external = '1';
     open.target = '_blank';
     const close = el('button', 'icon ticket-close', '✕');
     close.type = 'button';
@@ -331,6 +333,7 @@
       } else {
         const a = el('a', 'ticket-media', `🖼 ${img.dataset.fileName || 'Image'} (open in PM)`);
         a.href = pmItemUrl(t.key);
+        a.dataset.external = '1';
         a.target = '_blank';
         img.replaceWith(a);
       }
@@ -338,6 +341,7 @@
     for (const video of div.querySelectorAll('video')) {
       const a = el('a', 'ticket-media', `▶ ${video.dataset.fileName || 'Video'} (open in PM)`);
       a.href = pmItemUrl(t.key);
+      a.dataset.external = '1';
       a.target = '_blank';
       video.replaceWith(a);
     }

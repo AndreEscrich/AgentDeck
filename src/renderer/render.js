@@ -861,8 +861,9 @@ function markFileLinks(root, cwd) {
   }
 }
 
-// One handler for the whole window: a click on a web link opens it in your
-// normal browser (the main process turns window.open into shell.openExternal),
+// One handler for the whole window: a click on a Tactile PM ticket link
+// opens the ticket in the Tickets view, a click on another web link opens it
+// in your normal browser (the main process turns window.open into shell.openExternal),
 // a file link opens the file, and no link ever takes the window to another page.
 document.addEventListener('click', e => {
   const a = e.target.closest?.('a[href]');
@@ -871,7 +872,11 @@ document.addEventListener('click', e => {
   if (href.startsWith('#') || /^javascript:/i.test(href)) return;
   e.preventDefault();
   e.stopPropagation();
-  if (/^https?:/i.test(href)) window.open(a.href, '_blank');
+  // A Tactile PM ticket opens in the app's Tickets view (app.js), unless
+  // the link is marked to open PM's own page.
+  const pmKey = /^https?:/i.test(href) && !a.dataset.external && pmKeyOf(a.href);
+  if (pmKey && window.openPmTicket) window.openPmTicket(pmKey, a.href);
+  else if (/^https?:/i.test(href)) window.open(a.href, '_blank');
   else if (a.dataset.file) window.deck.openFile(a.dataset.file);
   else if (/^mailto:/i.test(href)) window.open(href, '_blank');
 }, true);

@@ -1247,6 +1247,16 @@ const ticketsView = new TicketsView({
   },
 });
 hub.onOpenTickets = () => { sfx('open'); show('tickets'); };
+// A click on a PM ticket link anywhere in the app (render.js) opens the
+// ticket's panel in the Tickets view. Without the app's PM sign-in, PM's
+// page opens in the browser as before.
+window.openPmTicket = async (key, href) => {
+  const st = await window.deck.pmStatus().catch(() => ({ connected: false }));
+  if (!st.connected) { window.open(href, '_blank'); return; }
+  sfx('open');
+  if (state.current?.kind !== 'tickets') show('tickets');
+  ticketsView.select({ key, project: key.split('-')[0], title: '', type: '' });
+};
 // PM notifications: the red count on the Hub's Tickets button and the bell
 // in the Tickets view.
 const showPmNotifications = summary => {
