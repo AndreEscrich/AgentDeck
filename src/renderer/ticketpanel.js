@@ -206,7 +206,7 @@
     const start = el('button', 'gallery-use', 'Start agent');
     start.type = 'button';
     start.title = 'Put the ticket on the Hub\'s message box: say what to do and send. A Story with two or more subtasks gets the ⑂ Split button there.';
-    start.onclick = () => this.onStart?.(t);
+    start.onclick = () => { this.closeDetail(); this.onStart?.(t); };
     const open = el('a', 'gallery-action', 'Open in PM');
     open.href = pmItemUrl(t.key);
     open.dataset.external = '1';

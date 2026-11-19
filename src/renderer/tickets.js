@@ -102,6 +102,7 @@ class TicketsView {
     this.account.onclick = () => this.signOut();
     bar.append(this.tabs, this.search, this.filterBtn, spacer, this.when, refresh, this.bell, this.account);
     const body = el('div', 'tickets-body');
+    this.bodyEl = body;
     this.listBox = el('section', 'tickets-list scroll');
     this.detail = el('section', 'tickets-detail scroll');
     // Behind the details: dims the table, and a click on it closes them.
@@ -123,9 +124,11 @@ class TicketsView {
     try { this.data = JSON.parse(localStorage.getItem('pmTicketLists') || '{}'); } catch { this.data = {}; }
     this.renderTabs();
     this.showDetailEmpty();
-    // Escape closes the floating details (and the status menu first).
-    document.addEventListener('keydown', e => {
-      if (e.key !== 'Escape' || this.menu || this.view.classList.contains('hidden') || !this.view.classList.contains('detail-open')) return;
+    // Escape closes the floating details (and the status menu first). On
+    // the window, so it comes before the app's own Escape (an agent's stop).
+    window.addEventListener('keydown', e => {
+      if (e.key !== 'Escape' || this.menu || !this.view.classList.contains('detail-open')) return;
+      if (!this.global && this.view.classList.contains('hidden')) return;
       if (document.querySelector('.lightbox, .gallery-preview')) return;
       const a = document.activeElement;
       if (this.detail.contains(a) && a.matches('input, textarea, select, [contenteditable="true"]')) return;  // the field handles it
@@ -657,7 +660,31 @@ class TicketsView {
     if (this.detailTicket && this.selected === this.detailTicket.key) this.renderDetail(this.detailTicket, null);
   }
 
+  // A ticket opened from anywhere else in the app (a PM link on a tile or in
+  // a chat): its panel pops up over everything, without leaving where you
+  // are. closeDetail puts the panel back in the Tickets view.
+  popOut(t) {
+    if (!this.globalHost) {
+      this.globalHost = el('div', 'ticket-overlay hidden');
+      const backdrop = el('div', 'ticket-overlay-backdrop');
+      backdrop.onclick = () => this.closeDetail();
+      this.globalHost.append(backdrop);
+      document.body.append(this.globalHost);
+    }
+    this.global = true;
+    this.globalHost.append(this.detail);
+    this.detail.classList.add('global');
+    this.globalHost.classList.remove('hidden');
+    this.select(t);
+  }
+
   closeDetail() {
+    if (this.global) {
+      this.global = false;
+      this.globalHost.classList.add('hidden');
+      this.detail.classList.remove('global');
+      this.bodyEl.append(this.detail);
+    }
     this.selected = null;
     this.detailTicket = null;
     this.view.classList.remove('detail-open');

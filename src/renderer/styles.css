@@ -2489,7 +2489,7 @@ button.tickets-status > span:first-child { overflow: hidden; text-overflow: elli
 button.tickets-status:hover { filter: brightness(1.2); }
 button.tickets-status:hover .tickets-status-caret { opacity: 1; }
 button.tickets-status.saving { opacity: 0.6; cursor: progress; }
-.tickets-status-menu { position: fixed; z-index: 60; min-width: 190px; overflow-y: auto; padding: 4px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-panel); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); }
+.tickets-status-menu { position: fixed; z-index: 95; min-width: 190px; overflow-y: auto; padding: 4px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-panel); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); }
 .tickets-status-group { padding: 6px 8px 3px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
 .tickets-status-item { display: flex; align-items: center; width: 100%; padding: 4px 8px; border: none; border-radius: 6px; background: none; text-align: left; }
 .tickets-status-item:hover { background: var(--bg-hover); }
@@ -3861,3 +3861,10 @@ button.uml-peer-chip:hover { background: color-mix(in srgb, var(--chip, var(--ac
 .tickets-notif-text.status-done { color: #7fdc9f; }
 .tickets-notif-text.status-in_progress { color: #9cbcff; }
 .tp-video { display: block; max-width: 100%; max-height: 420px; border-radius: 8px; background: #000; margin: 4px 0; }
+
+/* The ticket panel popped up over the whole app (a PM link outside the Tickets view). */
+.ticket-overlay { position: fixed; inset: 0; z-index: 90; }
+.ticket-overlay.hidden { display: none; }
+.ticket-overlay-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.5); }
+.tickets-detail.global { display: block; position: absolute; top: 4vh; bottom: 4vh; left: 50%; right: auto; transform: translateX(-50%); width: min(1180px, calc(100vw - 48px)); }
+
