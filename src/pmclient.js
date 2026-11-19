@@ -226,7 +226,7 @@ async function callTool(name, args) {
   await startSession();
   const result = await rpc('tools/call', { name, arguments: args || {} });
   const text = (result?.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n');
-  if (result?.isError) throw new Error(text.slice(0, 300) || `${name} failed.`);
+  if (result?.isError) throw new Error(text.slice(0, 1200) || `${name} failed.`);
   try { return JSON.parse(text); } catch { return text; }
 }
 

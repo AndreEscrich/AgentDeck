@@ -885,6 +885,9 @@ class TicketsView {
     if (r?.error) {
       apply({ ...before, saving: false });
       this.renderWhen(`${t.key}: ${r.error}`);
+      // The whole of PM's answer (the line above is cut to fit).
+      this.lastStatusError = { key: t.key, from: before.status, to: st.name, type: t.type, error: r.error };
+      window.toast?.(`${t.key}: ${r.error}`);
       return;
     }
     apply({ ...r, saving: false });
