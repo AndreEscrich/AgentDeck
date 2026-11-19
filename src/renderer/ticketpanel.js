@@ -519,6 +519,11 @@
   P.description = function (t, html = t.description) {
     const div = el('div', 'tp-desc msg-text');
     div.innerHTML = DOMPurify.sanitize(html, { ADD_TAGS: ['video'], ADD_ATTR: ['data-media-id', 'data-file-name', 'target'] });
+    // Other tickets named in the text (M2S-3627, or a PM link) become ticket
+    // cards, like in a chat: a click opens that ticket here.
+    learnPmPrefix(projectOf(t));
+    linkPmKeys(div);
+    decorateLinks(div);
     const media = new Map((t.media || []).map(m => [m.id, m]));
     for (const img of div.querySelectorAll('img[data-media-id]')) {
       const m = media.get(img.dataset.mediaId);
