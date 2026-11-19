@@ -516,7 +516,7 @@ class TicketsView {
       const c = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true });
       return (this.sort.desc ? -c : c) || b.seq - a.seq;
     });
-    const table = el('table', 'tickets-table');
+    const table = el('table', `tickets-table list-${this.list}`);
     const head = el('tr');
     for (const [id, name] of columns) {
       const th = el('th', `col-${id}`);

@@ -4013,3 +4013,7 @@ button.tp-sub:hover { background: var(--bg-hover); }
 .pm-signin-text strong { font-size: 13px; color: var(--text); }
 .pm-signin-spin { flex-shrink: 0; width: 16px; height: 16px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent); border-top-color: var(--accent); animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* Each list's table is as wide as its columns, so long titles end in … instead of widening it. */
+.tickets-table.list-sprint { width: 690px; }
+.tickets-table.list-all { width: 900px; }
+.tickets-table.list-all .col-title { width: 300px; }
