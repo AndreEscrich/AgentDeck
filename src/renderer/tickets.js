@@ -574,8 +574,8 @@ class TicketsView {
         last = this.row(t);
         body.appendChild(last);
         if (this.expanded.has(t.key)) {
-          last.classList.add('expanded');
           const subs = this.subRows(t);
+          if (subs.length) last.classList.add('expanded');
           subs[0]?.classList.add('sub-first');
           if (subs.length) { subs[subs.length - 1].classList.add('sub-last'); last = subs[subs.length - 1]; }
           for (const r of subs) body.appendChild(r);
@@ -637,9 +637,11 @@ class TicketsView {
       key.append(chev);
     } else key.append(el('span', 'tickets-expand-gap'));
     key.append(typeIcon(t.type), this.keyButton(t), this.notifBell(t), this.agentButton(t));
-    // The title opens the ticket's details, like its key.
-    const title = cell('col-title tickets-title-open', ticketTitle(t.title));
-    title.onclick = e => { e.stopPropagation(); this.select(t); };
+    // The title's text opens the ticket's details, like its key; the rest of
+    // the row (the cell around the text too) shows or hides the subtasks.
+    const text = ticketTitle(t.title, 'tickets-title-link');
+    text.onclick = e => { e.stopPropagation(); this.select(t); };
+    const title = cell('col-title', text);
     tr.append(
       key,
       title,
@@ -670,7 +672,7 @@ class TicketsView {
     };
     if (!d || (d.loading && !d.items)) return note('Reading the subtasks…');
     if (d.error && !d.items) return note(d.error);
-    if (!d.items.length) return note('No subtasks.');
+    if (!d.items.length) return [];
     const items = d.items.filter(s => this.shows(s));
     if (!items.length) return note(`All ${d.items.length} subtasks are hidden by the status filter.`);
     return items.map(s => {
@@ -683,7 +685,7 @@ class TicketsView {
       const keyBtn = this.keyButton({ ...s, type: 'Subtask', parentKey: parent.key });
       tr.append(
         cell('col-key', el('span', 'tickets-expand-gap'), icon, keyBtn, this.agentButton({ ...s, parentKey: parent.key })),
-        (() => { const c = cell('col-title tickets-title-open', ticketTitle(s.title, 'tickets-sub-title')); c.onclick = e => { e.stopPropagation(); this.select({ ...s, type: 'Subtask', parentKey: parent.key }); }; return c; })(),
+        (() => { const x = ticketTitle(s.title, 'tickets-sub-title tickets-title-link'); x.onclick = e => { e.stopPropagation(); this.select({ ...s, type: 'Subtask', parentKey: parent.key }); }; return cell('col-title', x); })(),
         cell('col-status', this.statusButton(s)));
       if (this.list !== 'sprint') {
         tr.insertBefore(cell('col-assignee', el('span', 'tickets-who' + (s.assignee ? '' : ' none'), s.assignee || '')), tr.querySelector('.col-status'));

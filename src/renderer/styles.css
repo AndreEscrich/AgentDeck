@@ -3970,8 +3970,8 @@ select option { background: var(--bg-panel); color: var(--text); }
 .pm-account-email { font-size: 13px; color: var(--text); }
 
 /* A ticket's title opens it (tickets.js row). */
-.tickets-table .tickets-title-open { cursor: pointer; }
-.tickets-table .tickets-title-open:hover > span:last-child, .tickets-table .tickets-title-open:hover .tickets-sub-title { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--text) 40%, transparent); }
+.tickets-table .tickets-title-link { cursor: pointer; border-radius: 4px; }
+.tickets-table .tickets-title-link:hover { color: var(--accent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 50%, transparent); text-underline-offset: 3px; }
 
 /* All tickets: who has each ticket (tickets.js). */
 .tickets-table .col-assignee { width: 150px; }
