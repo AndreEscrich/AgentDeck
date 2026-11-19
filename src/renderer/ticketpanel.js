@@ -286,7 +286,8 @@
       requestAnimationFrame(() => { input.focus(); input.select(); });
       return row;
     }
-    const h = el('h2', 'tp-title', t.title || shortKey(t.key));
+    const h = el('h2', 'tp-title');
+    h.appendChild(t.title ? ticketTitle(t.title) : document.createTextNode(shortKey(t.key)));
     const edit = el('button', 'icon tp-pencil');
     edit.type = 'button';
     edit.innerHTML = PENCIL;
@@ -486,7 +487,7 @@
         if (this.news?.subs.has(s.key)) this.markNew(row, 's:' + s.key);
         const icon = el('span', 'tickets-type-icon');
         icon.innerHTML = SUBTASK_ICON;
-        row.append(icon, el('span', 'tp-sub-key', shortKey(s.key)), el('span', 'tp-sub-title', s.title),
+        row.append(icon, el('span', 'tp-sub-key', shortKey(s.key)), ticketTitle(s.title, 'tp-sub-title'),
           this.statusButton(s), priorityIcon(s.priority), avatar(s.assignee));
         row.title = s.title;
         row.onclick = e => { if (!e.target.closest('button')) this.select({ ...s, type: 'Subtask', parentKey: t.key }); };

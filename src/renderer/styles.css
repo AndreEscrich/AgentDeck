@@ -2465,10 +2465,15 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .tickets-table td { padding: 6px 10px; border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
 .tickets-table th + th, .tickets-table td + td { border-left: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
 .tickets-table .col-key { width: 220px; }
-.tickets-agent { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 1px 8px 1px 6px; border: 1px solid color-mix(in srgb, var(--text-faint) 45%, transparent); border-radius: 99px; background: none; color: var(--text-faint); font-size: 11px; line-height: 16px; white-space: nowrap; vertical-align: 1px; }
-/* Shown only on the row you point at, and taking no room otherwise. */
-.tickets-row:not(:hover) .tickets-agent:not(:focus-visible) { display: none; }
-.tickets-agent:hover { background: var(--accent); border-color: var(--accent); color: #1d1813; }
+/* The small agent button after a key: a tile in miniature, always in view. */
+.tickets-agent { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-left: 6px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: none; color: var(--text-faint); vertical-align: -6px; }
+.tickets-agent .tickets-agent-liquid { color: #74d39d; opacity: 0.8; }
+.tickets-row:hover .tickets-agent { color: var(--text-dim); border-color: color-mix(in srgb, var(--text-faint) 45%, transparent); }
+.tickets-agent:hover { background: var(--accent); border-color: var(--accent); color: #1d1813 !important; }
+.tickets-agent:hover .tickets-agent-liquid { color: #1d1813; }
+/* "[UI] Streak calendar": the bracketed names as tags (ticketTitle in tickets.js). */
+.ticket-tag { display: inline-block; margin-right: 5px; padding: 0 6px; border-radius: 5px; font-size: 0.82em; font-weight: 600; line-height: 1.5; vertical-align: 0.08em;
+  color: hsl(var(--tag-hue, 30) 70% 72%); background: hsl(var(--tag-hue, 30) 45% 50% / 0.16); border: 1px solid hsl(var(--tag-hue, 30) 45% 55% / 0.35); }
 .tickets-table .col-key .tickets-type-icon { margin-right: 6px; }
 .tickets-table .tickets-row:not(.story) { cursor: default; }
 button.tickets-key { padding: 0; border: none; background: none; cursor: pointer; }

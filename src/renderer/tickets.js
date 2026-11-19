@@ -35,6 +35,25 @@ const TYPE_ICONS = {
   task: '<svg width="14" height="14" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4" fill="#4c9aff"/><path d="M7.5 12.5l3 3 6-6.5" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   epic: '<svg width="14" height="14" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4" fill="#8f7ee7"/><path d="M13 6l-5 7h4l-1 5 5-7h-4z" fill="#fff"/></svg>',
 };
+// "[UI][Daily rewards] Streak calendar": the bracketed names at the start of
+// a title are labels the team uses to sort tickets. They show as small tags
+// (each name its own colour), then the rest of the title.
+function ticketTitle(title, cls = null) {
+  const span = el('span', cls);
+  const text = String(title || '');
+  const m = text.match(/^\s*((?:\[[^\[\]]{1,40}\]\s*)+)(.*)$/);
+  if (!m || !m[2].trim()) { span.textContent = text; return span; }
+  for (const [, name] of m[1].matchAll(/\[([^\[\]]+)\]/g)) {
+    const tag = el('span', 'ticket-tag', name.trim());
+    let h = 0;
+    for (const c of name.trim().toLowerCase()) h = (h * 31 + c.charCodeAt(0)) % 360;
+    tag.style.setProperty('--tag-hue', String(h));
+    span.appendChild(tag);
+  }
+  span.append(m[2].trim());
+  return span;
+}
+
 function typeIcon(type) {
   const span = el('span', 'tickets-type-icon');
   span.innerHTML = TYPE_ICONS[(type || '').toLowerCase()] || TYPE_ICONS.task;
@@ -535,13 +554,13 @@ class TicketsView {
     return TICKET_COLUMNS.filter(c => !(c[0] === 'sprint' && this.list === 'sprint'));
   }
 
-  // The "Start agent" pill after a key: starts an agent on the ticket (its
-  // link goes on the Hub's message box, like Start agent in the details).
+  // The small agent button after a key (an agent's tile in miniature: its
+  // tank and its title): starts an agent on the ticket (its link goes on the
+  // Hub's message box, like Start agent in the details). Always in view.
   agentButton(t) {
     const b = el('button', 'tickets-agent');
     b.type = 'button';
-    b.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="11" rx="3" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 4v4M9.5 13h.01M14.5 13h.01" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
-    b.append(el('span', null, 'Start agent'));
+    b.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="1" width="13" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="3.5" y="3" width="9" height="6.5" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.1"/><path d="M3.9 6.6q2-1 4.1 0t4.1 0V8.3a1.2 1.2 0 0 1-1.2 1.2H5.1a1.2 1.2 0 0 1-1.2-1.2z" fill="currentColor" class="tickets-agent-liquid"/><path d="M4 12h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
     b.title = `Start an agent on ${t.key}: its link goes on the Hub's message box, where you say what to do`;
     b.onclick = e => { e.stopPropagation(); this.onStart?.(t); };
     return b;
@@ -578,7 +597,7 @@ class TicketsView {
     key.append(typeIcon(t.type), this.keyButton(t), this.notifBell(t), this.agentButton(t));
     tr.append(
       key,
-      cell('col-title', el('span', null, t.title)),
+      cell('col-title', ticketTitle(t.title)),
       cell('col-status', ...(() => {
         // An unseen status change shows as before → after.
         const news = this.statusNews(t.key);
@@ -615,7 +634,7 @@ class TicketsView {
       const keyBtn = this.keyButton({ ...s, type: 'Subtask', parentKey: parent.key });
       tr.append(
         cell('col-key', el('span', 'tickets-expand-gap'), icon, keyBtn, this.agentButton({ ...s, parentKey: parent.key })),
-        cell('col-title', el('span', 'tickets-sub-title', s.title)),
+        cell('col-title', ticketTitle(s.title, 'tickets-sub-title')),
         cell('col-status', this.statusButton(s)));
       if (this.list !== 'sprint') tr.append(cell('col-sprint'));
       tr.title = s.title;
