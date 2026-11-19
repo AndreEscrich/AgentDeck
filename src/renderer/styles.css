@@ -3985,3 +3985,19 @@ select option { background: var(--bg-panel); color: var(--text); }
 @keyframes ticket-landed { 0% { box-shadow: 0 0 0 0 transparent; } 20% { box-shadow: 0 0 0 2px var(--accent), 0 0 30px -4px color-mix(in srgb, var(--accent) 65%, transparent); } 100% { box-shadow: 0 0 0 0 transparent; } }
 .tickets-agent:hover .tickets-agent-eye { animation: robot-blink 1.2s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
 @keyframes robot-blink { 0%, 80%, 100% { transform: scaleY(1); } 88% { transform: scaleY(0.15); } }
+
+/* The chain Epic › Story › Subtask at the top of the ticket panel (panelTop). */
+.tp-crumb-name { font: inherit; color: var(--text-dim); }
+.tp-crumb-name:hover { color: var(--text); }
+.tp-crumb-link .tp-crumb-key { font: 500 12.5px var(--mono); margin-right: 6px; }
+.tp-crumb-link .tp-crumb-title { font: inherit; font-size: 12.5px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
+.tp-crumb-link .tp-crumb-title .ticket-tag { font-size: 0.75em; }
+.tp-crumb-here { color: var(--text); font-weight: 600; }
+/* An epic opened in the panel (renderEpic). */
+.tp-epic-status { margin-left: 4px; padding: 1px 8px; border-radius: 6px; background: var(--bg-hover); color: var(--text-dim); font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.tp-epic-tasks { margin-top: 14px; }
+.tp-epic-who { margin-left: auto; flex-shrink: 0; font-size: 12px; color: var(--text-faint); }
+.tp-epic-st { flex-shrink: 0; min-width: 90px; text-align: right; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-dim); }
+.tp-sub.done .tp-sub-title { color: var(--text-faint); }
+button.tp-sub { width: 100%; border: none; background: none; color: inherit; font: inherit; font-size: 13px; text-align: left; }
+button.tp-sub:hover { background: var(--bg-hover); }

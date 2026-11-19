@@ -201,6 +201,7 @@
   // ---------- the panel ----------
 
   P.renderDetail = function (t, error) {
+    if (t.isEpic) return this.renderEpic(t, error);
     const same = this.detailTicket?.key === t.key;
     const scroll = same ? this.detail.scrollTop : 0;
     if (!same) { this.panelError = null; this.editing = null; this.news = null; this.descTab = 'description'; }
@@ -226,15 +227,70 @@
     this.readNewsSoon(t);
   };
 
+  // An epic opened from the chain: its name, its status and its tickets
+  // (each opens with a click).
+  P.renderEpic = function (t, error) {
+    const same = this.detailTicket?.key === t.key;
+    const scroll = same ? this.detail.scrollTop : 0;
+    this.detailTicket = t;
+    const box = el('div', 'tp tp-epic');
+    box.append(this.panelTop(t));
+    const row = el('div', 'tp-title-row');
+    row.append(el('h2', 'tp-title', t.title || t.key));
+    if (t.status) row.append(el('span', 'tp-epic-status', t.status));
+    box.append(row);
+    if (error) box.append(el('div', 'tp-error', error));
+    if (!t.tasks) box.append(el('div', 'gallery-note', 'Reading the epic…'));
+    else {
+      const list = el('div', 'tp-subs tp-epic-tasks');
+      const open = t.tasks.filter(x => x.category !== 'done').length;
+      list.append(el('div', 'tp-label', `Tickets · ${t.tasks.length}${open !== t.tasks.length ? ` (${open} open)` : ''}`));
+      const order = { in_progress: 0, todo: 1, done: 2 };
+      for (const x of [...t.tasks].sort((a, b) => (order[a.category] ?? 1) - (order[b.category] ?? 1) || b.seq - a.seq)) {
+        const r = el('button', 'tp-sub' + (x.category === 'done' ? ' done' : ''));
+        r.type = 'button';
+        r.append(typeIcon(x.type), el('span', 'tp-sub-key', shortKey(x.key)), ticketTitle(x.title, 'tp-sub-title'),
+          el('span', 'tp-epic-who', x.assignee || 'Unassigned'), el('span', 'tp-epic-st', x.status || ''));
+        r.title = x.title;
+        r.onclick = () => this.select({ ...x });
+        list.append(r);
+      }
+      box.append(list);
+    }
+    this.detail.replaceChildren(box);
+    this.detail.scrollTop = scroll;
+  };
+
   P.panelTop = function (t) {
     const top = el('div', 'tp-top');
     const crumbs = el('div', 'tp-crumbs');
     const sep = () => el('span', 'tp-sep', '›');
-    // The epic: a click picks another one (a subtask follows its ticket's).
+    // The chain Epic › Story › Subtask: a click on the epic or the story opens
+    // it here. A ticket's ▾ after its epic picks another epic.
+    const goto = (key, extra = {}) => this.select({ key, project: key.split('-')[0], title: '', type: '', ...extra });
+    const epicName = t.epicName || t.epic;
+    if (t.isEpic) {
+      const icon = typeIcon('epic');
+      crumbs.append(icon, el('span', 'tp-crumb tp-crumb-here', t.title || t.key));
+      const tools = el('div', 'tp-tools');
+      const close = el('button', 'icon tp-close');
+      close.type = 'button';
+      close.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+      close.title = 'Close (Escape)';
+      close.onclick = () => this.closeDetail();
+      tools.append(close);
+      top.append(crumbs, tools);
+      return top;
+    }
+    if (epicName) {
+      const e = t.epicKey ? el('button', 'tp-crumb tp-crumb-link tp-crumb-name', '⚑ ' + epicName) : el('span', 'tp-crumb', '⚑ ' + epicName);
+      if (t.epicKey) { e.type = 'button'; e.title = `Open the epic ${epicName}`; e.onclick = () => goto(t.epicKey, { isEpic: true, title: epicName }); }
+      crumbs.append(e);
+    }
     if (t.subtask) {
-      if (t.epicName || t.epic) crumbs.append(el('span', 'tp-crumb', '⚑ ' + (t.epicName || t.epic)), sep());
+      if (epicName) crumbs.append(sep());
     } else {
-      const epic = el('button', 'tp-crumb tp-crumb-epic', '⚑ ' + (t.epicName || t.epic || 'No epic') + ' ▾');
+      const epic = el('button', 'tp-crumb tp-crumb-epic', epicName ? '▾' : '⚑ No epic ▾');
       epic.type = 'button';
       epic.title = 'Change the epic';
       epic.onclick = () => this.openMenu(epic, 'epic:' + t.key, async menu => {
@@ -305,7 +361,8 @@
       const parent = el('button', 'tp-crumb tp-crumb-link', shortKey(t.parentKey));
       parent.type = 'button';
       parent.title = `Back to ${t.parentKey}`;
-      parent.onclick = () => this.select({ key: t.parentKey, project: projectOf(t), title: '', type: 'Story' });
+      parent.onclick = () => this.select({ key: t.parentKey, project: projectOf(t), title: t.parentTitle || '', type: t.parentType || 'Story' });
+      if (t.parentTitle) { parent.textContent = ''; parent.append(el('span', 'tp-crumb-key', shortKey(t.parentKey)), ticketTitle(t.parentTitle, 'tp-crumb-title')); parent.title = `Open ${t.parentKey}: ${t.parentTitle}`; }
       crumbs.append(parent, sep());
     }
     let icon;

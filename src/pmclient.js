@@ -37,15 +37,26 @@ let session = null;     // { id, at } the MCP session from initialize
 let pending = null;     // the sign-in under way: Promise
 let electron = null;
 
+// Each copy of the app (the main one, the dev one) keeps its own sign-in
+// file: they share the settings folder, but Windows ties what safeStorage
+// encrypts to the program that saved it, so one copy cannot read the
+// other's, and before, whichever saved last signed the other out. The file
+// is named after the program's path; an older shared pm-auth.json is used
+// once if this copy can read it.
 function setup(userData) {
-  authFile = path.join(userData, 'pm-auth.json');
+  const tag = require('crypto').createHash('sha1').update(String(process.execPath).toLowerCase()).digest('hex').slice(0, 10);
+  authFile = path.join(userData, `pm-auth-${tag}.json`);
   electron = require('electron');
   auth = load();
+  if (!auth) {
+    auth = load(path.join(userData, 'pm-auth.json'));
+    if (auth) save();
+  }
 }
 
-function load() {
+function load(file = authFile) {
   try {
-    const raw = JSON.parse(fs.readFileSync(authFile, 'utf8'));
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (raw.encrypted && electron.safeStorage.isEncryptionAvailable()) {
       return JSON.parse(electron.safeStorage.decryptString(Buffer.from(raw.encrypted, 'base64')));
     }
@@ -324,7 +335,23 @@ async function tickets(list, { space } = {}) {
 }
 
 // One ticket in full: its description (HTML), epic, links and subtasks.
+// An epic key ("EI-E72"): the epic, with its tickets from every project.
+const EPIC_KEY = /^[A-Z][A-Z0-9]*-E\d+$/;
+async function epic(key) {
+  const r = await callTool('pm_get_epic', { epic: key, descriptionMaxLength: 0, limit: 500 });
+  const e = r?.epic;
+  if (!e) throw new Error(`${key} was not found.`);
+  (r.tasks || []).forEach(learn);
+  return {
+    key, isEpic: true, id: e._id || '', project: key.split('-')[0], title: e.name || key, type: 'Epic',
+    status: e.status || '', description: e.description || '', author: personName(e.author),
+    epicKey: key, epicName: e.name || '', epicColor: e.color || null,
+    tasks: (r.tasks || []).map(slim), total: r.total || (r.tasks || []).length,
+  };
+}
+
 async function ticket(key) {
+  if (EPIC_KEY.test(key)) return epic(key);
   const [t, subs] = await Promise.all([
     callTool('pm_get_task', { key }),
     callTool('pm_list_subtasks', { key }).catch(() => []),
@@ -339,6 +366,12 @@ async function ticket(key) {
   // project's statuses, like the subtasks in a list.
   const st = (await statuses(base.project).catch(() => [])).find(s => s.id === t.statusId);
   if (st) Object.assign(base, { status: st.name, category: st.category, color: st.color, textColor: st.text });
+  // A subtask names its story only by id: the story gives its key, title
+  // and epic, for the Epic › Story › Subtask chain at the top of the panel.
+  const parent = subtask && t.parentTaskId
+    ? await callTool('pm_get_task', { taskId: t.parentTaskId, projectId: t.projectId }).catch(() => null)
+    : null;
+  const epicOf = parent?.epic || t.epic;
   return {
     ...base,
     subtask,
@@ -346,8 +379,9 @@ async function ticket(key) {
     description: t.description || '',
     author: personName(t.author),
     assignee2: personName(t.assignee2, t.assignee2Id), assignee2Id: t.assignee2Id || '',
-    epicName: t.epic?.name || t.fieldNames?.epicId || '',
-    epicKey: t.epic?.key || '',
+    epicName: epicOf?.name || t.fieldNames?.epicId || parent?.fieldNames?.epicId || '',
+    epicKey: epicOf?.key || '',
+    parentKey: parent?.key || '', parentTitle: parent?.title || '', parentType: parent?.fieldNames?.taskTypeDefinitionId || parent?.type || '',
     // The fields the ticket panel shows and edits.
     priority: t.priority || '', storyPoints: t.storyPoints ?? null, estimate: t.estimate ?? null,
     epicId: t.epicId || '', sprintId: t.sprintId || '', teamId: t.teamId || '', team: t.fieldNames?.teamId || '',

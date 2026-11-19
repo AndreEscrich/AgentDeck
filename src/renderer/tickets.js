@@ -878,7 +878,7 @@ class TicketsView {
     if (this.selected !== t.key) return;
     if (full.notConnected) return this.setConnected({ connected: false });
     if (!full.error && full.subtasks?.length) this.subs.set(full.key, { items: full.subtasks, loading: false });
-    if (!full.error && t.parentKey) full.parentKey = t.parentKey;
+    if (!full.error && t.parentKey && !full.parentKey) full.parentKey = t.parentKey;
     this.renderDetail(full.error ? t : full, full.error || null);
     if (!full.error && this.expanded.has(full.key)) this.renderList();
   }
