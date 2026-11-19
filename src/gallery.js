@@ -160,4 +160,67 @@ function galleryPrompt(config) {
   ].filter(Boolean).join(' ');
 }
 
-module.exports = { setup, locate, list, folderId, knownFolder, galleryPrompt };
+// A folder name you typed: one level, no path, nothing Drive or the
+// system refuses.
+function cleanName(name) {
+  const n = String(name || '').replace(/[\/\\:*?"<>|\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim();
+  return n && n !== '.' && n !== '..' && n.length <= 120 ? n : null;
+}
+
+// A category's folder inside the gallery (an existing one, or the gallery
+// itself for ''), never a path outside it.
+function categoryDir(folder, category) {
+  if (!category) return folder;
+  const name = cleanName(category);
+  if (!name || name !== category) return null;
+  const dir = path.join(folder, name);
+  try { return fs.statSync(dir).isDirectory() ? dir : null; } catch { return null; }
+}
+
+// A new category: a folder in the gallery. Drive for desktop uploads it.
+function makeFolder(folder, name) {
+  const n = cleanName(name);
+  if (!n) return { error: 'Type a name without / \\ : * ? " < > |.' };
+  const dir = path.join(folder, n);
+  if (fs.existsSync(dir)) return { error: `${n} is already there.` };
+  try { fs.mkdirSync(dir); } catch (err) { return { error: `Could not make the folder: ${err.message}` }; }
+  return { name: n };
+}
+
+// Copies images into a category; a name that is taken gets " 2", " 3"...
+function addImages(folder, category, files) {
+  const dir = categoryDir(folder, category);
+  if (!dir) return { error: `The folder ${category} is not in the gallery any more.` };
+  const added = [];
+  const skipped = [];
+  for (const file of files || []) {
+    if (typeof file !== 'string' || !IMAGE.test(file)) { skipped.push(path.basename(String(file))); continue; }
+    const ext = path.extname(file);
+    const base = path.basename(file, ext);
+    let target = path.join(dir, base + ext);
+    for (let i = 2; fs.existsSync(target); i++) target = path.join(dir, `${base} ${i}${ext}`);
+    try { fs.copyFileSync(file, target, fs.constants.COPYFILE_EXCL); added.push(target); } catch { skipped.push(path.basename(file)); }
+  }
+  return { added, skipped };
+}
+
+// Tells onChange when something in the gallery's folder changed (Drive
+// brought new files, or you added some), at most twice a second.
+let watcher = null;
+let watching = null;
+function watch(folder, onChange) {
+  if (watching === folder) return;
+  watcher?.close();
+  watcher = null;
+  watching = folder;
+  let timer = null;
+  try {
+    watcher = fs.watch(folder, { recursive: true }, () => {
+      clearTimeout(timer);
+      timer = setTimeout(onChange, 500);
+    });
+    watcher.on('error', () => { watcher?.close(); watcher = null; watching = null; });
+  } catch { watching = null; }
+}
+
+module.exports = { setup, locate, list, folderId, knownFolder, galleryPrompt, makeFolder, addImages, watch };

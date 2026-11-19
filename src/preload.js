@@ -125,6 +125,10 @@ contextBridge.exposeInMainWorld('deck', {
   pmSplit: key => ipcRenderer.invoke('pm:split', key),
   // The Gallery's images (src/gallery.js); again: ask Drive for the folder again.
   galleryList: again => ipcRenderer.invoke('gallery:list', again),
+  // A new folder (category) and images copied into one; files: paths, or none to pick them.
+  galleryMakeFolder: name => ipcRenderer.invoke('gallery:mkdir', name),
+  galleryAdd: (category, files) => ipcRenderer.invoke('gallery:add', category, files),
+  onGalleryChanged: fn => on('gallery:changed', fn),
   pmSeed: list => ipcRenderer.invoke('pm:seed', list),
   pmDone: (keys, parent) => ipcRenderer.invoke('pm:done', keys, parent),
   pmProof: info => ipcRenderer.invoke('pm:proof', info),

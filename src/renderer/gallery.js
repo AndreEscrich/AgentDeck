@@ -3,6 +3,11 @@
 // Each folder in it is a category. You can filter by category and by name,
 // open an image large, and pick images to send to an agent as references:
 // Use as reference puts them on the Hub's message box, like dropped images.
+//
+// The view shows what is in Drive: New folder makes a category, + Add images
+// (or images dropped on a category) copies images into it, and Drive for
+// desktop uploads them. Changes in the folder, yours or ones Drive brings
+// from others, show by themselves.
 
 const THUMB_SIZE = 320;
 
@@ -30,7 +35,15 @@ class GalleryView {
     this.clearBtn = el('button', 'gallery-clear hidden', 'Clear');
     this.clearBtn.type = 'button';
     this.clearBtn.onclick = () => { this.picked.clear(); this.renderGrid(); };
-    bar.append(this.search, this.cats, this.clearBtn, this.useBtn, refresh);
+    this.newFolderBtn = el('button', 'gallery-action', '+ New folder');
+    this.newFolderBtn.type = 'button';
+    this.newFolderBtn.title = 'Make a category: a folder in the Drive folder';
+    this.newFolderBtn.onclick = () => this.askFolderName();
+    this.driveLink = el('a', 'gallery-action gallery-drive hidden', 'Open in Drive');
+    this.driveLink.target = '_blank';
+    bar.append(this.search, this.cats, this.newFolderBtn, this.clearBtn, this.useBtn, this.driveLink, refresh);
+    this.bar = bar;
+    window.deck.onGalleryChanged?.(() => { if (this.data) this.load(false, { quiet: true }); });
     this.main = el('section', 'gallery-main scroll');
     this.view.append(bar, this.main);
     this.data = null;
@@ -41,27 +54,77 @@ class GalleryView {
 
   // Shows the view; reads the folder the first time, or after the settings changed.
   open(settingsKey) {
+    const url = (() => { try { return JSON.parse(settingsKey)[0]; } catch { return ''; } })();
+    this.driveLink.href = /^https:\/\/drive\.google\.com\//.test(url) ? url : '#';
+    this.driveLink.classList.toggle('hidden', !/^https:\/\/drive\.google\.com\//.test(url));
     if (settingsKey !== this.loaded) {
       this.loaded = settingsKey;
       this.picked.clear();
       this.category = null;
+      this.data = null;
       this.load(false);
-    }
+    } else if (this.data) this.load(false, { quiet: true });
     requestAnimationFrame(() => this.search.focus());
   }
 
-  async load(again) {
-    this.main.replaceChildren(el('div', 'gallery-note', again ? 'Finding the folder in Google Drive…' : 'Reading the gallery…'));
+  // quiet: read it again without the "Reading" note (it keeps the scroll).
+  async load(again, { quiet = false } = {}) {
+    if (!quiet) this.main.replaceChildren(el('div', 'gallery-note', again ? 'Finding the folder in Google Drive…' : 'Reading the gallery…'));
     const slow = setTimeout(() => {
       if (!this.data) this.main.replaceChildren(el('div', 'gallery-note', 'Asking Google Drive where the folder is. This takes a few seconds the first time.'));
     }, 1500);
     let data;
     try { data = await window.deck.galleryList(again); } catch (err) { data = { error: String(err?.message || err) }; }
     clearTimeout(slow);
+    if (quiet && data.error) return;
     this.data = data.error ? null : data;
     if (data.error) return this.showError(data.error);
+    // A category that is gone: back to All.
+    if (this.category !== null && !data.categories.some(c => c.name === this.category)) this.category = null;
+    const scroll = this.main.scrollTop;
     this.renderCats();
     this.renderGrid();
+    if (quiet) this.main.scrollTop = scroll;
+  }
+
+  // New folder: the button turns into a name field; ↩ makes the folder.
+  askFolderName() {
+    if (!this.data) return;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'gallery-folder-name';
+    input.placeholder = 'Folder name, ↩ to make it';
+    const done = () => { input.replaceWith(this.newFolderBtn); };
+    input.onkeydown = async e => {
+      if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); done(); return; }
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const name = input.value.trim();
+      if (!name) return done();
+      const r = await window.deck.galleryMakeFolder(name);
+      if (r.error) { input.value = ''; input.placeholder = r.error; window.uiSound?.('refuse'); return; }
+      done();
+      this.category = r.name;
+      await this.load(false, { quiet: true });
+    };
+    input.onblur = () => setTimeout(() => { if (input.isConnected) done(); }, 150);
+    this.newFolderBtn.replaceWith(input);
+    input.focus();
+  }
+
+  // Copies images into a category: files are paths (dropped ones), or none
+  // to pick them in a file dialog.
+  async addTo(category, files) {
+    const r = await window.deck.galleryAdd(category, files);
+    if (r.error) return this.flash(r.error);
+    if (r.skipped?.length) this.flash(`Only PNG, JPG, WebP and GIF images can be added (${r.skipped.join(', ')} skipped).`);
+    if (r.added?.length) { window.uiSound?.('attach'); await this.load(false, { quiet: true }); }
+  }
+
+  flash(text) {
+    const note = el('div', 'gallery-flash', text);
+    this.view.appendChild(note);
+    setTimeout(() => note.remove(), 4000);
   }
 
   showError(text) {
@@ -102,11 +165,18 @@ class GalleryView {
     let shown = 0;
     for (const c of cats) {
       const images = c.images.filter(i => !q || `${c.name}/${i.sub}/${i.name}`.toLowerCase().includes(q));
-      if (!images.length && (q || this.category === null)) continue;
+      if (!images.length && q) continue;
       const section = el('section', 'gallery-section');
-      section.append(el('h3', 'gallery-heading', c.name || 'Other'));
+      const head = el('div', 'gallery-head');
+      const add = el('button', 'gallery-add', '+ Add images');
+      add.type = 'button';
+      add.title = `Copy images into ${c.name || 'the Drive folder'}; Drive uploads them. You can also drop images here.`;
+      add.onclick = () => this.addTo(c.name);
+      head.append(el('h3', 'gallery-heading', c.name || 'Other'), add);
+      section.append(head);
+      this.dropTarget(section, c.name);
       const grid = el('div', 'gallery-grid');
-      if (!images.length) grid.append(el('div', 'gallery-empty', 'No images in this folder yet.'));
+      if (!images.length) grid.append(el('div', 'gallery-empty', 'No images in this folder yet. Drop images here, or use + Add images.'));
       for (const img of images) grid.appendChild(this.tile(img, c.name));
       shown += images.length;
       section.append(grid);
@@ -117,6 +187,23 @@ class GalleryView {
     if (this.data.truncated) frag.appendChild(el('div', 'gallery-note', 'The gallery shows the first 3000 images.'));
     this.main.replaceChildren(frag);
     this.renderPicked();
+  }
+
+  // Images dropped on a category's section are copied into its folder.
+  dropTarget(section, category) {
+    const files = e => [...(e.dataTransfer?.types || [])].includes('Files');
+    let depth = 0;
+    section.addEventListener('dragenter', e => { if (files(e)) { depth++; section.classList.add('drop'); } });
+    section.addEventListener('dragleave', e => { if (files(e) && --depth <= 0) { depth = 0; section.classList.remove('drop'); } });
+    section.addEventListener('dragover', e => { if (files(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
+    section.addEventListener('drop', e => {
+      if (!files(e)) return;
+      e.preventDefault();
+      depth = 0;
+      section.classList.remove('drop');
+      const paths = [...e.dataTransfer.files].map(f => window.deck.pathForFile?.(f)).filter(Boolean);
+      if (paths.length) this.addTo(category, paths);
+    });
   }
 
   tile(img, category) {

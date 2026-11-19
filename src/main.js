@@ -418,7 +418,24 @@ app.whenReady().then(() => {
   gallery.setup(app.getPath('userData'), id => readDrivePath(getConfig(), id));
   ipcMain.handle('gallery:list', async (_e, again) => {
     const where = await gallery.locate(getConfig(), { again: !!again });
-    return where.folder ? gallery.list(where.folder) : where;
+    if (!where.folder) return where;
+    gallery.watch(where.folder, () => send('gallery:changed'));
+    return gallery.list(where.folder);
+  });
+  // New folders and images go into the folder on disk; Drive for desktop uploads them.
+  ipcMain.handle('gallery:mkdir', async (_e, name) => {
+    const where = await gallery.locate(getConfig());
+    return where.folder ? gallery.makeFolder(where.folder, name) : where;
+  });
+  ipcMain.handle('gallery:add', async (_e, category, files) => {
+    const where = await gallery.locate(getConfig());
+    if (!where.folder) return where;
+    if (!files) {
+      const r = await dialog.showOpenDialog(win, { title: `Add images to ${category || 'the gallery'}`, properties: ['openFile', 'multiSelections'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }] });
+      if (r.canceled) return { added: [], skipped: [] };
+      files = r.filePaths;
+    }
+    return gallery.addImages(where.folder, String(category || ''), Array.isArray(files) ? files : []);
   });
   ipcMain.handle('pm:seed', (_e, list) => pmTasks.seed(list));
   // A ticket run's Approve button: the subtask moves to Done in PM.

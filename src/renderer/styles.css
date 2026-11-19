@@ -2383,7 +2383,18 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .gallery-clear { padding: 4px 10px; border-radius: 7px; border: 1px solid var(--border); background: none; color: var(--text-dim); }
 .gallery-main { flex: 1; padding: 16px 24px 40px; }
 .gallery-section + .gallery-section { margin-top: 22px; }
-.gallery-heading { margin: 0 0 10px; font-size: 14px; font-weight: 700; color: var(--text); }
+.gallery-head { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+.gallery-heading { margin: 0; font-size: 14px; font-weight: 700; color: var(--text); }
+.gallery-add { padding: 1px 8px; border-radius: 6px; border: 1px solid transparent; background: none; color: var(--text-faint); font-size: 12px; }
+.gallery-section:hover .gallery-add { border-color: var(--border); color: var(--text-dim); }
+.gallery-add:hover { color: var(--text) !important; background: var(--bg-hover); }
+.gallery-section { border-radius: 10px; outline: 2px dashed transparent; outline-offset: 6px; transition: outline-color 0.12s; }
+.gallery-section.drop { outline-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.gallery-action { padding: 4px 10px; border-radius: 7px; border: 1px solid var(--border); background: none; color: var(--text-dim); white-space: nowrap; font-size: 12.5px; text-decoration: none; }
+.gallery-action:hover { color: var(--text); background: var(--bg-hover); }
+.gallery-folder-name { width: 220px; flex-shrink: 0; }
+.gallery-flash { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 30; max-width: 600px; padding: 8px 14px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--bg-panel); color: var(--text); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); font-size: 13px; }
 .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
 .gallery-tile { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 6px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-panel); cursor: zoom-in; }
 .gallery-tile:hover { border-color: color-mix(in srgb, var(--text) 25%, transparent); }
