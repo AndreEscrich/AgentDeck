@@ -186,7 +186,8 @@ class Hub {
     this.ticketsBtn = el('button', 'hub-settings-btn hub-branches-btn hub-tickets-btn');
     this.ticketsBtn.type = 'button';
     this.ticketsBtn.title = 'Tickets: your Tactile PM tickets';
-    this.ticketsBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 6v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-6z"/><path d="M14 5v2M14 11v2M14 17v2"/></svg>';
+    // Tactile PM's own mark: a ring above two curved bands, in PM's blue.
+    this.ticketsBtn.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#5b63f2" stroke-linecap="round"><circle cx="12" cy="5.6" r="2.4" stroke-width="2"/><path d="M4.5 11.2Q12 16.4 19.5 11.2" stroke-width="3.2"/><path d="M4.5 16.6Q12 21.8 19.5 16.6" stroke-width="3.2"/></svg>';
     this.ticketsBtn.onclick = () => { this.rail.classList.remove('open'); this.onOpenTickets?.(); };
     // The floating bar on the left edge: Settings on its own at the top, then
     // the branch diff, the Gallery, Tickets and Usage together.
