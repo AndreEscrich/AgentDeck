@@ -97,7 +97,7 @@ const DEFAULT_CONFIG = {
   svnProjects: ['MergeTavern'],         // empty: every project on the server (older settings: svnProject, one project)
   svnBranchFilter: [],                  // only branches whose names start with one of these (all when empty)
   githubBranches: false,                // also list your GitHub pull requests and branches (githubbranches.js)
-  galleryUrl: '',                       // the Gallery: the Google Drive link of the game's art folder (gallery.js)
+  galleryUrl: 'https://drive.google.com/drive/folders/1qaAkZp34heMdc37rbCaAttQFSOnSbfaZ',   // the Gallery: the Google Drive link of the game's art folder (gallery.js)
   galleryFolder: '',                    // the Gallery's folder on this computer, picked by hand (empty: found from galleryUrl)
   theme: 'default',                     // default | mother (the retro terminal of Alien)
   curvedScreen: true,                   // the retro theme bends the picture like a tube's glass
