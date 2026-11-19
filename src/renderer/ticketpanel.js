@@ -515,7 +515,8 @@
     };
     const box = el('div', 'tp-comment-new');
     box.append(write, send);
-    body.append(box);
+    // The newest comments come first, so the box to write one sits on top.
+    body.prepend(box);
     const count = d.items?.length ? el('span', 'tp-count', String(d.items.length)) : '';
     return this.panelSection('comments', 'Comments', body, count);
   };

@@ -3802,7 +3802,7 @@ button.uml-peer-chip:hover { background: color-mix(in srgb, var(--chip, var(--ac
 .tp-comment-author { font-weight: 600; color: var(--text); }
 .tp-comment-time { color: var(--text-faint); font-size: 11.5px; }
 .tp-comment .tp-desc { background: none; padding: 0 0 0 30px; }
-.tp-comment-new { display: flex; gap: 8px; align-items: flex-end; margin-top: 8px; }
+.tp-comment-new { display: flex; gap: 8px; align-items: flex-end; margin-bottom: 6px; }
 .tp-comment-input { resize: vertical; min-height: 40px; font: inherit; }
 .tp-comment-new .gallery-use { padding: 6px 14px; flex-shrink: 0; }
 .tp-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
