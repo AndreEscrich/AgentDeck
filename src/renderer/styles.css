@@ -4070,3 +4070,12 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .tp-delete-yes { padding: 4px 12px; border-radius: 8px; border: 1px solid var(--err); background: var(--err); color: #fff; font-weight: 600; }
 .tp-delete-yes:disabled { opacity: 0.6; }
 .tickets-status-from { padding: 6px 8px 2px; font-size: 11.5px; color: var(--text-faint); }
+/* A ticket with an agent on the Hub: its button is that agent, filled in its state's colour. */
+.tickets-agent.has-agent { color: #74d39d; border-color: color-mix(in srgb, #74d39d 55%, transparent); background: color-mix(in srgb, #74d39d 16%, transparent); }
+.tickets-agent.has-agent .tickets-agent-head { fill: color-mix(in srgb, currentColor 22%, transparent); }
+.tickets-agent.has-agent.agent-working, .tickets-agent.has-agent.agent-starting { color: #f0b04a; border-color: color-mix(in srgb, #f0b04a 55%, transparent); background: color-mix(in srgb, #f0b04a 16%, transparent); animation: agent-busy 1.6s ease-in-out infinite; }
+.tickets-agent.has-agent.agent-waiting { color: #ff9a4a; border-color: color-mix(in srgb, #ff9a4a 60%, transparent); background: color-mix(in srgb, #ff9a4a 18%, transparent); }
+.tickets-agent.has-agent.agent-error { color: var(--err); border-color: color-mix(in srgb, var(--err) 55%, transparent); background: color-mix(in srgb, var(--err) 14%, transparent); }
+@keyframes agent-busy { 50% { box-shadow: 0 0 0 3px color-mix(in srgb, #f0b04a 22%, transparent); } }
+.tp-open-agent { background: color-mix(in srgb, #74d39d 22%, var(--bg-panel)); color: #9ae6b8; border: 1px solid color-mix(in srgb, #74d39d 55%, transparent); }
+

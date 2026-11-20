@@ -374,10 +374,13 @@
     link.title = `Open ${t.key} in PM`;
     crumbs.append(icon, link);
     const tools = el('div', 'tp-tools');
-    const start = el('button', 'gallery-use', 'Start agent');
+    // An agent already on this ticket: Open agent instead of Start agent.
+    const agent = this.agentFor?.(t.key);
+    const start = el('button', 'gallery-use' + (agent ? ' tp-open-agent' : ''), agent ? 'Open agent' : 'Start agent');
     start.type = 'button';
-    start.title = 'Put the ticket on the Hub\'s message box: say what to do and send. A Story with two or more subtasks gets the ⑂ Split button there.';
-    start.onclick = () => { this.closeDetail(); this.onStart?.(t); };
+    start.title = agent ? `Open "${agent.title || 'Agent'}", the agent working on ${t.key} (${agentStateText(agent)})`
+      : 'Put the ticket on the Hub\'s message box: say what to do and send. A Story with two or more subtasks gets the ⑂ Split button there.';
+    start.onclick = () => { this.closeDetail(); if (agent) this.onOpenAgent?.(agent.id); else this.onStart?.(t); };
     const open = el('a', 'gallery-action', 'Open in PM');
     open.href = pmItemUrl(t.key);
     open.dataset.external = '1';

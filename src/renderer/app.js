@@ -1289,7 +1289,29 @@ const galleryView = new GalleryView({
 hub.onOpenGallery = () => { sfx('open'); show('gallery'); };
 // The Tickets view: your Tactile PM tickets (renderer/tickets.js). Start
 // agent puts the ticket's link on the Hub's message box.
+// The Hub's agent that works on a PM ticket: a ticket run's agent on that
+// subtask, or an agent whose first message linked it. The newest one, and
+// one with a tile before a run's briefing (which has none). null if none.
+function agentForTicket(key) {
+  if (!key) return null;
+  let best = null;
+  // The Hub's agents and parked tiles (as hubItems, without its tile places).
+  const live = [...state.agents.values()].filter(a => !a.removed);
+  const liveSessions = new Set(live.map(a => a.sessionId).filter(Boolean));
+  const items = [...live, ...[...state.parked.values()].filter(p => !liveSessions.has(p.sessionId)).map(parkedItem)];
+  for (const item of items) {
+    const own = ticketRuns.ticketOf(item)?.key || item.pmTicket;
+    if (own !== key) continue;
+    const rank = (item.lane?.role === 'briefing' ? 0 : 2) + (item.parked ? 0 : 1);
+    const at = item.finishedAt || 0;
+    if (!best || rank > best.rank || (rank === best.rank && at > best.at)) best = { rank, at, item };
+  }
+  return best ? { id: best.item.id, title: best.item.title || best.item.latestTitle || '', status: best.item.status } : null;
+}
+
 const ticketsView = new TicketsView({
+  agentFor: agentForTicket,
+  onOpenAgent: id => { show('hub'); hub.onOpen(id); },
   onStart: (t, from = {}) => {
     learnPmPrefix(t.project);
     // The ticket on its way (flyTicketToComposer): its row wraps into its key

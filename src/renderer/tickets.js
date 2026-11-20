@@ -68,6 +68,9 @@ const SUBTASK_ICON = '<svg width="14" height="14" viewBox="0 0 24 24"><rect x="3
 // The key without the project's prefix (M2S-3612 shows as 3612).
 const shortKey = key => String(key || '').replace(/^[A-Za-z][A-Za-z0-9]*-/, '');
 const FUNNEL = '<svg width="15" height="15" viewBox="0 0 24 24"><path d="M4 5h16l-6.2 7.4V19l-3.6-1.8v-4.8z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></svg>';
+// The agent button's robot head.
+const ROBOT = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6v2.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="1.6" r="1" fill="currentColor"/><rect x="2.3" y="3.8" width="11.4" height="9.4" rx="3" fill="none" stroke="currentColor" stroke-width="1.3" class="tickets-agent-head"/><circle cx="5.7" cy="7.8" r="1.25" fill="currentColor" class="tickets-agent-eye"/><circle cx="10.3" cy="7.8" r="1.25" fill="currentColor" class="tickets-agent-eye"/><path d="M6 10.9h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M1 7.2v2.4M15 7.2v2.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
+const agentStateText = a => ({ working: 'working', starting: 'starting', waiting: 'waiting for you', stuck: 'looks stuck', error: 'stopped with an error' })[a.status] || 'finished';
 const isStory = t => !t.subtask && /story/i.test(t.type || '');
 const REFRESH_MS = 5 * 60 * 1000;
 
@@ -75,8 +78,12 @@ function pmItemUrl(key) { return 'https://pm.tactilews.com/pm/items/' + key; }
 
 class TicketsView {
   // onStart(ticket): Start agent, for the Hub's message box.
-  constructor({ onStart }) {
+  // onStart(ticket): Start agent. agentFor(key): the Hub's agent that works
+  // on that ticket ({ id, title, status }) or null; onOpenAgent(id) opens it.
+  constructor({ onStart, agentFor, onOpenAgent }) {
     this.onStart = onStart;
+    this.agentFor = agentFor;
+    this.onOpenAgent = onOpenAgent;
     this.view = el('div', 'view tickets-view hidden');
     $('views').appendChild(this.view);
     const bar = el('div', 'tickets-bar');
@@ -695,9 +702,20 @@ class TicketsView {
   // The row wraps into its key, the view goes to the Hub, and the ticket
   // flies into the message box (app.js onStart). Always in view.
   agentButton(t) {
+    // An agent on the Hub already works on this ticket: the button is that
+    // agent (filled, in its state's colour) and opens it.
+    const agent = this.agentFor?.(t.key);
+    if (agent) {
+      const b = el('button', `tickets-agent has-agent agent-${agent.status || 'idle'}`);
+      b.type = 'button';
+      b.innerHTML = ROBOT;
+      b.title = `${t.key} has an agent: "${agent.title || 'Agent'}" (${agentStateText(agent)}). Click to open it.`;
+      b.onclick = e => { e.stopPropagation(); this.closeDetail(); this.onOpenAgent?.(agent.id); };
+      return b;
+    }
     const b = el('button', 'tickets-agent');
     b.type = 'button';
-    b.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6v2.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="1.6" r="1" fill="currentColor"/><rect x="2.3" y="3.8" width="11.4" height="9.4" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="5.7" cy="7.8" r="1.25" fill="currentColor" class="tickets-agent-eye"/><circle cx="10.3" cy="7.8" r="1.25" fill="currentColor" class="tickets-agent-eye"/><path d="M6 10.9h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M1 7.2v2.4M15 7.2v2.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
+    b.innerHTML = ROBOT;
     b.title = `Start an agent on ${t.key}: its link goes on the Hub's message box, where you say what to do`;
     b.onclick = e => { e.stopPropagation(); this.onStart?.(t, { row: b.closest('tr'), key: b.closest('td') }); };
     return b;
