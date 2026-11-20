@@ -7,7 +7,7 @@
 // layers, arrows nudge it. The collage stays as you left it (this
 // computer's storage).
 //
-// Create draws the collage at full size (white where nothing is), sends it
+// Create draws the collage at full size (CANVAS_BG where nothing is), sends it
 // with the prompt to Create Art (main.js gallery:create → createart.js
 // editImage), and puts what comes back on the canvas; it is saved into the
 // gallery's Created category. Undo goes back, also to the collage before
@@ -15,6 +15,8 @@
 
 const CANVAS_W = 1080;
 const CANVAS_H = 2340;
+// What empty parts of the canvas are when the collage goes to Create Art.
+const CANVAS_BG = '#4a3628';
 const GB_IDLE = 'Create Art changes the whole collage with your prompt';
 
 class GalleryBuilder {
@@ -90,7 +92,7 @@ class GalleryBuilder {
     this.render();
   }
 
-  // The board as big as the stage allows; the builder as wide as the board.
+  // The board as big as the stage allows.
   fit() {
     const h = this.stage.clientHeight - 16;
     if (h <= 40) return;
@@ -98,7 +100,6 @@ class GalleryBuilder {
     this.board.style.transform = `scale(${this.scale})`;
     this.frame.style.width = Math.round(CANVAS_W * this.scale) + 'px';
     this.frame.style.height = Math.round(CANVAS_H * this.scale) + 'px';
-    this.root.style.width = Math.max(400, Math.round(CANVAS_W * this.scale) + 48) + 'px';
     // Handles and outlines keep their size on screen.
     this.board.style.setProperty('--inv', String(1 / this.scale));
   }
@@ -288,7 +289,7 @@ class GalleryBuilder {
     canvas.width = CANVAS_W;
     canvas.height = CANVAS_H;
     const g = canvas.getContext('2d');
-    g.fillStyle = '#ffffff';
+    g.fillStyle = CANVAS_BG;
     g.fillRect(0, 0, CANVAS_W, CANVAS_H);
     for (const p of this.pieces) {
       const data = await window.deck.galleryData(p.path);
