@@ -2344,6 +2344,27 @@ async function closeRun(runId) {
   saveHub();
 }
 
+// A ticket run whose agents you all removed: the briefing (it has no tile)
+// leaves too, and the run and its box go. No question: nothing is working.
+async function closeEmptyRun(runId) {
+  const ids = ticketRuns.agentIdsOf(runId);
+  // A worker of it is still on the Hub (running or parked): not empty after all.
+  const worker = id => (id.startsWith('p:') ? ticketRuns.laneOfSession(id.slice(2))?.role === 'worker' : state.agents.get(id)?.lane?.role === 'worker');
+  if (ids.some(worker)) return;
+  await hub.removeRun(runId, ids);
+  for (const id of ids) {
+    if (id.startsWith('p:')) { state.parked.delete(id.slice(2)); continue; }
+    const a = state.agents.get(id);
+    if (!a) continue;
+    a.removed = true;
+    window.deck.closeAgent(id);
+  }
+  ticketRuns.forget(runId);
+  if (state.current?.kind === 'agent' && ids.includes(state.current.id)) show('hub');
+  refreshHub();
+  saveHub();
+}
+
 // Removes every agent of a Hub group (one panel). Busy agents are stopped,
 // after one question for all of them. Their sessions stay in History.
 async function removeGroupFromHub(ids) {
@@ -3378,6 +3399,7 @@ hub.runInfo = ticketRuns.infoOf;
 // A finished subtask's tile: "Waiting approval" and its Approve button.
 hub.ticketOf = ticketRuns.ticketOf;
 hub.onCloseRun = closeRun;
+hub.onEmptyRun = closeEmptyRun;
 ticketRuns.wire();
 hub.onOpenTactileSvn = openTactileSvn;
 $('composer-tsvn').onclick = () => openTactileSvn($('composer-tsvn').dataset.cwd);

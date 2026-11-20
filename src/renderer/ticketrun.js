@@ -337,7 +337,9 @@ const ticketRuns = (() => {
   function infoOf(runId) {
     const run = runs.get(runId);
     if (!run) return null;
-    return { key: run.key, title: run.title, progress: progressOf(run), phase: run.status, planMissing: !!run.waitingNoted && run.status === 'briefing' };
+    return { key: run.key, title: run.title, progress: progressOf(run), phase: run.status, planMissing: !!run.waitingNoted && run.status === 'briefing',
+      // Some subtask got an agent (so a box with no agent left was emptied by you).
+      started: run.subtasks.some(s => !['queued', 'skipped'].includes(s.state)) };
   }
 
   function progressOf(run) {

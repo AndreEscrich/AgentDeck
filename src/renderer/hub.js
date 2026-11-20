@@ -1033,6 +1033,13 @@ class Hub {
         box.progress.textContent = info.progress || '';
         box.el.title = `${info.key || ''} ${info.title || ''}\nAgents of this ticket run: they work on its subtasks at the same time. Click the header for the briefing and its plan`.trim();
         box.el.style.order = String(box.order);
+        // Every agent of a run that had started its subtasks is gone (you
+        // removed them): only the briefing is left, so the run closes and
+        // its box goes (app.js closeEmptyRun).
+        if (box.tiles === 0 && info.phase !== 'briefing' && info.started && !box.closing && !box.emptied) {
+          box.emptied = true;
+          queueMicrotask(() => this.onEmptyRun?.(runId));
+        }
         // Booting: the briefing is still reading the ticket.
         const b = box.briefing;
         const booting = info.phase === 'briefing' && !!b;
