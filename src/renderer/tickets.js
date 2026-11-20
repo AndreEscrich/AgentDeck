@@ -883,8 +883,9 @@ class TicketsView {
       // Only the moves PM's workflow allows from the current status, like PM's
       // website (pmclient.js workflows): a restricted scheme lists its
       // transitions and the statuses reachable from any status; an open one,
-      // or a type without a scheme, allows every status. The current status
-      // stays in the list, ticked.
+      // or a type without a scheme, allows every status (the current one
+      // ticked). A restricted workflow lists only where it can go: not the
+      // current status, under a line that names it.
       const scheme = flows?.byType?.[t.typeId] || flows?.byName?.[String(t.type || '').toLowerCase()];
       let list = all;
       if (scheme && scheme.mode !== 'open') {
@@ -893,8 +894,9 @@ class TicketsView {
         if (current) {
           for (const tr of scheme.transitions) if (tr.from === current) next.add(tr.to);
         } else if (scheme.initial) next.add(scheme.initial);
-        list = all.filter(s => s.id === current || (next.has(s.id) && scheme.statusIds.includes(s.id)));
-        if (list.length <= 1) menu.append(el('div', 'gallery-note', 'PM\'s workflow allows no other status from here.'));
+        list = all.filter(s => s.id !== current && next.has(s.id) && scheme.statusIds.includes(s.id));
+        menu.append(el('div', 'tickets-status-from', `From ${t.status} to:`));
+        if (!list.length) menu.append(el('div', 'gallery-note', 'PM\'s workflow allows no other status from here.'));
       }
       const names = { todo: 'To do', in_progress: 'In progress', done: 'Done' };
       for (const cat of ['todo', 'in_progress', 'done']) {
