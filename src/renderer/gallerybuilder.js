@@ -16,7 +16,7 @@
 const CANVAS_W = 1080;
 const CANVAS_H = 2340;
 // What empty parts of the canvas are when the collage goes to Create Art.
-const CANVAS_BG = '#4a3628';
+const CANVAS_BG = '#1e1915';
 const GB_IDLE = 'Create Art changes the whole collage with your prompt';
 
 class GalleryBuilder {
