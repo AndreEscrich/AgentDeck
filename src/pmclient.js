@@ -553,8 +553,21 @@ const commentTarget = ({ key, id, project, subtask }) => (subtask && id ? { subt
 async function comments(a) {
   const r = await callTool('pm_list_comments', commentTarget(a));
   return (Array.isArray(r) ? r : r?.items || []).map(c => ({
-    id: c._id || c.id, author: c.authorName || c.author || '', content: c.content || '', at: c.createdAt || '', parentId: c.parentCommentId || null, deleted: !!c.deletedAt,
+    id: c._id || c.id, author: c.authorName || c.author || '', authorEmail: String(c.authorEmail || '').toLowerCase(), mine: !!auth?.email && String(c.authorEmail || '').toLowerCase() === auth.email.toLowerCase(),
+    content: c.content || '', at: c.createdAt || '', edited: !!(c.updatedAt && c.createdAt && c.updatedAt > c.createdAt), parentId: c.parentCommentId || null, deleted: !!c.deletedAt,
   }));
+}
+
+// Your own comments only (PM refuses others'). PM takes the new text as
+// plain text.
+async function editComment(a) {
+  await callTool('pm_update_comment', { projectId: a.project, commentId: a.commentId, content: a.content });
+  return comments(a);
+}
+
+async function deleteComment(a) {
+  await callTool('pm_delete_comment', { projectId: a.project, commentId: a.commentId });
+  return comments(a);
 }
 
 async function addComment(a) {
@@ -622,4 +635,4 @@ async function workflows(project) {
 }
 
 module.exports = { setup, status, connect, disconnect, callTool, tickets, ticket, readTasks, statuses, subtasks, setStatus,
-  options, update, createSubtask, attachments, openAttachment, attach, comments, addComment, personName, workflows, remove };
+  options, update, createSubtask, attachments, openAttachment, attach, comments, addComment, editComment, deleteComment, personName, workflows, remove };

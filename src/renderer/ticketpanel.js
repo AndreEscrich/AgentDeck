@@ -204,7 +204,7 @@
     if (t.isEpic) return this.renderEpic(t, error);
     const same = this.detailTicket?.key === t.key;
     const scroll = same ? this.detail.scrollTop : 0;
-    if (!same) { this.panelError = null; this.editing = null; this.news = null; this.descTab = 'description'; this.deleting = null; }
+    if (!same) { this.panelError = null; this.editing = null; this.editingComment = null; this.news = null; this.descTab = 'description'; this.deleting = null; }
     this.newsOf(t);
     this.detailTicket = t;
     const box = el('div', 'tp' + (this.panelBusy ? ' busy' : ''));
@@ -729,8 +729,9 @@
       if (this.news?.comments.has(c.at)) this.markNew(row, 'c:' + c.id, [...this.news.comments].sort().reverse().indexOf(c.at));
       const head = el('div', 'tp-comment-head');
       const when = c.at ? new Date(c.at) : null;
-      head.append(avatar(c.author), el('span', 'tp-comment-author', c.author || 'Someone'), el('span', 'tp-comment-time', when ? when.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''));
-      row.append(head, this.description(t, c.content));
+      head.append(avatar(c.author), el('span', 'tp-comment-author', c.author || 'Someone'), el('span', 'tp-comment-time', (when ? when.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '') + (c.edited ? ' · edited' : '')));
+      if (c.mine) head.append(this.commentTools(t, c, target, row));
+      row.append(head, this.editingComment === c.id ? this.commentEditor(t, c, target) : this.description(t, c.content));
       body.append(row);
     }
     const write = document.createElement('textarea');
@@ -758,6 +759,88 @@
     body.prepend(box);
     const count = d.items?.length ? el('span', 'tp-count', String(d.items.length)) : '';
     return this.panelSection('comments', 'Comments', body, count);
+  };
+
+  // ---------- your own comments: edit and delete ----------
+
+  // A comment's text as plain text, for editing (PM takes plain text).
+  const plainText = html => {
+    const div = document.createElement('div');
+    div.innerHTML = DOMPurify.sanitize(String(html || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|li|div|h\d)>/gi, '\n'));
+    return div.textContent.replace(/\n{3,}/g, '\n\n').trim();
+  };
+
+  // Edit and Delete on your own comment (shown when you point at it). A
+  // comment with images or videos can only be deleted here: plain text
+  // would drop them.
+  P.commentTools = function (t, c, target, row) {
+    const tools = el('span', 'tp-comment-tools');
+    const media = /<(img|video)\b/i.test(c.content);
+    if (!media) {
+      const edit = el('button', 'tp-link', 'Edit');
+      edit.type = 'button';
+      edit.onclick = () => { this.editingComment = c.id; this.renderDetail(t, null); };
+      tools.append(edit);
+    }
+    const del = el('button', 'tp-link tp-danger', 'Delete');
+    del.type = 'button';
+    del.title = media ? 'Delete this comment (it has images or videos, so edit it in PM)' : 'Delete this comment';
+    del.onclick = () => {
+      // One more click to be sure: the comment goes for everyone.
+      tools.replaceChildren(el('span', 'tp-faint', 'Delete it for everyone?'));
+      const yes = el('button', 'tp-link tp-danger', 'Delete');
+      yes.type = 'button';
+      const no = el('button', 'tp-link', 'Keep');
+      no.type = 'button';
+      no.onclick = () => this.renderDetail(t, null);
+      yes.onclick = async () => {
+        row.classList.add('tp-comment-going');
+        const r = await window.deck.pmDeleteComment({ ...target, commentId: c.id }).catch(err => ({ error: String(err?.message || err) }));
+        this.afterComments(t, r);
+      };
+      tools.append(yes, no);
+      tools.classList.add('asking');
+    };
+    tools.append(del);
+    return tools;
+  };
+
+  P.commentEditor = function (t, c, target) {
+    const box = el('div', 'tp-comment-edit');
+    const input = document.createElement('textarea');
+    input.className = 'tp-input tp-comment-input';
+    input.value = plainText(c.content);
+    input.rows = Math.min(10, Math.max(2, input.value.split('\n').length + 1));
+    const save = el('button', 'gallery-use', 'Save');
+    save.type = 'button';
+    const cancel = el('button', 'gallery-action', 'Cancel');
+    cancel.type = 'button';
+    cancel.onclick = () => { this.editingComment = null; this.renderDetail(t, null); };
+    save.onclick = async () => {
+      const text = input.value.trim();
+      if (!text || text === plainText(c.content)) return cancel.onclick();
+      save.disabled = input.disabled = true;
+      const r = await window.deck.pmEditComment({ ...target, commentId: c.id, content: text }).catch(err => ({ error: String(err?.message || err) }));
+      this.editingComment = null;
+      this.afterComments(t, r);
+    };
+    input.onkeydown = e => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); save.onclick(); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel.onclick(); }
+    };
+    const actions = el('div', 'tp-edit-actions');
+    actions.append(save, cancel);
+    box.append(input, actions);
+    requestAnimationFrame(() => { input.focus(); input.setSelectionRange(input.value.length, input.value.length); });
+    return box;
+  };
+
+  // The comments as PM has them after a change, or PM's error.
+  P.afterComments = function (t, r) {
+    if (r?.notConnected) return this.setConnected({ connected: false });
+    if (Array.isArray(r)) { this.commentLists.set(t.key, { items: r }); this.panelError = null; }
+    else this.panelError = r?.error || 'PM did not answer.';
+    if (this.detailTicket?.key === t.key) this.renderDetail(this.detailTicket, null);
   };
 
   // ---------- the fields on the right ----------

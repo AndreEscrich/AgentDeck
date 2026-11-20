@@ -3962,6 +3962,12 @@ select option { background: var(--bg-panel); color: var(--text); }
 .tickets-check-name { padding-left: 26px; font-size: 12px; }
 .tickets-check-name.none-here > span:nth-child(2) { opacity: 0.6; }
 .tickets-check.partly .tickets-check-box { border-color: transparent; color: #fff; background: color-mix(in srgb, var(--text) 30%, transparent); }
+.tp-comment-tools { margin-left: auto; display: flex; gap: 10px; align-items: center; font-size: 12px; visibility: hidden; }
+.tp-comment:hover .tp-comment-tools, .tp-comment-tools.asking { visibility: visible; }
+.tp-comment-tools .tp-link { font-size: 12px; }
+.tp-danger { color: var(--err) !important; }
+.tp-comment-edit { padding-left: 30px; }
+.tp-comment-going { opacity: 0.4; transition: opacity 0.2s; pointer-events: none; }
 
 
 /* Settings → Tactile PM (pmAccountPanel). */

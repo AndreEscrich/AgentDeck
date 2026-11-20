@@ -147,6 +147,8 @@ contextBridge.exposeInMainWorld('deck', {
   pmAttach: args => ipcRenderer.invoke('pmc:attach', args),
   pmComments: args => ipcRenderer.invoke('pmc:comments', args),
   pmAddComment: args => ipcRenderer.invoke('pmc:addComment', args),
+  pmEditComment: args => ipcRenderer.invoke('pmc:editComment', args),
+  pmDeleteComment: args => ipcRenderer.invoke('pmc:deleteComment', args),
   pmNotifications: () => ipcRenderer.invoke('pmn:list'),
   pmCheckNotifications: () => ipcRenderer.invoke('pmn:check'),
   pmReadNotifications: ids => ipcRenderer.invoke('pmn:read', ids),

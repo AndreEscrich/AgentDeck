@@ -482,6 +482,8 @@ app.whenReady().then(() => {
   }));
   ipcMain.handle('pmc:comments', (_e, a) => pmCall(() => pmClient.comments(a || {})));
   ipcMain.handle('pmc:addComment', (_e, a) => pmWrite(a?.key, () => pmClient.addComment(a || {})));
+  ipcMain.handle('pmc:editComment', (_e, a) => pmWrite(a?.key, () => pmClient.editComment(a || {})));
+  ipcMain.handle('pmc:deleteComment', (_e, a) => pmWrite(a?.key, () => pmClient.deleteComment(a || {})));
   ipcMain.handle('pmc:setStatus', (_e, a) => pmWrite(a?.key, () => pmClient.setStatus({ key: String(a?.key || ''), id: String(a?.id || ''), project: String(a?.project || ''), statusId: String(a?.statusId || ''), subtask: !!a?.subtask })));
   // The Gallery (gallery.js): the art folder on disk and its images.
   gallery.setup(app.getPath('userData'), id => readDrivePath(getConfig(), id));
