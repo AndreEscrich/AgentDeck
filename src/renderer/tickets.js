@@ -307,16 +307,6 @@ class TicketsView {
     return (this.notifications.items || []).filter(n => n.key === key && !n.read).sort((a, b) => (a.at < b.at ? -1 : 1));
   }
 
-  // A status change you have not seen: { from, to } (the first unread
-  // change's old status, the last one's new status), or null.
-  statusNews(key) {
-    const moves = this.unreadFor(key).filter(n => n.kind === 'status');
-    if (!moves.length) return null;
-    const split = n => (n.from || n.to ? [n.from, n.to] : String(n.text).split(' → '));
-    const from = split(moves[0])[0];
-    const to = split(moves[moves.length - 1])[1];
-    return from && from !== to ? { from, to } : null;
-  }
 
   // The red bell next to a key with unread notifications; its tooltip says
   // what happened.
@@ -754,21 +744,23 @@ class TicketsView {
     key.append(typeIcon(t.type), this.keyButton(t), this.notifBell(t), this.agentButton(t));
     // The title's text opens the ticket's details, like its key; the rest of
     // the row (the cell around the text too) shows or hides the subtasks.
+    // What changed since you last saw it (changesOf) shows its old value,
+    // which then bounces into the new one.
+    const was = this.changesOf(t);
     const text = ticketTitle(t.title, 'tickets-title-link');
     text.onclick = e => { e.stopPropagation(); this.select(t); };
-    const title = cell('col-title', text);
+    const title = cell('col-title', was?.title !== undefined ? this.morph(text, ticketTitle(was.title, 'tickets-title-link')) : text);
+    const status = this.statusButton(t);
     tr.append(
       key,
       title,
-      cell('col-status', ...(() => {
-        // An unseen status change shows as before → after.
-        const news = this.statusNews(t.key);
-        return news ? [el('span', 'tickets-was', news.from), el('span', 'tickets-was-arrow', '→'), this.statusButton(t)] : [this.statusButton(t)];
-      })()));
+      cell('col-status', was?.status !== undefined ? this.morph(status, this.oldStatus(was)) : status));
     if (this.list !== 'sprint') {
       const who = el('span', 'tickets-who' + (t.assignee ? '' : ' none'), t.assignee || 'Unassigned');
-      tr.insertBefore(cell('col-assignee', who), tr.querySelector('.col-status'));
-      tr.append(cell('col-sprint', el('span', null, t.sprint)));
+      const whoWas = was?.assignee !== undefined ? el('span', 'tickets-who' + (was.assignee ? '' : ' none'), was.assignee || 'Unassigned') : null;
+      tr.insertBefore(cell('col-assignee', whoWas ? this.morph(who, whoWas) : who), tr.querySelector('.col-status'));
+      const sprint = el('span', null, t.sprint);
+      tr.append(cell('col-sprint', was?.sprint !== undefined ? this.morph(sprint, el('span', null, was.sprint)) : sprint));
     }
     tr.title = story ? `${t.title}\n(the title opens the ticket; the rest of the row shows or hides the subtasks)` : t.title;
     if (story) tr.onclick = e => { if (!e.target.closest('a, button')) this.toggleSubs(t); };
@@ -802,8 +794,8 @@ class TicketsView {
         // (No chevron gap: the row's own indent already steps it in, and the
         // agent button needs the room.)
         cell('col-key', icon, keyBtn, this.agentButton({ ...s, parentKey: parent.key })),
-        (() => { const x = ticketTitle(s.title, 'tickets-sub-title tickets-title-link'); x.onclick = e => { e.stopPropagation(); this.select({ ...s, type: 'Subtask', parentKey: parent.key }); }; return cell('col-title', x); })(),
-        cell('col-status', this.statusButton(s)));
+        (() => { const x = ticketTitle(s.title, 'tickets-sub-title tickets-title-link'); x.onclick = e => { e.stopPropagation(); this.select({ ...s, type: 'Subtask', parentKey: parent.key }); }; s._was = this.changesOf(s); return cell('col-title', s._was?.title !== undefined ? this.morph(x, ticketTitle(s._was.title, 'tickets-sub-title tickets-title-link')) : x); })(),
+        cell('col-status', s._was?.status !== undefined ? this.morph(this.statusButton(s), this.oldStatus(s._was)) : this.statusButton(s)));
       if (this.list !== 'sprint') {
         tr.insertBefore(cell('col-assignee', el('span', 'tickets-who' + (s.assignee ? '' : ' none'), s.assignee || '')), tr.querySelector('.col-status'));
         tr.append(cell('col-sprint'));
@@ -1005,6 +997,82 @@ class TicketsView {
     if (this.detailTicket && this.selected === this.detailTicket.key) this.select(this.detailTicket);
   }
 
+  // ---------- what changed while you were away ----------
+  //
+  // The view remembers each ticket as you last saw it (its status, title,
+  // assignee and sprint, kept in this window's storage): whenever the list
+  // shows while the view is open, and whenever you change something here.
+  // A ticket that changed some other way since (someone else, an agent, PM's
+  // website) shows its old value when the view opens, which then bounces
+  // into the new one, once; after that it is what you saw.
+  seenStore() {
+    if (!this.seen) {
+      try { this.seen = new Map(Object.entries(JSON.parse(localStorage.getItem('pmTicketSeen') || '{}'))); } catch { this.seen = new Map(); }
+    }
+    return this.seen;
+  }
+  seenOf(t) {
+    return { status: t.status || '', category: t.category || '', title: t.title || '', assignee: t.assignee || '', sprint: t.sprint || '' };
+  }
+  saveSeen() {
+    clearTimeout(this.seenTimer);
+    this.seenTimer = setTimeout(() => {
+      try { localStorage.setItem('pmTicketSeen', JSON.stringify(Object.fromEntries([...this.seenStore()].slice(-4000)))); } catch { /* this run only */ }
+    }, 400);
+  }
+  remember(t) {
+    if (!t?.key || t.saving) return;
+    this.seenStore().set(t.key, this.seenOf(t));
+    this.saveSeen();
+  }
+  // The old values of what changed since you saw it, or null; while the
+  // view is open it then counts as seen. Hidden, nothing counts as seen.
+  changesOf(t) {
+    if (!t?.key || t.saving || this.view.classList.contains('hidden')) return null;
+    const store = this.seenStore();
+    const before = store.get(t.key);
+    const now = this.seenOf(t);
+    store.set(t.key, now);
+    this.saveSeen();
+    if (!before) return null;
+    const out = {};
+    for (const f of ['status', 'title', 'assignee', 'sprint']) if (before[f] !== now[f] && !(f === 'sprint' && !now.sprint && !before.sprint)) out[f] = before[f];
+    if (!Object.keys(out).length) return null;
+    out.category = before.category;
+    return out;
+  }
+  oldStatus(was) {
+    const s = el('span', `tickets-status status-${was.category || 'todo'}`);
+    s.append(el('span', null, was.status));
+    return s;
+  }
+  // The new value sits where it goes, hidden; the old one over it. After a
+  // moment (one change after the other, down the list) the old one shrinks
+  // away and the new one bounces in.
+  morph(now, old) {
+    const box = el('span', 'morph');
+    old.classList.add('morph-old');
+    now.style.opacity = '0';
+    box.append(now, old);
+    const delay = 500 + Math.min(this.morphs = (this.morphs || 0) + 1, 25) * 110;
+    clearTimeout(this.morphReset);
+    this.morphReset = setTimeout(() => { this.morphs = 0; }, 1500);
+    setTimeout(() => {
+      if (!box.isConnected) { now.style.opacity = ''; return; }
+      old.animate([{ opacity: 1, transform: 'translateY(-50%) scale(1)' }, { opacity: 0, transform: 'translateY(-50%) scale(0.55)', filter: 'blur(2px)' }],
+        { duration: 280, easing: 'ease-in', fill: 'forwards' });
+      const a = now.animate([
+        { opacity: 0, transform: 'scale(0.45)' },
+        { opacity: 1, transform: 'scale(1.18)', offset: 0.55 },
+        { opacity: 1, transform: 'scale(0.93)', offset: 0.78 },
+        { opacity: 1, transform: 'scale(1)' },
+      ], { duration: 650, delay: 140, easing: 'ease-out', fill: 'both' });
+      a.finished.then(() => { now.style.opacity = ''; a.cancel(); old.remove(); }).catch(() => {});
+      window.uiSound?.('tick');
+    }, delay);
+    return box;
+  }
+
   async changeStatus(t, st) {
     if (st.id === t.statusId) return;
     const fields = ['statusId', 'status', 'category', 'color', 'textColor', 'done'];
@@ -1022,7 +1090,9 @@ class TicketsView {
       window.toast?.(`${t.key}: ${r.error}`);
       return;
     }
-    apply({ ...r, saving: false });
+    // Your own change is what you saw: remembered before the list redraws, so it does not play as news.
+    for (const c of this.copies(t.key)) { Object.assign(c, { ...r, saving: false }); this.remember(c); }
+    this.redraw();
     try { localStorage.setItem('pmTicketLists', JSON.stringify(this.data)); } catch { /* shown anyway */ }
   }
 

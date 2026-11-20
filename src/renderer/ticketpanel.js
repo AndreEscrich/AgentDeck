@@ -146,6 +146,8 @@
     if (t.parentKey) r.parentKey = t.parentKey;
     const shown = ['title', 'status', 'category', 'color', 'textColor', 'statusId', 'priority', 'assignee', 'assignee2', 'sprint', 'epic'];
     for (const c of this.copies(r.key)) for (const f of shown) if (f in r) c[f] = r[f];
+    // Your own change: what you saw, so it does not play as news later.
+    for (const c of this.copies(r.key)) this.remember(c);
     if (!r.subtask && r.subtasks) this.subs.set(r.key, { items: r.subtasks });
     try { localStorage.setItem('pmTicketLists', JSON.stringify(this.data)); } catch { /* shown anyway */ }
     this.renderList();

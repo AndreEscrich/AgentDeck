@@ -3945,8 +3945,6 @@ select option { background: var(--bg-panel); color: var(--text); }
 .tickets-notif-bell { display: inline-flex; align-items: center; gap: 1px; margin-left: 6px; color: #e5493a; vertical-align: -2px; animation: tp-bell 2.4s ease-in-out infinite; transform-origin: 50% 10%; }
 .tickets-notif-bell-n { font-size: 10px; font-weight: 700; }
 @keyframes tp-bell { 0%, 80%, 100% { transform: rotate(0); } 84% { transform: rotate(14deg); } 88% { transform: rotate(-12deg); } 92% { transform: rotate(8deg); } 96% { transform: rotate(-4deg); } }
-.tickets-was { display: inline-block; max-width: 90px; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; font-size: 10.5px; font-weight: 700; text-transform: uppercase; color: var(--text-faint); text-decoration: line-through; }
-.tickets-was-arrow { margin: 0 5px; color: var(--text-faint); font-size: 11px; }
 /* The panel: what changed since you last looked. */
 .tp-new { animation: tp-new-in 0.6s cubic-bezier(.2, .8, .3, 1.2) both, tp-new-glow 3.5s ease-out both; }
 .tp-new-lit { background: color-mix(in srgb, var(--accent) 7%, transparent); }
@@ -4084,3 +4082,9 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .tickets-expand-all svg { transition: transform 0.15s; }
 .tickets-expand-all.open svg { transform: rotate(180deg); }
 
+
+/* A value that changed while you were away (tickets.js morph): the old one over the new, then the new bounces in. */
+.morph { position: relative; display: inline-flex; align-items: center; max-width: 100%; min-width: 0; vertical-align: middle; }
+.morph-old { position: absolute; left: 0; top: 50%; transform: translateY(-50%); white-space: nowrap; pointer-events: none; }
+.morph > :first-child { transform-origin: left center; }
+.morph-old { transform-origin: left center; }
