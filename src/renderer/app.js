@@ -941,6 +941,12 @@ function show(kind, id) {
   // Back on the Hub: an update that waited for it can come now.
   if (kind === 'hub') setTimeout(offerUpdate, 400);
   $('back-to-hub').classList.toggle('hidden', !['agent', 'history', 'branches', 'gallery', 'tickets'].includes(kind));
+  // An agent opened from the Tickets view goes back there (see
+  // openAgentFromTicket), until you go somewhere else than that agent.
+  if (!['agent', 'history'].includes(kind)) state.fromTickets = null;
+  const toTickets = !!fromTicketsFor(kind, id);
+  $('back-to-hub').textContent = toTickets ? '← Tickets' : '← Hub';
+  $('back-to-hub').title = toTickets ? 'Back to the Tickets view (⌘[)' : 'Back to the Hub (⌘[)';
   for (const v of $('views').children) v.classList.add('hidden');
 
   // The Hub also has the message box: a message there starts a new agent.
@@ -1043,7 +1049,97 @@ function show(kind, id) {
 function backToHub() {
   const cur = state.current;
   if (cur?.kind === 'agent' || cur?.kind === 'history') sfx('close');
+  // Opened from a ticket's agent button: back to the Tickets view instead.
+  if (fromTicketsFor(cur?.kind, cur?.id)) return backToTickets();
   continueReview(cur, leaveToHub());
+}
+
+// ---------- agents opened from the Tickets view ----------
+//
+// A ticket's agent button (tickets.js) opens its agent the way a Hub tile
+// does: the chat grows out of the button until it fills the window, while
+// the Tickets view fades out under it. "← Tickets" (or Esc, ⌘[) is the
+// reverse: the chat shrinks back into the ticket's button and the Tickets
+// view is there again, as you left it.
+state.fromTickets = null;   // { hubId, key } of the agent opened from a ticket
+
+// The agent on screen was opened from a ticket (kind and id as in show()).
+function fromTicketsFor(kind, id) {
+  const f = state.fromTickets;
+  if (!f || !['agent', 'history'].includes(kind)) return null;
+  return (kind === 'agent' ? f.hubId === id : f.hubId === 'p:' + id) ? f : null;
+}
+
+// A tile-sized box around the button, which the chat grows out of.
+function tileRectAround(el) {
+  const r = el?.getBoundingClientRect();
+  if (!r || !r.width) return null;
+  const w = 220, h = 150;
+  const left = Math.max(8, Math.min(r.left + r.width / 2 - w / 2, window.innerWidth - w - 8));
+  const top = Math.max(8, Math.min(r.top + r.height / 2 - h / 2, window.innerHeight - h - 8));
+  return { left, top, width: w, height: h, right: left + w, bottom: top + h };
+}
+
+const TICKET_TIMING = { duration: 420, easing: 'cubic-bezier(.35,0,.15,1)', fill: 'forwards' };
+
+async function openAgentFromTicket(hubId, key, button) {
+  const from = tileRectAround(button);
+  const ticketsEl = ticketsView.view;
+  state.fromTickets = { hubId, key };
+  sfx('open');
+  state.quietOpen = true;   // hub.onOpen would play it again
+  const view = await hub.onOpen(hubId);
+  if (!view || !from) { show(state.current?.kind || 'hub', state.current?.id); return; }
+  // Keep the Tickets view under the chat while it grows.
+  ticketsEl.classList.remove('hidden');
+  const area = $('views').getBoundingClientRect();
+  const thumb = Hub.thumb(from, area);
+  Hub.liftView(view, true);
+  const runs = [
+    view.animate([
+      { transform: thumb.transform, clipPath: `inset(0px 0px 0px 0px round ${12 / thumb.scale}px)`, opacity: 0 },
+      { opacity: 1, offset: 0.12 },
+      { transform: 'none', clipPath: 'inset(0px 0px 0px 0px round 0px)', opacity: 1 },
+    ], TICKET_TIMING),
+    ticketsEl.animate([{ opacity: 1 }, { opacity: 0 }], TICKET_TIMING),
+  ];
+  await Promise.all(runs.map(a => a.finished.catch(() => {})));
+  for (const a of runs) a.cancel();
+  Hub.liftView(view, false);
+  if (!view.classList.contains('hidden')) ticketsEl.classList.add('hidden');
+}
+
+async function backToTickets() {
+  const cur = state.current;
+  const f = state.fromTickets;
+  state.fromTickets = null;
+  const view = cur.kind === 'agent' ? state.agents.get(cur.id)?.view : state.history.get(cur.id)?.view;
+  show('tickets');
+  // The ticket's button, now that the list is drawn again: the chat shrinks into it.
+  await new Promise(r => requestAnimationFrame(r));
+  const button = ticketsView.view.querySelector(`.tickets-row[data-key="${f.key}"] .tickets-agent`);
+  const home = tileRectAround(button);
+  if (!view || !home) return;
+  button.scrollIntoView({ block: 'nearest' });
+  const area = $('views').getBoundingClientRect();
+  const thumb = Hub.thumb(tileRectAround(button), area);
+  view.classList.remove('hidden');
+  Hub.liftView(view, true);
+  const runs = [
+    view.animate([
+      { transform: 'none', clipPath: 'inset(0px 0px 0px 0px round 0px)', opacity: 1 },
+      { opacity: 1, offset: 0.88 },
+      { transform: thumb.transform, clipPath: `inset(0px 0px 0px 0px round ${12 / thumb.scale}px)`, opacity: 0 },
+    ], TICKET_TIMING),
+    ticketsView.view.animate([{ opacity: 0 }, { opacity: 1 }], TICKET_TIMING),
+  ];
+  await Promise.all(runs.map(a => a.finished.catch(() => {})));
+  for (const a of runs) a.cancel();
+  Hub.liftView(view, false);
+  if (state.current?.kind === 'tickets') view.classList.add('hidden');
+  // The button lights up for a moment: this is where you came from.
+  button.classList.add('tickets-agent-home');
+  setTimeout(() => button.classList.remove('tickets-agent-home'), 900);
 }
 
 // Shows the Hub; an agent's chat shrinks back into its tile. Resolves when
@@ -1311,7 +1407,7 @@ function agentForTicket(key) {
 
 const ticketsView = new TicketsView({
   agentFor: agentForTicket,
-  onOpenAgent: id => { show('hub'); hub.onOpen(id); },
+  onOpenAgent: (id, key, button) => openAgentFromTicket(id, key, button),
   onStart: (t, from = {}) => {
     learnPmPrefix(t.project);
     // The ticket on its way (flyTicketToComposer): its row wraps into its key

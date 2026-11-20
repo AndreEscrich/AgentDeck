@@ -380,7 +380,12 @@
     start.type = 'button';
     start.title = agent ? `Open "${agent.title || 'Agent'}", the agent working on ${t.key} (${agentStateText(agent)})`
       : 'Put the ticket on the Hub\'s message box: say what to do and send. A Story with two or more subtasks gets the ⑂ Split button there.';
-    start.onclick = () => { this.closeDetail(); if (agent) this.onOpenAgent?.(agent.id); else this.onStart?.(t); };
+    start.onclick = () => {
+      // Open agent: the chat grows out of this button, and ← Tickets comes back here.
+      if (agent) { this.onOpenAgent?.(agent.id, t.key, start); this.closeDetail(); return; }
+      this.closeDetail();
+      this.onStart?.(t);
+    };
     const open = el('a', 'gallery-action', 'Open in PM');
     open.href = pmItemUrl(t.key);
     open.dataset.external = '1';

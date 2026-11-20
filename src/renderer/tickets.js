@@ -710,7 +710,7 @@ class TicketsView {
       b.type = 'button';
       b.innerHTML = ROBOT;
       b.title = `${t.key} has an agent: "${agent.title || 'Agent'}" (${agentStateText(agent)}). Click to open it.`;
-      b.onclick = e => { e.stopPropagation(); this.closeDetail(); this.onOpenAgent?.(agent.id); };
+      b.onclick = e => { e.stopPropagation(); this.onOpenAgent?.(agent.id, t.key, b); this.closeDetail(); };
       return b;
     }
     const b = el('button', 'tickets-agent');

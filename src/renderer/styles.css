@@ -4078,4 +4078,6 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .tickets-agent.has-agent.agent-error { color: var(--err); border-color: color-mix(in srgb, var(--err) 55%, transparent); background: color-mix(in srgb, var(--err) 14%, transparent); }
 @keyframes agent-busy { 50% { box-shadow: 0 0 0 3px color-mix(in srgb, #f0b04a 22%, transparent); } }
 .tp-open-agent { background: color-mix(in srgb, #74d39d 22%, var(--bg-panel)); color: #9ae6b8; border: 1px solid color-mix(in srgb, #74d39d 55%, transparent); }
+.tickets-agent-home { animation: agent-home 0.9s ease-out; }
+@keyframes agent-home { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 70%, transparent); } 100% { box-shadow: 0 0 0 10px transparent; } }
 
