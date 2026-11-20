@@ -1050,6 +1050,11 @@ class Hub {
         if (booting) this.bootUp(box, b, info);
         else if (box.ghosts.childElementCount && !box.dissolving) this.dissolveGhosts(box);
         box.el.style.flexGrow = String(Math.max(box.tiles, booting ? 3 : 1));
+        // No wider than its tiles need (a tile is 240px at most, 10px apart,
+        // plus the box's padding and border), so a run with few agents leaves
+        // the rest of the row to the panel's other tiles.
+        const n = Math.max(1, box.tiles);
+        box.el.style.maxWidth = booting ? '' : `${n * 240 + (n - 1) * 10 + 22}px`;
         // The ticket flies in from the message box (expectRunArrival).
         const arrival = this.runArrivals.get(runId);
         if (arrival) {
