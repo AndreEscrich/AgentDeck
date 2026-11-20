@@ -410,7 +410,6 @@
         const r = await window.deck.pmRemove({ key: t.key, id: t.id, project: projectOf(t), subtask: !!t.subtask }).catch(err => ({ error: String(err?.message || err) }));
         if (r?.notConnected) return this.setConnected({ connected: false });
         if (r?.error) { this.panelError = r.error; this.renderDetail(t, null); return; }
-        window.uiSound?.('close');
         window.toast?.(`${t.key} deleted. PM keeps it 60 days, so it can be brought back there.`);
         this.forget(t.key);
         if (t.subtask && t.parentKey) this.select({ key: t.parentKey, project: projectOf(t), title: t.parentTitle || '', type: t.parentType || 'Story' });

@@ -957,7 +957,6 @@ class TicketsView {
     close.title = 'Close';
     close.onclick = () => this.assistOut.classList.add('hidden');
     this.assistOut.replaceChildren(close, asked, answer);
-    window.uiSound?.(r.error ? 'error' : 'done');
     // What it changed shows: the lists and the open ticket read PM again.
     this.load(true);
     if (this.detailTicket && this.selected === this.detailTicket.key) this.select(this.detailTicket);
