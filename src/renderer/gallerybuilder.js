@@ -228,7 +228,8 @@ class GalleryBuilder {
       c.onclick = () => this.select(p.id);
       return c;
     }));
-    this.chips.classList.toggle('hidden', !this.pieces.length);
+    // The row keeps its place when empty, so the canvas never changes size.
+    this.chips.classList.toggle('empty', !this.pieces.length);
   }
 
   // Moves a piece, or resizes it from a corner keeping its shape.

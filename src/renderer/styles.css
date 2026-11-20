@@ -4127,7 +4127,10 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .gb-spinner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid rgba(243, 231, 214, 0.25); border-top-color: var(--accent); animation: gb-spin 0.9s linear infinite; }
 @keyframes gb-spin { to { transform: rotate(360deg); } }
 .gb-prompt { max-width: none; padding: 6px 32px 16px 16px; }
-.gb-chips { display: flex; flex-wrap: wrap; gap: 4px; max-height: 52px; overflow-y: auto; }
+/* One line of fixed height (it scrolls sideways), so adding pieces never shrinks the canvas. */
+.gb-chips { display: flex; flex-wrap: nowrap; gap: 4px; height: 24px; flex-shrink: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.gb-chips.empty { visibility: hidden; }
+.gb-chip { flex-shrink: 0; }
 .gb-chip { padding: 2px 8px; border-radius: 6px; border: 1px solid #4a3a2c; background: #3a2e25; color: var(--text-dim); font-size: 11.5px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gb-chip.on { border-color: var(--accent); color: var(--text); }
 .gb.busy .tickets-assist-send { opacity: 0.5; pointer-events: none; }
