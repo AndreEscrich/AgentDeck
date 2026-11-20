@@ -779,7 +779,9 @@ class TicketsView {
       icon.title = 'Subtask';
       const keyBtn = this.keyButton({ ...s, type: 'Subtask', parentKey: parent.key });
       tr.append(
-        cell('col-key', el('span', 'tickets-expand-gap'), icon, keyBtn, this.agentButton({ ...s, parentKey: parent.key })),
+        // (No chevron gap: the row's own indent already steps it in, and the
+        // agent button needs the room.)
+        cell('col-key', icon, keyBtn, this.agentButton({ ...s, parentKey: parent.key })),
         (() => { const x = ticketTitle(s.title, 'tickets-sub-title tickets-title-link'); x.onclick = e => { e.stopPropagation(); this.select({ ...s, type: 'Subtask', parentKey: parent.key }); }; return cell('col-title', x); })(),
         cell('col-status', this.statusButton(s)));
       if (this.list !== 'sprint') {
