@@ -618,6 +618,8 @@ class TicketsView {
         this.renderList();
       };
       cellBox.append(el('span', 'tickets-th-name', name), sort);
+      // Key: open or close every story's subtasks at once.
+      if (id === 'key') cellBox.prepend(this.expandAllButton(shown));
       const only = filterOf[id];
       if (only) {
         const f = el('button', 'tickets-th-btn tickets-th-filter' + (active[only] ? ' on' : ''));
@@ -809,6 +811,25 @@ class TicketsView {
       tr.title = s.title;
       return tr;
     });
+  }
+
+  // The ⌄⌄ button in the Key heading: every story in the list (in an open
+  // epic) shows its subtasks, or, when they all do, none.
+  expandAllButton(shown) {
+    const stories = shown.filter(t => isStory(t) && !this.foldedEpics.has(t.epic || ''));
+    const allOpen = stories.length > 0 && stories.every(t => this.expanded.has(t.key));
+    const b = el('button', 'tickets-th-btn tickets-expand-all' + (allOpen ? ' open' : ''));
+    b.type = 'button';
+    b.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 2.5l3 3 3-3M3 6.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    b.title = allOpen ? 'Hide every story\'s subtasks' : `Show the subtasks of every story (${stories.length})`;
+    b.disabled = !stories.length;
+    b.onclick = e => {
+      e.stopPropagation();
+      if (allOpen) for (const t of stories) this.expanded.delete(t.key);
+      else for (const t of stories) if (!this.expanded.has(t.key)) { this.expanded.add(t.key); this.loadSubs(t.key); }
+      this.renderList();
+    };
+    return b;
   }
 
   toggleSubs(t) {

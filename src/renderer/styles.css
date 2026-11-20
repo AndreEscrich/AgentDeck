@@ -4080,4 +4080,7 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .tp-open-agent { background: color-mix(in srgb, #74d39d 22%, var(--bg-panel)); color: #9ae6b8; border: 1px solid color-mix(in srgb, #74d39d 55%, transparent); }
 .tickets-agent-home { animation: agent-home 0.9s ease-out; }
 @keyframes agent-home { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 70%, transparent); } 100% { box-shadow: 0 0 0 10px transparent; } }
+.tickets-expand-all { margin-right: 4px; }
+.tickets-expand-all svg { transition: transform 0.15s; }
+.tickets-expand-all.open svg { transform: rotate(180deg); }
 
