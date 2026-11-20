@@ -574,12 +574,16 @@ class TicketsView {
     const shown = this.items().filter(t => (this.type === null || (t.type || 'Other') === this.type) && this.shows(t) && whoOk(t) && sprintOk(t) && titleOk(t)
       && (!q || `${t.key} ${t.title} ${t.epic} ${t.sprint} ${t.assignee || 'unassigned'}`.toLowerCase().includes(q)));
     const columns = this.columns();
-    if (!columns.some(c => c[0] === this.sort.col)) this.sort = { col: 'key', desc: true };
-    const by = (columns.find(c => c[0] === this.sort.col) || columns[0])[2];
+    // A column's sort, or none (col null): then the tickets go by title,
+    // alphabetically.
+    if (this.sort.col && !columns.some(c => c[0] === this.sort.col)) this.sort = { col: 'key', desc: true };
+    const column = this.sort.col && columns.find(c => c[0] === this.sort.col);
+    const by = column ? column[2] : t => t.title.toLowerCase();
+    const desc = column ? this.sort.desc : false;
     shown.sort((a, b) => {
       const x = by(a), y = by(b);
       const c = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true });
-      return (this.sort.desc ? -c : c) || b.seq - a.seq;
+      return (desc ? -c : c) || b.seq - a.seq;
     });
     const table = el('table', `tickets-table list-${this.list}`);
     const head = el('tr');
@@ -595,12 +599,16 @@ class TicketsView {
       const th = el('th', `col-${id}`);
       const cellBox = el('div', 'tickets-th');
       const sorted = this.sort.col === id;
+      const first = id === 'key';   // the key starts with the newest first
+      // A click goes: one way, the other way, then no sort (by title, A to Z).
+      const next = !sorted ? { col: id, desc: first }
+        : this.sort.desc === first ? { col: id, desc: !first } : { col: null, desc: false };
       const sort = el('button', 'tickets-th-btn tickets-sort-btn' + (sorted ? ' on' : ''), sorted ? (this.sort.desc ? '↓' : '↑') : '↕');
       sort.type = 'button';
-      sort.title = `Sort by ${name.toLowerCase()}`;
+      sort.title = next.col ? `Sort by ${name.toLowerCase()}${next.desc ? ' (descending)' : ''}` : 'No sort: by title, A to Z';
       sort.onclick = e => {
         e.stopPropagation();
-        this.sort = sorted ? { col: id, desc: !this.sort.desc } : { col: id, desc: id === 'key' };
+        this.sort = next;
         this.renderList();
       };
       cellBox.append(el('span', 'tickets-th-name', name), sort);
