@@ -157,6 +157,8 @@ contextBridge.exposeInMainWorld('deck', {
   // A new folder (category) and images copied into one; files: paths, or none to pick them.
   galleryMakeFolder: name => ipcRenderer.invoke('gallery:mkdir', name),
   galleryAdd: (category, files) => ipcRenderer.invoke('gallery:add', category, files),
+  galleryData: file => ipcRenderer.invoke('gallery:data', file),
+  galleryCreate: a => ipcRenderer.invoke('gallery:create', a),
   onGalleryChanged: fn => on('gallery:changed', fn),
   pmSeed: list => ipcRenderer.invoke('pm:seed', list),
   onLock: fn => on('agent:lock', fn),

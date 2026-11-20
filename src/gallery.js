@@ -223,4 +223,34 @@ function watch(folder, onChange) {
   } catch { watching = null; }
 }
 
-module.exports = { setup, locate, list, folderId, knownFolder, galleryPrompt, makeFolder, addImages, watch };
+// ---------- the builder (renderer/gallery.js) ----------
+
+// An image of the gallery as a data: URL, for the builder's canvas to draw
+// and send; only files inside the gallery's folder.
+function imageData(folder, file) {
+  const p = path.resolve(String(file || ''));
+  const rel = path.relative(folder, p);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel) || !IMAGE.test(p)) return null;
+  try {
+    const ext = path.extname(p).slice(1).toLowerCase();
+    const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`;
+    return `data:${mime};base64,${fs.readFileSync(p).toString('base64')}`;
+  } catch { return null; }
+}
+
+// What Create made goes into the Created category (made when missing),
+// named after the prompt and the time.
+const CREATED = 'Created';
+function saveCreated(folder, png, prompt) {
+  const dir = path.join(folder, CREATED);
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (err) { return { error: `Could not make the Created folder: ${err.message}` }; }
+  const words = (cleanName(prompt) || 'Created').split(' ').slice(0, 6).join(' ').slice(0, 60);
+  const d = new Date();
+  const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}.${String(d.getMinutes()).padStart(2, '0')}`;
+  let target = path.join(dir, `${words} ${stamp}.png`);
+  for (let i = 2; fs.existsSync(target); i++) target = path.join(dir, `${words} ${stamp} ${i}.png`);
+  try { fs.writeFileSync(target, png); } catch (err) { return { error: `Could not save the image: ${err.message}` }; }
+  return { path: target, category: CREATED };
+}
+
+module.exports = { setup, locate, list, folderId, knownFolder, galleryPrompt, makeFolder, addImages, watch, imageData, saveCreated };

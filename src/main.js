@@ -508,6 +508,32 @@ app.whenReady().then(() => {
     }
     return gallery.addImages(where.folder, String(category || ''), Array.isArray(files) ? files : []);
   });
+  // The Gallery's builder: images for its canvas, and Create (createart.js
+  // edit_image on the collage), saved into the gallery's Created category at
+  // the canvas's size.
+  ipcMain.handle('gallery:data', async (_e, file) => {
+    const where = await gallery.locate(getConfig());
+    return where.folder ? gallery.imageData(where.folder, file) : null;
+  });
+  ipcMain.handle('gallery:create', async (_e, a) => {
+    const where = await gallery.locate(getConfig());
+    if (!where.folder) return where;
+    const m = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(String(a?.image || ''));
+    const prompt = String(a?.prompt || '').trim();
+    if (!m || !prompt) return { error: 'Nothing to send.' };
+    const r = await require('./createart').editImage({ imageBase64: m[2], mimeType: m[1], prompt });
+    if (r.error) return r;
+    let png = r.png;
+    const w = Number(a?.width) || 0, h = Number(a?.height) || 0;
+    try {
+      const img = nativeImage.createFromBuffer(r.png);
+      const size = img.getSize();
+      if (w && h && size.width && (size.width !== w || size.height !== h)) png = img.resize({ width: w, height: h, quality: 'best' }).toPNG();
+      else if (!/^\x89PNG/.test(r.png.subarray(0, 4).toString('latin1'))) png = img.toPNG();
+    } catch { /* keep what came */ }
+    const saved = gallery.saveCreated(where.folder, png, prompt);
+    return saved.error ? saved : { ...saved, creationId: r.id };
+  });
   ipcMain.handle('pm:seed', (_e, list) => pmTasks.seed(list));
   ipcMain.handle('gdoc:title', (_e, url) => require('./gdocs').title(url));
   ipcMain.handle('github:lookup', (_e, what) => require('./github').lookup(what));

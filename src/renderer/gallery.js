@@ -8,6 +8,10 @@
 // (or images dropped on a category) copies images into it, and Drive for
 // desktop uploads them. Changes in the folder, yours or ones Drive brings
 // from others, show by themselves.
+//
+// The library takes the whole left side. On the right is the builder
+// (gallerybuilder.js): a canvas you drag images onto to make a collage, and
+// a prompt under it that changes the collage with Create Art.
 
 const THUMB_SIZE = 320;
 
@@ -45,7 +49,10 @@ class GalleryView {
     this.bar = bar;
     window.deck.onGalleryChanged?.(() => { if (this.data) this.load(false, { quiet: true }); });
     this.main = el('section', 'gallery-main scroll');
-    this.view.append(bar, this.main);
+    const left = el('div', 'gallery-left');
+    left.append(bar, this.main);
+    this.builder = new GalleryBuilder(this);
+    this.view.append(left, this.builder.root);
     this.data = null;
     this.category = null;   // null: every category
     this.picked = new Set();   // image paths
@@ -64,7 +71,7 @@ class GalleryView {
       this.data = null;
       this.load(false);
     } else if (this.data) this.load(false, { quiet: true });
-    requestAnimationFrame(() => this.search.focus());
+    requestAnimationFrame(() => { this.search.focus(); this.builder.fit(); });
   }
 
   // quiet: read it again without the "Reading" note (it keeps the scroll).
@@ -228,6 +235,14 @@ class GalleryView {
     };
     tile.append(box, check, el('div', 'gallery-name', img.name.replace(/\.[^.]+$/, '')));
     tile.onclick = () => this.preview(img, category);
+    // Dragged onto the canvas, it becomes a piece of the collage.
+    tile.draggable = true;
+    tile.ondragstart = e => {
+      e.dataTransfer.setData('application/x-gallery-image', JSON.stringify({ path: img.path, name: img.name, mtime: img.mtime }));
+      e.dataTransfer.effectAllowed = 'copy';
+      const pic = tile.querySelector('img');
+      if (pic?.complete && pic.naturalWidth) e.dataTransfer.setDragImage(pic, pic.width / 2, pic.height / 2);
+    };
     return tile;
   }
 
@@ -254,7 +269,10 @@ class GalleryView {
     const reveal = el('button', null, IS_MAC ? 'Show in Finder' : 'Show in Explorer');
     reveal.type = 'button';
     reveal.onclick = () => window.deck.revealFile(img.path);
-    actions.append(use, reveal);
+    const toCanvas = el('button', null, 'Add to canvas');
+    toCanvas.type = 'button';
+    toCanvas.onclick = () => { close(); this.builder.add({ path: img.path, name: img.name, mtime: img.mtime }); };
+    actions.append(use, toCanvas, reveal);
     info.append(name, meta, actions);
     overlay.append(pic, info);
     const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey, true); };
