@@ -120,7 +120,15 @@ const ANSWER_PROMPT = [
   'Keep paragraphs short. Answers to questions, short replies and conversation do not need this shape.',
 ].join(' ');
 
-const SYSTEM_PROMPT = `${ANSWER_PROMPT}\n\n${EFFICIENCY_PROMPT}\n\n${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}\n\n${RUN_PROMPT}\n\n${MILESTONE_PROMPT}\n\n${ART_PROMPT}`;
+// A comment an agent posts on a Tactile PM ticket is read by QA, who go and
+// check the fix: so it is a few lines, not a report.
+const PM_COMMENT_PROMPT = [
+  'When you post a comment on a Tactile PM ticket (pm_create_comment), QA reads it to go and check the fix. Keep it extremely short and direct, at most about 4 lines:',
+  'what was fixed (one line, in plain words as a player or tester sees it), where and how to check it in the game (screen, steps, cheat if there is one), and the build or revision it is in, or "not committed yet".',
+  'No file lists, code names, explanations of the cause, headings or background, unless the user asks for them.',
+].join(' ');
+
+const SYSTEM_PROMPT = `${ANSWER_PROMPT}\n\n${EFFICIENCY_PROMPT}\n\n${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}\n\n${RUN_PROMPT}\n\n${MILESTONE_PROMPT}\n\n${ART_PROMPT}\n\n${PM_COMMENT_PROMPT}`;
 
 // The Unity bridge of the project an agent works in (com.tactilegames.unity-mcp,
 // Library/McpServer), wherever in the repository it works: a project's

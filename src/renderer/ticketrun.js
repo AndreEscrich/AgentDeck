@@ -82,7 +82,7 @@ const ticketRuns = (() => {
       `Work only on ${sub.key}. Other agents are working on other subtasks of ${run.key} in this folder at the same time:\n`
         + '- When a file you want to change is being changed by one of them, Agent Hub makes you wait until it is free. If you are told a file is in use, do the parts that do not need it first.\n'
         + '- Do not undo, revert or reformat changes you did not make for this subtask.',
-      `When you are done: post a comment on ${sub.key} in Tactile PM (pm_create_comment) with a short summary of what you changed and which files, then end your answer with the same summary. Do not change the subtask's status unless the user asks you to.`,
+      `When you are done: post a comment on ${sub.key} in Tactile PM (pm_create_comment) for QA: extremely short, at most about 4 lines, only what was fixed (as a tester sees it), how to check it in the game, and the build or revision it is in (or "not committed yet"). No file lists, code names or explanations. Then end your answer with a summary of what you changed and which files. Do not change the subtask's status unless the user asks you to.`,
     ];
     return paragraphs.filter(Boolean).join('\n\n');
   }
