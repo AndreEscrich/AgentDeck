@@ -228,7 +228,6 @@ class TicketsView {
       go.textContent = 'Waiting for the sign-in in your browser…';
       const r = await window.deck.pmConnect();
       if (r?.error) return this.showConnect(r.error);
-      window.uiSound?.('open');
       this.setConnected(r);
       this.open();
     };
@@ -982,7 +981,6 @@ class TicketsView {
       return;
     }
     apply({ ...r, saving: false });
-    window.uiSound?.('done');
     try { localStorage.setItem('pmTicketLists', JSON.stringify(this.data)); } catch { /* shown anyway */ }
   }
 

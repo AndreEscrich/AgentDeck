@@ -148,7 +148,6 @@
     for (const c of this.copies(r.key)) for (const f of shown) if (f in r) c[f] = r[f];
     if (!r.subtask && r.subtasks) this.subs.set(r.key, { items: r.subtasks });
     try { localStorage.setItem('pmTicketLists', JSON.stringify(this.data)); } catch { /* shown anyway */ }
-    window.uiSound?.('done');
     this.renderList();
     if (this.selected === r.key) this.renderDetail(r, null);
   };
