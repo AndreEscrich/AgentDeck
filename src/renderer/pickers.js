@@ -54,21 +54,24 @@ function visibleRect(elm) {
   return r;
 }
 
-// The keyframes that take el (where it is now, transformed or not) from
-// the box `from` to itself: scaled to from's width, cut to from's height,
-// with round corners. Uses the translate and scale properties, so el's own
-// transform (translateX(-50%)) stays as it is.
+// The keyframes that take el (where it is now, transformed or not) from a
+// small copy of itself sitting in the middle of the box `from` (fitted in
+// it, like an agent's chat starts as a thumbnail inside its tile) to
+// itself: on the way it flies to its place while it grows. Uses the
+// translate and scale properties, so el's own transform (translateX(-50%))
+// stays as it is.
 function morphFrames(elm, from) {
   const to = elm.getBoundingClientRect();
   if (!to.width || !to.height) return null;
   const m = new DOMMatrix(getComputedStyle(elm).transform === 'none' ? undefined : getComputedStyle(elm).transform);
-  const s = Math.max(0.02, from.width / to.width);
-  const tx = from.left - to.left + (1 - s) * m.e;
-  const ty = from.top - to.top + (1 - s) * m.f;
-  const cut = Math.max(0, to.height - from.height / s);
-  const r = 10 / s;
+  const s = Math.min(1, Math.max(0.12, Math.min(from.width / to.width, from.height / to.height)));
+  // Its top left corner when centred on from.
+  const left = from.left + from.width / 2 - (to.width * s) / 2;
+  const top = from.top + from.height / 2 - (to.height * s) / 2;
+  const tx = left - to.left + (1 - s) * m.e;
+  const ty = top - to.top + (1 - s) * m.f;
   return [
-    { translate: `${tx}px ${ty}px`, scale: `${s}`, clipPath: `inset(0px 0px ${cut}px 0px round ${r}px)`, opacity: 0 },
+    { translate: `${tx}px ${ty}px`, scale: `${s}`, clipPath: `inset(0px 0px 0px 0px round ${12 / s}px)`, opacity: 0 },
     { opacity: 1, offset: 0.12 },
     { translate: '0px 0px', scale: '1', clipPath: 'inset(0px 0px 0px 0px round 12px)', opacity: 1 },
   ];
