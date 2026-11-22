@@ -21,7 +21,8 @@
 // Sprint: yours in the open sprints. All tickets: every open ticket of the
 // space (Settings → Tactile PM; Enchanted Inn by default), whoever
 // has it, so you can find unassigned ones and take them (Assign to me).
-const TICKET_LISTS = [['sprint', 'Sprint'], ['all', 'All tickets']];
+// Sprint planning (sprintplan.js) uses All tickets' list.
+const TICKET_LISTS = [['sprint', 'Sprint'], ['all', 'All tickets'], ['plan', 'Sprint planning']];
 const CATEGORY_ORDER = { todo: 0, in_progress: 1, done: 2 };
 // The table's columns: [id, name, the value it sorts by].
 const TICKET_COLUMNS = [
@@ -93,6 +94,7 @@ class TicketsView {
       b.type = 'button';
       b.dataset.list = id;
       b.onclick = () => { this.list = id; this.type = null; this.renderTabs(); this.show(); this.load(); };
+      b.title = id === 'plan' ? 'One person at a time: their tickets, and the ones in the upcoming sprint' : '';
       this.tabs.appendChild(b);
     }
     this.search = document.createElement('input');
@@ -203,7 +205,7 @@ class TicketsView {
     this.setConnected(st);
     if (!st.connected) return;
     this.show();
-    const d = this.data[this.list];
+    const d = this.data[this.src()];
     if (!d || Date.now() - d.at > 60 * 1000) this.load();
     clearInterval(this.timer);
     this.timer = setInterval(() => { if (!this.view.classList.contains('hidden')) this.load(); }, REFRESH_MS);
@@ -249,10 +251,15 @@ class TicketsView {
 
   renderTabs() {
     for (const b of this.tabs.children) b.classList.toggle('on', b.dataset.list === this.list);
+    this.view.classList.toggle('planning', this.list === 'plan');
+    if (this.list !== 'plan') this.listBox.classList.remove('planning');
   }
 
+  // The list a tab shows: Sprint planning shows All tickets'.
+  src() { return this.list === 'plan' ? 'all' : this.list; }
+
   async load(force = false) {
-    const list = this.list;
+    const list = this.src();
     if (this.loading.has(list) && !force) return;
     this.loading.add(list);
     this.renderWhen();
@@ -267,14 +274,14 @@ class TicketsView {
     }
     this.data[list] = { items: r.items, total: r.total, note: r.note || '', at: Date.now() };
     try { localStorage.setItem('pmTicketLists', JSON.stringify(this.data)); } catch { /* shown anyway */ }
-    if (list === this.list) this.show();
+    if (list === this.src()) this.show();
   }
 
   renderWhen(error) {
-    const d = this.data[this.list];
+    const d = this.data[this.src()];
     this.when.classList.toggle('err', !!error);
     if (error) { this.when.textContent = error; return; }
-    if (this.loading.has(this.list)) { this.when.textContent = 'Updating…'; return; }
+    if (this.loading.has(this.src())) { this.when.textContent = 'Updating…'; return; }
     if (!d) { this.when.textContent = ''; return; }
     const min = Math.round((Date.now() - d.at) / 60000);
     this.when.textContent = min < 1 ? 'Just now' : `${min} min ago`;
@@ -287,7 +294,7 @@ class TicketsView {
   }
 
   items() {
-    return this.data[this.list]?.items || [];
+    return this.data[this.src()]?.items || [];
   }
 
   // ---------- notifications ----------
@@ -299,7 +306,7 @@ class TicketsView {
     this.bellCount.classList.toggle('hidden', !n);
     this.bell.title = n ? `${n} new notification${n === 1 ? '' : 's'}` : 'Notifications';
     if (this.menu?.dataset.key === 'notifications') this.fillNotifications(this.menu);
-    if (this.data[this.list]) this.renderList();   // the bells next to the keys
+    if (this.data[this.src()]) this.renderList();   // the bells next to the keys
   }
 
   // A ticket's unread notifications, oldest first.
@@ -560,6 +567,7 @@ class TicketsView {
   }
 
   renderList() {
+    if (this.list === 'plan') return this.renderPlan();
     const d = this.data[this.list];
     if (!d) return;
     const q = this.search.value.trim().toLowerCase();

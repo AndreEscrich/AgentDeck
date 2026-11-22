@@ -278,7 +278,7 @@ function slim(t) {
     status: t.resolvedStatusName || t.lastStatusTransition?.to || (t.doneAt ? 'Done' : 'To Do'),
     category: t.styleMetadata?.status?.lifecycleCategory || (t.doneAt ? 'done' : t.columnId === 'in-progress' ? 'in_progress' : 'todo'),
     color: t.styleMetadata?.status?.color || null, textColor: t.styleMetadata?.status?.text || null,
-    priority: t.priority || '', assignee: personName(t.assignee, t.assigneeId), assigneeId: t.assigneeId || '', sprint: f.sprintId || '', epic: f.epicId || '',
+    priority: t.priority || '', assignee: personName(t.assignee, t.assigneeId), assigneeId: t.assigneeId || '', sprint: f.sprintId || '', sprintId: t.sprintId || '', epic: f.epicId || '', createdAt: t.createdAt || '',
     project: (t.key || '').split('-')[0], projectId: t.projectId || '', updatedAt: t.updatedAt || '', seq: t.sequenceNumber || Number((t.key || '').split('-')[1]) || 0,
   };
 }

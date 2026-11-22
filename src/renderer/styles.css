@@ -4138,3 +4138,38 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .tp-select optgroup { font-style: normal; font-weight: 700; color: var(--text-faint); background: var(--bg-panel); }
 .tp-select optgroup option { font-weight: 400; color: var(--text); padding-left: 14px; }
 .tp-select select hr { border-color: var(--border); }
+
+/* Sprint planning (sprintplan.js): a person's tickets, and the upcoming sprint's. */
+.tickets-view.planning .tickets-bar > .tickets-search { display: none; }
+.tickets-list.planning { display: flex; flex-direction: column; gap: 10px; padding-bottom: 14px; }
+.plan-bar { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.plan-bar .plan-step { width: 30px; height: 30px; font-size: 20px; line-height: 1; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); color: var(--text); }
+.plan-step:hover { background: var(--bg-hover); }
+.plan-person, .plan-sprint { height: 30px; min-width: 200px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; outline: none; }
+.plan-person { font-weight: 700; }
+.plan-into { color: var(--text-dim); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.plan-into b { color: var(--text); font-weight: 600; }
+.plan-panes { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.plan-pane { display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); overflow: hidden; }
+.plan-pane.plan-right { border-color: rgba(233, 162, 59, 0.35); }
+.plan-pane-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid rgba(243, 231, 214, 0.08); }
+.plan-pane-name { font-weight: 600; white-space: nowrap; }
+.plan-search { margin-left: auto; width: 200px; }
+.plan-table-box { flex: 1; min-height: 0; overflow: auto; padding: 0 6px 10px; }
+.plan-table { width: 100%; }
+.plan-table th { top: 0; }
+.plan-table .col-title { width: auto; }
+.plan-table .col-key { width: 86px; }
+.plan-table th, .plan-table td { padding-left: 7px; padding-right: 7px; }
+.plan-table .tickets-status { max-width: 100%; }
+.plan-table .tickets-status > span:first-child { overflow: hidden; text-overflow: ellipsis; }
+.plan-table tbody .tickets-row .col-key { padding-left: 10px; }
+.plan-table .col-status { width: 112px; }
+.plan-table .col-move { width: 42px; text-align: center; padding-left: 4px; padding-right: 4px; }
+.plan-table .col-created { width: 98px; white-space: nowrap; }
+.plan-table .col-sprint { width: 100px; }
+.plan-date, .plan-sprint-name.none { color: var(--text-dim); }
+.plan-sprint-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.plan-move { width: 26px; height: 24px; padding: 0; border-radius: 6px; font-size: 14px; line-height: 1; }
+.plan-move:not(:disabled):hover { background: rgba(214, 160, 90, 0.25); }
+.plan-table tr.saving { opacity: 0.5; pointer-events: none; }
