@@ -385,15 +385,11 @@
     const head = el('div', 'start-sprint-goal-head');
     const again = el('button', 'tp-link', 'Write with Haiku');
     again.type = 'button';
-    const count = el('span', 'start-sprint-count');
-    head.append(el('span', 'review-confirm-label', 'Sprint goal'), count, again);
+    head.append(el('span', 'review-confirm-label', 'Sprint goal'), again);
     const goal = document.createElement('textarea');
     goal.className = 'tp-input start-sprint-goal';
     goal.rows = 11;
-    goal.maxLength = 500;
-    goal.placeholder = '- Party Time shipped\n- Expedition done';
-    const counted = () => { count.textContent = `${goal.value.length} / 500`; count.classList.toggle('full', goal.value.length >= 500); };
-    goal.oninput = counted;
+    goal.placeholder = 'Party Time done\nExpedition done';
     const write = async () => {
       if (!items.length) { goal.placeholder = 'Plan some tickets into the sprint first, or write the goal yourself.'; return; }
       goal.disabled = again.disabled = true;
@@ -408,10 +404,9 @@
       if (!document.body.contains(box)) return;
       box.classList.remove('writing');
       goal.disabled = again.disabled = false;
-      goal.placeholder = '- Party Time shipped\n- Expedition done';
+      goal.placeholder = 'Party Time done\nExpedition done';
       if (r?.error) { goal.value = before; err.textContent = `Haiku could not write the goals: ${r.error}`; err.classList.remove('hidden'); }
-      else goal.value = String(r.result || '').slice(0, 500);
-      counted();
+      else goal.value = String(r.result || '').replace(/^\s*[-*•]\s+/gm, '');
       goal.focus();
     };
     again.onclick = () => { err.classList.add('hidden'); write(); };
@@ -457,7 +452,7 @@
     window.uiSound?.('open');
     morphOpen(box, button, { backdrop: shade });
     // A goal already written stays; otherwise Haiku writes one at once.
-    if (sprint.goal) { goal.value = sprint.goal; counted(); } else { counted(); write(); }
+    if (sprint.goal) goal.value = sprint.goal; else write();
     cancel.focus();
   };
 

@@ -556,7 +556,7 @@ async function createTask({ project, title, type, description, assignee, sprintI
 // options are read again after.
 async function startSprint({ project, sprintId, goal, days = 14 }) {
   if (!project || !sprintId) throw new Error('Which sprint?');
-  if (typeof goal === 'string') await callTool('pm_update_sprint', { projectId: project, sprintId, goal: goal.slice(0, 500) });
+  if (typeof goal === 'string') await callTool('pm_update_sprint', { projectId: project, sprintId, goal });
   const r = await callTool('pm_start_sprint', { projectId: project, sprintId, durationDays: days });
   optionCache.clear();
   return { ok: true, result: r };

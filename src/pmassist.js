@@ -92,11 +92,10 @@ function run(config, id, text, context, onStep) {
 const GOALS_PROMPT = [
   'You write the goals of a game team\'s sprint that is about to start, from the tickets planned for it, grouped by epic.',
   'A goal says what the team will have reached by the END of the sprint, never what the state is now: every ticket is still to do, that is normal.',
-  'Answer with a bullet list only: one line per goal, each starting with "- ", no heading, no other text.',
-  'Each goal names the epic or theme and the outcome in a few words, like "- Party Time shipped", "- Expedition done", "- Winter features skinning started".',
-  'Say "shipped" or "done" when the epic\'s main work (its logic, UI and QA) is planned in this sprint; "started" when only its first parts are. Never write "not started".',
-  'Tickets without an epic: group them by their [context], or leave small ones out. Most important first.',
-  'At most 10 lines and 450 characters in all.',
+  'Answer with the goals only: one per line, no bullets or dashes, no heading, no other text.',
+  'Each goal is just the feature\'s name and one word: "Party Time done", "Expedition done", "Ice Cube shipped", "Winter skinning started". No details after it.',
+  'Say "done" or "shipped" when the feature\'s main work (its logic, UI and QA) is planned in this sprint; "started" when only its first parts are. Never write "not started".',
+  'One line per epic (its name, shortened when long); tickets without an epic: group them by their [context]. Most important first.',
 ].join(' ');
 function goals(config, text) {
   return new Promise(resolve => {
