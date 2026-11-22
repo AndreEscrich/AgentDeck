@@ -647,10 +647,8 @@
   P.panelSubtasks = function (t) {
     const body = el('div', 'tp-section-body');
     const subs = t.subtasks || [];
-    const add = el('button', 'icon tp-add', '+');
-    add.type = 'button';
-    add.title = 'Add a subtask';
-    add.onclick = () => { this.editing = 'subtask'; this.renderDetail(t, null); };
+    const list = el('div', 'tp-subs');
+    let hiddenNote = null;
     // The same status filter as the list (hiding Done hides done subtasks
     // in both).
     const filter = el('button', 'icon tickets-filter-btn tp-filter' + (this.filtering() ? ' active' : ''));
@@ -669,7 +667,6 @@
       bar.append(track, el('span', 'tp-progress-text', `${pct}% Done`));
       body.append(bar);
       const shown = subs.filter(s => this.shows(s));
-      const list = el('div', 'tp-subs');
       for (const s of shown) {
         const row = el('div', 'tp-sub' + (s.done ? ' done' : ''));
         if (this.news?.subs.has(s.key)) this.markNew(row, 's:' + s.key);
@@ -681,24 +678,39 @@
         row.onclick = e => { if (!e.target.closest('button')) this.select({ ...s, type: 'Subtask', parentKey: t.key }); };
         list.append(row);
       }
-      if (shown.length) body.append(list);
       if (shown.length < subs.length) {
         const n = subs.length - shown.length;
-        const note = el('button', 'tp-link tp-hidden-note', `${n} subtask${n === 1 ? '' : 's'} hidden by the status filter · Show all`);
-        note.type = 'button';
-        note.onclick = () => {
+        hiddenNote = el('button', 'tp-link tp-hidden-note', `${n} subtask${n === 1 ? '' : 's'} hidden by the status filter · Show all`);
+        hiddenNote.type = 'button';
+        hiddenNote.onclick = () => {
           this.resetStatusFilter();
           this.renderList();
           this.renderFilterBtn();
           this.renderDetail(t, null);
         };
-        body.append(note);
       }
     }
-    if (this.editing === 'subtask') {
+    // The last row: the next subtask's place, a faint outline of one (its
+    // mark, + and the story's assignee, who gets it). A click makes it a field.
+    const ghost = el('div', 'tp-sub tp-sub-ghost');
+    const gIcon = el('span', 'tickets-type-icon');
+    gIcon.innerHTML = SUBTASK_ICON;
+    const who = avatar(t.assignee);
+    who.title = t.assignee ? `It goes to ${t.assignee}, like the story` : 'Unassigned, like the story';
+    ghost.append(gIcon, el('span', 'tp-sub-plus', '+'));
+    list.append(ghost);
+    body.append(list);
+    if (hiddenNote) body.append(hiddenNote);
+    if (this.editing !== 'subtask') {
+      ghost.append(el('span', 'tp-sub-title tp-sub-ghost-text', subs.length ? 'Add the next subtask' : 'Add a subtask'), who);
+      ghost.title = 'Add a subtask';
+      ghost.onclick = () => { this.editing = 'subtask'; this.renderDetail(t, null); };
+    } else {
+      ghost.classList.add('editing');
       const input = document.createElement('input');
-      input.className = 'tp-input';
-      input.placeholder = 'What needs to be done? (Enter adds it)';
+      input.className = 'tp-sub-input';
+      input.placeholder = 'What needs to be done? (Enter adds it, Esc stops)';
+      ghost.append(input, who);
       input.onkeydown = async e => {
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.editing = null; this.renderDetail(t, null); }
         if (e.key !== 'Enter' || !input.value.trim()) return;
@@ -710,10 +722,11 @@
         this.afterSave(t, r);
         if (!r?.error) { this.editing = 'subtask'; this.renderDetail(this.detailTicket, null); }   // ready for the next one
       };
-      body.append(input);
+      // Leaving it empty puts the outline back.
+      input.onblur = () => { if (!input.value.trim() && !input.disabled && this.editing === 'subtask') { this.editing = null; this.renderDetail(t, null); } };
       requestAnimationFrame(() => input.focus());
-    } else if (!subs.length) body.append(el('div', 'tp-empty-line', 'No subtasks.'));
-    return this.panelSection('subtasks', 'Subtasks', body, add, ...(subs.length ? [filter] : []));
+    }
+    return this.panelSection('subtasks', 'Subtasks', body, ...(subs.length ? [filter] : []));
   };
 
   P.panelComments = function (t) {

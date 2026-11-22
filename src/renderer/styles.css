@@ -4214,3 +4214,14 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .review-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 .review-confirm.busy { cursor: progress; }
 .plan-table .col-title > .tp-avatar { width: 18px; height: 18px; font-size: 8px; margin-right: 7px; vertical-align: middle; }
+/* The ticket panel's next-subtask row: a faint outline of a subtask. */
+.tp-sub.tp-sub-ghost { border-top: 1px dashed var(--border); background: rgba(243, 231, 214, 0.015); }
+.tp-subs > .tp-sub-ghost:first-child { border-top: none; }
+.tp-sub-ghost .tickets-type-icon, .tp-sub-ghost .tp-avatar { opacity: 0.3; filter: grayscale(1); transition: opacity 0.15s, filter 0.15s; }
+.tp-sub-plus { width: 34px; font: 700 14px var(--mono); color: var(--text-faint); flex-shrink: 0; }
+.tp-sub-ghost .tp-sub-ghost-text { color: var(--text-faint); font-style: italic; }
+.tp-sub-ghost:hover .tickets-type-icon, .tp-sub-ghost:hover .tp-avatar, .tp-sub-ghost.editing .tickets-type-icon, .tp-sub-ghost.editing .tp-avatar { opacity: 0.75; filter: none; }
+.tp-sub-ghost:hover .tp-sub-plus, .tp-sub-ghost.editing .tp-sub-plus { color: var(--accent); }
+.tp-sub-ghost.editing { cursor: text; background: var(--bg-hover); }
+.tp-sub-input { flex: 1; min-width: 0; border: none; outline: none; background: none; color: var(--text); font: inherit; font-size: 13px; padding: 0; }
+.tp-sub-input::placeholder { color: var(--text-faint); }
