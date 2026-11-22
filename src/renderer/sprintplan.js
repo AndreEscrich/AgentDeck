@@ -33,14 +33,14 @@
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem('pmSprintPlan') || '{}'); } catch { /* defaults */ }
     const pane = p => ({ ...newPane(), ...(p || {}), q: '' });
-    this.plan = { person: saved.person ?? null, sprintName: saved.sprintName || null, sprints: null, panes: { left: pane(saved.panes?.left), right: pane(saved.panes?.right) }, els: {} };
+    this.plan = { person: saved.person ?? null, sprintName: saved.sprintName || null, marked: saved.marked || {}, sprints: null, panes: { left: pane(saved.panes?.left), right: pane(saved.panes?.right) }, els: {} };
     return this.plan;
   };
 
   P.savePlan = function () {
     const p = this.plan;
     const pane = x => ({ sort: x.sort, hidden: x.hidden });
-    try { localStorage.setItem('pmSprintPlan', JSON.stringify({ person: p.person, sprintName: p.sprintName, panes: { left: pane(p.panes.left), right: pane(p.panes.right) } })); } catch { /* this run only */ }
+    try { localStorage.setItem('pmSprintPlan', JSON.stringify({ person: p.person, sprintName: p.sprintName, marked: p.marked, panes: { left: pane(p.panes.left), right: pane(p.panes.right) } })); } catch { /* this run only */ }
   };
 
   // The sprint prefixes you follow, and a sprint's name without the prefix
@@ -92,7 +92,9 @@
     const count = new Map();
     for (const t of items) if (t.assignee) count.set(t.assignee, (count.get(t.assignee) || 0) + 1);
     const me = this.myName?.();
-    const people = [...count.keys()].sort((a, b) => (b === me) - (a === me) || a.localeCompare(b));
+    // Settings → Tactile PM → Not in planning: left out (case does not count).
+    const hidden = new Set(((typeof state !== 'undefined' && state.config?.pmPlanHidden) || []).map(n => n.toLowerCase()));
+    const people = [...count.keys()].filter(n => !hidden.has(n.toLowerCase())).sort((a, b) => (b === me) - (a === me) || a.localeCompare(b));
     if (items.some(t => !t.assignee)) people.push('');
     if (plan.person === null || !people.includes(plan.person)) plan.person = people.includes(me) ? me : people[0] ?? '';
     const target = this.planTarget();
@@ -115,11 +117,28 @@
     const who = el('button', 'plan-person');
     who.type = 'button';
     who.append(personAvatar(plan.person), el('span', 'plan-person-name', label(plan.person)), el('span', 'tickets-status-caret', '▾'));
-    who.onclick = () => this.openMenu(who, 'plan:person', menu => this.fillPeopleMenu(menu, people.map(p => [p, label(p)]), plan.person, v => {
-      plan.person = v ?? '';
+    // People you marked as planned for this sprint (the ✓): kept per sprint.
+    const sprintKey = target?.name || '';
+    const marked = new Set(plan.marked[sprintKey] || []);
+    const done = p => marked.has(p);
+    who.onclick = () => this.openMenu(who, 'plan:person', menu => this.fillChoiceMenu(menu, {
+      choices: [...people.filter(p => !done(p)), ...people.filter(done)].map(p => ({
+        value: p, label: label(p), faint: p === '', group: done(p) ? 'Planned' : 'Pending', icon: () => personAvatar(p),
+      })),
+      value: plan.person, placeholder: 'Search people…',
+      onPick: v => { plan.person = v ?? ''; this.savePlan(); this.renderPlan(); },
+    }));
+    who.classList.toggle('planned', done(plan.person));
+    const check = el('button', 'plan-check' + (done(plan.person) ? ' on' : ''), '✓');
+    check.type = 'button';
+    check.title = done(plan.person) ? `${label(plan.person)} is planned for this sprint: click to put them back in Pending` : `Mark ${label(plan.person)} as planned for this sprint`;
+    check.onclick = () => {
+      if (marked.has(plan.person)) marked.delete(plan.person); else marked.add(plan.person);
+      plan.marked = { ...plan.marked, [sprintKey]: [...marked] };
+      window.uiSound?.(marked.has(plan.person) ? 'done' : 'tick');
       this.savePlan();
       this.renderPlan();
-    }));
+    };
     const into = el('span', 'plan-into');
     if (!plan.sprints) into.append('Reading the sprints…');
     else if (!target) into.append('No upcoming sprint');
@@ -133,7 +152,7 @@
       into.append('Planning into ', s);
     }
     if (target) into.title = target.name;
-    bar.append(step(-1), who, step(1), el('span', 'tickets-spacer'), into);
+    bar.append(step(-1), who, check, step(1), el('span', 'tickets-spacer'), into);
     // Start sprint: a window with the dates, what is in it and its goal.
     if (target) {
       const start = el('button', 'review-complete plan-start', 'Start sprint');

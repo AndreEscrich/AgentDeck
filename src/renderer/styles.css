@@ -4301,3 +4301,8 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .start-sprint-goal { width: 100%; resize: vertical; font: inherit; line-height: 1.55; background: #14100c; color: var(--text-output); }
 .start-sprint.writing .start-sprint-goal { animation: start-sprint-think 1.4s ease-in-out infinite; }
 @keyframes start-sprint-think { 50% { border-color: rgba(233, 162, 59, 0.55); } }
+/* Sprint planning: the ✓ that marks a person as planned. */
+.plan-check { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-faint); font-weight: 700; cursor: pointer; }
+.plan-check:hover { color: var(--ok); border-color: rgba(76, 175, 122, 0.5); }
+.plan-check.on { background: rgba(76, 175, 122, 0.18); border-color: rgba(76, 175, 122, 0.6); color: var(--ok); }
+.plan-person.planned { border-color: rgba(76, 175, 122, 0.45); }

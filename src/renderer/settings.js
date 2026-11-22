@@ -348,6 +348,7 @@ function openSettings(config, { onSaved } = {}) {
   // Gallery (gallery.js)
   const galleryUrl = settingsInput('text', config.galleryUrl || '', { placeholder: 'https://drive.google.com/drive/folders/…' });
   const pmSpace = settingsInput('text', config.pmSpace || 'Enchanted Inn', { placeholder: 'Enchanted Inn' });
+  const pmPlanHidden = settingsInput('text', (config.pmPlanHidden || []).join(', '), { placeholder: 'Nobody' });
   const pmSprintPrefixes = settingsInput('text', (config.pmSprintPrefixes || []).join(', '), { placeholder: 'Every sprint' });
   const galleryFolder = settingsInput('text', config.galleryFolder || '', { placeholder: 'Found from the Drive link' });
   const galleryFolderRow = el('div', 'settings-pick');
@@ -453,7 +454,8 @@ function openSettings(config, { onSaved } = {}) {
       pmAccountPanel()),
     section('Tickets',
       settingsField('Space for All tickets', 'The PM space whose open tickets the Tickets view\'s All tickets lists, whoever has them (its name, like Enchanted Inn, or its key)', pmSpace),
-      settingsField('Sprints', 'The Sprint field of a ticket lists only the active and future sprints whose names start with one of these, like Features & UI. Separate them with commas. Empty: every sprint', pmSprintPrefixes))]],
+      settingsField('Sprints', 'The Sprint field of a ticket lists only the active and future sprints whose names start with one of these, like Features & UI. Separate them with commas. Empty: every sprint', pmSprintPrefixes),
+      settingsField('Not in planning', 'Sprint planning\'s person picker leaves out these people (their names as PM shows them, like Jonas Sonne). Separate them with commas', pmPlanHidden))]],
     ['agents', 'Agents', [section(null,
       settingsField('Checks before done', 'In a Unity project, after a turn that changed C#, Agent Hub compiles it in the open Editor (through the Unity bridge of the project), and with tests runs the EditMode tests, before the work counts as done; failures go back to the agent to fix (three rounds at most). Each agent can change its own under ⚙ in the message box', verifyLevel),
       settingsField('Tactile knowledge', 'Agents look up Tactile\'s conventions and examples in Tactile Cortex (the Games Knowledge Database, and lessons from earlier agent sessions) before non-trivial game code. Needs the Tactile Cortex connector (Connectors → Tactile)', knowledgeOn),
@@ -655,6 +657,7 @@ function openSettings(config, { onSaved } = {}) {
       galleryUrl: galleryUrl.value.trim(),
       pmSpace: pmSpace.value.trim() || 'Enchanted Inn',
       // Commas only: a sprint name has spaces in it.
+      pmPlanHidden: [...new Set(pmPlanHidden.value.split(',').map(p => p.trim()).filter(Boolean))],
       pmSprintPrefixes: [...new Set(pmSprintPrefixes.value.split(',').map(p => p.trim()).filter(Boolean))],
       galleryFolder: galleryFolder.value.trim(),
       claudePath: claudePath.value.trim(),
