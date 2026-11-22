@@ -918,14 +918,27 @@
       };
       return input;
     };
-    const people = el('datalist');
-    people.id = 'tp-people';
-    for (const n of this.people()) people.append(new Option(n));
-    side.append(people);
+    // An assignee field: type a name, or pick one from the list under it
+    // (everyone the view knows, with their marks).
     const person = (value, key) => {
       const wrap = el('div', 'tp-person');
       const input = text(value, v => this.saveFields(t, { [key]: v ?? (t.subtask ? '' : null) }), { placeholder: 'Unassigned' });
-      input.setAttribute('list', 'tp-people');
+      input.autocomplete = 'off';
+      const menuKey = 'people:' + key;
+      const fill = menu => {
+        const q = input.value.trim().toLowerCase();
+        const typed = q && q !== String(value || '').toLowerCase();
+        const names = this.people().filter(n => !typed || n.toLowerCase().includes(q)).map(n => [n, n]);
+        this.fillPeopleMenu(menu, names, value || '', v => { const save = input.onchange; input.onchange = null; input.value = v; save(); input.blur(); });
+      };
+      const show = () => {
+        if (this.menu?.dataset.key === menuKey) fill(this.menu);
+        else this.openMenu(wrap, menuKey, fill);
+      };
+      input.onfocus = show;
+      input.onclick = () => { if (this.menu?.dataset.key !== menuKey) show(); };
+      input.oninput = show;
+      input.addEventListener('blur', () => { if (this.menu?.dataset.key === menuKey) this.closeStatusMenu(); });
       wrap.append(avatar(value), input);
       return wrap;
     };

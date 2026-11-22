@@ -108,14 +108,16 @@
       };
       return b;
     };
-    const who = document.createElement('select');
-    who.className = 'plan-person';
-    for (const p of people) {
-      const o = new Option(p === '' ? 'Unassigned' : p === me ? `${p} (you)` : p, p);
-      who.append(o);
-    }
-    who.value = plan.person;
-    who.onchange = () => { plan.person = who.value; this.savePlan(); this.renderPlan(); };
+    // The person: a button with their mark; its menu lists everyone, with theirs.
+    const label = p => (p === '' ? 'Unassigned' : p === me ? `${p} (you)` : p);
+    const who = el('button', 'plan-person');
+    who.type = 'button';
+    who.append(personAvatar(plan.person), el('span', 'plan-person-name', label(plan.person)), el('span', 'tickets-status-caret', '▾'));
+    who.onclick = () => this.openMenu(who, 'plan:person', menu => this.fillPeopleMenu(menu, people.map(p => [p, label(p)]), plan.person, v => {
+      plan.person = v;
+      this.savePlan();
+      this.renderPlan();
+    }));
     const into = el('span', 'plan-into');
     if (!plan.sprints) into.append('Reading the sprints…');
     else if (!target) into.append('No upcoming sprint');
@@ -129,7 +131,7 @@
       into.append('Planning into ', s);
     }
     if (target) into.title = target.name;
-    bar.append(step(-1), personAvatar(plan.person), who, step(1), el('span', 'tickets-spacer'), into);
+    bar.append(step(-1), who, step(1), el('span', 'tickets-spacer'), into);
 
     const mine = items.filter(t => (plan.person === '' ? !t.assignee : t.assignee === plan.person));
     const ids = target ? new Set(Object.values(target.ids)) : new Set();

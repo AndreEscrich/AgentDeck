@@ -311,6 +311,8 @@ class TicketsView {
   renderWhen(error) {
     const d = this.data[this.src()];
     this.when.classList.toggle('err', !!error);
+    // A fixed width, so the tabs never move: the whole error is the tooltip.
+    this.when.title = error || '';
     if (error) { this.when.textContent = error; return; }
     if (this.loading.has(this.src())) { this.when.textContent = 'Updating…'; return; }
     if (!d) { this.when.textContent = ''; return; }
@@ -961,6 +963,23 @@ class TicketsView {
       place();
       menu.querySelector('.on')?.scrollIntoView({ block: 'nearest' });
     }).catch(err => { if (this.menu === menu) menu.replaceChildren(el('div', 'tickets-error', err.message)); });
+  }
+
+  // A list of people in a menu (from openMenu): each with their mark.
+  // names: [value, label] ('' = Unassigned); a click calls onPick(value).
+  // The items keep the focus where it is (a field being typed in).
+  fillPeopleMenu(menu, names, current, onPick) {
+    menu.replaceChildren();
+    menu.classList.add('tickets-people-menu');
+    if (!names.length) { menu.append(el('div', 'gallery-note', 'Nobody matches.')); return; }
+    for (const [value, label] of names) {
+      const b = el('button', 'tickets-status-item tickets-person-item' + (value === current ? ' on' : ''));
+      b.type = 'button';
+      b.append(personAvatar(value), el('span', value ? null : 'tp-faint', label));
+      b.onmousedown = e => e.preventDefault();
+      b.onclick = () => { this.closeStatusMenu(); onPick(value); };
+      menu.append(b);
+    }
   }
 
   openStatusMenu(btn, t) {

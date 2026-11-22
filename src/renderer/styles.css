@@ -2445,7 +2445,7 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 /* The bar's parts stand together in the middle, above the table. */
 .tickets-types { flex: 0 0 16px; }
 .tickets-bar { justify-content: center; }
-.tickets-when { font-size: 12px; color: var(--text-faint); white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.tickets-when { font-size: 12px; color: var(--text-faint); white-space: nowrap; width: 84px; text-align: right; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; }
 .tickets-when.err { color: var(--err); }
 .tickets-account { border: none; background: none; color: var(--text-faint); font-size: 12px; white-space: nowrap; padding: 0 4px; }
 .tickets-account:hover { color: var(--text); text-decoration: underline; }
@@ -3982,7 +3982,12 @@ select option { background: var(--bg-panel); color: var(--text); }
 .tickets-who-name { overflow: hidden; text-overflow: ellipsis; }
 .tickets-who .tp-avatar { width: 20px; height: 20px; font-size: 8.5px; font-style: normal; }
 .tickets-status-menu .tp-avatar { width: 18px; height: 18px; font-size: 8px; margin-right: 6px; }
-.plan-bar .tp-avatar { width: 28px; height: 28px; font-size: 11px; }
+.plan-person .tp-avatar { width: 22px; height: 22px; font-size: 9px; }
+.plan-person { display: inline-flex; align-items: center; gap: 8px; text-align: left; }
+.plan-person-name { flex: 1; }
+.tickets-people-menu { min-width: 220px; }
+.tickets-person-item { display: flex; align-items: center; gap: 8px; width: 100%; }
+.tickets-person-item.on { background: var(--bg-active); }
 .tickets-who.none { color: var(--text-faint); font-style: italic; }
 
 /* Start agent from the Tickets view (app.js wrapTicket, flyTicketToComposer):
@@ -4144,7 +4149,7 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .tp-select select hr { border-color: var(--border); }
 
 /* Sprint planning (sprintplan.js): a person's tickets, and the upcoming sprint's. */
-.tickets-view.planning .tickets-bar > .tickets-search { display: none; }
+.tickets-view.planning .tickets-bar > .tickets-search { visibility: hidden; }
 .tickets-list.planning { display: flex; flex-direction: column; gap: 10px; padding-bottom: 14px; }
 .plan-bar { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .plan-bar .plan-step { width: 30px; height: 30px; font-size: 20px; line-height: 1; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); color: var(--text); }
