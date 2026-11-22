@@ -1,10 +1,12 @@
 // Sprint planning: the Tickets view's third tab. One person at a time
 // (the ‹ › buttons step through everyone with open tickets in the space,
 // and Unassigned): on the left their open tickets that are not in the
-// upcoming sprint, on the right the ones that are. → puts a ticket in the
-// upcoming sprint, ← takes it out (to the backlog); both change it in PM
-// at once. Each side has its own search, sorting (a click on a column's
-// name) and filters (the funnels), kept between runs.
+// upcoming sprint, then the space's unassigned stories and bugs; on the
+// right the ones in the sprint. → puts a ticket in the upcoming sprint (an
+// unassigned one gets the person too), ← takes it out (to the backlog);
+// both change it in PM at once. Each side has its own search, sorting (a
+// click on a column's name; by default stories first, then bugs, each
+// newest first) and type filter, kept between runs.
 // The upcoming sprint: the first planned (not active) sprint whose name
 // starts with one of Settings → Tactile PM → Sprints (any, when empty); a
 // picker when there are several. The tickets are All tickets' list.
@@ -13,24 +15,17 @@
 (() => {
   const P = TicketsView.prototype;
   const created = t => (t.createdAt ? Date.parse(t.createdAt) || 0 : 0);
+  // Stories first, then bugs, then the rest.
+  const typeRank = t => (/story/i.test(t.type || '') ? 0 : /bug/i.test(t.type || '') ? 1 : 2);
+  // The default order: by type, each newest first.
+  const byDefault = (a, b) => typeRank(a) - typeRank(b) || created(b) - created(a) || b.seq - a.seq;
   // [id, name, the value it sorts by, the value its filter lists (or none)]
-  const COLUMNS = {
-    left: [
-      ['key', 'Key', t => t.seq, t => t.type || 'Task'],
-      ['title', 'Title', t => t.title.toLowerCase()],
-      ['status', 'Status', t => `${CATEGORY_ORDER[t.category] ?? 1}${t.status}`, t => t.status || 'To Do'],
-      ['sprint', 'Sprint', t => (t.sprint || '').toLowerCase(), t => t.sprint || 'Backlog'],
-      ['created', 'Created', created],
-    ],
-    right: [
-      ['key', 'Key', t => t.seq, t => t.type || 'Task'],
-      ['title', 'Title', t => t.title.toLowerCase()],
-      ['status', 'Status', t => `${CATEGORY_ORDER[t.category] ?? 1}${t.status}`, t => t.status || 'To Do'],
-      ['created', 'Created', created],
-    ],
-  };
-  const FILTER_NAMES = { key: 'type', status: 'status', sprint: 'sprint' };
-  const newPane = () => ({ q: '', sort: { col: 'created', desc: true }, hidden: {} });
+  const COLUMNS = [
+    ['key', 'Key', t => t.seq, t => t.type || 'Task'],
+    ['title', 'Title', t => t.title.toLowerCase()],
+  ];
+  const FILTER_NAMES = { key: 'type' };
+  const newPane = () => ({ q: '', sort: { col: null, desc: false }, hidden: {} });
 
   P.planState = function () {
     if (this.plan) return this.plan;
@@ -140,6 +135,8 @@
     const ids = target ? new Set(Object.values(target.ids)) : new Set();
     const inSprint = t => !!target && (t.sprintId ? ids.has(t.sprintId) : t.sprint === target.name);
     plan.lists = { left: mine.filter(t => !inSprint(t)), right: mine.filter(inSprint) };
+    // After the person's own: nobody's stories and bugs, to take into the sprint.
+    plan.extra = plan.person === '' ? [] : items.filter(t => !t.assignee && !inSprint(t) && typeRank(t) < 2);
 
     const panes = el('div', 'plan-panes');
     for (const side of ['left', 'right']) {
@@ -173,33 +170,41 @@
     const plan = this.plan;
     const st = plan.panes[side];
     const { box, countEl } = plan.els[side];
-    const cols = COLUMNS[side];
-    const all = plan.lists[side];
+    const cols = COLUMNS;
     const q = st.q.trim().toLowerCase();
-    const shown = all.filter(t => cols.every(c => !c[3] || !(st.hidden[c[0]] || []).includes(c[3](t)))
-      && (!q || `${t.key} ${t.title} ${t.epic}`.toLowerCase().includes(q)));
-    const col = cols.find(c => c[0] === st.sort.col) || cols.find(c => c[0] === 'created');
-    shown.sort((a, b) => {
+    const keep = t => cols.every(c => !c[3] || !(st.hidden[c[0]] || []).includes(c[3](t)))
+      && (!q || `${t.key} ${t.title} ${t.epic}`.toLowerCase().includes(q));
+    const col = cols.find(c => c[0] === st.sort.col);
+    const order = (a, b) => {
+      if (!col) return byDefault(a, b);
       const x = col[2](a), y = col[2](b);
       const c = (typeof x === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true })) || a.seq - b.seq;
       return st.sort.desc ? -c : c;
-    });
-    countEl.textContent = shown.length === all.length ? String(all.length) : `${shown.length} of ${all.length}`;
+    };
+    const all = plan.lists[side];
+    const shown = all.filter(keep).sort(order);
+    const extraAll = side === 'left' ? plan.extra || [] : [];
+    const extra = extraAll.filter(keep).sort(order);
+    const n = (a, b) => (a === b ? String(b) : `${a} of ${b}`);
+    countEl.textContent = n(shown.length, all.length) + (extraAll.length ? ` · ${n(extra.length, extraAll.length)} unassigned` : '');
 
     const table = el('table', 'tickets-table plan-table');
     const head = el('tr');
-    const moveTh = () => el('th', 'col-move');
+    const moveTh = () => { const th = el('th', 'col-move'); th.title = side === 'left' ? 'Move into the sprint' : 'Take out of the sprint'; return th; };
     if (side === 'right') head.append(moveTh());
     for (const [id, name, , valueOf] of cols) {
       const th = el('th', 'col-' + id);
       const cell = el('div', 'tickets-th');
-      const sorted = col[0] === id;
+      const sorted = col?.[0] === id;
+      // A click goes: one way, the other way, then back to the default order.
+      const first = id === 'key';
+      const next = !sorted ? { col: id, desc: first } : st.sort.desc === first ? { col: id, desc: !first } : { col: null, desc: false };
       const sort = el('button', 'tickets-th-btn tickets-sort-btn' + (sorted ? ' on' : ''), sorted ? (st.sort.desc ? '↓' : '↑') : '↕');
       sort.type = 'button';
-      sort.title = `Sort by ${name.toLowerCase()}`;
+      sort.title = next.col ? `Sort by ${name.toLowerCase()}` : 'Back to stories first, then bugs, newest first';
       sort.onclick = e => {
         e.stopPropagation();
-        st.sort = sorted ? { col: id, desc: !st.sort.desc } : { col: id, desc: id === 'created' || id === 'key' };
+        st.sort = next;
         this.savePlan();
         this.renderPlanTable(side);
       };
@@ -222,41 +227,37 @@
     thead.append(head);
     const body = el('tbody');
     const target = this.planTarget();
-    for (const t of shown) {
+    const row = t => {
       const tr = el('tr', 'tickets-row' + (this.selected === t.key ? ' selected' : '') + (t.planSaving ? ' saving' : ''));
       tr.dataset.key = t.key;
       const td = (cls, ...kids) => { const c = el('td', cls); c.append(...kids); return c; };
       const title = ticketTitle(t.title, 'tickets-title-link');
       title.onclick = e => { e.stopPropagation(); this.select(t); };
-      const when = t.createdAt ? new Date(t.createdAt) : null;
-      const date = when ? when.toLocaleDateString(undefined, { day: 'numeric', month: 'short', ...(when.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) }) : '';
-      const created = el('span', 'plan-date', date);
-      if (when) created.title = when.toLocaleString();
-      const cells = [
-        td('col-key', typeIcon(t.type), this.keyButton(t), this.notifBell(t)),
-        td('col-title', title),
-        td('col-status', this.statusButton(t)),
-      ];
-      if (side === 'left') {
-        const s = el('span', 'plan-sprint-name' + (t.sprint ? '' : ' none'), t.sprint ? shortSprint(t.sprint) : 'Backlog');
-        if (t.sprint) s.title = t.sprint;
-        cells.push(td('col-sprint', s));
-      }
-      cells.push(td('col-created', created));
+      const cells = [td('col-key', typeIcon(t.type), this.keyButton(t), this.notifBell(t)), td('col-title', title)];
       const move = el('button', 'plan-move', side === 'left' ? '→' : '←');
       move.type = 'button';
       move.disabled = side === 'left' ? !target : false;
-      move.title = side === 'left' ? (target ? `Move to ${target.name}` : 'No upcoming sprint') : 'Take out of the sprint (to the backlog)';
-      move.onclick = e => { e.stopPropagation(); this.planMove(t, side === 'left' ? target : null); };
+      const takes = !t.assignee && plan.person ? ` and assign to ${plan.person}` : '';
+      move.title = side === 'left' ? (target ? `Move to ${target.name}${takes}` : 'No upcoming sprint') : 'Take out of the sprint (to the backlog)';
+      move.onclick = e => { e.stopPropagation(); this.planMove(t, side === 'left' ? target : null, side === 'left' && !t.assignee ? plan.person : null); };
       if (side === 'right') tr.append(td('col-move', move), ...cells);
       else tr.append(...cells, td('col-move', move));
       tr.title = t.title;
+      return tr;
+    };
+    for (const t of shown) body.append(row(t));
+    if (extra.length) {
+      const tr = el('tr', 'plan-group');
+      const td = el('td', null, 'Unassigned stories and bugs');
+      td.colSpan = cols.length + 1;
+      tr.append(td);
       body.append(tr);
+      for (const t of extra) body.append(row(t));
     }
     table.append(thead, body);
     const frag = document.createDocumentFragment();
     frag.append(table);
-    if (!shown.length) frag.append(el('div', 'gallery-note', all.length ? 'No ticket matches.' : side === 'left' ? 'No other open tickets.' : 'Nothing in this sprint yet.'));
+    if (!shown.length && !extra.length) frag.append(el('div', 'gallery-note', all.length || extraAll.length ? 'No ticket matches.' : side === 'left' ? 'No other open tickets.' : 'Nothing in this sprint yet.'));
     box.replaceChildren(frag);
   };
 
@@ -266,17 +267,17 @@
     menu.replaceChildren();
     menu.classList.add('tickets-filter-menu');
     const counts = new Map();
-    for (const t of this.plan.lists[side]) counts.set(valueOf(t), (counts.get(valueOf(t)) || 0) + 1);
+    for (const t of [...this.plan.lists[side], ...(side === 'left' ? this.plan.extra || [] : [])]) counts.set(valueOf(t), (counts.get(valueOf(t)) || 0) + 1);
     const hidden = new Set(st.hidden[id] || []);
     for (const v of hidden) if (!counts.has(v)) counts.set(v, 0);
-    const values = [...counts.keys()].sort((a, b) => (a === 'Backlog') - (b === 'Backlog') || a.localeCompare(b, undefined, { numeric: true }));
+    const values = [...counts.keys()].sort((a, b) => typeRank({ type: a }) - typeRank({ type: b }) || a.localeCompare(b));
     menu.append(el('div', 'tickets-status-group', FILTER_NAMES[id][0].toUpperCase() + FILTER_NAMES[id].slice(1)));
     const redo = () => { st.hidden[id] = [...hidden]; this.savePlan(); this.renderPlanTable(side); this.fillPlanFilter(menu, side, id, valueOf); };
     for (const v of values) {
       const on = !hidden.has(v);
       const b = el('button', 'tickets-status-item tickets-check' + (on ? ' ticked' : ''));
       b.type = 'button';
-      const label = id === 'sprint' && v !== 'Backlog' ? shortSprint(v) : v;
+      const label = v;
       b.append(id === 'key' ? typeIcon(v) : el('span', 'tickets-check-box', on ? '✓' : ''), el('span', null, label), el('span', 'gallery-cat-count', String(counts.get(v))));
       if (id === 'key') b.firstChild.classList.add(on ? 'picked' : 'unpicked');
       b.onclick = () => { if (on) hidden.add(v); else hidden.delete(v); redo(); };
@@ -292,20 +293,21 @@
 
   // Into the sprint (target) or out of it (null: the backlog). Shows at
   // once; goes back if PM says no.
-  P.planMove = async function (t, target) {
+  P.planMove = async function (t, target, assignee = null) {
     const sprintId = target ? (target.ids[t.project] || Object.values(target.ids)[0]) : '';
-    const before = { sprint: t.sprint, sprintId: t.sprintId };
+    const before = { sprint: t.sprint, sprintId: t.sprintId, assignee: t.assignee };
     const set = v => { for (const c of this.copies(t.key)) Object.assign(c, v); };
-    set({ sprint: target ? target.name : '', sprintId, planSaving: true });
+    const fields = { sprintId, ...(assignee ? { assignee } : {}) };
+    set({ sprint: target ? target.name : '', sprintId, ...(assignee ? { assignee } : {}), planSaving: true });
     this.renderPlan();
-    const r = await window.deck.pmUpdate({ key: t.key, id: t.id, project: t.project || t.key.split('-')[0], subtask: false, fields: { sprintId } })
+    const r = await window.deck.pmUpdate({ key: t.key, id: t.id, project: t.project || t.key.split('-')[0], subtask: false, fields })
       .catch(err => ({ error: String(err?.message || err) }));
     if (r?.notConnected) return this.setConnected({ connected: false });
     if (!r || r.error) {
       set({ ...before, planSaving: false });
       this.renderWhen(`Could not move ${t.key}: ${r?.error || 'PM did not answer.'}`);
     } else {
-      set({ sprint: r.sprint ?? (target ? target.name : ''), sprintId: r.sprintId ?? sprintId, planSaving: false });
+      set({ sprint: r.sprint ?? (target ? target.name : ''), sprintId: r.sprintId ?? sprintId, ...(assignee ? { assignee: r.assignee || assignee } : {}), planSaving: false });
       for (const c of this.copies(t.key)) delete c.planSaving;
       try { localStorage.setItem('pmTicketLists', JSON.stringify(this.data)); } catch { /* shown anyway */ }
     }

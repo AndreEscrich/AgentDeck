@@ -4165,11 +4165,17 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .plan-table .tickets-status > span:first-child { overflow: hidden; text-overflow: ellipsis; }
 .plan-table tbody .tickets-row .col-key { padding-left: 10px; }
 .plan-table .col-status { width: 112px; }
-.plan-table .col-move { width: 42px; text-align: center; padding-left: 4px; padding-right: 4px; }
+.plan-table .col-move { width: 52px; text-align: center; padding-left: 4px; padding-right: 4px; background: rgba(233, 162, 59, 0.07); }
+.plan-left .plan-table .col-move { border-left: 2px solid rgba(233, 162, 59, 0.35) !important; }
+.plan-right .plan-table .col-move { border-right: 2px solid rgba(233, 162, 59, 0.35); }
+.plan-table th.col-move { background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
+.plan-table tbody .tickets-row td.col-move { box-shadow: none; }
+.plan-table .plan-group td { padding: 14px 10px 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); border-bottom: 1px solid var(--border); background: none; }
 .plan-table .col-created { width: 98px; white-space: nowrap; }
 .plan-table .col-sprint { width: 100px; }
 .plan-date, .plan-sprint-name.none { color: var(--text-dim); }
 .plan-sprint-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
-.plan-move { width: 26px; height: 24px; padding: 0; border-radius: 6px; font-size: 14px; line-height: 1; }
-.plan-move:not(:disabled):hover { background: rgba(214, 160, 90, 0.25); }
+.plan-move { width: 34px; height: 24px; padding: 0; border-radius: 6px; font-size: 15px; font-weight: 700; line-height: 1; color: var(--accent); background: rgba(233, 162, 59, 0.12); border: 1px solid rgba(233, 162, 59, 0.4); cursor: pointer; }
+.plan-move:not(:disabled):hover { background: var(--accent); color: var(--accent-text); }
+.plan-move:disabled { opacity: 0.35; cursor: default; }
 .plan-table tr.saving { opacity: 0.5; pointer-events: none; }
