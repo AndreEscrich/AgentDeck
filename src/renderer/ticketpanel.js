@@ -165,7 +165,7 @@
     const items = this.unreadFor(t.key);
     const subKey = n => (/added ([A-Z][A-Z0-9]*-\d+)/.exec(n.text) || [])[1];
     this.news = {
-      key: t.key, ids: items.map(n => n.id), status: this.statusNews(t.key), morphed: false, readTimer: null,
+      key: t.key, ids: items.map(n => n.id), status: null, morphed: false, readTimer: null,
       comments: new Set(items.filter(n => n.kind === 'comment').map(n => n.at)),
       subs: new Set(items.filter(n => n.kind === 'subtask').map(subKey).filter(Boolean)),
       shown: new Set(),    // what already slid in (later renders keep it lit, without sliding again)
