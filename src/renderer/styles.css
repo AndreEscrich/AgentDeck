@@ -4282,4 +4282,8 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 /* The New ticket window: higher up. */
 .review-shade.top { align-items: flex-start; padding-top: 6vh; }
 /* The copy of what was clicked, stretching over a window as it opens (pickers.js). */
-.ticket-morph-ghost { position: fixed; pointer-events: none; transform-origin: 0 0; border-radius: 10px; background: var(--bg-panel); border: 1px solid var(--border); }
+.ticket-morph-ghost { position: fixed; pointer-events: none; transform-origin: 0 0; border-radius: 10px; background: var(--bg-panel); border: 1px solid var(--border); overflow: hidden; }
+.ticket-morph-inner { position: absolute; left: 0; top: 0; }
+.ticket-morph-inner .tickets-row td { border-bottom: none; }
+/* What a window grew out of is hidden while its copy flies, as an agent's tile is. */
+.morph-away { visibility: hidden; }

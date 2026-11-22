@@ -100,7 +100,9 @@ function morphFrames(elm, from, show) {
   }
   return { win, box };
 }
-// The box, under the window (just before it, on the same layer).
+// The box, under the window (just before it, on the same layer): a copy
+// of what was clicked, with its content, like the copy of an agent's tile
+// (hub.js tileCopy). The real one is hidden meanwhile, as the tile is.
 function morphGhost(source, over) {
   const g = el('div', 'ticket-morph-ghost');
   const ocs = getComputedStyle(over);
@@ -110,10 +112,44 @@ function morphGhost(source, over) {
     over.style.zIndex = z = 2;
   }
   g.style.zIndex = z;
-  const cs = source instanceof Element ? getComputedStyle(source) : null;
-  if (cs && cs.backgroundColor !== 'rgba(0, 0, 0, 0)') g.style.background = cs.backgroundColor;
+  const inner = el('div', 'ticket-morph-inner');
+  if (source instanceof Element) {
+    // Its background: its own, or the first one around it.
+    for (let p = source; p && p !== document.body; p = p.parentElement) {
+      const bg = getComputedStyle(p).backgroundColor;
+      if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') { g.style.background = bg; break; }
+    }
+    inner.append(copyOf(source));
+  }
+  g.append(inner);
   over.before(g);
-  return g;
+  if (source instanceof Element) source.classList.add('morph-away');
+  return { g, inner, restore: () => source instanceof Element && source.classList.remove('morph-away') };
+}
+// A copy that looks like the original where it stands: a table row goes in
+// a table of its own, with its cells as wide as the real ones.
+function copyOf(source) {
+  if (source.tagName === 'TR') {
+    const real = source.closest('table');
+    const table = document.createElement('table');
+    table.className = real?.className || '';
+    Object.assign(table.style, { width: source.getBoundingClientRect().width + 'px', margin: '0' });
+    const row = source.cloneNode(true);
+    [...row.children].forEach((td, i) => { td.style.width = source.children[i]?.getBoundingClientRect().width + 'px'; });
+    const body = document.createElement('tbody');
+    body.append(row);
+    table.append(body);
+    // Inside the pane it sits in (its styles depend on it), when it has one.
+    const pane = source.closest('.plan-pane');
+    if (!pane) return table;
+    const wrap = el('div', pane.className);
+    Object.assign(wrap.style, { border: 'none', background: 'none', boxShadow: 'none', borderRadius: '0' });
+    wrap.append(table);
+    return wrap;
+  }
+  const c = source.cloneNode(true);
+  Object.assign(c.style, { width: source.getBoundingClientRect().width + 'px', height: source.getBoundingClientRect().height + 'px', margin: '0' });
+  return c;
 }
 const LINEAR = { duration: MORPH.duration, easing: 'linear' };
 function morphOpen(elm, from, { backdrop = null } = {}) {
@@ -124,9 +160,11 @@ function morphOpen(elm, from, { backdrop = null } = {}) {
   elm.style.transformOrigin = '0 0';
   const ghost = morphGhost(from, elm);
   const run = elm.animate(f.win, LINEAR);
-  ghost.animate(f.box, { ...LINEAR, fill: 'forwards' });
+  ghost.g.animate(f.box, { ...LINEAR, fill: 'forwards' });
+  // Its content goes at once, as a tile's text does (hub.js: 100ms).
+  ghost.inner.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 100, fill: 'forwards' });
   backdrop?.animate([{ opacity: 0 }, { opacity: 1 }], MORPH);
-  run.finished.catch(() => {}).then(() => { elm.style.transformOrigin = ''; ghost.remove(); });
+  run.finished.catch(() => {}).then(() => { elm.style.transformOrigin = ''; ghost.g.remove(); ghost.restore(); });
   return run;
 }
 // The way back: into `from` (if it is still on screen). Resolves when it
@@ -141,11 +179,15 @@ function morphClose(elm, from, { backdrop = null } = {}) {
   const back = list => list.map(k => ({ ...k, offset: 1 - k.offset })).reverse();
   const ghost = morphGhost(from, elm);
   const a = elm.animate(back(f.win), { ...LINEAR, fill: 'forwards' });
-  ghost.animate(back(f.box), { ...LINEAR, fill: 'forwards' });
+  ghost.g.animate(back(f.box), { ...LINEAR, fill: 'forwards' });
+  // Its content comes back near the end, as a tile's text does (hub.js: from 75%).
+  ghost.inner.animate([{ opacity: 0 }, { opacity: 0, offset: 0.75 }, { opacity: 1 }], { duration: MORPH.duration, fill: 'forwards' });
   backdrop?.animate([{ opacity: 1 }, { opacity: 0 }], { ...MORPH, fill: 'forwards' });
   return a.finished.catch(() => {}).then(() => {
-    // The box goes as the real row shows under it.
-    ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, fill: 'forwards' }).finished.catch(() => {}).then(() => ghost.remove());
+    // The real one takes its place (hub.js: the tile fades in as its copy fades out).
+    ghost.restore();
+    from.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: 'ease-out' });
+    ghost.g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 320, easing: 'ease-in', fill: 'forwards' }).finished.catch(() => {}).then(() => ghost.g.remove());
     return { done: () => { a.cancel(); elm.style.transformOrigin = ''; elm.style.pointerEvents = ''; backdrop?.getAnimations().forEach(x => x.cancel()); } };
   });
 }
