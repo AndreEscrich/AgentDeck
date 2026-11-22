@@ -134,8 +134,11 @@ function morphGhost(source, over) {
   }
   g.append(inner);
   over.before(g);
-  if (source instanceof Element) source.classList.add('morph-away');
-  return { g, inner, restore: () => source instanceof Element && source.classList.remove('morph-away') };
+  // A row hides while its copy flies (a list row becomes the window); a
+  // button stays where it is (+ New ticket opens a window, it does not become one).
+  const hide = source instanceof Element && !source.matches('button, a');
+  if (hide) source.classList.add('morph-away');
+  return { g, inner, restore: () => hide && source.classList.remove('morph-away') };
 }
 // A copy that looks like the original where it stands: a table row goes in
 // a table of its own, with its cells as wide as the real ones.
