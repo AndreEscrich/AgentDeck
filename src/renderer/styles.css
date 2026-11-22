@@ -2443,7 +2443,9 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .tickets-tab.on { background: var(--bg-active); color: var(--text); }
 .tickets-search { width: 240px; flex-shrink: 0; }
 /* Over the table: the table and its search as one block, in the middle. */
-.tickets-table-wrap { display: table; margin: 0 auto; }
+/* The same dark pane as Sprint planning's lists (.plan-pane): the search and the table in it. */
+.tickets-table-wrap { display: table; margin: 0 auto; padding: 10px 12px 12px; border: 1px solid var(--border); border-radius: 10px; background: #14100c; box-shadow: 0 2px 14px rgba(0, 0, 0, 0.35); }
+.tickets-table-wrap .tickets-table th { background: #14100c; }
 .tickets-search-row { padding: 0 0 10px; }
 .tickets-search-row .tickets-search { width: 340px; }
 /* The bar's parts stand together in the middle, above the table. */
