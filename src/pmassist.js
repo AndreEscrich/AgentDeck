@@ -86,9 +86,42 @@ function run(config, id, text, context, onStep) {
   });
 }
 
+// Start sprint's goal: Haiku turns the sprint's tickets (grouped by epic)
+// into a short list of goals. No tools at all: it only reads the text it is
+// given. Resolves with { result } (the list) or { error }.
+const GOALS_PROMPT = [
+  'You write the goals of a game team\'s sprint that is about to start, from the tickets planned for it, grouped by epic.',
+  'A goal says what the team will have reached by the END of the sprint, never what the state is now: every ticket is still to do, that is normal.',
+  'Answer with a bullet list only: one line per goal, each starting with "- ", no heading, no other text.',
+  'Each goal names the epic or theme and the outcome in a few words, like "- Party Time shipped", "- Expedition done", "- Winter features skinning started".',
+  'Say "shipped" or "done" when the epic\'s main work (its logic, UI and QA) is planned in this sprint; "started" when only its first parts are. Never write "not started".',
+  'Tickets without an epic: group them by their [context], or leave small ones out. Most important first.',
+  'At most 10 lines and 450 characters in all.',
+].join(' ');
+function goals(config, text) {
+  return new Promise(resolve => {
+    const proc = spawnClaude(config.claudePath,
+      ['-p', '--model', 'haiku', '--output-format', 'json', '--no-session-persistence', '--append-system-prompt', GOALS_PROMPT, '--tools', ''],
+      { cwd: os.tmpdir(), env: childEnv(config.env), stdio: ['pipe', 'pipe', 'ignore'] });
+    let out = '';
+    const timer = setTimeout(() => killTree(proc), 90 * 1000);
+    proc.stdout.on('data', d => { out += d; });
+    proc.on('error', err => resolve({ error: String(err.message || err) }));
+    proc.on('close', () => {
+      clearTimeout(timer);
+      let msg = null;
+      try { msg = JSON.parse(out.trim().split('\n').pop()); } catch { /* below */ }
+      if (!msg || msg.result == null) return resolve({ error: 'Haiku did not answer.' });
+      if (msg.is_error) return resolve({ error: String(msg.result) });
+      resolve({ result: String(msg.result).trim() });
+    });
+    proc.stdin.end(text);
+  });
+}
+
 function stop(id) {
   const p = running.get(id);
   if (p) killTree(p);
 }
 
-module.exports = { run, stop, TOOLS };
+module.exports = { run, stop, goals, TOOLS };

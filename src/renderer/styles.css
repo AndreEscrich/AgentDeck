@@ -4289,3 +4289,15 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .ticket-morph-inner .tickets-row td { border-bottom: none; }
 /* What a window grew out of is hidden while its copy flies, as an agent's tile is. */
 .morph-away { visibility: hidden; }
+/* Sprint planning's Start sprint (sprintplan.js). */
+.plan-bar .plan-start { margin-left: 4px; }
+.start-sprint { width: min(560px, calc(100% - 48px)); }
+.start-sprint-warn { margin-top: 12px; padding: 8px 10px; border-radius: 8px; background: rgba(224, 168, 58, 0.12); color: var(--busy); font-size: 12.5px; line-height: 1.45; }
+.start-sprint-goal-head { display: flex; align-items: baseline; gap: 10px; margin: 18px 0 6px; }
+.start-sprint-goal-head .review-confirm-label { margin: 0; }
+.start-sprint-count { font-size: 11px; color: var(--text-faint); }
+.start-sprint-count.full { color: var(--err); }
+.start-sprint-goal-head .tp-link { margin-left: auto; }
+.start-sprint-goal { width: 100%; resize: vertical; font: inherit; line-height: 1.55; background: #14100c; color: var(--text-output); }
+.start-sprint.writing .start-sprint-goal { animation: start-sprint-think 1.4s ease-in-out infinite; }
+@keyframes start-sprint-think { 50% { border-color: rgba(233, 162, 59, 0.55); } }

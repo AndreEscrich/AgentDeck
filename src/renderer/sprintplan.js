@@ -61,9 +61,10 @@
     const projects = [...new Set((this.data.all?.items || []).map(t => t.project).filter(Boolean))];
     const lists = await Promise.all(projects.map(p => window.deck.pmOptions(p).then(o => [p, o?.sprints || []]).catch(() => [p, []])));
     const byName = new Map();
+    plan.active = [];
     for (const [project, sprints] of lists) for (const s of sprints) {
-      if (s.status === 'ACTIVE') continue;
-      if (!byName.has(s.name)) byName.set(s.name, { name: s.name, ids: {} });
+      if (s.status === 'ACTIVE') { plan.active.push({ ...s, project }); continue; }
+      if (!byName.has(s.name)) byName.set(s.name, { name: s.name, ids: {}, boardId: s.boardId || '', goal: s.goal || '' });
       byName.get(s.name).ids[project] = s.id;
     }
     const ps = prefixes().map(p => p.toLowerCase());
@@ -133,6 +134,14 @@
     }
     if (target) into.title = target.name;
     bar.append(step(-1), who, step(1), el('span', 'tickets-spacer'), into);
+    // Start sprint: a window with the dates, what is in it and its goal.
+    if (target) {
+      const start = el('button', 'review-complete plan-start', 'Start sprint');
+      start.type = 'button';
+      start.title = `Start ${target.name} now, for two weeks`;
+      start.onclick = () => this.confirmStartSprint(target, start);
+      bar.append(start);
+    }
 
     const mine = items.filter(t => (plan.person === '' ? !t.assignee : t.assignee === plan.person));
     const ids = target ? new Set(Object.values(target.ids)) : new Set();
@@ -309,6 +318,126 @@
       reset.onclick = () => { hidden.clear(); redo(); };
       menu.append(reset);
     }
+  };
+
+  // ---------- Start sprint ----------
+  //
+  // A window: the sprint starts now and ends in two weeks; what is in it
+  // (everyone's tickets); a warning when its board still has an active
+  // sprint; and its goal, a list Haiku writes from the sprint's tickets by
+  // epic (pmassist.js goals), which you can change before Start sprint.
+  P.confirmStartSprint = function (sprint, button) {
+    const plan = this.plan;
+    const ids = new Set(Object.values(sprint.ids));
+    const items = (this.data.all?.items || []).filter(t => (t.sprintId ? ids.has(t.sprintId) : t.sprint === sprint.name));
+    const kinds = new Map();
+    for (const t of items) { const k = isStory(t) ? 'stories' : /bug/i.test(t.type || '') ? 'bugs' : 'other tickets'; kinds.set(k, (kinds.get(k) || 0) + 1); }
+    const busy = (plan.active || []).find(s => s.boardId && s.boardId === sprint.boardId);
+    const project = Object.keys(sprint.ids)[0];
+
+    const shade = el('div', 'review-shade top');
+    const box = el('div', 'review-confirm start-sprint');
+    const close = async () => {
+      document.removeEventListener('keydown', onKey, true);
+      window.uiSound?.('close');
+      const r = await morphClose(box, button, { backdrop: shade });
+      r?.done?.();
+      shade.remove();
+    };
+    const onKey = e => { if (isBackKey(e) && !box.classList.contains('busy') && !e.target.closest?.('textarea')) { e.preventDefault(); e.stopImmediatePropagation(); close(); } };
+    document.addEventListener('keydown', onKey, true);
+    shade.onmousedown = e => { if (e.target === shade && !box.classList.contains('busy')) close(); };
+
+    const day = d => d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+    const now = new Date();
+    const end = new Date(now.getTime() + 14 * 24 * 3600 * 1000);
+    box.append(el('h3', null, `Start ${sprint.name}?`));
+    box.append(el('div', 'review-confirm-dates', `Today, ${day(now)} – ${day(end)} · 2 weeks`));
+    const what = el('div', 'review-confirm-carry');
+    if (items.length) what.append(el('span', 'review-confirm-n', String(items.length)), ` open ticket${items.length === 1 ? '' : 's'} in it`);
+    else what.append('Nothing is planned into it yet.');
+    box.append(what);
+    if (items.length) box.append(el('div', 'review-confirm-kinds', ['stories', 'bugs', 'other tickets'].filter(k => kinds.get(k)).map(k => `${kinds.get(k)} ${k}`).join(' · ')));
+    if (busy) box.append(el('div', 'start-sprint-warn', `${busy.name} is still active on this board: complete it in Sprint review first, or PM may refuse.`));
+
+    // The goal: Haiku's list, yours to change.
+    const head = el('div', 'start-sprint-goal-head');
+    const again = el('button', 'tp-link', 'Write with Haiku');
+    again.type = 'button';
+    const count = el('span', 'start-sprint-count');
+    head.append(el('span', 'review-confirm-label', 'Sprint goal'), count, again);
+    const goal = document.createElement('textarea');
+    goal.className = 'tp-input start-sprint-goal';
+    goal.rows = 11;
+    goal.maxLength = 500;
+    goal.placeholder = '- Party Time shipped\n- Expedition done';
+    const counted = () => { count.textContent = `${goal.value.length} / 500`; count.classList.toggle('full', goal.value.length >= 500); };
+    goal.oninput = counted;
+    const write = async () => {
+      if (!items.length) { goal.placeholder = 'Plan some tickets into the sprint first, or write the goal yourself.'; return; }
+      goal.disabled = again.disabled = true;
+      box.classList.add('writing');
+      const before = goal.value;
+      goal.value = '';
+      goal.placeholder = 'Haiku is writing the goals from the sprint\'s tickets…';
+      const byEpic = new Map();
+      for (const t of items) { const e = t.epic || 'No epic'; if (!byEpic.has(e)) byEpic.set(e, []); byEpic.get(e).push(t); }
+      const text = `Sprint: ${sprint.name}\n\n` + [...byEpic].map(([e, list]) => `Epic: ${e}\n` + list.map(t => `- [${t.type || 'Task'}] ${t.title}`).join('\n')).join('\n\n');
+      const r = await window.deck.pmSprintGoals(text).catch(e => ({ error: String(e?.message || e) }));
+      if (!document.body.contains(box)) return;
+      box.classList.remove('writing');
+      goal.disabled = again.disabled = false;
+      goal.placeholder = '- Party Time shipped\n- Expedition done';
+      if (r?.error) { goal.value = before; err.textContent = `Haiku could not write the goals: ${r.error}`; err.classList.remove('hidden'); }
+      else goal.value = String(r.result || '').slice(0, 500);
+      counted();
+      goal.focus();
+    };
+    again.onclick = () => { err.classList.add('hidden'); write(); };
+    box.append(head, goal);
+
+    const err = el('div', 'tickets-error hidden');
+    const actions = el('div', 'review-confirm-actions');
+    const cancel = el('button', null, 'Cancel');
+    cancel.type = 'button';
+    cancel.onclick = close;
+    const go = el('button', 'primary', 'Start sprint');
+    go.type = 'button';
+    go.onclick = async () => {
+      box.classList.add('busy');
+      go.disabled = cancel.disabled = goal.disabled = again.disabled = true;
+      go.textContent = 'Starting…';
+      err.classList.add('hidden');
+      // It starts now (the moment you confirm), for two weeks.
+      const r = await window.deck.pmStartSprint({ project, sprintId: sprint.ids[project], goal: goal.value.trim(), days: 14 })
+        .catch(e => ({ error: String(e?.message || e) }));
+      if (r?.notConnected) { close(); return this.setConnected({ connected: false }); }
+      if (!r || r.error) {
+        box.classList.remove('busy');
+        go.disabled = cancel.disabled = goal.disabled = again.disabled = false;
+        go.textContent = 'Start sprint';
+        err.textContent = r?.error || 'PM did not answer.';
+        err.classList.remove('hidden');
+        return;
+      }
+      close();
+      // The sprints as PM has them now (this one is active: the next one is planned into).
+      plan.sprints = null;
+      plan.sprintName = null;
+      this.reviewList = null;
+      this.savePlan();
+      this.load(true);
+      this.renderPlan();
+    };
+    actions.append(cancel, go);
+    box.append(err, actions);
+    shade.append(box);
+    this.view.append(shade);
+    window.uiSound?.('open');
+    morphOpen(box, button, { backdrop: shade });
+    // A goal already written stays; otherwise Haiku writes one at once.
+    if (sprint.goal) { goal.value = sprint.goal; counted(); } else { counted(); write(); }
+    cancel.focus();
   };
 
   // Into the sprint (target) or out of it (null: the backlog). Shows at

@@ -462,6 +462,8 @@ app.whenReady().then(() => {
   const pmAssist = require('./pmassist');
   ipcMain.handle('pmassist:run', (_e, id, text, context) => pmAssist.run(getConfig(), String(id), String(text || '').slice(0, 4000), { ...(context || {}), space: getConfig().pmSpace || 'Enchanted Inn' }, line => send('pmassist:step', String(id), line)));
   ipcMain.handle('pmassist:stop', (_e, id) => pmAssist.stop(String(id)));
+  ipcMain.handle('pmassist:goals', (_e, text) => pmAssist.goals(getConfig(), String(text || '').slice(0, 20000)));
+  ipcMain.handle('pmc:startSprint', (_e, a) => pmCall(() => pmClient.startSprint(a || {})));
   ipcMain.handle('pmc:statuses', (_e, project) => pmCall(() => pmClient.statuses(String(project || ''))));
   ipcMain.handle('pmc:workflows', (_e, project) => pmCall(() => pmClient.workflows(String(project || ''))));
   ipcMain.handle('pmc:remove', (_e, t) => pmCall(() => pmClient.remove({ key: String(t?.key || ''), id: String(t?.id || ''), project: String(t?.project || ''), subtask: !!t?.subtask })));

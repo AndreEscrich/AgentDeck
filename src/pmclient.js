@@ -551,6 +551,17 @@ async function createTask({ project, title, type, description, assignee, sprintI
   return ticket(key);
 }
 
+// Sprint planning's Start sprint: saves the goal (PM keeps 500 characters
+// at most), then starts the sprint now, two weeks long. The project's
+// options are read again after.
+async function startSprint({ project, sprintId, goal, days = 14 }) {
+  if (!project || !sprintId) throw new Error('Which sprint?');
+  if (typeof goal === 'string') await callTool('pm_update_sprint', { projectId: project, sprintId, goal: goal.slice(0, 500) });
+  const r = await callTool('pm_start_sprint', { projectId: project, sprintId, durationDays: days });
+  optionCache.clear();
+  return { ok: true, result: r };
+}
+
 async function completeSprint({ project, sprintId, targetSprintId }) {
   if (!project || !sprintId) throw new Error('Which sprint?');
   const args = { projectId: project, sprintId, action: targetSprintId ? 'carryOver' : 'moveToBacklog' };
@@ -691,4 +702,4 @@ async function workflows(project) {
 }
 
 module.exports = { setup, status, connect, disconnect, callTool, tickets, ticket, readTasks, statuses, subtasks, setStatus,
-  options, update, createTask, completeSprint, createSubtask, attachments, openAttachment, attach, comments, addComment, editComment, deleteComment, personName, workflows, remove };
+  options, update, createTask, startSprint, completeSprint, createSubtask, attachments, openAttachment, attach, comments, addComment, editComment, deleteComment, personName, workflows, remove };

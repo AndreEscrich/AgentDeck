@@ -133,6 +133,8 @@ contextBridge.exposeInMainWorld('deck', {
   pmTicket: key => ipcRenderer.invoke('pmc:ticket', key),
   pmAssist: (id, text, context) => ipcRenderer.invoke('pmassist:run', id, text, context),
   pmAssistStop: id => ipcRenderer.invoke('pmassist:stop', id),
+  pmSprintGoals: text => ipcRenderer.invoke('pmassist:goals', text),
+  pmStartSprint: args => ipcRenderer.invoke('pmc:startSprint', args),
   onPmAssistStep: fn => ipcRenderer.on('pmassist:step', (_e, id, line) => fn(id, line)),
   pmStatuses: project => ipcRenderer.invoke('pmc:statuses', project),
   pmWorkflows: project => ipcRenderer.invoke('pmc:workflows', project),
