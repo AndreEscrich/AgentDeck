@@ -956,7 +956,14 @@
         // name prefixes; empty, all). The ticket's own sprint shows anyway.
         const prefixes = ((typeof state !== 'undefined' && state.config?.pmSprintPrefixes) || []).map(p => p.toLowerCase());
         const followed = x => !prefixes.length || x.id === t.sprintId || prefixes.some(p => x.name.toLowerCase().startsWith(p));
-        const sprints = (o.sprints || []).filter(followed).map(x => [x.id, x.name, x.status === 'ACTIVE' ? 'Active' : 'Future']);
+        // With one prefix, it is the same on every name: the names show without
+        // it ("Features & UI - Sprint 37" → "Sprint 37"). With several, in full,
+        // so sprints of different kinds stay apart.
+        const short = name => {
+          if (prefixes.length !== 1 || !name.toLowerCase().startsWith(prefixes[0])) return name;
+          return name.slice(prefixes[0].length).replace(/^[\s\-–—:|·/]+/, '') || name;
+        };
+        const sprints = (o.sprints || []).filter(followed).map(x => [x.id, short(x.name), x.status === 'ACTIVE' ? 'Active' : 'Future']);
         if (t.sprintId && !sprints.some(x => x[0] === t.sprintId)) sprints.unshift([t.sprintId, t.sprint || 'Sprint']);
         field('Sprint', select(t.sprintId, sprints, v => this.saveFields(t, { sprintId: v }), { none: 'Backlog' }));
       }
