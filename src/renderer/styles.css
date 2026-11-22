@@ -1455,7 +1455,7 @@ img.chat-media { cursor: zoom-in; }
 video.chat-media { background: #000; }
 audio.chat-media { width: 100%; max-width: 420px; height: 40px; background: transparent; }
 .media-missing { font-size: 12px; color: var(--text-faint); font-style: italic; }
-.media-card { border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); overflow: hidden; }
+.media-card { border: 1px solid var(--border); border-radius: 10px; background: #14100c; box-shadow: 0 2px 14px rgba(0, 0, 0, 0.35); overflow: hidden; --plan-bg: #14100c; }
 .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; padding: 10px 12px 12px; }
 .media-item { margin: 0; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .media-item .chat-media { width: 100%; aspect-ratio: 1; object-fit: contain; border-radius: 6px;
@@ -4165,17 +4165,18 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .plan-table .tickets-status > span:first-child { overflow: hidden; text-overflow: ellipsis; }
 .plan-table tbody .tickets-row .col-key { padding-left: 10px; }
 .plan-table .col-status { width: 112px; }
-.plan-table .col-move { width: 52px; text-align: center; padding-left: 4px; padding-right: 4px; background: rgba(233, 162, 59, 0.07); }
-.plan-left .plan-table .col-move { border-left: 2px solid rgba(233, 162, 59, 0.35) !important; }
-.plan-right .plan-table .col-move { border-right: 2px solid rgba(233, 162, 59, 0.35); }
-.plan-table th.col-move { background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
+.plan-table th { background: var(--plan-bg); }
+.plan-table .col-move { width: 52px; text-align: center; padding-left: 4px; padding-right: 4px; background: rgba(243, 231, 214, 0.03); }
+.plan-left .plan-table .col-move { border-left: 1px solid var(--border) !important; }
+.plan-right .plan-table .col-move { border-right: 1px solid var(--border); }
+.plan-table th.col-move { background: #1a1510; }
 .plan-table tbody .tickets-row td.col-move { box-shadow: none; }
 .plan-table .plan-group td { padding: 14px 10px 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); border-bottom: 1px solid var(--border); background: none; }
 .plan-table .col-created { width: 98px; white-space: nowrap; }
 .plan-table .col-sprint { width: 100px; }
 .plan-date, .plan-sprint-name.none { color: var(--text-dim); }
 .plan-sprint-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
-.plan-move { width: 34px; height: 24px; padding: 0; border-radius: 6px; font-size: 15px; font-weight: 700; line-height: 1; color: var(--accent); background: rgba(233, 162, 59, 0.12); border: 1px solid rgba(233, 162, 59, 0.4); cursor: pointer; }
-.plan-move:not(:disabled):hover { background: var(--accent); color: var(--accent-text); }
+.plan-move { width: 34px; height: 24px; padding: 0; border-radius: 6px; font-size: 15px; font-weight: 700; line-height: 1; color: var(--text-faint); background: none; border: 1px solid var(--border); cursor: pointer; }
+.plan-move:not(:disabled):hover { color: var(--accent); border-color: rgba(233, 162, 59, 0.5); background: rgba(233, 162, 59, 0.1); }
 .plan-move:disabled { opacity: 0.35; cursor: default; }
 .plan-table tr.saving { opacity: 0.5; pointer-events: none; }
