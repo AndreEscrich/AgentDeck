@@ -289,6 +289,8 @@ const LIST_TQL = {
   sprint: 'assignee = currentUser() AND sprint IN openSprints() ORDER BY updatedAt DESC',
   // Every ticket of the space that is not done, whoever has it (or nobody).
   all: 'statusCategory != done ORDER BY updatedAt DESC',
+  // Sprint review: every ticket of the open sprints, done ones too, whoever has it.
+  review: 'sprint IN openSprints() ORDER BY updatedAt DESC',
 };
 
 // The projects of a PM space (Settings → Tactile PM, Enchanted
@@ -307,12 +309,12 @@ async function projectsOfSpace(name) {
 }
 
 // All tickets: the space's open tickets, up to 600 (newest changes first).
-async function spaceTickets(space) {
+async function spaceTickets(space, tql = LIST_TQL.all) {
   const projectIds = await projectsOfSpace(space);
   const items = [];
   let total = 0;
   for (let offset = 0; offset < 600; offset += 200) {
-    const r = await callTool('pm_search_tasks', { tql: LIST_TQL.all, projectIds, ...LIST_FIELDS, offset });
+    const r = await callTool('pm_search_tasks', { tql, projectIds, ...LIST_FIELDS, offset });
     const page = r.items || [];
     total = r.total || total;
     items.push(...page);
@@ -325,6 +327,7 @@ async function spaceTickets(space) {
 // list: 'sprint' (yours) or 'all' (the space's). Resolves with { items, total }.
 async function tickets(list, { space } = {}) {
   if (list === 'all') return spaceTickets(space);
+  if (list === 'review') return spaceTickets(space, LIST_TQL.review);
   const r = await callTool('pm_search_tasks', { tql: LIST_TQL.sprint, ...LIST_FIELDS });
   (r.items || []).forEach(learn);
   // These are all yours, so their assignee id is yours: your sign-in email

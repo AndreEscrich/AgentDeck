@@ -22,7 +22,8 @@
 // space (Settings → Tactile PM; Enchanted Inn by default), whoever
 // has it, so you can find unassigned ones and take them (Assign to me).
 // Sprint planning (sprintplan.js) uses All tickets' list.
-const TICKET_LISTS = [['sprint', 'Sprint'], ['all', 'All tickets'], ['plan', 'Sprint planning']];
+// Sprint review (sprintreview.js): one sprint's tickets, everyone's, done ones too.
+const TICKET_LISTS = [['sprint', 'Sprint'], ['all', 'All tickets'], ['plan', 'Sprint planning'], ['review', 'Sprint review']];
 const CATEGORY_ORDER = { todo: 0, in_progress: 1, done: 2 };
 // The table's columns: [id, name, the value it sorts by].
 const TICKET_COLUMNS = [
@@ -93,7 +94,13 @@ class TicketsView {
       const b = el('button', 'tickets-tab', label);
       b.type = 'button';
       b.dataset.list = id;
-      b.onclick = () => { this.list = id; this.type = null; this.renderTabs(); this.show(); this.load(); };
+      b.onclick = () => {
+        // Each tab keeps its own sort (Sprint review's default: done first).
+        this.sorts ||= {};
+        this.sorts[this.list] = this.sort;
+        this.sort = this.sorts[id] || (id === 'review' ? { col: null, desc: false } : { col: 'key', desc: true });
+        this.list = id; this.type = null; this.renderTabs(); this.show(); this.load();
+      };
       b.title = id === 'plan' ? 'One person at a time: their tickets, and the ones in the upcoming sprint' : '';
       this.tabs.appendChild(b);
     }
@@ -252,6 +259,7 @@ class TicketsView {
   renderTabs() {
     for (const b of this.tabs.children) b.classList.toggle('on', b.dataset.list === this.list);
     this.view.classList.toggle('planning', this.list === 'plan');
+    this.view.classList.toggle('reviewing', this.list === 'review');
     if (this.list !== 'plan') this.listBox.classList.remove('planning');
   }
 
@@ -516,7 +524,7 @@ class TicketsView {
       }
     }
     // Whose tickets (All tickets only): anyone, unassigned, yours or one person's.
-    if (withTypes && part('assignee') && this.list === 'all') {
+    if (withTypes && part('assignee') && ['all', 'review'].includes(this.list)) {
       const people = new Map();
       for (const t of this.items()) if (t.assignee) people.set(t.assignee, (people.get(t.assignee) || 0) + 1);
       const me = this.email ? [...people.keys()].find(n => n === this.myName?.()) : null;
@@ -532,7 +540,7 @@ class TicketsView {
         menu.append(b);
       }
     }
-    const on = { status: this.filtering(), type: withTypes && this.type, assignee: this.list === 'all' && this.who !== null };
+    const on = { status: this.filtering(), type: withTypes && this.type, assignee: ['all', 'review'].includes(this.list) && this.who !== null };
     if (only ? on[only] : Object.values(on).some(Boolean)) {
       const reset = el('button', 'tp-link tickets-filter-reset', only ? 'Show all' : 'Show everything');
       reset.type = 'button';
@@ -571,11 +579,13 @@ class TicketsView {
     const d = this.data[this.list];
     if (!d) return;
     const q = this.search.value.trim().toLowerCase();
-    const whoOk = t => this.list !== 'all' || this.who === null || (this.who === '' ? !t.assignee : t.assignee === this.who);
+    const review = this.list === 'review';
+    const inReview = t => !review || this.reviewHas(t);
+    const whoOk = t => !['all', 'review'].includes(this.list) || this.who === null || (this.who === '' ? !t.assignee : t.assignee === this.who);
     const sprintOk = t => this.list !== 'all' || this.sprintPick === null || (this.sprintPick === '' ? !t.sprint : t.sprint === this.sprintPick);
     const words = this.titleQ.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const titleOk = t => words.every(w => t.title.toLowerCase().includes(w));
-    const shown = this.items().filter(t => (this.type === null || (t.type || 'Other') === this.type) && this.shows(t) && whoOk(t) && sprintOk(t) && titleOk(t)
+    const shown = this.items().filter(t => inReview(t) && (this.type === null || (t.type || 'Other') === this.type) && this.shows(t) && whoOk(t) && sprintOk(t) && titleOk(t)
       && (!q || `${t.key} ${t.title} ${t.epic} ${t.sprint} ${t.assignee || 'unassigned'}`.toLowerCase().includes(q)));
     const columns = this.columns();
     // A column's sort, or none (col null): then the tickets go by title,
@@ -584,7 +594,10 @@ class TicketsView {
     const column = this.sort.col && columns.find(c => c[0] === this.sort.col);
     const by = column ? column[2] : t => t.title.toLowerCase();
     const desc = column ? this.sort.desc : false;
+    // Sprint review with no sort: done, then in progress, then to do, newest first.
+    const reviewRank = t => ({ done: 0, in_progress: 1, todo: 2 })[t.category] ?? 1;
     shown.sort((a, b) => {
+      if (review && !column) return reviewRank(a) - reviewRank(b) || b.seq - a.seq;
       const x = by(a), y = by(b);
       const c = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true });
       return (desc ? -c : c) || b.seq - a.seq;
@@ -609,7 +622,7 @@ class TicketsView {
         : this.sort.desc === first ? { col: id, desc: !first } : { col: null, desc: false };
       const sort = el('button', 'tickets-th-btn tickets-sort-btn' + (sorted ? ' on' : ''), sorted ? (this.sort.desc ? '↓' : '↑') : '↕');
       sort.type = 'button';
-      sort.title = next.col ? `Sort by ${name.toLowerCase()}${next.desc ? ' (descending)' : ''}` : 'No sort: by title, A to Z';
+      sort.title = next.col ? `Sort by ${name.toLowerCase()}${next.desc ? ' (descending)' : ''}` : review ? 'Back to done, in progress, then to do' : 'No sort: by title, A to Z';
       sort.onclick = e => {
         e.stopPropagation();
         this.sort = next;
@@ -643,6 +656,8 @@ class TicketsView {
       groups.get(name).push(t);
     }
     const names = [...groups.keys()].sort((a, b) => (!a) - (!b) || a.localeCompare(b));
+    // Sprint review: one list, not grouped by epic.
+    if (review) { groups.clear(); groups.set('', shown); names.splice(0, names.length, ''); }
     names.forEach((name, gi) => {
       const list = groups.get(name);
       const folded = this.foldedEpics.has(name);
@@ -654,6 +669,7 @@ class TicketsView {
         gap.append(gtd);
         body.appendChild(gap);
       }
+      if (review) { this.addRows(body, list); return; }
       const tr = el('tr', 'tickets-group' + (folded ? ' folded' : ''));
       const td = el('td');
       td.colSpan = this.columns().length;
@@ -671,6 +687,15 @@ class TicketsView {
       };
       body.appendChild(tr);
       if (folded) return;
+      this.addRows(body, list);
+    });
+    table.append(thead, body);
+    this.finishList(table, shown, d, q, review);
+  }
+
+  // A list's rows, each story's subtasks under it when open.
+  addRows(body, list) {
+    {
       let last = null;
       for (const t of list) {
         last = this.row(t);
@@ -684,18 +709,21 @@ class TicketsView {
         }
       }
       last?.classList.add('group-end');
-    });
-    table.append(thead, body);
+    }
+  }
+
+  finishList(table, shown, d, q, review) {
     const frag = document.createDocumentFragment();
+    if (review) frag.appendChild(this.reviewBar(shown));
     frag.appendChild(table);
-    if (!shown.length) frag.appendChild(el('div', 'gallery-note', q || this.type || this.filtering() ? 'No ticket matches.' : this.list === 'sprint' ? 'You have no tickets in an open sprint.' : 'No open tickets.'));
+    if (!shown.length) frag.appendChild(el('div', 'gallery-note', q || this.type || this.filtering() ? 'No ticket matches.' : this.list === 'sprint' ? 'You have no tickets in an open sprint.' : review ? 'No tickets in this sprint.' : 'No open tickets.'));
     if (d.total > d.items.length) frag.appendChild(el('div', 'gallery-note', `Showing ${d.items.length} of ${d.total} tickets.`));
     this.listBox.replaceChildren(frag);
   }
 
   // This sprint's list needs no Sprint column: every ticket is in it.
   columns() {
-    return TICKET_COLUMNS.filter(c => !(['sprint', 'assignee'].includes(c[0]) && this.list === 'sprint'));
+    return TICKET_COLUMNS.filter(c => !(['sprint', 'assignee'].includes(c[0]) && this.list === 'sprint') && !(c[0] === 'sprint' && this.list === 'review'));
   }
 
   // The small robot-head button after a key: starts an agent on the ticket.
@@ -768,7 +796,7 @@ class TicketsView {
       const whoWas = was?.assignee !== undefined ? el('span', 'tickets-who' + (was.assignee ? '' : ' none'), was.assignee || 'Unassigned') : null;
       tr.insertBefore(cell('col-assignee', whoWas ? this.morph(who, whoWas) : who), tr.querySelector('.col-status'));
       const sprint = el('span', null, t.sprint);
-      tr.append(cell('col-sprint', was?.sprint !== undefined ? this.morph(sprint, el('span', null, was.sprint)) : sprint));
+      if (this.list !== 'review') tr.append(cell('col-sprint', was?.sprint !== undefined ? this.morph(sprint, el('span', null, was.sprint)) : sprint));
     }
     tr.title = story ? `${t.title}\n(the title opens the ticket; the rest of the row shows or hides the subtasks)` : t.title;
     if (story) tr.onclick = e => { if (!e.target.closest('a, button')) this.toggleSubs(t); };
@@ -806,7 +834,7 @@ class TicketsView {
         cell('col-status', s._was?.status !== undefined ? this.morph(this.statusButton(s), this.oldStatus(s._was)) : this.statusButton(s)));
       if (this.list !== 'sprint') {
         tr.insertBefore(cell('col-assignee', el('span', 'tickets-who' + (s.assignee ? '' : ' none'), s.assignee || '')), tr.querySelector('.col-status'));
-        tr.append(cell('col-sprint'));
+        if (this.list !== 'review') tr.append(cell('col-sprint'));
       }
       tr.title = s.title;
       return tr;

@@ -4180,3 +4180,12 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .plan-move:not(:disabled):hover { color: var(--accent); border-color: rgba(233, 162, 59, 0.5); background: rgba(233, 162, 59, 0.1); }
 .plan-move:disabled { opacity: 0.35; cursor: default; }
 .plan-table tr.saving { opacity: 0.5; pointer-events: none; }
+
+/* Sprint review (sprintreview.js): the sprint over the list. */
+.review-bar { display: flex; align-items: center; gap: 12px; max-width: 960px; margin: 0 auto 12px; }
+.review-sprint { height: 32px; min-width: 240px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); color: var(--text); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; outline: none; }
+.review-progress { flex: 1; display: flex; align-items: center; gap: 10px; color: var(--text-dim); font-size: 13px; white-space: nowrap; }
+.review-meter { flex: 1; max-width: 260px; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; display: flex; }
+.review-meter i { display: block; height: 100%; }
+.review-meter .m-done { background: var(--ok); }
+.review-meter .m-prog { background: var(--busy); }
