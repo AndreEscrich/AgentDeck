@@ -37,7 +37,10 @@ function epicDot(name) {
 // of it: the row, list item or button around where the pointer went down.
 const pressed = { el: null, at: 0 };
 document.addEventListener('pointerdown', e => {
-  const t = e.target.closest?.('tr, .tp-sub, .tickets-notif, .plan-table tr, a, button, [data-key], .tickets-row');
+  // A ticket's whole row first (a click on its key or title is the row),
+  // then a link or a button on its own.
+  const t = e.target.closest?.('tr.tickets-row, .plan-table tbody tr, .tp-sub, .tickets-notif, .tp-epic-tasks > *')
+    || e.target.closest?.('a, button, [data-key], tr');
   pressed.el = t || null;
   pressed.at = Date.now();
 }, true);
