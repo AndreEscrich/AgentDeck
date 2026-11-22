@@ -1,5 +1,5 @@
 // Sprint review: the Tickets view's fourth tab. One sprint's tickets,
-// everyone's and done ones too, in one list like All tickets (not grouped
+// stories only, everyone's and done ones too, in one list like All tickets (not grouped
 // by epic): by default done first, then in progress, then to do, each
 // newest first. The sprint picker sits over the list, with how much of it
 // is done. The sprints: the open ones (the active ones first) whose names
@@ -61,8 +61,8 @@
       try { localStorage.setItem('pmReviewSprint', pick.value); } catch { /* this run only */ }
       this.renderList();
     };
-    // Everyone's tickets in the sprint (whatever the filters hide).
-    const all = (this.data.review?.items || []).filter(t => t.sprint === current.name);
+    // Everyone's stories in the sprint (whatever the filters hide).
+    const all = (this.data.review?.items || []).filter(t => isStory(t) && t.sprint === current.name);
     const n = c => all.filter(t => (t.category || 'todo') === c).length;
     const done = n('done'), prog = n('in_progress');
     const meter = el('span', 'review-meter');
@@ -71,7 +71,7 @@
     const mp = el('i', 'm-prog'); mp.style.width = pct(prog);
     meter.append(md, mp);
     const progress = el('span', 'review-progress');
-    progress.append(meter, `${done} of ${all.length} done · ${prog} in progress · ${all.length - done - prog} to do`);
+    progress.append(meter, `${done} of ${all.length} stories done · ${prog} in progress · ${all.length - done - prog} to do`);
     bar.append(pick, progress);
     return bar;
   };

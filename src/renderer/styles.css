@@ -3978,7 +3978,11 @@ select option { background: var(--bg-panel); color: var(--text); }
 
 /* All tickets: who has each ticket (tickets.js). */
 .tickets-table .col-assignee { width: 150px; }
-.tickets-who { color: var(--text-dim); }
+.tickets-who { color: var(--text-dim); display: inline-flex; align-items: center; gap: 7px; max-width: 100%; vertical-align: middle; }
+.tickets-who-name { overflow: hidden; text-overflow: ellipsis; }
+.tickets-who .tp-avatar { width: 20px; height: 20px; font-size: 8.5px; font-style: normal; }
+.tickets-status-menu .tp-avatar { width: 18px; height: 18px; font-size: 8px; margin-right: 6px; }
+.plan-bar .tp-avatar { width: 28px; height: 28px; font-size: 11px; }
 .tickets-who.none { color: var(--text-faint); font-style: italic; }
 
 /* Start agent from the Tickets view (app.js wrapTicket, flyTicketToComposer):

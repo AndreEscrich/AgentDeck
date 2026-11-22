@@ -38,19 +38,7 @@
     span.title = p ? `Priority: ${p}` : 'No priority';
     return span;
   }
-  function initials(name) {
-    const words = String(name || '').replace(/@.*/, '').split(/[\s._-]+/).filter(Boolean);
-    return ((words[0]?.[0] || '?') + (words.length > 1 ? words[words.length - 1][0] : '')).toUpperCase();
-  }
-  function avatar(name) {
-    const span = el('span', 'tp-avatar', name ? initials(name) : '');
-    let h = 0;
-    for (const c of String(name || '')) h = (h * 31 + c.charCodeAt(0)) % 360;
-    span.style.background = name ? `hsl(${h} 45% 38%)` : 'transparent';
-    if (!name) span.classList.add('none');
-    span.title = name || 'Unassigned';
-    return span;
-  }
+  const avatar = personAvatar;   // tickets.js
   function minutesText(m) {
     if (!m) return '';
     const h = Math.floor(m / 60), r = m % 60;

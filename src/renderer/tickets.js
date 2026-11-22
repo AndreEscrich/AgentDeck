@@ -76,6 +76,29 @@ const agentStateText = a => ({ working: 'working', starting: 'starting', waiting
 const isStory = t => !t.subtask && /story/i.test(t.type || '');
 const REFRESH_MS = 5 * 60 * 1000;
 
+// A person's round mark: their initials on a colour of their own (PM's
+// tools give no pictures). No name: a dashed empty circle.
+function personInitials(name) {
+  const words = String(name || '').replace(/@.*/, '').split(/[\s._-]+/).filter(w => /^[\p{L}\p{N}]/u.test(w));
+  return ((words[0]?.[0] || '?') + (words.length > 1 ? words[words.length - 1][0] : '')).toUpperCase();
+}
+function personAvatar(name) {
+  const span = el('span', 'tp-avatar', name ? personInitials(name) : '');
+  let h = 0;
+  for (const c of String(name || '')) h = (h * 31 + c.charCodeAt(0)) % 360;
+  span.style.background = name ? `hsl(${h} 45% 38%)` : 'transparent';
+  if (!name) span.classList.add('none');
+  span.title = name || 'Unassigned';
+  return span;
+}
+// An assignee in a list: the mark, then the name (or the empty text).
+function personLabel(name, empty = 'Unassigned') {
+  const span = el('span', 'tickets-who' + (name ? '' : ' none'));
+  if (!name && !empty) return span;
+  span.append(personAvatar(name), el('span', 'tickets-who-name', name || empty));
+  return span;
+}
+
 function pmItemUrl(key) { return 'https://pm.tactilews.com/pm/items/' + key; }
 
 class TicketsView {
@@ -535,7 +558,7 @@ class TicketsView {
       for (const [value, label, n] of choices) {
         const b = el('button', 'tickets-status-item tickets-check' + (this.who === value ? ' ticked' : ''));
         b.type = 'button';
-        b.append(el('span', 'tickets-check-box round', this.who === value ? '●' : ''), el('span', null, label), el('span', 'gallery-cat-count', String(n)));
+        b.append(el('span', 'tickets-check-box round', this.who === value ? '●' : ''), ...(value !== null ? [personAvatar(value)] : []), el('span', null, label), el('span', 'gallery-cat-count', String(n)));
         b.onclick = () => { this.who = value; redo(); };
         menu.append(b);
       }
@@ -580,7 +603,7 @@ class TicketsView {
     if (!d) return;
     const q = this.search.value.trim().toLowerCase();
     const review = this.list === 'review';
-    const inReview = t => !review || this.reviewHas(t);
+    const inReview = t => !review || (isStory(t) && this.reviewHas(t));
     const whoOk = t => !['all', 'review'].includes(this.list) || this.who === null || (this.who === '' ? !t.assignee : t.assignee === this.who);
     const sprintOk = t => this.list !== 'all' || this.sprintPick === null || (this.sprintPick === '' ? !t.sprint : t.sprint === this.sprintPick);
     const words = this.titleQ.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -777,7 +800,7 @@ class TicketsView {
       chev.onclick = e => { e.stopPropagation(); this.toggleSubs(t); };
       key.append(chev);
     } else key.append(el('span', 'tickets-expand-gap'));
-    key.append(typeIcon(t.type), this.keyButton(t), this.notifBell(t), this.agentButton(t));
+    key.append(typeIcon(t.type), this.keyButton(t), this.notifBell(t), ...(this.list === 'review' ? [] : [this.agentButton(t)]));
     // The title's text opens the ticket's details, like its key; the rest of
     // the row (the cell around the text too) shows or hides the subtasks.
     // What changed since you last saw it (changesOf) shows its old value,
@@ -792,8 +815,8 @@ class TicketsView {
       title,
       cell('col-status', was?.status !== undefined ? this.morph(status, this.oldStatus(was)) : status));
     if (this.list !== 'sprint') {
-      const who = el('span', 'tickets-who' + (t.assignee ? '' : ' none'), t.assignee || 'Unassigned');
-      const whoWas = was?.assignee !== undefined ? el('span', 'tickets-who' + (was.assignee ? '' : ' none'), was.assignee || 'Unassigned') : null;
+      const who = personLabel(t.assignee);
+      const whoWas = was?.assignee !== undefined ? personLabel(was.assignee) : null;
       tr.insertBefore(cell('col-assignee', whoWas ? this.morph(who, whoWas) : who), tr.querySelector('.col-status'));
       const sprint = el('span', null, t.sprint);
       if (this.list !== 'review') tr.append(cell('col-sprint', was?.sprint !== undefined ? this.morph(sprint, el('span', null, was.sprint)) : sprint));
@@ -829,11 +852,11 @@ class TicketsView {
       tr.append(
         // (No chevron gap: the row's own indent already steps it in, and the
         // agent button needs the room.)
-        cell('col-key', icon, keyBtn, this.agentButton({ ...s, parentKey: parent.key })),
+        cell('col-key', icon, keyBtn, ...(this.list === 'review' ? [] : [this.agentButton({ ...s, parentKey: parent.key })])),
         (() => { const x = ticketTitle(s.title, 'tickets-sub-title tickets-title-link'); x.onclick = e => { e.stopPropagation(); this.select({ ...s, type: 'Subtask', parentKey: parent.key }); }; s._was = this.changesOf(s); return cell('col-title', s._was?.title !== undefined ? this.morph(x, ticketTitle(s._was.title, 'tickets-sub-title tickets-title-link')) : x); })(),
         cell('col-status', s._was?.status !== undefined ? this.morph(this.statusButton(s), this.oldStatus(s._was)) : this.statusButton(s)));
       if (this.list !== 'sprint') {
-        tr.insertBefore(cell('col-assignee', el('span', 'tickets-who' + (s.assignee ? '' : ' none'), s.assignee || '')), tr.querySelector('.col-status'));
+        tr.insertBefore(cell('col-assignee', personLabel(s.assignee, '')), tr.querySelector('.col-status'));
         if (this.list !== 'review') tr.append(cell('col-sprint'));
       }
       tr.title = s.title;

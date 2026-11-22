@@ -129,7 +129,7 @@
       into.append('Planning into ', s);
     }
     if (target) into.title = target.name;
-    bar.append(step(-1), who, step(1), el('span', 'tickets-spacer'), into);
+    bar.append(step(-1), personAvatar(plan.person), who, step(1), el('span', 'tickets-spacer'), into);
 
     const mine = items.filter(t => (plan.person === '' ? !t.assignee : t.assignee === plan.person));
     const ids = target ? new Set(Object.values(target.ids)) : new Set();
