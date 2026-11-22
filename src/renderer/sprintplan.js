@@ -1,9 +1,10 @@
 // Sprint planning: the Tickets view's third tab. One person at a time
 // (the ‹ › buttons step through everyone with open tickets in the space,
 // and Unassigned): on the left their open tickets that are not in the
-// upcoming sprint, then the space's unassigned stories and bugs; on the
-// right the ones in the sprint. → puts a ticket in the upcoming sprint (an
-// unassigned one gets the person too), ← takes it out (to the backlog);
+// upcoming sprint, then the space's unassigned stories and bugs, then
+// everyone else's tickets (to hand one over); on the right the ones in the
+// sprint. → puts a ticket in the upcoming sprint and, when it is unassigned
+// or someone else's, gives it to the person; ← takes it out (to the backlog);
 // both change it in PM at once. Each side has its own search, sorting (a
 // click on a column's name; by default stories first, then bugs, each
 // newest first) and type filter, kept between runs.
@@ -139,6 +140,8 @@
     plan.lists = { left: mine.filter(t => !inSprint(t)), right: mine.filter(inSprint) };
     // After the person's own: nobody's stories and bugs, to take into the sprint.
     plan.extra = plan.person === '' ? [] : items.filter(t => !t.assignee && !inSprint(t) && typeRank(t) < 2);
+    // Then everyone else's (in the sprint or not), to give one to this person.
+    plan.others = plan.person === '' ? [] : items.filter(t => t.assignee && t.assignee !== plan.person);
 
     const panes = el('div', 'plan-panes');
     for (const side of ['left', 'right']) {
@@ -187,8 +190,10 @@
     const shown = all.filter(keep).sort(order);
     const extraAll = side === 'left' ? plan.extra || [] : [];
     const extra = extraAll.filter(keep).sort(order);
+    const othersAll = side === 'left' ? plan.others || [] : [];
+    const others = othersAll.filter(keep).sort(order);
     const n = (a, b) => (a === b ? String(b) : `${a} of ${b}`);
-    countEl.textContent = n(shown.length, all.length) + (extraAll.length ? ` · ${n(extra.length, extraAll.length)} unassigned` : '');
+    countEl.textContent = n(shown.length, all.length) + (extraAll.length ? ` · ${n(extra.length, extraAll.length)} unassigned` : '') + (othersAll.length ? ` · ${n(others.length, othersAll.length)} others'` : '');
 
     const table = el('table', 'tickets-table plan-table');
     const head = el('tr');
@@ -236,12 +241,17 @@
       const title = ticketTitle(t.title, 'tickets-title-link');
       title.onclick = e => { e.stopPropagation(); this.select(t); };
       const cells = [td('col-key', typeIcon(t.type), this.keyButton(t), this.notifBell(t)), td('col-title', title)];
+      // Someone else's: their mark before the title.
+      const theirs = side === 'left' && t.assignee && t.assignee !== plan.person;
+      if (theirs) cells[1].prepend(personAvatar(t.assignee));
       const move = el('button', 'plan-move', side === 'left' ? '→' : '←');
       move.type = 'button';
       move.disabled = side === 'left' ? !target : false;
-      const takes = !t.assignee && plan.person ? ` and assign to ${plan.person}` : '';
+      // Unassigned or someone else's: it becomes the person's too.
+      const give = side === 'left' && plan.person && t.assignee !== plan.person;
+      const takes = give ? ` and assign to ${plan.person}` + (t.assignee ? ` (now ${t.assignee}'s)` : '') : '';
       move.title = side === 'left' ? (target ? `Move to ${target.name}${takes}` : 'No upcoming sprint') : 'Take out of the sprint (to the backlog)';
-      move.onclick = e => { e.stopPropagation(); this.planMove(t, side === 'left' ? target : null, side === 'left' && !t.assignee ? plan.person : null); };
+      move.onclick = e => { e.stopPropagation(); this.planMove(t, side === 'left' ? target : null, give ? plan.person : null); };
       if (side === 'right') tr.append(td('col-move', move), ...cells);
       else tr.append(...cells, td('col-move', move));
       tr.title = t.title;
@@ -256,10 +266,18 @@
       body.append(tr);
       for (const t of extra) body.append(row(t));
     }
+    if (others.length) {
+      const tr = el('tr', 'plan-group');
+      const td = el('td', null, 'Other people\'s tickets');
+      td.colSpan = cols.length + 1;
+      tr.append(td);
+      body.append(tr);
+      for (const t of others) body.append(row(t));
+    }
     table.append(thead, body);
     const frag = document.createDocumentFragment();
     frag.append(table);
-    if (!shown.length && !extra.length) frag.append(el('div', 'gallery-note', all.length || extraAll.length ? 'No ticket matches.' : side === 'left' ? 'No other open tickets.' : 'Nothing in this sprint yet.'));
+    if (!shown.length && !extra.length && !others.length) frag.append(el('div', 'gallery-note', all.length || extraAll.length || othersAll.length ? 'No ticket matches.' : side === 'left' ? 'No other open tickets.' : 'Nothing in this sprint yet.'));
     box.replaceChildren(frag);
   };
 
@@ -269,7 +287,7 @@
     menu.replaceChildren();
     menu.classList.add('tickets-filter-menu');
     const counts = new Map();
-    for (const t of [...this.plan.lists[side], ...(side === 'left' ? this.plan.extra || [] : [])]) counts.set(valueOf(t), (counts.get(valueOf(t)) || 0) + 1);
+    for (const t of [...this.plan.lists[side], ...(side === 'left' ? [...(this.plan.extra || []), ...(this.plan.others || [])] : [])]) counts.set(valueOf(t), (counts.get(valueOf(t)) || 0) + 1);
     const hidden = new Set(st.hidden[id] || []);
     for (const v of hidden) if (!counts.has(v)) counts.set(v, 0);
     const values = [...counts.keys()].sort((a, b) => typeRank({ type: a }) - typeRank({ type: b }) || a.localeCompare(b));
