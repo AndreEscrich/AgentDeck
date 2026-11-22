@@ -895,7 +895,12 @@
       if (prefix) wrap.append(prefix);
       const s = document.createElement('select');
       if (none !== false) s.append(new Option(none, ''));
-      for (const [v, label] of choices) s.append(new Option(label, v));
+      // A choice's third part is its group: a heading over the choices of that group.
+      let group = null;
+      for (const [v, label, heading] of choices) {
+        if (heading && heading !== group?.label) { group = document.createElement('optgroup'); group.label = heading; s.append(group); }
+        (heading ? group : s).append(new Option(label, v));
+      }
       s.value = value || '';
       s.onchange = () => onChange(s.value || null);
       wrap.append(s);
@@ -946,7 +951,8 @@
       if (!o) side.append(el('div', 'tp-faint tp-loading', 'Reading the project\'s fields…'));
       else {
         // The epic is in the chain at the top left (its ▾ changes it), not here.
-        const sprints = (o.sprints || []).map(x => [x.id, x.name + (x.status === 'ACTIVE' ? ' (Active)' : '')]);
+        // Under Active and Future headings (pmclient sorts them that way).
+        const sprints = (o.sprints || []).map(x => [x.id, x.name, x.status === 'ACTIVE' ? 'Active' : 'Future']);
         if (t.sprintId && !sprints.some(x => x[0] === t.sprintId)) sprints.unshift([t.sprintId, t.sprint || 'Sprint']);
         field('Sprint', select(t.sprintId, sprints, v => this.saveFields(t, { sprintId: v }), { none: 'Backlog' }));
       }

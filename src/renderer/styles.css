@@ -4134,3 +4134,6 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .gb-chip { padding: 2px 8px; border-radius: 6px; border: 1px solid #4a3a2c; background: #3a2e25; color: var(--text-dim); font-size: 11.5px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gb-chip.on { border-color: var(--accent); color: var(--text); }
 .gb.busy .tickets-assist-send { opacity: 0.5; pointer-events: none; }
+/* Headings in the panel's dropdowns (the Sprint field's Active and Future). */
+.tp-select optgroup { font-style: normal; font-weight: 700; color: var(--text-faint); background: var(--bg-panel); }
+.tp-select optgroup option { font-weight: 400; color: var(--text); padding-left: 14px; }
