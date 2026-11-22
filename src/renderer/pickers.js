@@ -85,8 +85,10 @@ function cubicBezier(x1, y1, x2, y2) {
 const morphEase = cubicBezier(0.35, 0, 0.15, 1);
 
 // Frames for the window (el) and the box, from the box `from` (p = 0) to
-// the window's own place (p = 1). show(p): the window's opacity.
-function morphFrames(elm, from, show) {
+// the window's own place (p = 1); back = true the other way, the curve
+// still running forwards in time (a quick start, a soft landing), as an
+// agent's chat goes back into its tile. show(t): the window's opacity.
+function morphFrames(elm, from, show, back = false) {
   const to = elm.getBoundingClientRect();
   if (!to.width || !to.height) return null;
   const tf = getComputedStyle(elm).transform;
@@ -94,7 +96,7 @@ function morphFrames(elm, from, show) {
   const win = [], box = [];
   for (let i = 0; i <= MORPH_STEPS; i++) {
     const t = i / MORPH_STEPS;
-    const p = morphEase(t);
+    const p = back ? 1 - morphEase(t) : morphEase(t);
     const L = from.left + (to.left - from.left) * p;
     const T = from.top + (to.top - from.top) * p;
     const W = from.width + (to.width - from.width) * p;
@@ -185,24 +187,23 @@ function morphOpen(elm, from, { backdrop = null } = {}) {
 function morphClose(elm, from, { backdrop = null } = {}) {
   if (document.hidden) return Promise.resolve();
   const rect = from instanceof Element ? (from.isConnected ? visibleRect(from) : null) : from;
-  // Played backwards: t = 1 is the start. The window goes in the last 15%.
-  const f = rect && morphFrames(elm, rect, t => Math.min(1, t / 0.15));
+  // The window goes in the last 15%.
+  const f = rect && morphFrames(elm, rect, t => (t < 0.85 ? 1 : (1 - t) / 0.15), true);
   if (!f) return Promise.resolve();
   elm.style.transformOrigin = '0 0';
   elm.style.pointerEvents = 'none';
-  const back = list => list.map(k => ({ ...k, offset: 1 - k.offset })).reverse();
   const ghost = morphGhost(from, elm);
-  const a = elm.animate(back(f.win), { ...LINEAR, fill: 'forwards' });
-  ghost.g.animate(back(f.box), { ...LINEAR, fill: 'forwards' });
+  const a = elm.animate(f.win, { ...LINEAR, fill: 'forwards' });
+  ghost.g.animate(f.box, { ...LINEAR, fill: 'forwards' });
   // Its content comes back near the end, as a tile's text does (hub.js: from 75%).
   ghost.inner.animate([{ opacity: 0 }, { opacity: 0, offset: 0.75 }, { opacity: 1 }], { duration: MORPH.duration, fill: 'forwards' });
   backdrop?.animate([{ opacity: 1 }, { opacity: 0 }], { ...MORPH, fill: 'forwards' });
   return endOf(a).then(() => {
     // The real one takes its place (hub.js: the tile fades in as its copy fades out).
     ghost.restore();
-    from.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: 'ease-out' });
-    ghost.g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 320, easing: 'ease-in', fill: 'forwards' });
-    setTimeout(() => ghost.g.remove(), 360);
+    from.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
+    ghost.g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: 'ease-in', fill: 'forwards' });
+    setTimeout(() => ghost.g.remove(), 240);
     return { done: () => { a.cancel(); elm.style.transformOrigin = ''; elm.style.pointerEvents = ''; backdrop?.getAnimations().forEach(x => x.cancel()); } };
   });
 }
