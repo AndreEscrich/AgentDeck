@@ -171,11 +171,11 @@ class TicketsView {
     this.account.onclick = () => this.signOut();
     // The PM account and Sign out live in Settings → Account (pmAccountPanel).
     // The filters are on the columns now (renderList): no filter button here.
-    // Three parts, the search always in the middle: the tabs on its left,
-    // when, refresh and the bell on its right.
+    // The tabs in the middle; when, refresh and the bell on their right.
+    // (The search sits over the table's Key and Title: finishList.)
     const right = el('div', 'tickets-bar-right');
     right.append(this.when, refresh, this.bell);
-    bar.append(this.tabs, this.search, right);
+    bar.append(el('span'), this.tabs, right);
     // Haiku for tickets (src/pmassist.js): say what to do or ask; it only
     // reads tickets and makes changes you can undo, nothing else.
     this.assist = el('div', 'tickets-assist');
@@ -755,10 +755,19 @@ class TicketsView {
   finishList(table, shown, d, q, review) {
     const frag = document.createDocumentFragment();
     if (review) frag.appendChild(this.reviewBar(shown));
-    frag.appendChild(table);
+    // The search right over the Key and Title columns, as wide as the table.
+    // The same field every time, so typing in it goes on.
+    const typing = document.activeElement === this.search;
+    const at = typing ? [this.search.selectionStart, this.search.selectionEnd] : null;
+    const wrap = el('div', 'tickets-table-wrap');
+    const searchRow = el('div', 'tickets-search-row');
+    searchRow.append(this.search);
+    wrap.append(searchRow, table);
+    frag.appendChild(wrap);
     if (!shown.length) frag.appendChild(el('div', 'gallery-note', q || this.type || this.filtering() ? 'No ticket matches.' : this.list === 'sprint' ? 'You have no tickets in an open sprint.' : review ? 'No tickets in this sprint.' : 'No open tickets.'));
     if (d.total > d.items.length) frag.appendChild(el('div', 'gallery-note', `Showing ${d.items.length} of ${d.total} tickets.`));
     this.listBox.replaceChildren(frag);
+    if (typing) { this.search.focus(); try { this.search.setSelectionRange(...at); } catch { /* fine */ } }
   }
 
   // This sprint's list needs no Sprint column: every ticket is in it.

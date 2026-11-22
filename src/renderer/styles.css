@@ -2442,10 +2442,14 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .tickets-tab { padding: 3px 12px; border-radius: 6px; border: none; background: none; color: var(--text-dim); font-weight: 600; }
 .tickets-tab.on { background: var(--bg-active); color: var(--text); }
 .tickets-search { width: 240px; flex-shrink: 0; }
+/* Over the table: the table and its search as one block, in the middle. */
+.tickets-table-wrap { display: table; margin: 0 auto; }
+.tickets-search-row { padding: 0 0 10px; }
+.tickets-search-row .tickets-search { width: 340px; }
 /* The bar's parts stand together in the middle, above the table. */
 .tickets-types { flex: 0 0 16px; }
 .tickets-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 14px; }
-.tickets-bar > .tickets-tabs { justify-self: end; }
+.tickets-bar > .tickets-tabs { justify-self: center; }
 .tickets-bar-right { display: flex; align-items: center; gap: 10px; justify-self: start; min-width: 0; }
 .tickets-when { font-size: 12px; color: var(--text-faint); white-space: nowrap; width: 84px; text-align: right; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; }
 .tickets-when.err { color: var(--err); }
