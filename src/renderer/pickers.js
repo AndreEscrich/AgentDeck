@@ -54,35 +54,54 @@ function visibleRect(elm) {
   return r;
 }
 
-// The keyframes that take el (where it is now, transformed or not) from a
-// small copy of itself sitting in the middle of the box `from` (fitted in
-// it, like an agent's chat starts as a thumbnail inside its tile) to
-// itself: on the way it flies to its place while it grows. Uses the
-// translate and scale properties, so el's own transform (translateX(-50%))
-// stays as it is.
-function morphFrames(elm, from) {
+// The movement of an agent's tile opening into its chat (hub.js open and
+// returnTo): 420ms on the same curve; the window shows within its first 12%
+// and, going back, goes in its last 15%.
+//
+// A box (a copy of what was clicked) goes from where that is to where the
+// window ends, flying to it while it grows; the window rides inside it the
+// whole way: as wide as the box (its content scaled, never squashed) and cut
+// to its height, so nothing ever shows outside the box. The frames are
+// sampled along the curve, so box and window move as one.
+const MORPH = { duration: 420, easing: 'cubic-bezier(.35,0,.15,1)' };
+const MORPH_STEPS = 16;
+function cubicBezier(x1, y1, x2, y2) {
+  const at = (t, a, b) => 3 * a * t * (1 - t) ** 2 + 3 * b * t * t * (1 - t) + t ** 3;
+  return x => {
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 30; i++) { const m = (lo + hi) / 2; if (at(m, x1, x2) < x) lo = m; else hi = m; }
+    return at((lo + hi) / 2, y1, y2);
+  };
+}
+const morphEase = cubicBezier(0.35, 0, 0.15, 1);
+
+// Frames for the window (el) and the box, from the box `from` (p = 0) to
+// the window's own place (p = 1). show(p): the window's opacity.
+function morphFrames(elm, from, show) {
   const to = elm.getBoundingClientRect();
   if (!to.width || !to.height) return null;
-  const m = new DOMMatrix(getComputedStyle(elm).transform === 'none' ? undefined : getComputedStyle(elm).transform);
-  const s = Math.min(1, Math.max(0.12, Math.min(from.width / to.width, from.height / to.height)));
-  // Its top left corner when centred on from.
-  const left = from.left + from.width / 2 - (to.width * s) / 2;
-  const top = from.top + from.height / 2 - (to.height * s) / 2;
-  const tx = left - to.left + (1 - s) * m.e;
-  const ty = top - to.top + (1 - s) * m.f;
-  return [
-    { translate: `${tx}px ${ty}px`, scale: `${s}`, clipPath: `inset(0px 0px 0px 0px round ${12 / s}px)`, opacity: 0 },
-    { opacity: 1, offset: 0.12 },
-    { translate: '0px 0px', scale: '1', clipPath: 'inset(0px 0px 0px 0px round 12px)', opacity: 1 },
-  ];
+  const tf = getComputedStyle(elm).transform;
+  const m = new DOMMatrix(tf === 'none' ? undefined : tf);
+  const win = [], box = [];
+  for (let i = 0; i <= MORPH_STEPS; i++) {
+    const t = i / MORPH_STEPS;
+    const p = morphEase(t);
+    const L = from.left + (to.left - from.left) * p;
+    const T = from.top + (to.top - from.top) * p;
+    const W = from.width + (to.width - from.width) * p;
+    const H = from.height + (to.height - from.height) * p;
+    const sc = Math.max(0.01, W / to.width);
+    const tx = L - to.left + (1 - sc) * m.e;
+    const ty = T - to.top + (1 - sc) * m.f;
+    const cut = Math.max(0, to.height - H / sc);
+    const r = 10 + 2 * p;
+    win.push({ offset: t, translate: `${tx}px ${ty}px`, scale: `${sc}`, clipPath: `inset(0px 0px ${cut}px 0px round ${r / sc}px)`, opacity: show(t) });
+    box.push({ offset: t, left: L + 'px', top: T + 'px', width: W + 'px', height: H + 'px', borderRadius: r + 'px' });
+  }
+  return { win, box };
 }
-// The same movement as an agent's tile opening into its chat (hub.js open
-// and returnTo): 420ms on the same curve; the window shows within its first
-// 12% and, going back, goes in its last 15%. Meanwhile a copy of what was
-// clicked (its box) stretches over the window and fades, like the tile's copy.
-const MORPH = { duration: 420, easing: 'cubic-bezier(.35,0,.15,1)' };
-// Under the window it grows into (just before it, on the same layer).
-function morphGhost(source, rect, over) {
+// The box, under the window (just before it, on the same layer).
+function morphGhost(source, over) {
   const g = el('div', 'ticket-morph-ghost');
   const ocs = getComputedStyle(over);
   let z = parseInt(ocs.zIndex, 10);
@@ -92,46 +111,40 @@ function morphGhost(source, rect, over) {
   }
   g.style.zIndex = z;
   const cs = source instanceof Element ? getComputedStyle(source) : null;
-  Object.assign(g.style, { left: rect.left + 'px', top: rect.top + 'px', width: rect.width + 'px', height: rect.height + 'px' });
   if (cs && cs.backgroundColor !== 'rgba(0, 0, 0, 0)') g.style.background = cs.backgroundColor;
   over.before(g);
   return g;
 }
-function coverOf(from, to) {
-  return `translate(${to.left - from.left}px, ${to.top - from.top}px) scale(${to.width / from.width}, ${to.height / from.height})`;
-}
+const LINEAR = { duration: MORPH.duration, easing: 'linear' };
 function morphOpen(elm, from, { backdrop = null } = {}) {
   const rect = from instanceof Element ? visibleRect(from) : from;
   if (!rect) return null;
-  const frames = morphFrames(elm, rect);
-  if (!frames) return null;
-  const to = elm.getBoundingClientRect();
+  const f = morphFrames(elm, rect, t => Math.min(1, t / 0.12));
+  if (!f) return null;
   elm.style.transformOrigin = '0 0';
-  const ghost = morphGhost(from, rect, elm);
-  const runs = [
-    elm.animate(frames, MORPH),
-    ghost.animate([{ transform: 'none', opacity: 1 }, { opacity: 1, offset: 0.8 }, { transform: coverOf(rect, to), opacity: 0 }], { ...MORPH, fill: 'forwards' }),
-    backdrop?.animate([{ opacity: 0 }, { opacity: 1 }], MORPH),
-  ];
-  runs[0].finished.catch(() => {}).then(() => { elm.style.transformOrigin = ''; ghost.remove(); });
-  return runs[0];
+  const ghost = morphGhost(from, elm);
+  const run = elm.animate(f.win, LINEAR);
+  ghost.animate(f.box, { ...LINEAR, fill: 'forwards' });
+  backdrop?.animate([{ opacity: 0 }, { opacity: 1 }], MORPH);
+  run.finished.catch(() => {}).then(() => { elm.style.transformOrigin = ''; ghost.remove(); });
+  return run;
 }
-// The way back: shrinks into `from` (if it is still on screen). Resolves
-// when it is done (at once when there is nothing to shrink into).
+// The way back: into `from` (if it is still on screen). Resolves when it
+// is done (at once when there is nothing to go into).
 function morphClose(elm, from, { backdrop = null } = {}) {
   const rect = from instanceof Element ? (from.isConnected ? visibleRect(from) : null) : from;
-  const frames = rect && morphFrames(elm, rect);
-  if (!frames) return Promise.resolve();
-  const to = elm.getBoundingClientRect();
+  // Played backwards: t = 1 is the start. The window goes in the last 15%.
+  const f = rect && morphFrames(elm, rect, t => Math.min(1, t / 0.15));
+  if (!f) return Promise.resolve();
   elm.style.transformOrigin = '0 0';
   elm.style.pointerEvents = 'none';
-  const back = [frames[2], { opacity: 1, offset: 0.85 }, frames[0]];
-  const ghost = morphGhost(from, rect, elm);
-  const a = elm.animate(back, { ...MORPH, fill: 'forwards' });
-  ghost.animate([{ transform: coverOf(rect, to), opacity: 0 }, { opacity: 1, offset: 0.2 }, { transform: 'none', opacity: 1 }], { ...MORPH, fill: 'forwards' });
+  const back = list => list.map(k => ({ ...k, offset: 1 - k.offset })).reverse();
+  const ghost = morphGhost(from, elm);
+  const a = elm.animate(back(f.win), { ...LINEAR, fill: 'forwards' });
+  ghost.animate(back(f.box), { ...LINEAR, fill: 'forwards' });
   backdrop?.animate([{ opacity: 1 }, { opacity: 0 }], { ...MORPH, fill: 'forwards' });
   return a.finished.catch(() => {}).then(() => {
-    // The ghost goes as the real row shows under it.
+    // The box goes as the real row shows under it.
     ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, fill: 'forwards' }).finished.catch(() => {}).then(() => ghost.remove());
     return { done: () => { a.cancel(); elm.style.transformOrigin = ''; elm.style.pointerEvents = ''; backdrop?.getAnimations().forEach(x => x.cancel()); } };
   });
