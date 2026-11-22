@@ -274,7 +274,8 @@
       return top;
     }
     if (epicName) {
-      const e = t.epicKey ? el('button', 'tp-crumb tp-crumb-link tp-crumb-name', '⚑ ' + epicName) : el('span', 'tp-crumb', '⚑ ' + epicName);
+      const e = t.epicKey ? el('button', 'tp-crumb tp-crumb-link tp-crumb-name') : el('span', 'tp-crumb');
+      e.append(epicTag(epicName));
       if (t.epicKey) { e.type = 'button'; e.title = `Open the epic ${epicName}`; e.onclick = () => goto(t.epicKey, { isEpic: true, title: epicName }); }
       crumbs.append(e);
     }
@@ -311,9 +312,7 @@
         for (const e of epics) {
           const item = el('button', 'tickets-status-item tp-epic-item' + (e.id === t.epicId ? ' on' : ''));
           item.type = 'button';
-          const dot = el('span', 'tp-dot');
-          if (e.color) dot.style.background = e.color;
-          item.append(dot, el('span', null, e.name));
+          item.append(epicDot(e.name), el('span', null, e.name));
           item.onclick = () => pick(e.id);
           items.push({ el: item, text: `${e.name} ${e.key}`.toLowerCase(), id: e.id });
         }
@@ -895,27 +894,13 @@
       row.append(...fields);
       side.append(row);
     };
+    // A dropdown (pickers.js): choices are [value, label, group, tooltip].
     // apart: a line between the none choice and the others.
-    const select = (value, choices, onChange, { none = 'None', prefix, apart = false } = {}) => {
-      const wrap = el('div', 'tp-select');
-      if (prefix) wrap.append(prefix);
-      const s = document.createElement('select');
-      if (none !== false) s.append(new Option(none, ''));
-      if (none !== false && apart && choices.length) s.append(document.createElement('hr'));
-      // A choice's third part is its group: a heading over the choices of that
-      // group. Its fourth, the choice's tooltip.
-      let group = null;
-      for (const [v, label, heading, tip] of choices) {
-        if (heading && heading !== group?.label) { group = document.createElement('optgroup'); group.label = heading; s.append(group); }
-        const option = new Option(label, v);
-        if (tip) option.title = tip;
-        (heading ? group : s).append(option);
-      }
-      s.value = value || '';
-      s.onchange = () => onChange(s.value || null);
-      wrap.append(s);
-      return wrap;
-    };
+    const select = (value, choices, onChange, { none = 'None', prefix, apart = false } = {}) => this.dropdown({
+      value: value || '', none, apart, prefix,
+      choices: choices.map(([v, label, group, tip]) => ({ value: v, label, group: group || undefined, tip })),
+      onPick: v => { if ((v || null) !== (value || null)) onChange(v); },
+    });
     const text = (value, onSave, { placeholder = '', parse } = {}) => {
       const input = document.createElement('input');
       input.className = 'tp-input';

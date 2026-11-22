@@ -54,16 +54,15 @@
     const current = this.reviewSprint();
     if (!list) { bar.append(el('span', 'review-progress', 'Reading the sprints…')); return bar; }
     if (!current) { bar.append(el('span', 'review-progress', 'No open sprint.')); return bar; }
-    const pick = document.createElement('select');
-    pick.className = 'review-sprint';
-    const label = s => s.name + (s.status === 'ACTIVE' ? ' (current)' : '');
-    for (const s of list) pick.append(new Option(label(s), s.name));
-    pick.value = current.name;
-    pick.onchange = () => {
-      this.reviewName = pick.value;
-      try { localStorage.setItem('pmReviewSprint', pick.value); } catch { /* this run only */ }
-      this.renderList();
-    };
+    const pick = this.dropdown({
+      value: current.name, key: 'review:sprint', cls: 'review-sprint',
+      choices: list.map(s => ({ value: s.name, label: s.name, group: s.status === 'ACTIVE' ? 'Current' : 'Upcoming' })),
+      onPick: v => {
+        this.reviewName = v;
+        try { localStorage.setItem('pmReviewSprint', v); } catch { /* this run only */ }
+        this.renderList();
+      },
+    });
     // Everyone's stories in the sprint (whatever the filters hide).
     const all = (this.data.review?.items || []).filter(t => isStory(t) && t.sprint === current.name);
     const n = c => all.filter(t => (t.category || 'todo') === c).length;
@@ -80,7 +79,7 @@
       const done = el('button', 'review-complete', 'Complete sprint');
       done.type = 'button';
       done.title = `End ${current.name} in PM`;
-      done.onclick = () => this.confirmComplete(current);
+      done.onclick = () => this.confirmComplete(current, done);
       bar.append(done);
     }
     return bar;
@@ -92,7 +91,7 @@
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))[0] || null;
   };
 
-  P.confirmComplete = function (sprint) {
+  P.confirmComplete = function (sprint, button) {
     const next = this.nextSprint(sprint);
     // Every unfinished ticket of the sprint carries over, not just stories.
     const left = (this.data.review?.items || []).filter(t => t.sprint === sprint.name && t.category !== 'done');
@@ -100,7 +99,13 @@
     for (const t of left) { const k = isStory(t) ? 'stories' : /bug/i.test(t.type || '') ? 'bugs' : 'other'; kinds.set(k, (kinds.get(k) || 0) + 1); }
     const shade = el('div', 'review-shade');
     const box = el('div', 'review-confirm');
-    const close = () => { shade.remove(); document.removeEventListener('keydown', onKey, true); };
+    // It grows out of the button, and shrinks back into it.
+    const close = async () => {
+      document.removeEventListener('keydown', onKey, true);
+      const r = await morphClose(box, button, { backdrop: shade });
+      r?.done?.();
+      shade.remove();
+    };
     const onKey = e => { if (e.key === 'Escape' && !box.classList.contains('busy')) { e.preventDefault(); e.stopImmediatePropagation(); close(); } };
     document.addEventListener('keydown', onKey, true);
     shade.onclick = e => { if (e.target === shade && !box.classList.contains('busy')) close(); };
@@ -150,6 +155,7 @@
     box.append(err, actions);
     shade.append(box);
     this.view.append(shade);
+    morphOpen(box, button, { backdrop: shade });
     cancel.focus();   // not Complete: a stray Enter must not end the sprint
   };
 })();

@@ -115,7 +115,7 @@
     who.type = 'button';
     who.append(personAvatar(plan.person), el('span', 'plan-person-name', label(plan.person)), el('span', 'tickets-status-caret', '▾'));
     who.onclick = () => this.openMenu(who, 'plan:person', menu => this.fillPeopleMenu(menu, people.map(p => [p, label(p)]), plan.person, v => {
-      plan.person = v;
+      plan.person = v ?? '';
       this.savePlan();
       this.renderPlan();
     }));
@@ -124,11 +124,11 @@
     else if (!target) into.append('No upcoming sprint');
     else if (plan.sprints.length === 1) into.append('Planning into ', el('b', null, shortSprint(target.name)));
     else {
-      const s = document.createElement('select');
-      s.className = 'plan-sprint';
-      for (const x of plan.sprints) s.append(new Option(shortSprint(x.name), x.name));
-      s.value = target.name;
-      s.onchange = () => { plan.sprintName = s.value; this.savePlan(); this.renderPlan(); };
+      const s = this.dropdown({
+        value: target.name, key: 'plan:sprint', cls: 'plan-sprint',
+        choices: plan.sprints.map(x => ({ value: x.name, label: shortSprint(x.name), tip: x.name })),
+        onPick: v => { plan.sprintName = v; this.savePlan(); this.renderPlan(); },
+      });
       into.append('Planning into ', s);
     }
     if (target) into.title = target.name;

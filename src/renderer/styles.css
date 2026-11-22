@@ -2498,6 +2498,18 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .ticket-tag.c5 { --tag-fg: #b9dc86; --tag-bg: rgba(150, 204, 90, 0.15); }
 .ticket-tag.c6 { --tag-fg: #f4ab8e; --tag-bg: rgba(238, 130, 92, 0.16); }
 .ticket-tag.c7 { --tag-fg: #9fd9ee; --tag-bg: rgba(90, 196, 230, 0.15); }
+.ticket-tag.c8, .tag-dot.c8 { --tag-fg: #e6c96a; --tag-bg: rgba(214, 186, 70, 0.15); }
+.ticket-tag.c9, .tag-dot.c9 { --tag-fg: #d4a4f0; --tag-bg: rgba(190, 120, 230, 0.16); }
+.ticket-tag.c10, .tag-dot.c10 { --tag-fg: #90e0a6; --tag-bg: rgba(90, 200, 120, 0.15); }
+.ticket-tag.c11, .tag-dot.c11 { --tag-fg: #f59a9a; --tag-bg: rgba(230, 100, 100, 0.16); }
+.tag-dot.c0 { --tag-fg: #8fd6c4; } .tag-dot.c1 { --tag-fg: #b6a6f5; } .tag-dot.c2 { --tag-fg: #8cc2f7; } .tag-dot.c3 { --tag-fg: #f2c27a; }
+.tag-dot.c4 { --tag-fg: #f4a3c4; } .tag-dot.c5 { --tag-fg: #b9dc86; } .tag-dot.c6 { --tag-fg: #f4ab8e; } .tag-dot.c7 { --tag-fg: #9fd9ee; }
+.tag-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: var(--tag-fg, var(--text-faint)); margin-right: 8px; }
+/* An epic: its tag with a flag. */
+.epic-tag { display: inline-flex; align-items: center; gap: 5px; margin-right: 0; }
+.epic-tag-flag { font-size: 0.85em; opacity: 0.8; }
+.tickets-table .tickets-group .epic-tag.tickets-group-name { color: var(--tag-fg); font-size: 12px; }
+.tickets-group-none { color: var(--text-faint) !important; }
 .tickets-table .col-key .tickets-type-icon { margin-right: 6px; }
 .tickets-table .tickets-row:not(.story) { cursor: default; }
 button.tickets-key { padding: 0; border: none; background: none; cursor: pointer; }
@@ -4253,3 +4265,19 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .new-ticket-select, .new-ticket-who { width: 100%; min-width: 0; }
 .new-ticket-select { height: 30px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); color: var(--text); font: inherit; font-size: 13px; outline: none; cursor: pointer; }
 .new-ticket .review-confirm-actions { margin-top: 4px; }
+/* The view's dropdowns (pickers.js). */
+.pick-button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 0 10px; text-align: left; cursor: pointer; }
+.pick-button .pick-current { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-button .tag-dot { margin-right: 0; }
+.pick-menu { display: flex; flex-direction: column; min-width: 220px; max-width: 420px; }
+.pick-menu .pick-list { overflow-y: auto; min-height: 0; }
+.pick-item { gap: 8px; }
+.pick-item .tag-dot { margin-right: 0; }
+.pick-item .pick-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-menu .tickets-status-item.focus { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.pick-line { height: 1px; margin: 4px 6px; background: var(--border); }
+.pick-menu .hidden { display: none; }
+.review-sprint.pick-button, .plan-sprint.pick-button { width: auto; min-width: 240px; height: 32px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); color: var(--text); font-weight: 700; }
+.new-ticket-select.pick-button { height: 30px; min-height: 30px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); color: var(--text); font-size: 13px; }
+/* The New ticket window: higher up. */
+.review-shade.top { align-items: flex-start; padding-top: 6vh; }

@@ -50,9 +50,7 @@ function ticketTitle(title, cls = null) {
   const m = text.match(/^\s*((?:\[[^\[\]]{1,40}\]\s*)+)(.*)$/);
   if (!m || !m[2].trim()) { span.textContent = text; return span; }
   for (const [, name] of m[1].matchAll(/\[([^\[\]]+)\]/g)) {
-    let h = 0;
-    for (const c of name.trim().toLowerCase()) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-    const tag = el('span', 'ticket-tag c' + (h % 8), name.trim());
+    const tag = el('span', 'ticket-tag ' + tagClass(name.trim()), name.trim());
     span.appendChild(tag);
   }
   span.append(m[2].trim());
@@ -178,7 +176,7 @@ class TicketsView {
     const create = el('button', 'tickets-new', '+ New ticket');
     create.type = 'button';
     create.title = 'Create a ticket in PM';
-    create.onclick = () => this.openNewTicket();
+    create.onclick = () => this.openNewTicket(create);
     right.append(create, this.when, refresh, this.bell);
     bar.append(el('span'), this.tabs, right);
     // Haiku for tickets (src/pmassist.js): say what to do or ask; it only
@@ -721,7 +719,7 @@ class TicketsView {
       const chev = el('span', 'tickets-expand' + (folded ? '' : ' open'));
       chev.innerHTML = CHEVRON;
       const done = list.filter(t => t.category === 'done').length;
-      td.append(chev, el('span', 'tickets-group-flag', '⚑'), el('span', 'tickets-group-name', name || 'No epic'),
+      td.append(chev, name ? epicTag(name, 'tickets-group-name') : el('span', 'tickets-group-name tickets-group-none', '⚑ No epic'),
         el('span', 'tickets-group-count', `${list.length} ticket${list.length === 1 ? '' : 's'}` + (done ? ` · ${done} done` : '')));
       tr.append(td);
       tr.title = folded ? 'Show this epic\'s tickets' : 'Hide this epic\'s tickets';
@@ -977,7 +975,7 @@ class TicketsView {
       menu.style.maxHeight = '';
       const h = menu.offsetHeight;
       const below = window.innerHeight - r.bottom - 8;
-      const down = below >= h || below > r.top;
+      const down = below >= Math.min(h, 140) || below > r.top;
       menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px';
       menu.style.top = (down ? r.bottom + 4 : Math.max(8, r.top - h - 4)) + 'px';
       menu.style.maxHeight = Math.max(160, down ? below : r.top - 12) + 'px';
@@ -997,18 +995,12 @@ class TicketsView {
   // A list of people in a menu (from openMenu): each with their mark.
   // names: [value, label] ('' = Unassigned); a click calls onPick(value).
   // The items keep the focus where it is (a field being typed in).
-  fillPeopleMenu(menu, names, current, onPick) {
-    menu.replaceChildren();
+  fillPeopleMenu(menu, names, current, onPick, { search } = {}) {
     menu.classList.add('tickets-people-menu');
-    if (!names.length) { menu.append(el('div', 'gallery-note', 'Nobody matches.')); return; }
-    for (const [value, label] of names) {
-      const b = el('button', 'tickets-status-item tickets-person-item' + (value === current ? ' on' : ''));
-      b.type = 'button';
-      b.append(personAvatar(value), el('span', value ? null : 'tp-faint', label));
-      b.onmousedown = e => e.preventDefault();
-      b.onclick = () => { this.closeStatusMenu(); onPick(value); };
-      menu.append(b);
-    }
+    return this.fillChoiceMenu(menu, {
+      choices: names.map(([value, label]) => ({ value, label, faint: !value, icon: () => personAvatar(value) })),
+      value: current, onPick, search: search ?? names.length > 8, placeholder: 'Search people…',
+    });
   }
 
   openStatusMenu(btn, t) {
@@ -1237,6 +1229,23 @@ class TicketsView {
   }
 
   closeDetail() {
+    if (this.closing) return;
+    const into = this.morphFrom;
+    this.morphFrom = null;
+    const open = this.global ? !this.globalHost?.classList.contains('hidden') : this.view.classList.contains('detail-open');
+    if (into?.isConnected && open && visibleRect(into)) {
+      this.selected = null;
+      let run = null;
+      const finish = () => { if (this.closing !== finish && this.closing !== null) return; this.closing = null; run?.done(); this.finishClose(); };
+      this.closing = finish;
+      morphClose(this.detail, into, { backdrop: this.global ? this.globalHost.querySelector('.ticket-overlay-backdrop') : this.backdrop })
+        .then(r => { run = r; if (this.closing === finish) finish(); else r.done(); });
+      return;
+    }
+    this.finishClose();
+  }
+
+  finishClose() {
     if (this.global) {
       this.global = false;
       this.globalHost.classList.add('hidden');
@@ -1255,8 +1264,20 @@ class TicketsView {
   }
 
   async select(t) {
+    // Closing still: done at once.
+    if (this.closing) {
+      const c = this.closing;
+      this.closing = null;
+      for (const a of this.detail.getAnimations()) a.cancel();
+      this.detail.style.transformOrigin = this.detail.style.pointerEvents = '';
+      c();
+    }
+    const wasOpen = this.global ? !this.globalHost.classList.contains('hidden') && this.detailTicket : this.view.classList.contains('detail-open');
+    const from = wasOpen ? null : lastPressed();
     this.selected = t.key;
     this.view.classList.add('detail-open');
+    if (from) { this.morphFrom = from; requestAnimationFrame(() => morphOpen(this.detail, from, { backdrop: this.global ? this.globalHost.querySelector('.ticket-overlay-backdrop') : this.backdrop })); }
+    else if (!wasOpen) this.morphFrom = null;
     for (const r of this.listBox.querySelectorAll('.tickets-row')) r.classList.toggle('selected', r.dataset.key === t.key);
     this.renderDetail(t, null);
     const full = await window.deck.pmTicket(t.key).catch(err => ({ error: String(err?.message || err) }));

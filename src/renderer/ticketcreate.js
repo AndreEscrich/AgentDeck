@@ -25,16 +25,22 @@
     }).join('');
   };
 
-  P.openNewTicket = function () {
+  P.openNewTicket = function (button) {
     if (document.querySelector('.new-ticket')) return;
     const project = this.newTicketProject();
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem('pmNewTicket') || '{}'); } catch { /* defaults */ }
     const pick = { type: saved.type || 'Story', assignee: this.myName(), sprintId: '', epicId: '', team: saved.team || '' };
 
-    const shade = el('div', 'review-shade');
+    const shade = el('div', 'review-shade top');
     const box = el('div', 'review-confirm new-ticket');
-    const close = () => { shade.remove(); document.removeEventListener('keydown', onKey, true); };
+    // It grows out of + New ticket, and shrinks back into it.
+    const close = async (into = button) => {
+      document.removeEventListener('keydown', onKey, true);
+      const r = await morphClose(box, into, { backdrop: shade });
+      r?.done?.();
+      shade.remove();
+    };
     const onKey = e => {
       if (box.classList.contains('busy')) return;
       if (e.key === 'Escape' && !this.menu) { e.preventDefault(); e.stopImmediatePropagation(); close(); }
@@ -69,16 +75,16 @@
     showWho();
     who.onclick = () => this.openMenu(who, 'new:assignee', menu => this.fillPeopleMenu(menu, [...this.people().map(n => [n, n]), ['', 'Unassigned']], pick.assignee, v => { pick.assignee = v; showWho(); }));
 
-    const selectOf = (choices, value, onChange) => {
-      const s = document.createElement('select');
-      s.className = 'new-ticket-select';
-      for (const [v, label] of choices) s.append(new Option(label, v));
-      s.value = value;
-      s.onchange = () => onChange(s.value);
-      return s;
-    };
+    // Dropdowns like the rest of the view (pickers.js). choices: [value, label, icon, group].
+    const selectOf = (choices, value, onChange, { none, placeholder } = {}) => this.dropdown({
+      value, none, apart: true, cls: 'new-ticket-select', placeholder,
+      choices: choices.map(([v, label, icon, group]) => ({ value: v, label, icon, group })),
+      onPick: v => { onChange(v || ''); fill(lastOptions); },
+    });
+    let lastOptions = null;
     const fields = el('div', 'new-ticket-fields');
     const fill = o => {
+      lastOptions = o;
       const prefixes = ((typeof state !== 'undefined' && state.config?.pmSprintPrefixes) || []).map(p => p.toLowerCase());
       const sprints = (o?.sprints || []).filter(s => !prefixes.length || prefixes.some(p => s.name.toLowerCase().startsWith(p)));
       const epics = (o?.epics || []).filter(e => !e.done).sort((a, b) => a.name.localeCompare(b.name));
@@ -86,9 +92,9 @@
       if (pick.team && !teams.some(t => t.name === pick.team)) pick.team = '';
       fields.replaceChildren(
         row('Assignee', who),
-        row('Sprint', selectOf([['', 'Backlog'], ...sprints.map(s => [s.id, s.name + (s.status === 'ACTIVE' ? ' (current)' : '')])], pick.sprintId, v => { pick.sprintId = v; })),
-        row('Epic', selectOf([['', 'No epic'], ...epics.map(e => [e.id, e.name])], pick.epicId, v => { pick.epicId = v; })),
-        row('Team', selectOf([['', 'No team'], ...teams.map(t => [t.name, t.name])], pick.team, v => { pick.team = v; })));
+        row('Sprint', selectOf(sprints.map(s => [s.id, s.name, null, s.status === 'ACTIVE' ? 'Current' : 'Upcoming']), pick.sprintId, v => { pick.sprintId = v; }, { none: 'Backlog' })),
+        row('Epic', selectOf(epics.map(e => [e.id, e.name, () => epicDot(e.name)]), pick.epicId, v => { pick.epicId = v; }, { none: 'No epic', placeholder: 'Search epics…' })),
+        row('Team', selectOf(teams.map(t => [t.name, t.name]), pick.team, v => { pick.team = v; }, { none: 'No team' })));
     };
     fill(null);
     if (project) window.deck.pmOptions(project).then(o => { if (document.body.contains(box) && !o?.error) fill(o); });
@@ -123,7 +129,9 @@
         err.classList.remove('hidden');
         return;
       }
-      close();
+      // The window becomes the new ticket's panel.
+      document.removeEventListener('keydown', onKey, true);
+      shade.remove();
       this.load(true);
       this.select(r);
     };
@@ -134,6 +142,7 @@
     box.append(types, title, desc, fields, err, actions);
     shade.append(box);
     this.view.append(shade);
+    morphOpen(box, button, { backdrop: shade });
     requestAnimationFrame(() => title.focus());
   };
 })();
