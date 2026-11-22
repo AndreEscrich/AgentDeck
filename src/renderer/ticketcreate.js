@@ -37,13 +37,14 @@
     // It grows out of + New ticket, and shrinks back into it.
     const close = async (into = button) => {
       document.removeEventListener('keydown', onKey, true);
+      window.uiSound?.('close');
       const r = await morphClose(box, into, { backdrop: shade });
       r?.done?.();
       shade.remove();
     };
     const onKey = e => {
       if (box.classList.contains('busy')) return;
-      if (e.key === 'Escape' && !this.menu) { e.preventDefault(); e.stopImmediatePropagation(); close(); }
+      if (isBackKey(e) && !this.menu) { e.preventDefault(); e.stopImmediatePropagation(); close(); }
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); create(); }
     };
     document.addEventListener('keydown', onKey, true);
@@ -142,6 +143,7 @@
     box.append(types, title, desc, fields, err, actions);
     shade.append(box);
     this.view.append(shade);
+    window.uiSound?.('open');
     morphOpen(box, button, { backdrop: shade });
     requestAnimationFrame(() => title.focus());
   };

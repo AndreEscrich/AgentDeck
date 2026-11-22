@@ -231,12 +231,17 @@ class TicketsView {
     this.showDetailEmpty();
     // Escape closes the floating details (and the status menu first). On
     // the window, so it comes before the app's own Escape (an agent's stop).
+    // The same keys as leaving an agent: Esc, Alt+← (like a browser's back)
+    // and Ctrl+[ (⌘[ on a Mac).
     window.addEventListener('keydown', e => {
-      if (e.key !== 'Escape' || this.menu || !this.view.classList.contains('detail-open')) return;
+      const esc = e.key === 'Escape';
+      const back = (e.key === 'ArrowLeft' && e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey) || ((e.ctrlKey || e.metaKey) && e.key === '[');
+      if ((!esc && !back) || this.menu || !this.view.classList.contains('detail-open')) return;
       if (!this.global && this.view.classList.contains('hidden')) return;
       if (document.querySelector('.lightbox, .gallery-preview')) return;
       const a = document.activeElement;
-      if (this.detail.contains(a) && a.matches('input, textarea, select, [contenteditable="true"]')) return;  // the field handles it
+      const typing = this.detail.contains(a) && a.matches('input, textarea, select, [contenteditable="true"]');
+      if (typing && (esc || e.altKey)) return;  // the field handles it (Alt+← moves by a word there)
       e.preventDefault();
       e.stopImmediatePropagation();
       this.closeDetail();
@@ -1233,6 +1238,8 @@ class TicketsView {
     const into = this.morphFrom;
     this.morphFrom = null;
     const open = this.global ? !this.globalHost?.classList.contains('hidden') : this.view.classList.contains('detail-open');
+    // The same sound as leaving an agent.
+    if (open && this.detailTicket) window.uiSound?.('close');
     if (into?.isConnected && open && visibleRect(into)) {
       this.selected = null;
       let run = null;
@@ -1276,6 +1283,8 @@ class TicketsView {
     const from = wasOpen ? null : lastPressed();
     this.selected = t.key;
     this.view.classList.add('detail-open');
+    // The same sound as opening an agent.
+    if (!wasOpen) window.uiSound?.('open');
     if (from) { this.morphFrom = from; requestAnimationFrame(() => morphOpen(this.detail, from, { backdrop: this.global ? this.globalHost.querySelector('.ticket-overlay-backdrop') : this.backdrop })); }
     else if (!wasOpen) this.morphFrom = null;
     for (const r of this.listBox.querySelectorAll('.tickets-row')) r.classList.toggle('selected', r.dataset.key === t.key);

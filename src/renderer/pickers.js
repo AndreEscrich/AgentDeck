@@ -31,6 +31,15 @@ function epicDot(name) {
   return el('span', `tag-dot ${tagClass(name)}`);
 }
 
+// The keys that leave an agent (app.js): Esc, Alt+← (like a browser's back;
+// not while typing, where it moves by a word) and Ctrl+[ (⌘[ on a Mac).
+function isBackKey(e) {
+  if (e.key === 'Escape') return true;
+  if ((e.ctrlKey || e.metaKey) && e.key === '[') return true;
+  const typing = e.target?.closest?.('input, textarea, [contenteditable="true"]');
+  return e.key === 'ArrowLeft' && e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey && !typing;
+}
+
 // ---------- growing out of what was clicked ----------
 
 // The last thing pressed, so a window that opens because of it can grow out
@@ -152,7 +161,11 @@ function copyOf(source) {
   return c;
 }
 const LINEAR = { duration: MORPH.duration, easing: 'linear' };
+// An animation that is over, or that cannot run (a hidden window does not
+// move them on), a little after it should have ended.
+const endOf = a => Promise.race([a.finished.catch(() => {}), new Promise(r => setTimeout(r, MORPH.duration + 200))]);
 function morphOpen(elm, from, { backdrop = null } = {}) {
+  if (document.hidden) return null;
   const rect = from instanceof Element ? visibleRect(from) : from;
   if (!rect) return null;
   const f = morphFrames(elm, rect, t => Math.min(1, t / 0.12));
@@ -164,12 +177,13 @@ function morphOpen(elm, from, { backdrop = null } = {}) {
   // Its content goes at once, as a tile's text does (hub.js: 100ms).
   ghost.inner.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 100, fill: 'forwards' });
   backdrop?.animate([{ opacity: 0 }, { opacity: 1 }], MORPH);
-  run.finished.catch(() => {}).then(() => { elm.style.transformOrigin = ''; ghost.g.remove(); ghost.restore(); });
+  endOf(run).then(() => { run.cancel(); elm.style.transformOrigin = ''; ghost.g.remove(); ghost.restore(); });
   return run;
 }
 // The way back: into `from` (if it is still on screen). Resolves when it
 // is done (at once when there is nothing to go into).
 function morphClose(elm, from, { backdrop = null } = {}) {
+  if (document.hidden) return Promise.resolve();
   const rect = from instanceof Element ? (from.isConnected ? visibleRect(from) : null) : from;
   // Played backwards: t = 1 is the start. The window goes in the last 15%.
   const f = rect && morphFrames(elm, rect, t => Math.min(1, t / 0.15));
@@ -183,11 +197,12 @@ function morphClose(elm, from, { backdrop = null } = {}) {
   // Its content comes back near the end, as a tile's text does (hub.js: from 75%).
   ghost.inner.animate([{ opacity: 0 }, { opacity: 0, offset: 0.75 }, { opacity: 1 }], { duration: MORPH.duration, fill: 'forwards' });
   backdrop?.animate([{ opacity: 1 }, { opacity: 0 }], { ...MORPH, fill: 'forwards' });
-  return a.finished.catch(() => {}).then(() => {
+  return endOf(a).then(() => {
     // The real one takes its place (hub.js: the tile fades in as its copy fades out).
     ghost.restore();
     from.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: 'ease-out' });
-    ghost.g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 320, easing: 'ease-in', fill: 'forwards' }).finished.catch(() => {}).then(() => ghost.g.remove());
+    ghost.g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 320, easing: 'ease-in', fill: 'forwards' });
+    setTimeout(() => ghost.g.remove(), 360);
     return { done: () => { a.cancel(); elm.style.transformOrigin = ''; elm.style.pointerEvents = ''; backdrop?.getAnimations().forEach(x => x.cancel()); } };
   });
 }

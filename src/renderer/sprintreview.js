@@ -102,11 +102,12 @@
     // It grows out of the button, and shrinks back into it.
     const close = async () => {
       document.removeEventListener('keydown', onKey, true);
+      window.uiSound?.('close');
       const r = await morphClose(box, button, { backdrop: shade });
       r?.done?.();
       shade.remove();
     };
-    const onKey = e => { if (e.key === 'Escape' && !box.classList.contains('busy')) { e.preventDefault(); e.stopImmediatePropagation(); close(); } };
+    const onKey = e => { if (isBackKey(e) && !box.classList.contains('busy')) { e.preventDefault(); e.stopImmediatePropagation(); close(); } };
     document.addEventListener('keydown', onKey, true);
     shade.onclick = e => { if (e.target === shade && !box.classList.contains('busy')) close(); };
     const day = d => (d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '');
@@ -155,6 +156,7 @@
     box.append(err, actions);
     shade.append(box);
     this.view.append(shade);
+    window.uiSound?.('open');
     morphOpen(box, button, { backdrop: shade });
     cancel.focus();   // not Complete: a stray Enter must not end the sprint
   };
