@@ -890,16 +890,21 @@
       row.append(...fields);
       side.append(row);
     };
-    const select = (value, choices, onChange, { none = 'None', prefix } = {}) => {
+    // apart: a line between the none choice and the others.
+    const select = (value, choices, onChange, { none = 'None', prefix, apart = false } = {}) => {
       const wrap = el('div', 'tp-select');
       if (prefix) wrap.append(prefix);
       const s = document.createElement('select');
       if (none !== false) s.append(new Option(none, ''));
-      // A choice's third part is its group: a heading over the choices of that group.
+      if (none !== false && apart && choices.length) s.append(document.createElement('hr'));
+      // A choice's third part is its group: a heading over the choices of that
+      // group. Its fourth, the choice's tooltip.
       let group = null;
-      for (const [v, label, heading] of choices) {
+      for (const [v, label, heading, tip] of choices) {
         if (heading && heading !== group?.label) { group = document.createElement('optgroup'); group.label = heading; s.append(group); }
-        (heading ? group : s).append(new Option(label, v));
+        const option = new Option(label, v);
+        if (tip) option.title = tip;
+        (heading ? group : s).append(option);
       }
       s.value = value || '';
       s.onchange = () => onChange(s.value || null);
@@ -951,7 +956,7 @@
       if (!o) side.append(el('div', 'tp-faint tp-loading', 'Reading the project\'s fields…'));
       else {
         // The epic is in the chain at the top left (its ▾ changes it), not here.
-        // Under Active and Future headings (pmclient sorts them that way).
+        // Active sprints first, then planned ones (pmclient sorts them that way).
         // Only the kinds of sprint you follow (Settings → Tactile PM → Sprints:
         // name prefixes; empty, all). The ticket's own sprint shows anyway.
         const prefixes = ((typeof state !== 'undefined' && state.config?.pmSprintPrefixes) || []).map(p => p.toLowerCase());
@@ -963,9 +968,17 @@
           if (prefixes.length !== 1 || !name.toLowerCase().startsWith(prefixes[0])) return name;
           return name.slice(prefixes[0].length).replace(/^[\s\-–—:|·/]+/, '') || name;
         };
-        const sprints = (o.sprints || []).filter(followed).map(x => [x.id, short(x.name), x.status === 'ACTIVE' ? 'Active' : 'Future']);
+        // Under Current and Upcoming. A group of one sprint is just its name
+        // (Current, Upcoming): the sprint's own name is its tooltip.
+        const shown = (o.sprints || []).filter(followed);
+        const groupOf = x => (x.status === 'ACTIVE' ? 'Current' : 'Upcoming');
+        const count = g => shown.filter(x => groupOf(x) === g).length;
+        const sprints = shown.map(x => (count(groupOf(x)) === 1 ? [x.id, groupOf(x), null, x.name] : [x.id, short(x.name), groupOf(x), x.name]));
         if (t.sprintId && !sprints.some(x => x[0] === t.sprintId)) sprints.unshift([t.sprintId, t.sprint || 'Sprint']);
-        field('Sprint', select(t.sprintId, sprints, v => this.saveFields(t, { sprintId: v }), { none: 'Backlog' }));
+        const sprintSelect = select(t.sprintId, sprints, v => this.saveFields(t, { sprintId: v }), { none: 'Backlog', apart: true });
+        const picked = shown.find(x => x.id === t.sprintId);
+        if (picked) sprintSelect.title = picked.name;
+        field('Sprint', sprintSelect);
       }
     }
     // Priority: a menu of its own (not a dropdown), so each choice shows its icon.

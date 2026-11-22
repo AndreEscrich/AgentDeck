@@ -4137,3 +4137,4 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 /* Headings in the panel's dropdowns (the Sprint field's Active and Future). */
 .tp-select optgroup { font-style: normal; font-weight: 700; color: var(--text-faint); background: var(--bg-panel); }
 .tp-select optgroup option { font-weight: 400; color: var(--text); padding-left: 14px; }
+.tp-select select hr { border-color: var(--border); }
