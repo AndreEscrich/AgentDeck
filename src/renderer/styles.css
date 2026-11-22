@@ -4225,3 +4225,6 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .tp-sub-ghost.editing { cursor: text; background: var(--bg-hover); }
 .tp-sub-input { flex: 1; min-width: 0; border: none; outline: none; background: none; color: var(--text); font: inherit; font-size: 13px; padding: 0; }
 .tp-sub-input::placeholder { color: var(--text-faint); }
+.tp-sub-ghost.plain { justify-content: center; padding: 4px 10px; }
+.tp-sub-ghost.plain .tp-sub-plus { width: auto; font-size: 18px; line-height: 1; font-weight: 400; }
+.tp-sub-ghost.plain:hover { background: var(--bg-hover); }

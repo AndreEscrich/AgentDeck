@@ -702,7 +702,9 @@
     body.append(list);
     if (hiddenNote) body.append(hiddenNote);
     if (this.editing !== 'subtask') {
-      ghost.append(el('span', 'tp-sub-title tp-sub-ghost-text', subs.length ? 'Add the next subtask' : 'Add a subtask'), who);
+      // Just a + in the middle.
+      ghost.replaceChildren(el('span', 'tp-sub-plus', '+'));
+      ghost.classList.add('plain');
       ghost.title = 'Add a subtask';
       ghost.onclick = () => { this.editing = 'subtask'; this.renderDetail(t, null); };
     } else {
