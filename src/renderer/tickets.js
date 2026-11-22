@@ -23,7 +23,7 @@
 // has it, so you can find unassigned ones and take them (Assign to me).
 // Sprint planning (sprintplan.js) uses All tickets' list.
 // Sprint review (sprintreview.js): one sprint's tickets, everyone's, done ones too.
-const TICKET_LISTS = [['sprint', 'Sprint'], ['all', 'All tickets'], ['plan', 'Sprint planning'], ['review', 'Sprint review']];
+const TICKET_LISTS = [['sprint', 'Sprint'], ['all', 'All tickets'], ['review', 'Sprint review'], ['plan', 'Sprint planning']];
 const CATEGORY_ORDER = { todo: 0, in_progress: 1, done: 2 };
 // The table's columns: [id, name, the value it sorts by].
 const TICKET_COLUMNS = [
