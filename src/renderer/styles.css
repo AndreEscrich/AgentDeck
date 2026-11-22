@@ -4281,3 +4281,5 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .new-ticket-select.pick-button { height: 30px; min-height: 30px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); color: var(--text); font-size: 13px; }
 /* The New ticket window: higher up. */
 .review-shade.top { align-items: flex-start; padding-top: 6vh; }
+/* The copy of what was clicked, stretching over a window as it opens (pickers.js). */
+.ticket-morph-ghost { position: fixed; pointer-events: none; transform-origin: 0 0; border-radius: 10px; background: var(--bg-panel); border: 1px solid rgba(233, 162, 59, 0.35); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4); }

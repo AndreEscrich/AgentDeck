@@ -66,32 +66,69 @@ function morphFrames(elm, from) {
   const r = 10 / s;
   return [
     { translate: `${tx}px ${ty}px`, scale: `${s}`, clipPath: `inset(0px 0px ${cut}px 0px round ${r}px)`, opacity: 0 },
-    { opacity: 1, offset: 0.14 },
+    { opacity: 1, offset: 0.12 },
     { translate: '0px 0px', scale: '1', clipPath: 'inset(0px 0px 0px 0px round 12px)', opacity: 1 },
   ];
 }
-function morphOpen(elm, from, { duration = 420, backdrop = null } = {}) {
+// The same movement as an agent's tile opening into its chat (hub.js open
+// and returnTo): 420ms on the same curve; the window shows within its first
+// 12% and, going back, goes in its last 15%. Meanwhile a copy of what was
+// clicked (its box) stretches over the window and fades, like the tile's copy.
+const MORPH = { duration: 420, easing: 'cubic-bezier(.35,0,.15,1)' };
+// Under the window it grows into (just before it, on the same layer).
+function morphGhost(source, rect, over) {
+  const g = el('div', 'ticket-morph-ghost');
+  const ocs = getComputedStyle(over);
+  let z = parseInt(ocs.zIndex, 10);
+  if (Number.isNaN(z)) {
+    if (ocs.position === 'static') over.style.position = 'relative';
+    over.style.zIndex = z = 2;
+  }
+  g.style.zIndex = z;
+  const cs = source instanceof Element ? getComputedStyle(source) : null;
+  Object.assign(g.style, { left: rect.left + 'px', top: rect.top + 'px', width: rect.width + 'px', height: rect.height + 'px' });
+  if (cs && cs.backgroundColor !== 'rgba(0, 0, 0, 0)') g.style.background = cs.backgroundColor;
+  over.before(g);
+  return g;
+}
+function coverOf(from, to) {
+  return `translate(${to.left - from.left}px, ${to.top - from.top}px) scale(${to.width / from.width}, ${to.height / from.height})`;
+}
+function morphOpen(elm, from, { backdrop = null } = {}) {
   const rect = from instanceof Element ? visibleRect(from) : from;
   if (!rect) return null;
   const frames = morphFrames(elm, rect);
   if (!frames) return null;
+  const to = elm.getBoundingClientRect();
   elm.style.transformOrigin = '0 0';
-  const a = elm.animate(frames, { duration, easing: 'cubic-bezier(.35,0,.15,1)' });
-  backdrop?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: duration * 0.8, easing: 'ease-out' });
-  a.finished.catch(() => {}).then(() => { elm.style.transformOrigin = ''; });
-  return a;
+  const ghost = morphGhost(from, rect, elm);
+  const runs = [
+    elm.animate(frames, MORPH),
+    ghost.animate([{ transform: 'none', opacity: 1 }, { opacity: 1, offset: 0.8 }, { transform: coverOf(rect, to), opacity: 0 }], { ...MORPH, fill: 'forwards' }),
+    backdrop?.animate([{ opacity: 0 }, { opacity: 1 }], MORPH),
+  ];
+  runs[0].finished.catch(() => {}).then(() => { elm.style.transformOrigin = ''; ghost.remove(); });
+  return runs[0];
 }
 // The way back: shrinks into `from` (if it is still on screen). Resolves
 // when it is done (at once when there is nothing to shrink into).
-function morphClose(elm, from, { duration = 300, backdrop = null } = {}) {
+function morphClose(elm, from, { backdrop = null } = {}) {
   const rect = from instanceof Element ? (from.isConnected ? visibleRect(from) : null) : from;
   const frames = rect && morphFrames(elm, rect);
   if (!frames) return Promise.resolve();
+  const to = elm.getBoundingClientRect();
   elm.style.transformOrigin = '0 0';
   elm.style.pointerEvents = 'none';
-  const a = elm.animate([...frames].reverse().map((f, i) => ({ ...f, offset: i === 1 ? 0.86 : f.offset })), { duration, easing: 'cubic-bezier(.5,0,.75,.2)', fill: 'forwards' });
-  backdrop?.animate([{ opacity: 1 }, { opacity: 0 }], { duration, easing: 'ease-in', fill: 'forwards' });
-  return a.finished.catch(() => {}).then(() => ({ done: () => { a.cancel(); elm.style.transformOrigin = ''; elm.style.pointerEvents = ''; backdrop?.getAnimations().forEach(x => x.cancel()); } }));
+  const back = [frames[2], { opacity: 1, offset: 0.85 }, frames[0]];
+  const ghost = morphGhost(from, rect, elm);
+  const a = elm.animate(back, { ...MORPH, fill: 'forwards' });
+  ghost.animate([{ transform: coverOf(rect, to), opacity: 0 }, { opacity: 1, offset: 0.2 }, { transform: 'none', opacity: 1 }], { ...MORPH, fill: 'forwards' });
+  backdrop?.animate([{ opacity: 1 }, { opacity: 0 }], { ...MORPH, fill: 'forwards' });
+  return a.finished.catch(() => {}).then(() => {
+    // The ghost goes as the real row shows under it.
+    ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, fill: 'forwards' }).finished.catch(() => {}).then(() => ghost.remove());
+    return { done: () => { a.cancel(); elm.style.transformOrigin = ''; elm.style.pointerEvents = ''; backdrop?.getAnimations().forEach(x => x.cancel()); } };
+  });
 }
 
 // ---------- dropdowns ----------
