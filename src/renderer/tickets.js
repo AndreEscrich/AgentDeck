@@ -146,7 +146,6 @@ class TicketsView {
     this.filterBtn.innerHTML = FUNNEL;
     this.filterBtn.title = 'Filters';
     this.filterBtn.onclick = () => this.openMenu(this.filterBtn, 'filters', menu => this.fillFilterMenu(menu));
-    const spacer = el('span', 'tickets-spacer');
     // The bell: PM notifications (src/pmnotify.js), with a red count.
     this.bell = el('button', 'icon tickets-bell');
     this.bell.type = 'button';
@@ -172,7 +171,11 @@ class TicketsView {
     this.account.onclick = () => this.signOut();
     // The PM account and Sign out live in Settings → Account (pmAccountPanel).
     // The filters are on the columns now (renderList): no filter button here.
-    bar.append(this.tabs, this.search, spacer, this.when, refresh, this.bell);
+    // Three parts, the search always in the middle: the tabs on its left,
+    // when, refresh and the bell on its right.
+    const right = el('div', 'tickets-bar-right');
+    right.append(this.when, refresh, this.bell);
+    bar.append(this.tabs, this.search, right);
     // Haiku for tickets (src/pmassist.js): say what to do or ask; it only
     // reads tickets and makes changes you can undo, nothing else.
     this.assist = el('div', 'tickets-assist');

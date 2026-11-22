@@ -2444,7 +2444,9 @@ button.act-lt-row:hover { background: rgba(255, 236, 210, 0.05); }
 .tickets-search { width: 240px; flex-shrink: 0; }
 /* The bar's parts stand together in the middle, above the table. */
 .tickets-types { flex: 0 0 16px; }
-.tickets-bar { justify-content: center; }
+.tickets-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 14px; }
+.tickets-bar > .tickets-tabs { justify-self: end; }
+.tickets-bar-right { display: flex; align-items: center; gap: 10px; justify-self: start; min-width: 0; }
 .tickets-when { font-size: 12px; color: var(--text-faint); white-space: nowrap; width: 84px; text-align: right; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; }
 .tickets-when.err { color: var(--err); }
 .tickets-account { border: none; background: none; color: var(--text-faint); font-size: 12px; white-space: nowrap; padding: 0 4px; }
