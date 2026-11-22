@@ -561,8 +561,8 @@ class TicketsView {
       for (const t of this.items()) if (t.assignee) people.set(t.assignee, (people.get(t.assignee) || 0) + 1);
       const me = this.email ? [...people.keys()].find(n => n === this.myName?.()) : null;
       menu.append(el('div', 'tickets-status-group', 'Assignee'));
-      const choices = [[null, 'Anyone', this.items().length], ['', 'Unassigned', this.items().filter(t => !t.assignee).length],
-        ...(me ? [[me, `Me (${me})`, people.get(me)]] : []),
+      const choices = [[null, 'Anyone', this.items().length], ...(me ? [[me, `Me (${me})`, people.get(me)]] : []),
+        ['', 'Unassigned', this.items().filter(t => !t.assignee).length],
         ...[...people].filter(([n]) => n !== me).sort((a, b) => a[0].localeCompare(b[0])).map(([n, c]) => [n, n, c])];
       for (const [value, label, n] of choices) {
         const b = el('button', 'tickets-status-item tickets-check' + (this.who === value ? ' ticked' : ''));

@@ -86,7 +86,9 @@
     for (const d of this.subs.values()) (d.items || []).forEach(add);
     add(this.detailTicket);
     (this.detailTicket?.subtasks || []).forEach(add);
-    return [...names].sort((a, b) => a.localeCompare(b));
+    // You first, then everyone else A to Z.
+    const me = this.myName();
+    return [...names].sort((a, b) => (b === me) - (a === me) || a.localeCompare(b));
   };
 
   // Your name as PM shows it: the assignee of most of your tickets.
@@ -702,7 +704,7 @@
         if (e.key !== 'Enter' || !input.value.trim()) return;
         e.preventDefault();
         input.disabled = true;
-        const r = await window.deck.pmCreateSubtask({ key: t.key, id: t.id, project: projectOf(t), title: input.value.trim() }).catch(err => ({ error: String(err?.message || err) }));
+        const r = await window.deck.pmCreateSubtask({ key: t.key, id: t.id, project: projectOf(t), title: input.value.trim(), assignee: t.assignee || '' }).catch(err => ({ error: String(err?.message || err) }));
         if (r?.notConnected) return this.setConnected({ connected: false });
         this.editing = r?.error ? 'subtask' : null;
         this.afterSave(t, r);

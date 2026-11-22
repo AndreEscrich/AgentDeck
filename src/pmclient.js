@@ -528,9 +528,16 @@ async function completeSprint({ project, sprintId, targetSprintId }) {
   return { ok: true, result: r };
 }
 
-async function createSubtask({ key, id, project, title }) {
+// A new subtask goes to the story's assignee (assignee: theirs, read from
+// PM when not given; '' leaves it unassigned).
+async function createSubtask({ key, id, project, title, assignee }) {
+  if (assignee === undefined) {
+    const story = await callTool('pm_get_task', { key }).catch(() => null);
+    assignee = story?.assignee || '';
+    id ||= story?._id;
+  }
   id = await idOf(key, id);
-  await callTool('pm_create_subtask', { projectId: project, taskId: id, title });
+  await callTool('pm_create_subtask', { projectId: project, taskId: id, title, ...(assignee ? { assignee } : {}) });
   return ticket(key);
 }
 
