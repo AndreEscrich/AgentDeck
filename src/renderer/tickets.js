@@ -619,10 +619,11 @@ class TicketsView {
     const column = this.sort.col && columns.find(c => c[0] === this.sort.col);
     const by = column ? column[2] : t => t.title.toLowerCase();
     const desc = column ? this.sort.desc : false;
-    // Sprint review with no sort: done, then in progress, then to do, newest first.
+    // Sprint review with no sort: done, then in progress, then to do.
     const reviewRank = t => ({ done: 0, in_progress: 1, todo: 2 })[t.category] ?? 1;
     shown.sort((a, b) => {
-      if (review && !column) return reviewRank(a) - reviewRank(b) || b.seq - a.seq;
+      // Then by assignee (A to Z, unassigned last), then newest first.
+      if (review && !column) return reviewRank(a) - reviewRank(b) || (!a.assignee) - (!b.assignee) || (a.assignee || '').localeCompare(b.assignee || '') || b.seq - a.seq;
       const x = by(a), y = by(b);
       const c = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true });
       return (desc ? -c : c) || b.seq - a.seq;
