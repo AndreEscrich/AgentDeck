@@ -478,7 +478,9 @@ async function options(project) {
   ]);
   const value = {
     epics: epics.filter(e => !e.isArchived && !e.deletedAt).map(e => ({ id: e._id, key: e.key || '', name: e.name || e.title || e.key || '', color: e.color || null, createdAt: e.createdAt || '', done: !!(e.doneAt || /done|closed/i.test(e.status || '')) })),
-    sprints: sprints.map(x => ({ id: x._id, name: x.name, status: x.status || '' })),
+    // The active sprints first, then the future (planned) ones, each by name.
+    sprints: sprints.map(x => ({ id: x._id, name: x.name, status: x.status || '' }))
+      .sort((a, b) => (a.status !== 'ACTIVE') - (b.status !== 'ACTIVE') || a.name.localeCompare(b.name, undefined, { numeric: true })),
     teams: teams.map(x => ({ id: x._id, name: x.name })),
     components: components.map(x => ({ id: x._id, name: x.name })),
     fields: fields.map(f => ({ id: f._id, name: f.name, type: f.fieldType, values: f.values || f.options || f.allowedValues || [], types: (f.taskTypes || []).map(tt => tt._id) })),
