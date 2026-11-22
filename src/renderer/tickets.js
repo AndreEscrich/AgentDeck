@@ -127,7 +127,10 @@ class TicketsView {
         this.sorts ||= {};
         this.sorts[this.list] = this.sort;
         this.sort = this.sorts[id] || (id === 'review' ? { col: null, desc: false } : { col: 'key', desc: true });
-        this.list = id; this.type = null; this.renderTabs(); this.show(); this.load();
+        this.list = id; this.type = null; this.renderTabs(); this.show();
+        // Read again only when it is more than a minute old (↻ always reads).
+        const d = this.data[this.src()];
+        if (!d || Date.now() - d.at > 60 * 1000) this.load();
       };
       b.title = id === 'plan' ? 'One person at a time: their tickets, and the ones in the upcoming sprint' : '';
       this.tabs.appendChild(b);

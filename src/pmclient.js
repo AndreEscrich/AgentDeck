@@ -179,7 +179,12 @@ function notConnected(text = 'Not connected to Tactile PM. Connect in the Ticket
 let nextId = 1;
 // One JSON-RPC request. The answer comes as JSON or as a short event
 // stream (text/event-stream) with the answer in a data: line.
-async function rpc(method, params, { notify = false, retried = false } = {}) {
+// PM allows only so many requests a minute (an answer 429 says how long to
+// wait). Then every request waits that long, all together, and tries once
+// more, instead of failing.
+let pausedUntil = 0;
+async function rpc(method, params, { notify = false, retried = false, waited = false } = {}) {
+  if (Date.now() < pausedUntil) await new Promise(r => setTimeout(r, pausedUntil - Date.now()));
   const token = await accessToken();
   const headers = { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: `Bearer ${token}`, 'mcp-protocol-version': '2025-06-18' };
   if (session?.id) headers['mcp-session-id'] = session.id;
@@ -198,6 +203,16 @@ async function rpc(method, params, { notify = false, retried = false } = {}) {
   if (sid && method === 'initialize') session = { id: sid, at: Date.now() };
   if (notify) return null;
   const text = await res.text();
+  if (res.status === 429) {
+    let after = Number(res.headers.get('retry-after')) || 0;
+    try { after = Number(JSON.parse(text).retryAfter) || after; } catch { /* the header's, or a default */ }
+    const secs = Math.min(60, Math.max(2, after || 20));
+    if (!waited) {
+      pausedUntil = Math.max(pausedUntil, Date.now() + secs * 1000);
+      return rpc(method, params, { notify, retried, waited: true });
+    }
+    throw new Error(`Tactile PM is getting too many requests right now. Try again in ${secs} seconds.`);
+  }
   if (!res.ok) throw new Error(`PM answered ${res.status}: ${text.slice(0, 200)}`);
   let msg = null;
   if (/^\s*\{/.test(text)) msg = JSON.parse(text);
