@@ -129,7 +129,9 @@
       onPick: v => { plan.person = v ?? ''; this.savePlan(); this.renderPlan(); },
     }));
     who.classList.toggle('planned', done(plan.person));
-    const check = el('button', 'plan-check' + (done(plan.person) ? ' on' : ''), '✓');
+    const check = el('button', 'plan-check' + (done(plan.person) ? ' on' : ''));
+    // A circle with a check in its middle: dashed and empty until marked.
+    check.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3.2 7.4l2.5 2.5 5.1-5.6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     check.type = 'button';
     check.title = done(plan.person) ? `${label(plan.person)} is planned for this sprint: click to put them back in Pending` : `Mark ${label(plan.person)} as planned for this sprint`;
     check.onclick = () => {

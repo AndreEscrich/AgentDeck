@@ -4302,7 +4302,7 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .start-sprint.writing .start-sprint-goal { animation: start-sprint-think 1.4s ease-in-out infinite; }
 @keyframes start-sprint-think { 50% { border-color: rgba(233, 162, 59, 0.55); } }
 /* Sprint planning: the ✓ that marks a person as planned. */
-.plan-check { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-faint); font-weight: 700; cursor: pointer; }
-.plan-check:hover { color: var(--ok); border-color: rgba(76, 175, 122, 0.5); }
-.plan-check.on { background: rgba(76, 175, 122, 0.18); border-color: rgba(76, 175, 122, 0.6); color: var(--ok); }
+.plan-check { width: 28px; height: 28px; padding: 0; border-radius: 50%; border: 1.5px dashed var(--text-faint); background: none; color: transparent; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; line-height: 1; cursor: pointer; flex-shrink: 0; transition: background 0.15s, border-color 0.15s, color 0.15s; }
+.plan-check:hover { border-color: var(--ok); color: rgba(76, 175, 122, 0.55); }
+.plan-check.on { border: 1.5px solid var(--ok); background: var(--ok); color: #10291b; }
 .plan-person.planned { border-color: rgba(76, 175, 122, 0.45); }
