@@ -4,7 +4,10 @@
 // newest first. The sprint picker sits over the list, with how much of it
 // is done. The sprints: the open ones (the active ones first) whose names
 // start with one of Settings → Tactile PM → Sprints (any, when empty); the
-// current one by default. The methods join TicketsView.
+// current one by default. An active sprint has Complete sprint: a window
+// says how many unfinished tickets carry over and into which sprint (the
+// next planned one of its board), with the sprint's goal, before PM ends it.
+// The methods join TicketsView.
 
 (() => {
   const P = TicketsView.prototype;
@@ -18,7 +21,7 @@
       const projects = [...new Set(this.data.review.items.map(t => t.project).filter(Boolean))];
       Promise.all(projects.map(p => window.deck.pmOptions(p).then(o => o?.sprints || []).catch(() => []))).then(lists => {
         const byName = new Map();
-        for (const s of lists.flat()) if (!byName.has(s.name)) byName.set(s.name, { name: s.name, status: s.status });
+        lists.forEach((list, i) => { for (const s of list) if (!byName.has(s.name)) byName.set(s.name, { ...s, project: projects[i] }); });
         // And any sprint the tickets name that PM's list missed.
         for (const t of this.data.review.items) if (t.sprint && !byName.has(t.sprint)) byName.set(t.sprint, { name: t.sprint, status: '' });
         const ps = prefixes();
@@ -73,6 +76,80 @@
     const progress = el('span', 'review-progress');
     progress.append(meter, `${done} of ${all.length} stories done · ${prog} in progress · ${all.length - done - prog} to do`);
     bar.append(pick, progress);
+    if (current.status === 'ACTIVE' && current.id) {
+      const done = el('button', 'review-complete', 'Complete sprint');
+      done.type = 'button';
+      done.title = `End ${current.name} in PM`;
+      done.onclick = () => this.confirmComplete(current);
+      bar.append(done);
+    }
     return bar;
+  };
+  // The sprint after this one: the first planned sprint of the same board
+  // (by name, so Sprint 38 before Sprint 39).
+  P.nextSprint = function (sprint) {
+    return (this.reviewList || []).filter(s => s.status === 'PLANNED' && s.id && s.boardId && s.boardId === sprint.boardId)
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))[0] || null;
+  };
+
+  P.confirmComplete = function (sprint) {
+    const next = this.nextSprint(sprint);
+    // Every unfinished ticket of the sprint carries over, not just stories.
+    const left = (this.data.review?.items || []).filter(t => t.sprint === sprint.name && t.category !== 'done');
+    const kinds = new Map();
+    for (const t of left) { const k = isStory(t) ? 'stories' : /bug/i.test(t.type || '') ? 'bugs' : 'other'; kinds.set(k, (kinds.get(k) || 0) + 1); }
+    const shade = el('div', 'review-shade');
+    const box = el('div', 'review-confirm');
+    const close = () => { shade.remove(); document.removeEventListener('keydown', onKey, true); };
+    const onKey = e => { if (e.key === 'Escape' && !box.classList.contains('busy')) { e.preventDefault(); e.stopImmediatePropagation(); close(); } };
+    document.addEventListener('keydown', onKey, true);
+    shade.onclick = e => { if (e.target === shade && !box.classList.contains('busy')) close(); };
+    const day = d => (d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '');
+    box.append(el('h3', null, `Complete ${sprint.name}?`));
+    if (sprint.startDate || sprint.endDate) box.append(el('div', 'review-confirm-dates', [day(sprint.startDate), day(sprint.endDate)].filter(Boolean).join(' – ')));
+    const carry = el('div', 'review-confirm-carry');
+    const num = el('span', 'review-confirm-n', String(left.length));
+    if (!left.length) carry.append('Every ticket is done: nothing carries over.');
+    else if (next) carry.append(num, ` unfinished ticket${left.length === 1 ? '' : 's'} will carry over into `, el('b', null, next.name));
+    else carry.append(num, ` unfinished ticket${left.length === 1 ? '' : 's'} will go to the backlog (this board has no planned sprint).`);
+    box.append(carry);
+    if (left.length) box.append(el('div', 'review-confirm-kinds', ['stories', 'bugs', 'other'].filter(k => kinds.get(k)).map(k => `${kinds.get(k)} ${k === 'other' ? 'other tickets' : k}`).join(' · ')));
+    box.append(el('div', 'review-confirm-label', 'Sprint goal'));
+    box.append(el('div', 'review-confirm-goal' + (sprint.goal ? '' : ' none'), sprint.goal || 'This sprint has no goal.'));
+    const err = el('div', 'tickets-error hidden');
+    const actions = el('div', 'review-confirm-actions');
+    const cancel = el('button', null, 'Cancel');
+    cancel.type = 'button';
+    cancel.onclick = close;
+    const go = el('button', 'primary', 'Complete sprint');
+    go.type = 'button';
+    go.onclick = async () => {
+      box.classList.add('busy');
+      go.disabled = cancel.disabled = true;
+      go.textContent = 'Completing…';
+      err.classList.add('hidden');
+      const r = await window.deck.pmCompleteSprint({ project: sprint.project, sprintId: sprint.id, targetSprintId: next?.id || null })
+        .catch(e => ({ error: String(e?.message || e) }));
+      if (r?.notConnected) { close(); return this.setConnected({ connected: false }); }
+      if (!r || r.error) {
+        box.classList.remove('busy');
+        go.disabled = cancel.disabled = false;
+        go.textContent = 'Complete sprint';
+        err.textContent = r?.error || 'PM did not answer.';
+        err.classList.remove('hidden');
+        return;
+      }
+      close();
+      // The sprints and the tickets as PM has them now.
+      this.reviewList = null;
+      this.reviewName = null;
+      try { localStorage.removeItem('pmReviewSprint'); } catch { /* none */ }
+      this.load(true);
+    };
+    actions.append(cancel, go);
+    box.append(err, actions);
+    shade.append(box);
+    this.view.append(shade);
+    cancel.focus();   // not Complete: a stray Enter must not end the sprint
   };
 })();

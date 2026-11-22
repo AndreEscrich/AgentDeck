@@ -468,6 +468,7 @@ app.whenReady().then(() => {
   ipcMain.handle('pmc:subtasks', (_e, key) => pmCall(() => pmClient.subtasks(String(key || ''))));
   ipcMain.handle('pmc:options', (_e, project) => pmCall(() => pmClient.options(String(project || ''))));
   ipcMain.handle('pmc:update', (_e, a) => pmWrite(a?.key, () => pmClient.update(a || {})));
+  ipcMain.handle('pmc:completeSprint', (_e, a) => pmCall(() => pmClient.completeSprint(a || {})));
   ipcMain.handle('pmc:createSubtask', (_e, a) => pmWrite(a?.key, () => pmClient.createSubtask(a || {})));
   ipcMain.handle('pmc:attachments', (_e, a) => pmCall(() => pmClient.attachments(a || {})));
   ipcMain.handle('pmc:openAttachment', (_e, a) => pmCall(() => pmClient.openAttachment(a || {})));

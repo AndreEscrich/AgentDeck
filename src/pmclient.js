@@ -482,7 +482,7 @@ async function options(project) {
   const value = {
     epics: epics.filter(e => !e.isArchived && !e.deletedAt).map(e => ({ id: e._id, key: e.key || '', name: e.name || e.title || e.key || '', color: e.color || null, createdAt: e.createdAt || '', done: !!(e.doneAt || /done|closed/i.test(e.status || '')) })),
     // The active sprints first, then the future (planned) ones, each by name.
-    sprints: sprints.map(x => ({ id: x._id, name: x.name, status: x.status || '' }))
+    sprints: sprints.map(x => ({ id: x._id, name: x.name, status: x.status || '', boardId: x.boardId || '', goal: x.goal || '', startDate: x.startDate || '', endDate: x.endDate || '' }))
       .sort((a, b) => (a.status !== 'ACTIVE') - (b.status !== 'ACTIVE') || a.name.localeCompare(b.name, undefined, { numeric: true })),
     teams: teams.map(x => ({ id: x._id, name: x.name })),
     components: components.map(x => ({ id: x._id, name: x.name })),
@@ -514,6 +514,18 @@ async function update({ key, id, project, subtask, fields }) {
   if (subtask) await callTool('pm_update_subtask', { projectId: project, subtaskId: id, ...args });
   else await callTool('pm_update_task', { projectId: project, taskId: id, ...args });
   return ticket(key);
+}
+
+// Sprint review's Complete sprint: ends an active sprint. Its unfinished
+// tickets carry over into target (a planned sprint), or go to the backlog
+// when there is none. The project's options are read again after.
+async function completeSprint({ project, sprintId, targetSprintId }) {
+  if (!project || !sprintId) throw new Error('Which sprint?');
+  const args = { projectId: project, sprintId, action: targetSprintId ? 'carryOver' : 'moveToBacklog' };
+  if (targetSprintId) args.targetSprintId = targetSprintId;
+  const r = await callTool('pm_complete_sprint', args);
+  optionCache.clear();
+  return { ok: true, result: r };
 }
 
 async function createSubtask({ key, id, project, title }) {
@@ -640,4 +652,4 @@ async function workflows(project) {
 }
 
 module.exports = { setup, status, connect, disconnect, callTool, tickets, ticket, readTasks, statuses, subtasks, setStatus,
-  options, update, createSubtask, attachments, openAttachment, attach, comments, addComment, editComment, deleteComment, personName, workflows, remove };
+  options, update, completeSprint, createSubtask, attachments, openAttachment, attach, comments, addComment, editComment, deleteComment, personName, workflows, remove };
