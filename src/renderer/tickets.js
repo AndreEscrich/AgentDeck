@@ -59,6 +59,13 @@ function ticketTitle(title, cls = null) {
   return span;
 }
 
+// A title's context: its leading [labels] ("[UI][Daily rewards] ..." gives
+// "UI Daily rewards"), or '' when it has none.
+function titleContext(title) {
+  const m = String(title || '').match(/^\s*((?:\[[^\[\]]{1,40}\]\s*)+)/);
+  return m ? [...m[1].matchAll(/\[([^\[\]]+)\]/g)].map(x => x[1].trim()).join(' ') : '';
+}
+
 function typeIcon(type) {
   const span = el('span', 'tickets-type-icon');
   span.innerHTML = TYPE_ICONS[(type || '').toLowerCase()] || TYPE_ICONS.task;
@@ -622,8 +629,12 @@ class TicketsView {
     // Sprint review with no sort: done, then in progress, then to do.
     const reviewRank = t => ({ done: 0, in_progress: 1, todo: 2 })[t.category] ?? 1;
     shown.sort((a, b) => {
-      // Then by assignee (A to Z, unassigned last), then newest first.
-      if (review && !column) return reviewRank(a) - reviewRank(b) || (!a.assignee) - (!b.assignee) || (a.assignee || '').localeCompare(b.assignee || '') || b.seq - a.seq;
+      // Then by epic, then by context (the [labels] a title starts with),
+      // each A to Z with none last, then newest first.
+      if (review && !column) {
+        const by2 = (x, y) => (!x) - (!y) || x.localeCompare(y, undefined, { sensitivity: 'base' });
+        return reviewRank(a) - reviewRank(b) || by2(a.epic || '', b.epic || '') || by2(titleContext(a.title), titleContext(b.title)) || b.seq - a.seq;
+      }
       const x = by(a), y = by(b);
       const c = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true });
       return (desc ? -c : c) || b.seq - a.seq;

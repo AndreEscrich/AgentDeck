@@ -1,7 +1,7 @@
 // Sprint review: the Tickets view's fourth tab. One sprint's tickets,
 // stories only, everyone's and done ones too, in one list like All tickets (not grouped
 // by epic): by default done first, then in progress, then to do, each by
-// assignee (unassigned last), then newest first. The sprint picker sits over the list, with how much of it
+// epic, then by context (a title's [labels]), then newest first. The sprint picker sits over the list, with how much of it
 // is done. The sprints: the open ones (the active ones first) whose names
 // start with one of Settings → Tactile PM → Sprints (any, when empty); the
 // current one by default. An active sprint has Complete sprint: a window
