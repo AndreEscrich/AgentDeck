@@ -952,7 +952,11 @@
       else {
         // The epic is in the chain at the top left (its ▾ changes it), not here.
         // Under Active and Future headings (pmclient sorts them that way).
-        const sprints = (o.sprints || []).map(x => [x.id, x.name, x.status === 'ACTIVE' ? 'Active' : 'Future']);
+        // Only the kinds of sprint you follow (Settings → Tactile PM → Sprints:
+        // name prefixes; empty, all). The ticket's own sprint shows anyway.
+        const prefixes = ((typeof state !== 'undefined' && state.config?.pmSprintPrefixes) || []).map(p => p.toLowerCase());
+        const followed = x => !prefixes.length || x.id === t.sprintId || prefixes.some(p => x.name.toLowerCase().startsWith(p));
+        const sprints = (o.sprints || []).filter(followed).map(x => [x.id, x.name, x.status === 'ACTIVE' ? 'Active' : 'Future']);
         if (t.sprintId && !sprints.some(x => x[0] === t.sprintId)) sprints.unshift([t.sprintId, t.sprint || 'Sprint']);
         field('Sprint', select(t.sprintId, sprints, v => this.saveFields(t, { sprintId: v }), { none: 'Backlog' }));
       }

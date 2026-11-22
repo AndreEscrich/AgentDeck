@@ -97,6 +97,7 @@ const DEFAULT_CONFIG = {
   suggestFollowUps: true,               // after a task, suggest the messages you will likely send next
   svnServer: 'svn+ssh://svn@tactile.build',   // the Branches view reads <svnServer>/<project>/branches
   svnProjects: ['MergeTavern'],         // empty: every project on the server (older settings: svnProject, one project)
+  pmSprintPrefixes: [],                 // the ticket panel's Sprint field lists only sprints whose names start with one of these (all when empty)
   svnBranchFilter: [],                  // only branches whose names start with one of these (all when empty)
   githubBranches: false,                // also list your GitHub pull requests and branches (githubbranches.js)
   galleryUrl: 'https://drive.google.com/drive/folders/1qaAkZp34heMdc37rbCaAttQFSOnSbfaZ',   // the Gallery: the Google Drive link of the game's art folder (gallery.js)
