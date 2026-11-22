@@ -141,6 +141,7 @@ contextBridge.exposeInMainWorld('deck', {
   pmSetStatus: args => ipcRenderer.invoke('pmc:setStatus', args),
   pmOptions: project => ipcRenderer.invoke('pmc:options', project),
   pmUpdate: args => ipcRenderer.invoke('pmc:update', args),
+  pmCreateTask: args => ipcRenderer.invoke('pmc:createTask', args),
   pmCompleteSprint: args => ipcRenderer.invoke('pmc:completeSprint', args),
   pmCreateSubtask: args => ipcRenderer.invoke('pmc:createSubtask', args),
   pmAttachments: args => ipcRenderer.invoke('pmc:attachments', args),

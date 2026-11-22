@@ -4234,3 +4234,22 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .tp-sub-ghost.plain { justify-content: center; padding: 4px 10px; }
 .tp-sub-ghost.plain .tp-sub-plus { width: auto; font-size: 18px; line-height: 1; font-weight: 400; }
 .tp-sub-ghost.plain:hover { background: var(--bg-hover); }
+/* + New ticket (ticketcreate.js). */
+.tickets-new { height: 28px; padding: 0 12px; border-radius: 8px; border: 1px solid rgba(233, 162, 59, 0.45); background: rgba(233, 162, 59, 0.12); color: var(--accent); font-weight: 700; white-space: nowrap; cursor: pointer; }
+.tickets-new:hover { background: var(--accent); color: var(--accent-text); }
+.tickets-view.signed-out .tickets-new { visibility: hidden; }
+.new-ticket { width: min(600px, calc(100% - 48px)); display: flex; flex-direction: column; gap: 12px; }
+.new-ticket h3 { margin-bottom: 0; }
+.new-ticket-types { display: flex; gap: 6px; }
+.new-ticket-type { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); background: none; color: var(--text-dim); font-weight: 700; cursor: pointer; }
+.new-ticket-type.on { background: var(--bg-active); color: var(--text); border-color: rgba(233, 162, 59, 0.5); }
+.new-ticket .tp-input { width: 100%; }
+.new-ticket-title { font-size: 15px; font-weight: 600; }
+.new-ticket-title.bad { border-color: var(--err); }
+.new-ticket-desc { resize: vertical; min-height: 90px; font: inherit; line-height: 1.5; }
+.new-ticket-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.new-ticket-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.new-ticket-field label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.new-ticket-select, .new-ticket-who { width: 100%; min-width: 0; }
+.new-ticket-select { height: 30px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); color: var(--text); font: inherit; font-size: 13px; outline: none; cursor: pointer; }
+.new-ticket .review-confirm-actions { margin-top: 4px; }

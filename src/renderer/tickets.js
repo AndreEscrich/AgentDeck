@@ -174,7 +174,12 @@ class TicketsView {
     // The tabs in the middle; when, refresh and the bell on their right.
     // (The search sits over the table's Key and Title: finishList.)
     const right = el('div', 'tickets-bar-right');
-    right.append(this.when, refresh, this.bell);
+    // + New ticket (ticketcreate.js).
+    const create = el('button', 'tickets-new', '+ New ticket');
+    create.type = 'button';
+    create.title = 'Create a ticket in PM';
+    create.onclick = () => this.openNewTicket();
+    right.append(create, this.when, refresh, this.bell);
     bar.append(el('span'), this.tabs, right);
     // Haiku for tickets (src/pmassist.js): say what to do or ask; it only
     // reads tickets and makes changes you can undo, nothing else.

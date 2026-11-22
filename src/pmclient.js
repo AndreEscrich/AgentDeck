@@ -519,6 +519,23 @@ async function update({ key, id, project, subtask, fields }) {
 // Sprint review's Complete sprint: ends an active sprint. Its unfinished
 // tickets carry over into target (a planned sprint), or go to the backlog
 // when there is none. The project's options are read again after.
+// + New ticket: makes a Story or Bug in project and resolves with it read
+// back from PM. Empty fields are left out.
+async function createTask({ project, title, type, description, assignee, sprintId, epicId, team }) {
+  if (!project || !String(title || '').trim()) throw new Error('A ticket needs a title.');
+  const args = { projectId: project, title: String(title).trim() };
+  if (['Story', 'Bug'].includes(type)) args.type = type;
+  if (description) args.description = description;
+  if (assignee) args.assignee = assignee;
+  if (sprintId) args.sprintId = sprintId;
+  if (epicId) args.epicId = epicId;
+  if (team) args.team = team;
+  const r = await callTool('pm_create_task', args);
+  const key = r?.key || r?.task?.key || r?.item?.key;
+  if (!key) throw new Error('PM made the ticket but did not say its key.');
+  return ticket(key);
+}
+
 async function completeSprint({ project, sprintId, targetSprintId }) {
   if (!project || !sprintId) throw new Error('Which sprint?');
   const args = { projectId: project, sprintId, action: targetSprintId ? 'carryOver' : 'moveToBacklog' };
@@ -659,4 +676,4 @@ async function workflows(project) {
 }
 
 module.exports = { setup, status, connect, disconnect, callTool, tickets, ticket, readTasks, statuses, subtasks, setStatus,
-  options, update, completeSprint, createSubtask, attachments, openAttachment, attach, comments, addComment, editComment, deleteComment, personName, workflows, remove };
+  options, update, createTask, completeSprint, createSubtask, attachments, openAttachment, attach, comments, addComment, editComment, deleteComment, personName, workflows, remove };
