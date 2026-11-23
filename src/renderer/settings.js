@@ -75,6 +75,35 @@ function settingsList(text) {
 const PLAN_NAMES = { pro: 'Pro', max: 'Max', team: 'Team', enterprise: 'Enterprise' };
 // Settings → Tactile PM: the account the Tickets view reads PM
 // with (src/pmclient.js), with Sign out, or Connect when it is signed out.
+// Project health's Tactile BI sign-in (health.js), like the PM one below.
+function biAccountPanel() {
+  const box = el('div', 'pm-account');
+  const render = async () => {
+    const st = await window.deck.healthSummary().catch(() => ({ connected: false }));
+    box.replaceChildren();
+    if (st.connected) {
+      box.append(el('span', 'pm-account-email', st.email ? `Signed in as ${st.email}` : 'Signed in'));
+      const out = el('button', 'account-switch', 'Sign out');
+      out.type = 'button';
+      out.onclick = async () => { out.disabled = true; await window.deck.healthDisconnect().catch(() => {}); render(); };
+      box.append(out);
+    } else {
+      box.append(el('span', 'pm-account-email', 'Not signed in'));
+      const go = el('button', 'account-switch', 'Connect');
+      go.type = 'button';
+      go.onclick = async () => {
+        go.disabled = true;
+        go.textContent = 'Waiting for the sign-in in your browser…';
+        await window.deck.healthConnect().catch(() => {});
+        render();
+      };
+      box.append(go);
+    }
+  };
+  render();
+  return box;
+}
+
 function pmAccountPanel() {
   const box = el('div', 'pm-account');
   const render = async () => {
@@ -347,6 +376,16 @@ function openSettings(config, { onSaved } = {}) {
 
   // Gallery (gallery.js)
   const galleryUrl = settingsInput('text', config.galleryUrl || '', { placeholder: 'https://drive.google.com/drive/folders/…' });
+  // Each side feature's on/off switch, at the top of its tab. Off: its button
+  // leaves the Hub's left side and it does nothing in the background.
+  const featureBranches = settingsInput('checkbox', config.featureBranches !== false);
+  const featureGallery = settingsInput('checkbox', config.featureGallery === true);
+  const featureTickets = settingsInput('checkbox', config.featureTickets !== false);
+  const featureHealth = settingsInput('checkbox', config.featureHealth !== false);
+  const hs = config.healthSupport || {};
+  const healthTitle = settingsInput('text', hs.title || '', { placeholder: 'Enchanted Inn' });
+  const healthDashboard = settingsInput('text', hs.dashboardId ? `https://bi.tactilews.com/dashboards/${hs.dashboardId}${hs.filterGroup ? `?filterGroup=${hs.filterGroup}` : ''}` : '', { placeholder: 'Enchanted Inn – User Support Messages (Morten\'s)' });
+  const healthChart = settingsInput('text', hs.messagesChart || '', { placeholder: 'The dashboard\'s message log' });
   const pmSpace = settingsInput('text', config.pmSpace || 'Enchanted Inn', { placeholder: 'Enchanted Inn' });
   const pmPlanHidden = settingsInput('text', (config.pmPlanHidden || []).join(', '), { placeholder: 'Nobody' });
   const pmSprintPrefixes = settingsInput('text', (config.pmSprintPrefixes || []).join(', '), { placeholder: 'Every sprint' });
@@ -449,7 +488,9 @@ function openSettings(config, { onSaved } = {}) {
       el('div', 'settings-hint account-intro', 'The account Claude Code and every Claude agent use. The accounts you signed in with before stay in the list, so switching back needs no new sign-in.'),
       accountsPanel())]],
     // Tactile PM: the Tickets view's sign-in and what its lists show.
-    ['pm', 'Tactile PM', [section('Account',
+    ['pm', 'Tickets', [section(null,
+      settingsField('Tickets', 'The Tickets button on the Hub\'s left side: your PM tickets, sprint review and planning, and PM\'s notifications. Off: the button goes, PM links open in the browser, and the app stops looking for PM notifications', featureTickets)),
+    section('Tactile PM account',
       el('div', 'settings-hint', 'The account the Tickets view reads PM with. It is separate from the PM connector your agents use: signing in or out here does not change it.'),
       pmAccountPanel()),
     section('Tickets',
@@ -498,12 +539,23 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('Voice language', `The language you speak to the microphone button next to Send (${IS_MAC ? '⌘⇧Space' : 'Ctrl+Shift+Space'}). ${IS_MAC ? 'macOS' : 'Windows'} turns it into text itself, so nothing is downloaded`, voiceLanguage),
       settingsField('Update pop-up', 'A card on the Hub asks you to update when a new version is out. Off: only the Update button next to the version in the title bar shows it', updatePopup))]],
     ['branches', 'Branch diff', [section(null,
+      settingsField('Branch diff', 'The branch button on the Hub\'s left side: your SVN and GitHub branches against trunk. Off: the button goes', featureBranches),
       settingsField('Projects', `The Branches view lists ${(config.svnServer || 'svn+ssh://svn@tactile.build').replace(/\/+$/, '')}/<project>/branches for each one. Separate them with commas. Empty: every project someone committed to in the last year`, svnProjects),
       settingsField('Branch names', 'Only branches whose names start with one of these. Separate them with commas. Empty: every branch', svnBranchFilter),
       settingsField('GitHub', 'Also list your open pull requests and the branches you pushed in the last 90 days, for the account gh is signed in with', githubBranches))]],
     ['gallery', 'Gallery', [section(null,
+      settingsField('Gallery', 'The picture button on the Hub\'s left side: your game\'s art from Google Drive, as references for agents. Off (the default): the button goes, and agents are not told about the art library', featureGallery),
       settingsField('Drive folder', 'The Google Drive link of your game\'s art folder. Each folder in it is a category of the Gallery (the picture button on the Hub\'s left side). The app reads it through Google Drive for desktop', galleryUrl),
       settingsField('Folder on this computer', 'Only when the app cannot find the Drive folder, or for a folder that is not on Drive. Empty: found from the Drive link', galleryFolderRow))]],
+    ['health', 'Project health', [section(null,
+      settingsField('Project health', 'The heartbeat button on the Hub\'s left side: player support from Tactile BI, with warnings and a red count when something needs your attention. Off: the button goes and the app stops reading Tactile BI', featureHealth)),
+    section('Account',
+      el('div', 'settings-hint', 'The account Project health reads Tactile BI with (the app\'s own sign-in: no tokens). It is separate from the Tactile BI connector your agents use.'),
+      biAccountPanel()),
+    section('Player support',
+      settingsField('Game', 'The name shown in the view', healthTitle),
+      settingsField('Dashboard', 'The Tactile BI dashboard with the player support messages: paste its link. Empty: Enchanted Inn – User Support Messages', healthDashboard),
+      settingsField('Message log chart', 'The id of the dashboard\'s chart with one row per message (message_en, message_topic, tone_heuristic, conversation_id, sent_at). Empty: Enchanted Inn\'s', healthChart))]],
     ['advanced', 'Advanced', [
       section('Claude Code',
         claudeOnly(settingsField('Claude Code program', 'Empty: the app finds it', claudePath)),
@@ -655,6 +707,16 @@ function openSettings(config, { onSaved } = {}) {
       svnBranchFilter: settingsList(svnBranchFilter.value),
       githubBranches: githubBranches.checked,
       galleryUrl: galleryUrl.value.trim(),
+      featureBranches: featureBranches.checked,
+      featureGallery: featureGallery.checked,
+      featureTickets: featureTickets.checked,
+      featureHealth: featureHealth.checked,
+      healthSupport: (() => {
+        const link = healthDashboard.value.trim();
+        const id = /dashboards\/([a-f0-9]{24})/i.exec(link)?.[1] || (/^[a-f0-9]{24}$/i.test(link) ? link : '');
+        const group = /filterGroup=([a-f0-9]{24})/i.exec(link)?.[1] || '';
+        return { title: healthTitle.value.trim(), dashboardId: id, filterGroup: id ? group : '', messagesChart: healthChart.value.trim() };
+      })(),
       pmSpace: pmSpace.value.trim() || 'Enchanted Inn',
       // Commas only: a sprint name has spaces in it.
       pmPlanHidden: [...new Set(pmPlanHidden.value.split(',').map(p => p.trim()).filter(Boolean))],

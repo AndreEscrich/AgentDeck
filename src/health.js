@@ -65,7 +65,10 @@ function save() {
 
 function settings() {
   const c = getConfig().healthSupport || {};
-  return { ...DEFAULTS, ...Object.fromEntries(Object.entries(c).filter(([, v]) => v)) };
+  const own = Object.fromEntries(Object.entries(c).filter(([, v]) => v));
+  // Another dashboard: Enchanted Inn's filter group does not belong to it.
+  if (own.dashboardId && own.dashboardId !== DEFAULTS.dashboardId && !own.filterGroup) own.filterGroup = '';
+  return { ...DEFAULTS, ...own };
 }
 
 function summary() {
@@ -158,7 +161,8 @@ function analyse(messages, now = Date.now()) {
 
 // One look. Resolves with the summary.
 function check(force = false) {
-  if (!bi.status().connected) return Promise.resolve(summary());
+  // Off in Settings → Project health: no reading at all.
+  if (!bi.status().connected || getConfig().featureHealth === false) return Promise.resolve(summary());
   busy ||= (async () => {
     const s = settings();
     try {

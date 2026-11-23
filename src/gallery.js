@@ -146,6 +146,7 @@ function knownFolder(config) {
 
 // What agents are told about the gallery (added to their system prompt).
 function galleryPrompt(config) {
+  if (config.featureGallery === false) return '';   // the Gallery is off (Settings → Gallery)
   const folder = knownFolder(config);
   if (!folder) return '';
   let cats = [];

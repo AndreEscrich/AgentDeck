@@ -101,6 +101,13 @@ const DEFAULT_CONFIG = {
   pmSprintPrefixes: [],                 // the ticket panel's Sprint field lists only sprints whose names start with one of these (all when empty)
   svnBranchFilter: [],                  // only branches whose names start with one of these (all when empty)
   githubBranches: false,                // also list your GitHub pull requests and branches (githubbranches.js)
+  // The side features on the Hub's left side, each with its own Settings tab
+  // and an on/off switch at its top. The Gallery starts off.
+  featureBranches: true,
+  featureGallery: false,
+  featureTickets: true,
+  featureHealth: true,
+  healthSupport: {},                    // Project health's player support: { title, dashboardId, filterGroup, messagesChart } (health.js DEFAULTS when empty)
   galleryUrl: 'https://drive.google.com/drive/folders/1qaAkZp34heMdc37rbCaAttQFSOnSbfaZ',   // the Gallery: the Google Drive link of the game's art folder (gallery.js)
   galleryFolder: '',                    // the Gallery's folder on this computer, picked by hand (empty: found from galleryUrl)
   theme: 'default',                     // default | mother (the retro terminal of Alien)
@@ -456,7 +463,7 @@ app.whenReady().then(() => {
   ipcMain.handle('health:digestFolder', (_e, folders) => health.digestFolder(Array.isArray(folders) ? folders.map(String) : []));
   // PM notifications (pmnotify.js): the Hub's Tickets button and the bell in
   // the Tickets view show them.
-  pmNotify.setup(app.getPath('userData'), summary => send('pm:notifications', summary));
+  pmNotify.setup(app.getPath('userData'), summary => send('pm:notifications', summary), () => getConfig().featureTickets !== false);
   const pmCall = fn => fn().catch(err => ({ error: err.message, notConnected: !!err.notConnected }));
   // A change made here is not news to you: the notifier leaves it out.
   const pmWrite = (key, fn) => { if (key) pmNotify.wrote(String(key)); return pmCall(fn); };

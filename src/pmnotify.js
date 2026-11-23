@@ -37,7 +37,10 @@ function save() {
   try { fs.writeFileSync(file, JSON.stringify(state)); } catch { /* kept for this run */ }
 }
 
-function setup(userData, notify) {
+let enabled = () => true;   // Settings → Tactile PM's switch (featureTickets)
+
+function setup(userData, notify, isOn) {
+  if (isOn) enabled = isOn;
   file = path.join(userData, 'pm-notifications.json');
   state = load() || { since: null, seen: {}, items: [], projects: [] };
   onChange = notify;
@@ -80,7 +83,7 @@ async function search(tql, projectId) {
 
 // One look at PM. Resolves with the summary.
 function check() {
-  if (!pm.status().connected) return Promise.resolve(summary());
+  if (!pm.status().connected || !enabled()) return Promise.resolve(summary());
   checking ||= (async () => {
     const started = new Date().toISOString();
     const first = !state.since;

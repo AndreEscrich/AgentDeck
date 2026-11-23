@@ -240,6 +240,15 @@ class Hub {
     this.setUsage(null);
   }
 
+  // Settings' switches for the side features: a feature that is off has no
+  // button on the left side. f: { branches, gallery, tickets, health }.
+  setFeatures(f) {
+    this.branchesBtn.classList.toggle('hidden', !f.branches);
+    this.galleryBtn.classList.toggle('hidden', !f.gallery);
+    this.ticketsBtn.classList.toggle('hidden', !f.tickets);
+    this.healthBtn.classList.toggle('hidden', !f.health);
+  }
+
   // The red count on the Project health button: warnings you have not seen.
   setHealthUnread(n) {
     this.healthBadge.textContent = n > 99 ? '99+' : String(n || '');

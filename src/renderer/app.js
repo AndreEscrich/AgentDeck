@@ -1503,6 +1503,7 @@ window.pmSignIn = (what = '') => {
 };
 
 window.openPmTicket = async (key, href) => {
+  if (!featureOn('tickets')) { window.open(href, '_blank'); return; }   // Tickets is off: PM's page
   const st = await window.deck.pmStatus().catch(() => ({ connected: false }));
   // Not signed in: sign in first, then the ticket opens as asked.
   if (!st.connected && !(await window.pmSignIn(key))) return;
@@ -6794,10 +6795,20 @@ $('open-settings').onclick = () => { setHistoryOpen(false); showSettings(); };
 
 // The Settings screen (settings.js). Saved settings apply right away: new
 // agents use the new defaults, and the Hub's message box picks them up.
+// The side features that are on (Settings: a switch at the top of each
+// feature's tab). An off feature's button leaves the Hub, and its view closes.
+const FEATURE_VIEWS = { branches: 'featureBranches', gallery: 'featureGallery', tickets: 'featureTickets', health: 'featureHealth' };
+const featureOn = kind => !FEATURE_VIEWS[kind] || (kind === 'gallery' ? state.config?.featureGallery === true : state.config?.[FEATURE_VIEWS[kind]] !== false);
+function applyFeatures() {
+  hub.setFeatures({ branches: featureOn('branches'), gallery: featureOn('gallery'), tickets: featureOn('tickets'), health: featureOn('health') });
+  if (FEATURE_VIEWS[state.current?.kind] && !featureOn(state.current.kind)) show('hub');
+}
+
 function showSettings() {
   openSettings(state.config, {
     onSaved: config => {
       state.config = config;
+      applyFeatures();
       hub.staleAfterMs = staleAfterMs(config);
       refreshHub();
       setProviders(config);
@@ -6977,6 +6988,7 @@ setInterval(checkStuck, 3000);
 
 (async () => {
   state.config = await window.deck.getConfig();
+  applyFeatures();
   hub.staleAfterMs = staleAfterMs(state.config);
   setProviders(state.config);
   showUsage();
