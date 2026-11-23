@@ -6502,14 +6502,12 @@ function rankSlash(list, query) {
     .sort((a, b) => b.s - a.s || a.c.name.localeCompare(b.c.name)).map(x => x.c);
 }
 
-// moved: you chose a row with ↑ ↓ (see the keys below).
-const slashMenu = { el: null, items: [], index: 0, query: null, moved: false };
+const slashMenu = { el: null, items: [], index: 0, query: null };
 function closeSlashMenu() {
   slashMenu.el?.remove();
   slashMenu.el = null;
   slashMenu.items = [];
   slashMenu.query = null;
-  slashMenu.moved = false;
   updateSlashOverlay();
 }
 
@@ -6536,7 +6534,6 @@ async function updateSlashMenu() {
   if (slashQuery() !== query) return;   // you typed on in the meantime
   if (!items.length) return closeSlashMenu();
   const keep = slashMenu.items[slashMenu.index]?.name;
-  if (query !== slashMenu.query) slashMenu.moved = false;
   slashMenu.items = items;
   slashMenu.query = query;
   slashMenu.index = Math.max(0, items.findIndex(c => c.name === keep));
@@ -6692,15 +6689,14 @@ $('input').addEventListener('keydown', e => {
   if (!slashMenu.el || e.isComposing) return;
   const n = slashMenu.items.length;
   let handled = true;
-  if (e.key === 'ArrowDown') { slashMenu.index = (slashMenu.index + 1) % n; slashMenu.moved = true; }
-  else if (e.key === 'ArrowUp') { slashMenu.index = (slashMenu.index - 1 + n) % n; slashMenu.moved = true; }
+  if (e.key === 'ArrowDown') slashMenu.index = (slashMenu.index + 1) % n;
+  else if (e.key === 'ArrowUp') slashMenu.index = (slashMenu.index - 1 + n) % n;
   else if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
-    // ↩ on a name you typed in full sends it, like without the list. Later
-    // in the text (a path like "/c" is a word too), ↩ sends the message
-    // unless you chose a name with ↑ ↓.
+    // ↩ takes the highlighted name, also later in the text. On a name you
+    // typed in full it sends, like without the list. To send a word that is
+    // not a command (a path like "/c"), Esc closes the list first.
     const exact = slashMenu.items[slashMenu.index]?.name === slashMenu.query;
-    const later = (slashToken()?.start || 0) > 0;
-    if (e.key === 'Enter' && (exact || (later && !slashMenu.moved))) { closeSlashMenu(); return; }
+    if (e.key === 'Enter' && exact) { closeSlashMenu(); return; }
     pickSlash(slashMenu.index);
   } else if (e.key === 'ArrowRight' && slashGhost()) pickSlash(slashMenu.index);
   else if (e.key === 'Escape') closeSlashMenu();
