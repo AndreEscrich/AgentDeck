@@ -157,6 +157,7 @@ contextBridge.exposeInMainWorld('deck', {
   pmCreateSubtask: args => ipcRenderer.invoke('pmc:createSubtask', args),
   pmAttachments: args => ipcRenderer.invoke('pmc:attachments', args),
   pmOpenAttachment: args => ipcRenderer.invoke('pmc:openAttachment', args),
+  pmAttachmentLinks: args => ipcRenderer.invoke('pmc:attachmentLinks', args),
   pmAttach: args => ipcRenderer.invoke('pmc:attach', args),
   pmComments: args => ipcRenderer.invoke('pmc:comments', args),
   pmAddComment: args => ipcRenderer.invoke('pmc:addComment', args),

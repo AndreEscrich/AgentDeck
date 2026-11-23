@@ -592,8 +592,11 @@
     return div;
   };
 
-  // Attachments: a small field on the right, under the status. Its files
-  // open in the browser; + Add (or files dropped on the field) uploads.
+  // Attachments: a small field on the right, under the status, and the
+  // Attachments tab beside Description. Files dropped on either (pictures,
+  // videos, anything) or + Add upload to PM. In the tab, pictures and
+  // videos show in the app (PM's short-lived links, read when the tab opens);
+  // a click on a picture enlarges it, other files open in the browser.
   P.panelAttachments = function (t, { inTab = false } = {}) {
     const box = el('div', 'tp-field tp-attach' + (inTab ? ' in-tab' : ''));
     const project = projectOf(t);
@@ -606,7 +609,47 @@
     head.append(label, add);
     box.append(head);
     if (d.error) box.append(el('div', 'tickets-error', d.error));
-    for (const a of d.items || []) {
+    const kind = a => (/^image\//.test(a.type) || /\.(png|jpe?g|gif|webp)$/i.test(a.name) ? 'image' : /^video\//.test(a.type) || /\.(mp4|mov|webm|m4v)$/i.test(a.name) ? 'video' : '');
+    // In the tab: pictures and videos as previews, the other files as rows.
+    const media = inTab ? (d.items || []).filter(kind) : [];
+    if (media.length) {
+      this.attachLinks ||= new Map();
+      const cached = this.attachLinks.get(t.key);
+      const links = cached && Date.now() - cached.at < 30 * 60 * 1000 ? cached.links : null;
+      if (!links && !cached?.loading) {
+        this.attachLinks.set(t.key, { loading: true, at: 0, links: null });
+        window.deck.pmAttachmentLinks({ project, ids: media.map(a => a.id) }).then(r => {
+          this.attachLinks.set(t.key, { at: Date.now(), links: r?.error ? {} : r });
+          if (this.detailTicket?.key === t.key && this.descTab === 'attachments') this.renderDetail(this.detailTicket, null);
+        });
+      }
+      const grid = el('div', 'tp-media-grid');
+      for (const a of media) {
+        const cell = el('div', 'tp-media');
+        const link = links?.[a.id];
+        if (!link) cell.append(el('div', 'tp-media-wait', links ? 'No preview' : 'Loading…'));
+        else if (kind(a) === 'image') {
+          const img = document.createElement('img');
+          img.src = link.preview;
+          img.alt = a.name;
+          img.onclick = () => openImageOverlay(link.preview, media.filter(m => kind(m) === 'image' && links[m.id]).map(m => links[m.id].preview));
+          cell.append(img);
+        } else {
+          const video = document.createElement('video');
+          video.src = link.preview;
+          video.controls = true;
+          video.preload = 'metadata';
+          video.playsInline = true;
+          cell.append(video);
+        }
+        const name = el('div', 'tp-media-name');
+        name.append(el('span', null, a.name), el('span', 'tp-file-size', fileSize(a.size)));
+        cell.append(name);
+        grid.append(cell);
+      }
+      box.append(grid);
+    }
+    for (const a of (d.items || []).filter(a => !media.includes(a))) {
       const b = el('button', 'tp-file');
       b.type = 'button';
       const icon = el('span', 'tp-file-icon');
@@ -632,10 +675,22 @@
       if (this.detailTicket?.key === t.key) this.renderDetail(this.detailTicket, null);
     };
     add.onclick = () => upload([]);
-    box.ondragover = e => { e.preventDefault(); box.classList.add('over'); };
+    // The window's own drop handler (app.js: files dropped anywhere go to the
+    // message box, or nowhere while it is hidden) must not see these drops.
+    const files = e => [...(e.dataTransfer?.types || [])].includes('Files');
+    box.ondragenter = e => { if (files(e)) { e.preventDefault(); e.stopPropagation(); box.classList.add('over'); } };
+    box.ondragover = e => {
+      if (!files(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'copy';
+      box.classList.add('over');
+    };
     box.ondragleave = e => { if (!box.contains(e.relatedTarget)) box.classList.remove('over'); };
     box.ondrop = e => {
+      if (!files(e)) return;
       e.preventDefault();
+      e.stopPropagation();
       box.classList.remove('over');
       const paths = [...e.dataTransfer.files].map(f => window.deck.pathForFile?.(f)).filter(Boolean);
       if (paths.length) upload(paths);

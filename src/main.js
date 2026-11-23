@@ -495,6 +495,7 @@ app.whenReady().then(() => {
   ipcMain.handle('pmc:createSubtask', (_e, a) => pmWrite(a?.key, () => pmClient.createSubtask(a || {})));
   ipcMain.handle('pmc:attachments', (_e, a) => pmCall(() => pmClient.attachments(a || {})));
   ipcMain.handle('pmc:openAttachment', (_e, a) => pmCall(() => pmClient.openAttachment(a || {})));
+  ipcMain.handle('pmc:attachmentLinks', (_e, a) => pmCall(() => pmClient.attachmentLinks(a || {})));
   ipcMain.handle('pmc:attach', (e, a) => pmCall(async () => {
     let paths = Array.isArray(a?.paths) ? a.paths.filter(p => typeof p === 'string' && p) : [];
     if (!paths.length) {

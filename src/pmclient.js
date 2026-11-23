@@ -601,6 +601,18 @@ async function openAttachment({ project, attachmentId }) {
   return { ok: true };
 }
 
+// Short-lived links to show attachments in the app: { id: { preview,
+// download } } (PM's links last a while; the panel reads new ones each time
+// the Attachments tab opens).
+async function attachmentLinks({ project, ids }) {
+  const out = {};
+  await Promise.all((ids || []).slice(0, 30).map(async id => {
+    const r = await callTool('pm_get_attachment_download_url', { projectId: project, attachmentId: id }).catch(() => null);
+    if (r?.previewUrl || r?.downloadUrl) out[id] = { preview: r.previewUrl || r.downloadUrl, download: r.downloadUrl || r.previewUrl };
+  }));
+  return out;
+}
+
 const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', pdf: 'application/pdf', txt: 'text/plain', log: 'text/plain', json: 'application/json', zip: 'application/zip', csv: 'text/csv' };
 // Uploads files (paths on this computer) as attachments of a ticket.
 async function attach({ project, projectId, id, paths }) {
@@ -704,4 +716,4 @@ async function workflows(project) {
 }
 
 module.exports = { setup, status, connect, disconnect, callTool, tickets, ticket, readTasks, statuses, subtasks, setStatus,
-  options, update, createTask, startSprint, completeSprint, createSubtask, attachments, openAttachment, attach, comments, addComment, editComment, deleteComment, personName, workflows, remove };
+  options, update, createTask, startSprint, completeSprint, createSubtask, attachments, openAttachment, attach, attachmentLinks, comments, addComment, editComment, deleteComment, personName, workflows, remove };
