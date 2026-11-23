@@ -4,7 +4,9 @@
 // epic, then by context (a title's [labels]), then newest first. The sprint picker sits over the list, with how much of it
 // is done. The sprints: the open ones (the active ones first) whose names
 // start with one of Settings → Tactile PM → Sprints (any, when empty); the
-// current one by default. An active sprint has Complete sprint: a window
+// current one by default. An active sprint has Complete sprint (then the
+// view switches to Sprint planning, read again, with the carried-over
+// tickets in the next sprint): a window
 // says how many unfinished tickets carry over and into which sprint (the
 // next planned one of its board), with the sprint's goal, before PM ends it.
 // The methods join TicketsView.
@@ -91,6 +93,27 @@
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))[0] || null;
   };
 
+  // After Complete sprint: the sprints and the tickets as PM has them now
+  // (every list is read again when it shows: the review's, and All tickets,
+  // which Sprint planning shows), then Sprint planning on the sprint the
+  // tickets carried over into, so you see them there and plan the rest.
+  P.afterCompleteSprint = function (next) {
+    this.reviewList = null;
+    this.reviewName = null;
+    try { localStorage.removeItem('pmReviewSprint'); } catch { /* none */ }
+    this.forgetSprints();
+    delete this.data.review;
+    delete this.data.all;
+    const plan = this.planState();
+    if (next) plan.sprintName = next.name;
+    plan.sprints = null;
+    this.savePlan?.();
+    this.tabs.querySelector('[data-list="plan"]')?.click();
+    if (this.list !== 'plan') this.load(true);
+    // PM's search can take a moment to show the moved tickets: once more.
+    setTimeout(() => { if (this.list === 'plan') this.load(true); }, 4000);
+  };
+
   P.confirmComplete = function (sprint, button) {
     const next = this.nextSprint(sprint);
     // Every unfinished ticket of the sprint carries over, not just stories.
@@ -146,11 +169,7 @@
         return;
       }
       close();
-      // The sprints and the tickets as PM has them now.
-      this.reviewList = null;
-      this.reviewName = null;
-      try { localStorage.removeItem('pmReviewSprint'); } catch { /* none */ }
-      this.load(true);
+      this.afterCompleteSprint(next);
     };
     actions.append(cancel, go);
     box.append(err, actions);
