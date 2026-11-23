@@ -2,14 +2,17 @@
 // what in the live game needs your attention, read by the main process
 // (src/health.js). The first section is player support: the warnings at the
 // top, this week's numbers, the topics against last week, and the latest
-// conversations. "Digest with an agent" starts an agent in the game project
-// with its UserSupportDigest skill, which sorts the messages into real bugs
+// conversations, with a tab per project (Settings → Project health has the
+// list; adding one only takes its dashboard's link). "Digest with an agent"
+// starts an agent on the project's messages, with the game project's
+// UserSupportDigest skill when it has one, which sorts them into real bugs
 // and checks them against the code.
 
 class HealthView {
-  // onDigest(): start the digest agent.
-  constructor({ onDigest }) {
+  // onDigest(project): start the digest agent. onSettings(): open Settings.
+  constructor({ onDigest, onSettings }) {
     this.onDigest = onDigest;
+    this.onSettings = onSettings;
     this.view = el('div', 'view health-view hidden');
     $('views').appendChild(this.view);
     this.summary = null;
@@ -46,9 +49,37 @@ class HealthView {
       this.view.replaceChildren(box);
       return;
     }
-    const r = s.report;
+    // The projects, a tab each (the first with warnings until you pick one).
+    const list = s.projects || [];
+    if (!list.length) {
+      const c = el('div', 'tickets-connect');
+      c.append(el('h3', null, 'No projects yet'), el('p', null, 'Add your game\'s player support dashboard from Tactile BI in Settings → Project health: paste its link, or pick it from the support dashboards Tactile BI has.'));
+      const go = el('button', 'gallery-use', 'Open Settings');
+      go.type = 'button';
+      go.onclick = () => this.onSettings?.();
+      c.append(go);
+      box.append(c);
+      this.view.replaceChildren(box);
+      return;
+    }
+    let p = list.find(x => x.id === this.projectId);
+    if (!p) { p = list.find(x => x.report?.warnings?.length) || list[0]; this.projectId = p.id; }
+    if (list.length > 1) {
+      const tabs = el('div', 'tickets-tabs health-tabs');
+      for (const x of list) {
+        const b = el('button', 'tickets-tab' + (x.id === p.id ? ' on' : ''));
+        b.type = 'button';
+        b.append(el('span', null, x.name));
+        const n = x.report?.warnings?.length || 0;
+        if (n) b.append(el('span', 'health-tab-count', String(n)));
+        b.onclick = () => { this.projectId = x.id; this.topic = null; this.render(); };
+        tabs.append(b);
+      }
+      box.append(tabs);
+    }
+    const r = p.report;
     const head = el('div', 'health-head');
-    head.append(el('h2', null, 'Player support'), el('span', 'health-sub', r?.title || ''));
+    head.append(el('h2', null, 'Player support'), el('span', 'health-sub', p.name));
     const when = el('span', 'health-when', r?.at ? `Read ${timeAgoText(r.at)}` : 'Reading…');
     const refresh = el('button', 'icon gallery-refresh', '↻');
     refresh.type = 'button';
@@ -57,15 +88,16 @@ class HealthView {
       refresh.disabled = true;
       when.textContent = 'Reading…';
       const out = await window.deck.healthCheck(true);
-      this.render(out?.error ? { ...this.summary, report: { ...(this.summary?.report || {}), error: out.error } } : out);
+      if (out?.error) { when.textContent = out.error; refresh.disabled = false; return; }
+      this.render(out);
     };
     const dash = el('a', 'gallery-action', 'Open dashboard');
-    dash.href = r?.dashboardUrl || 'https://bi.tactilews.com';
+    dash.href = p.dashboardUrl || 'https://bi.tactilews.com';
     dash.target = '_blank';
     const digest = el('button', 'gallery-use', 'Digest with an agent');
     digest.type = 'button';
-    digest.title = 'Start an agent in the game project with its UserSupportDigest skill: it sorts the messages into real bugs and checks them against the code (uses tokens)';
-    digest.onclick = () => this.onDigest?.();
+    digest.title = 'Start an agent on these messages: it sorts them into real bugs and checks them against the game\'s code, with the project\'s UserSupportDigest skill when it has one (uses tokens)';
+    digest.onclick = () => this.onDigest?.(p);
     head.append(when, refresh, dash, digest);
     box.append(head);
     if (r?.error) box.append(el('div', 'tp-error', r.error));

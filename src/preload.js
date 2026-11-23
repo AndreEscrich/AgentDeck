@@ -148,6 +148,8 @@ contextBridge.exposeInMainWorld('deck', {
   healthConnect: () => ipcRenderer.invoke('health:connect'),
   healthDisconnect: () => ipcRenderer.invoke('health:disconnect'),
   healthDigestFolder: folders => ipcRenderer.invoke('health:digestFolder', folders),
+  healthResolve: link => ipcRenderer.invoke('health:resolve', link),
+  healthFind: () => ipcRenderer.invoke('health:find'),
   onHealthUpdate: fn => on('health:update', fn),
   pmUpdate: args => ipcRenderer.invoke('pmc:update', args),
   pmCreateTask: args => ipcRenderer.invoke('pmc:createTask', args),

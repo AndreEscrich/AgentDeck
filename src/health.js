@@ -2,11 +2,13 @@
 // tell you when something in the live game needs your attention. The first
 // one is player support.
 //
-// Player support reads the message log of a Tactile BI dashboard (by default
-// Morten's "Enchanted Inn – User Support Messages": one row per player
-// message, with its topic, tone, English text and conversation) through the
-// app's own Tactile BI sign-in (src/mcpclient.js), so no model reads it and
-// it costs no tokens:
+// Player support has a list of projects (Settings → Project health), each a
+// Tactile BI dashboard with a message log: one row per player message, with
+// its topic, tone, English text and conversation (Enchanted Inn's, Morten's
+// "User Support Messages", is the first one until you change the list).
+// Adding one only takes the dashboard's link: the app finds the message log
+// chart itself (resolve). It reads them through the app's own Tactile BI
+// sign-in (src/mcpclient.js), so no model reads them and it costs no tokens:
 //
 //  - every 30 minutes it reads the chart's cached rows (free);
 //  - at most every 3 hours it asks BI to run the chart again first, so new
@@ -29,19 +31,18 @@ const { makeClient } = require('./mcpclient');
 
 const bi = makeClient({ server: 'https://bi-mcp.tactilews.com', name: 'bi', label: 'Tactile BI' });
 
-const DEFAULTS = {
-  title: 'Enchanted Inn',
-  dashboardId: '6b03de6c242cddc2eec4407d',
-  filterGroup: '6b03de6c242cddc2eec4407c',
-  messagesChart: '6b03e160242cddc2eec440a3',
-  days: '30',
-};
+// The list until you change it: Enchanted Inn's support dashboard.
+const DEFAULT_PROJECTS = [{
+  id: 'ei', name: 'Enchanted Inn',
+  dashboardId: '6b03de6c242cddc2eec4407d', filterGroup: '6b03de6c242cddc2eec4407c', chartId: '6b03e160242cddc2eec440a3',
+}];
+const DAYS = '30';
 const READ_EVERY = 30 * 60 * 1000;
 const RUN_EVERY = 3 * 60 * 60 * 1000;
 const DAY = 24 * 60 * 60 * 1000;
 
 let file = null;
-let state = null;   // { seen: [warning ids], lastRun: time, report }
+let state = null;   // { seen: [warning ids], lastRun: { project: time }, reports: { project: report } }
 let onChange = () => {};
 let timer = null;
 let busy = null;
@@ -52,6 +53,9 @@ function setup(userData, config, notify) {
   file = path.join(userData, 'health.json');
   try { state = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { state = {}; }
   state.seen ||= [];
+  state.reports ||= {};
+  if (typeof state.lastRun !== 'object' || !state.lastRun) state.lastRun = {};
+  delete state.report;   // from before projects
   getConfig = config;
   onChange = notify;
   clearInterval(timer);
@@ -63,43 +67,103 @@ function save() {
   try { fs.writeFileSync(file, JSON.stringify(state)); } catch { /* kept for this run */ }
 }
 
-function settings() {
-  const c = getConfig().healthSupport || {};
-  const own = Object.fromEntries(Object.entries(c).filter(([, v]) => v));
-  // Another dashboard: Enchanted Inn's filter group does not belong to it.
-  if (own.dashboardId && own.dashboardId !== DEFAULTS.dashboardId && !own.filterGroup) own.filterGroup = '';
-  return { ...DEFAULTS, ...own };
+// The projects to watch (Settings → Project health): [{ id, name,
+// dashboardId, filterGroup, chartId, folder }]. Until you change the list:
+// Enchanted Inn. An older single dashboard setting (healthSupport) counts as
+// one project.
+function projects() {
+  const c = getConfig();
+  if (Array.isArray(c.healthProjects)) return c.healthProjects.filter(p => p?.dashboardId && p?.chartId);
+  const old = c.healthSupport || {};
+  if (old.dashboardId && old.messagesChart && old.dashboardId !== DEFAULT_PROJECTS[0].dashboardId) {
+    return [{ id: 'p1', name: old.title || 'Player support', dashboardId: old.dashboardId, filterGroup: old.filterGroup || '', chartId: old.messagesChart }];
+  }
+  return DEFAULT_PROJECTS;
 }
+
+const dashboardUrl = p => `https://bi.tactilews.com/dashboards/${p.dashboardId}${p.filterGroup ? `?filterGroup=${p.filterGroup}` : ''}`;
 
 function summary() {
-  const report = state.report || null;
-  const warnings = report?.warnings || [];
-  return { connected: bi.status().connected, email: bi.status().email, report, unseen: warnings.filter(w => !state.seen.includes(w.id)).length };
+  const list = projects().map(p => ({ id: p.id, name: p.name, folder: p.folder || '', dashboardUrl: dashboardUrl(p), chartId: p.chartId, report: state.reports[p.id] || null }));
+  const unseen = list.reduce((n, p) => n + (p.report?.warnings || []).filter(w => !state.seen.includes(w.id)).length, 0);
+  return { connected: bi.status().connected, email: bi.status().email, projects: list, unseen };
 }
 
-// The chart's rows, run again first when the last run is old (or force).
-async function readRows(force) {
-  const s = settings();
-  const args = { chartId: s.messagesChart, filterOverrides: { daterange: String(s.days) } };
-  if (s.filterGroup) args.activeFilterGroupId = s.filterGroup;
+// A project's message rows, its chart run again first when the last run is
+// old (or force).
+async function readRows(p, force) {
+  const args = { chartId: p.chartId, filterOverrides: { daterange: DAYS } };
+  if (p.filterGroup) args.activeFilterGroupId = p.filterGroup;
   const run = async () => {
-    await bi.callTool('bi_run_chart', { ...args, dashboardId: s.dashboardId });
-    state.lastRun = Date.now();
+    await bi.callTool('bi_run_chart', { ...args, dashboardId: p.dashboardId });
+    state.lastRun[p.id] = Date.now();
   };
-  if (force || Date.now() - (state.lastRun || 0) > RUN_EVERY) await run().catch(() => {});
+  if (force || Date.now() - (state.lastRun[p.id] || 0) > RUN_EVERY) await run().catch(() => {});
   let data = await bi.callTool('bi_get_chart_data', args);
   if (data?.cached === false) { await run(); data = await bi.callTool('bi_get_chart_data', args); }
+  return messagesOf(data);
+}
+
+// The messages in a chart's data, or an error when it is not a message log.
+function messagesOf(data) {
   const q = data?.queryResults?.[0];
-  if (!q?.columns) throw new Error('Tactile BI sent no messages for that chart.');
+  if (!q?.columns) throw new Error('Tactile BI sent no rows for that chart.');
   const col = Object.fromEntries(q.columns.map((c, i) => [c.name, i]));
+  const text = col.message_en ?? col.message ?? col.message_original ?? col.text ?? col.body;
+  const at = col.sent_at ?? col.created_at ?? col.timestamp ?? col.message_date ?? col.date;
+  if (text === undefined || at === undefined) throw new Error('That chart is not a message log: it needs a message text column (message_en or message) and a time column (sent_at or message_date).');
   return (q.rows || []).map(r => ({
-    topic: r[col.message_topic] || r[col.topic] || 'Other',
-    tone: r[col.tone_heuristic] || '',
-    text: r[col.message_en] || r[col.message_original] || '',
+    topic: r[col.message_topic ?? col.topic] || 'Other',
+    tone: r[col.tone_heuristic ?? col.tone ?? col.sentiment] || '',
+    text: r[text] || r[col.message_original] || '',
     original: r[col.message_original] || '',
-    conversation: r[col.conversation_id] || '',
-    at: r[col.sent_at] || r[col.message_date] || '',
+    conversation: r[col.conversation_id ?? col.conversation ?? col.user_id] || '',
+    at: r[at] || '',
   })).filter(m => m.at);
+}
+
+// Adding a project from a dashboard's link (or id): its title, and its
+// message log chart, found by itself: the table charts, those named like a
+// message log first, and the first whose rows are messages.
+async function resolve(link) {
+  const dashboardId = /dashboards\/([a-f0-9]{24})/i.exec(link)?.[1] || (/^[a-f0-9]{24}$/i.test(String(link).trim()) ? String(link).trim() : '');
+  if (!dashboardId) throw new Error('Paste the link of a Tactile BI dashboard (https://bi.tactilews.com/dashboards/…).');
+  const filterGroup = /filterGroup=([a-f0-9]{24})/i.exec(link)?.[1] || '';
+  const chartInLink = /[?&]chart=([a-f0-9]{24})/i.exec(link)?.[1] || '';
+  const st = await bi.callTool('bi_get_dashboard_structure', { dashboardId });
+  const charts = [];
+  for (const tab of st?.tabs || []) {
+    for (const c of tab.unsectionedCharts || []) charts.push({ ...c, section: '' });
+    for (const sec of tab.sections || []) for (const c of sec.charts || []) charts.push({ ...c, section: sec.name || '' });
+  }
+  const named = c => /message|log|conversation|ticket/i.test(`${c.title} ${c.section}`);
+  const order = [...charts.filter(c => c.chartId === chartInLink), ...charts.filter(c => c.chartType === 'table' && named(c)), ...charts.filter(c => c.chartType === 'table' && !named(c))];
+  const tried = new Set();
+  for (const c of order) {
+    if (tried.has(c.chartId)) continue;
+    tried.add(c.chartId);
+    const args = { chartId: c.chartId, filterOverrides: { daterange: DAYS } };
+    if (filterGroup) args.activeFilterGroupId = filterGroup;
+    try {
+      let data = await bi.callTool('bi_get_chart_data', args);
+      if (data?.cached === false) { await bi.callTool('bi_run_chart', { ...args, dashboardId }); data = await bi.callTool('bi_get_chart_data', args); }
+      const messages = messagesOf(data);
+      const title = String(st.title || 'Player support');
+      return {
+        id: 'p' + dashboardId.slice(-8), dashboardId, filterGroup, chartId: c.chartId, chartTitle: c.title,
+        // "Enchanted Inn – User Support Messages" → "Enchanted Inn".
+        name: title.split(/\s+[–—-]\s+/)[0].trim() || title, dashboardTitle: title, messages: messages.length,
+      };
+    } catch { /* not a message log: the next one */ }
+  }
+  throw new Error(`"${st?.title || 'That dashboard'}" has no message log chart: a table with one row per message (a text column like message_en and a time column like sent_at).`);
+}
+
+// Support dashboards to pick from: Tactile BI's dashboards whose title says
+// support.
+async function findDashboards() {
+  const r = await bi.callTool('bi_list_dashboards', { search: 'support', limit: 30 });
+  return (r?.dashboards || []).map(d => ({ id: d._id, title: d.title, updatedAt: d.updatedAt }));
 }
 
 // The numbers and the warnings from the messages.
@@ -159,19 +223,26 @@ function analyse(messages, now = Date.now()) {
   };
 }
 
-// One look. Resolves with the summary.
+// One look at every project. Resolves with the summary.
 function check(force = false) {
   // Off in Settings → Project health: no reading at all.
   if (!bi.status().connected || getConfig().featureHealth === false) return Promise.resolve(summary());
   busy ||= (async () => {
-    const s = settings();
-    try {
-      const messages = await readRows(force);
-      state.report = { at: Date.now(), title: s.title, dashboardUrl: `https://bi.tactilews.com/dashboards/${s.dashboardId}${s.filterGroup ? `?filterGroup=${s.filterGroup}` : ''}`, ...analyse(messages), error: null };
-    } catch (err) {
-      if (err.notConnected) state.report = null;
-      else state.report = { ...(state.report || {}), error: err.message, errorAt: Date.now() };
+    for (const p of projects()) {
+      try {
+        const messages = await readRows(p, force);
+        const report = analyse(messages);
+        // Each warning belongs to its project (seen per project).
+        for (const w of report.warnings) w.id = `${p.id}:${w.id}`;
+        state.reports[p.id] = { at: Date.now(), ...report, error: null };
+      } catch (err) {
+        if (err.notConnected) { state.reports = {}; break; }
+        state.reports[p.id] = { ...(state.reports[p.id] || {}), error: err.message, errorAt: Date.now() };
+      }
     }
+    // Projects no longer in the list are forgotten.
+    const ids = new Set(projects().map(p => p.id));
+    for (const id of Object.keys(state.reports)) if (!ids.has(id)) delete state.reports[id];
     save();
     const out = summary();
     onChange(out);
@@ -181,7 +252,7 @@ function check(force = false) {
 }
 
 function markSeen() {
-  const ids = (state.report?.warnings || []).map(w => w.id);
+  const ids = Object.values(state.reports).flatMap(r => (r?.warnings || []).map(w => w.id));
   state.seen = [...new Set([...state.seen, ...ids])].slice(-500);
   save();
   const out = summary();
@@ -197,7 +268,7 @@ async function connect() {
 
 function disconnect() {
   const st = bi.disconnect();
-  state.report = null;
+  state.reports = {};
   save();
   onChange(summary());
   return st;
@@ -222,4 +293,4 @@ function digestFolder(folders) {
   return null;
 }
 
-module.exports = { setup, summary, check, markSeen, connect, disconnect, digestFolder, analyse };
+module.exports = { setup, summary, check, markSeen, connect, disconnect, digestFolder, analyse, resolve, findDashboards };

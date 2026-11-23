@@ -4356,4 +4356,15 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .health-msg { font-size: 13px; color: var(--text); line-height: 1.45; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 .health-conv.open .health-msg { display: block; margin-top: 4px; }
 .health-foot { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; color: var(--text-faint); }
+.health-projects { display: flex; flex-direction: column; gap: 8px; }
+.health-project-list { display: flex; flex-direction: column; gap: 6px; }
+.health-project { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.4fr) 28px; gap: 8px; align-items: center; }
+.health-project-link { font-size: 12.5px; color: #8f96ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.health-project-add { display: flex; gap: 8px; align-items: center; }
+.health-project-add input { flex: 1; min-width: 0; width: auto; }
+.health-project-found { display: flex; flex-wrap: wrap; gap: 6px; }
+.health-project-pick { font-size: 12px; padding: 3px 10px; }
+.health-project-status:empty { display: none; }
+.health-tabs { align-self: flex-start; }
+.health-tab-count { margin-left: 6px; padding: 0 6px; border-radius: 99px; background: #e5493a; color: #fff; font-size: 10.5px; font-weight: 700; }
 

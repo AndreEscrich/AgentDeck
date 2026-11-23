@@ -1436,20 +1436,29 @@ hub.onOpenTickets = () => { sfx('open'); show('tickets'); };
 // Project health (health.js): the warnings' red count on the Hub's heartbeat
 // button, and the view.
 const healthView = new HealthView({
-  // Digest with an agent: the game project's UserSupportDigest skill, on the
-  // Hub's message box in that folder, ready to send.
-  onDigest: async () => {
-    const folders = [ensureDraft().folder, ...[...state.agents.values()].map(a => a.cwd), ...[...state.parked.values()].map(p => p.cwd), state.config.gamesFolder, state.config.home];
-    const folder = await window.deck.healthDigestFolder([...new Set(folders.filter(Boolean))]);
-    if (!folder) { toast('No game project with the UserSupportDigest skill found in your agents\' folders. Open an agent in the game\'s folder first.'); return; }
+  // Digest with an agent, on the Hub's message box ready to send: in the
+  // project's folder (Settings → Project health), else a folder that has the
+  // UserSupportDigest skill, else the folder picked under the message box.
+  // With the skill there, the skill; else the same steps in words, on this
+  // project's dashboard.
+  onDigest: async project => {
+    const known = [project.folder, ensureDraft().folder, ...[...state.agents.values()].map(a => a.cwd), ...[...state.parked.values()].map(p => p.cwd), state.config.gamesFolder, state.config.home];
+    const withSkill = await window.deck.healthDigestFolder([...new Set((project.folder ? [project.folder] : known).filter(Boolean))]);
+    const folder = withSkill || project.folder || ensureDraft().folder;
     show('hub');
-    ensureDraft().folder = folder;
+    if (folder) ensureDraft().folder = folder;
     renderDraftButtons();
     const input = $('input');
-    input.value = '/UserSupportDigest digest the player support messages of the last 3 days: which ones are real bugs, checked against the code, and which are worth a ticket';
+    input.value = withSkill
+      ? `/UserSupportDigest digest the ${project.name} player support messages of the last 3 days (dashboard ${project.dashboardUrl}, message log chart ${project.chartId}): which ones are real bugs, checked against the code, and which are worth a ticket`
+      : `Digest the ${project.name} player support messages of the last 3 days. Read them with the Tactile BI connector: bi_get_chart_data on chart ${project.chartId} of dashboard ${project.dashboardUrl} (filterOverrides daterange "30"; cached data, no BigQuery cost). Group them by conversation, and sort each into: likely a real bug, needs more information, or not a bug, with how many players report the same thing. Check the likely bugs against this project's code and its history for a fix that already exists. End with a short list of what is worth a PM ticket, each with a title in the "[Domain] Description" form.`;
     input.dispatchEvent(new Event('input'));
     input.focus();
-    flashComposerNote?.('The support digest is ready for an agent in ' + shortPath(folder) + ': send it to start.');
+    flashComposerNote?.(`The ${project.name} support digest is ready for an agent${folder ? ' in ' + shortPath(folder) : ''}: send it to start.`);
+  },
+  onSettings: () => {
+    showSettings();
+    requestAnimationFrame(() => document.querySelector('.settings-nav-item[data-group="health"]')?.click());
   },
 });
 const showHealth = summary => {
@@ -6809,6 +6818,7 @@ function showSettings() {
     onSaved: config => {
       state.config = config;
       applyFeatures();
+      window.deck.healthCheck(false).then(showHealth).catch(() => {});
       hub.staleAfterMs = staleAfterMs(config);
       refreshHub();
       setProviders(config);

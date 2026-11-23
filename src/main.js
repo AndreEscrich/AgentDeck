@@ -107,7 +107,7 @@ const DEFAULT_CONFIG = {
   featureGallery: false,
   featureTickets: true,
   featureHealth: true,
-  healthSupport: {},                    // Project health's player support: { title, dashboardId, filterGroup, messagesChart } (health.js DEFAULTS when empty)
+  healthSupport: {},                    // older single-project setting; healthProjects ([{ id, name, dashboardId, filterGroup, chartId, folder }]) replaces it (health.js projects)
   galleryUrl: 'https://drive.google.com/drive/folders/1qaAkZp34heMdc37rbCaAttQFSOnSbfaZ',   // the Gallery: the Google Drive link of the game's art folder (gallery.js)
   galleryFolder: '',                    // the Gallery's folder on this computer, picked by hand (empty: found from galleryUrl)
   theme: 'default',                     // default | mother (the retro terminal of Alien)
@@ -460,6 +460,8 @@ app.whenReady().then(() => {
   ipcMain.handle('health:seen', () => health.markSeen());
   ipcMain.handle('health:connect', () => healthCall(() => health.connect()));
   ipcMain.handle('health:disconnect', () => health.disconnect());
+  ipcMain.handle('health:resolve', (_e, link) => healthCall(() => health.resolve(String(link || ''))));
+  ipcMain.handle('health:find', () => healthCall(() => health.findDashboards()));
   ipcMain.handle('health:digestFolder', (_e, folders) => health.digestFolder(Array.isArray(folders) ? folders.map(String) : []));
   // PM notifications (pmnotify.js): the Hub's Tickets button and the bell in
   // the Tickets view show them.

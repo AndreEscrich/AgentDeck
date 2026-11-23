@@ -75,6 +75,88 @@ function settingsList(text) {
 const PLAN_NAMES = { pro: 'Pro', max: 'Max', team: 'Team', enterprise: 'Enterprise' };
 // Settings → Tactile PM: the account the Tickets view reads PM
 // with (src/pmclient.js), with Sign out, or Connect when it is signed out.
+// Project health's projects (health.js projects): a row each, with its name,
+// its dashboard and the digest's folder. Adding one: paste a dashboard link
+// (the app finds its message log chart, health.js resolve) or pick one of
+// Tactile BI's support dashboards. value() is the list to save.
+function healthProjectsEditor() {
+  const box = el('div', 'health-projects');
+  const list = el('div', 'health-project-list');
+  let rows = null;   // until the current list arrives
+  const draw = () => {
+    list.replaceChildren();
+    if (!rows) { list.append(el('div', 'settings-hint', 'Reading the projects…')); return; }
+    if (!rows.length) list.append(el('div', 'settings-hint', 'No projects: Project health shows nothing until you add one.'));
+    rows.forEach((p, i) => {
+      const row = el('div', 'health-project');
+      const name = settingsInput('text', p.name, { placeholder: 'Game' });
+      name.oninput = () => { p.name = name.value; };
+      const link = el('a', 'health-project-link', p.dashboardTitle || 'Dashboard');
+      link.href = `https://bi.tactilews.com/dashboards/${p.dashboardId}${p.filterGroup ? `?filterGroup=${p.filterGroup}` : ''}`;
+      link.target = '_blank';
+      link.title = `Message log chart: ${p.chartTitle || p.chartId}`;
+      const folder = settingsInput('text', p.folder || '', { placeholder: 'Folder for the digest (optional)' });
+      folder.oninput = () => { p.folder = folder.value.trim(); };
+      const remove = el('button', 'icon', '✕');
+      remove.type = 'button';
+      remove.title = 'Remove this project';
+      remove.onclick = () => { rows.splice(i, 1); draw(); };
+      row.append(name, link, folder, remove);
+      list.append(row);
+    });
+  };
+  const status = el('div', 'settings-hint health-project-status');
+  const add = async linkText => {
+    status.textContent = 'Reading the dashboard and finding its message log…';
+    const r = await window.deck.healthResolve(linkText).catch(err => ({ error: String(err?.message || err) }));
+    if (r?.error) { status.textContent = r.notConnected ? 'Connect to Tactile BI first (Account, above).' : r.error; return false; }
+    if (rows.some(x => x.dashboardId === r.dashboardId && x.chartId === r.chartId)) { status.textContent = `${r.dashboardTitle} is already in the list.`; return false; }
+    rows.push({ id: r.id, name: r.name, dashboardId: r.dashboardId, filterGroup: r.filterGroup, chartId: r.chartId, chartTitle: r.chartTitle, dashboardTitle: r.dashboardTitle, folder: '' });
+    status.textContent = `Added ${r.name}: "${r.chartTitle}", ${r.messages} messages in the last 30 days. Press Save to keep it.`;
+    draw();
+    return true;
+  };
+  const addRow = el('div', 'settings-inline health-project-add');
+  const input = settingsInput('text', '', { placeholder: 'Paste a Tactile BI dashboard link' });
+  const addBtn = el('button', null, 'Add');
+  addBtn.type = 'button';
+  addBtn.onclick = async () => { if (input.value.trim() && await add(input.value.trim())) input.value = ''; };
+  input.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); addBtn.onclick(); } };
+  const find = el('button', null, 'Find support dashboards');
+  find.type = 'button';
+  const found = el('div', 'health-project-found');
+  find.onclick = async () => {
+    found.replaceChildren(el('span', 'settings-hint', 'Looking in Tactile BI…'));
+    const r = await window.deck.healthFind().catch(err => ({ error: String(err?.message || err) }));
+    found.replaceChildren();
+    if (!Array.isArray(r)) { found.append(el('span', 'settings-hint', r?.notConnected ? 'Connect to Tactile BI first (Account, above).' : r?.error || 'Tactile BI did not answer.')); return; }
+    if (!r.length) { found.append(el('span', 'settings-hint', 'Tactile BI has no dashboard with "support" in its title.')); return; }
+    for (const d of r) {
+      const b = el('button', 'health-project-pick', '＋ ' + d.title);
+      b.type = 'button';
+      b.disabled = rows?.some(x => x.dashboardId === d.id);
+      b.onclick = async () => { b.disabled = true; if (!(await add(d.id))) b.disabled = false; };
+      found.append(b);
+    }
+  };
+  addRow.append(input, addBtn, find);
+  box.append(list, addRow, found, status);
+  // The list as health.js has it now (Enchanted Inn until it was changed).
+  window.deck.healthSummary().then(sm => {
+    rows = (sm?.projects || []).map(p => {
+      const u = new URL(p.dashboardUrl);
+      return { id: p.id, name: p.name, dashboardId: u.pathname.split('/').pop(), filterGroup: u.searchParams.get('filterGroup') || '', chartId: p.chartId, folder: p.folder || '' };
+    });
+    draw();
+  }).catch(() => { rows = []; draw(); });
+  draw();
+  return {
+    element: box,
+    // null until the list arrived: the saved one is kept as it is.
+    value: () => (rows ? rows.map(({ id, name, dashboardId, filterGroup, chartId, folder }) => ({ id, name: name.trim() || 'Project', dashboardId, filterGroup, chartId, folder })) : undefined),
+  };
+}
+
 // Project health's Tactile BI sign-in (health.js), like the PM one below.
 function biAccountPanel() {
   const box = el('div', 'pm-account');
@@ -382,10 +464,7 @@ function openSettings(config, { onSaved } = {}) {
   const featureGallery = settingsInput('checkbox', config.featureGallery === true);
   const featureTickets = settingsInput('checkbox', config.featureTickets !== false);
   const featureHealth = settingsInput('checkbox', config.featureHealth !== false);
-  const hs = config.healthSupport || {};
-  const healthTitle = settingsInput('text', hs.title || '', { placeholder: 'Enchanted Inn' });
-  const healthDashboard = settingsInput('text', hs.dashboardId ? `https://bi.tactilews.com/dashboards/${hs.dashboardId}${hs.filterGroup ? `?filterGroup=${hs.filterGroup}` : ''}` : '', { placeholder: 'Enchanted Inn – User Support Messages (Morten\'s)' });
-  const healthChart = settingsInput('text', hs.messagesChart || '', { placeholder: 'The dashboard\'s message log' });
+  const healthProjects = healthProjectsEditor();
   const pmSpace = settingsInput('text', config.pmSpace || 'Enchanted Inn', { placeholder: 'Enchanted Inn' });
   const pmPlanHidden = settingsInput('text', (config.pmPlanHidden || []).join(', '), { placeholder: 'Nobody' });
   const pmSprintPrefixes = settingsInput('text', (config.pmSprintPrefixes || []).join(', '), { placeholder: 'Every sprint' });
@@ -552,10 +631,9 @@ function openSettings(config, { onSaved } = {}) {
     section('Account',
       el('div', 'settings-hint', 'The account Project health reads Tactile BI with (the app\'s own sign-in: no tokens). It is separate from the Tactile BI connector your agents use.'),
       biAccountPanel()),
-    section('Player support',
-      settingsField('Game', 'The name shown in the view', healthTitle),
-      settingsField('Dashboard', 'The Tactile BI dashboard with the player support messages: paste its link. Empty: Enchanted Inn – User Support Messages', healthDashboard),
-      settingsField('Message log chart', 'The id of the dashboard\'s chart with one row per message (message_en, message_topic, tone_heuristic, conversation_id, sent_at). Empty: Enchanted Inn\'s', healthChart))]],
+    section('Projects',
+      el('div', 'settings-hint', 'Each project is a Tactile BI dashboard with a player support message log. Paste a dashboard\'s link and Agent Hub finds its message log by itself, or pick one of the support dashboards Tactile BI has. Folder: where the digest agent works (empty: a folder with the UserSupportDigest skill, or the one under the message box).'),
+      healthProjects.element)]],
     ['advanced', 'Advanced', [
       section('Claude Code',
         claudeOnly(settingsField('Claude Code program', 'Empty: the app finds it', claudePath)),
@@ -711,12 +789,7 @@ function openSettings(config, { onSaved } = {}) {
       featureGallery: featureGallery.checked,
       featureTickets: featureTickets.checked,
       featureHealth: featureHealth.checked,
-      healthSupport: (() => {
-        const link = healthDashboard.value.trim();
-        const id = /dashboards\/([a-f0-9]{24})/i.exec(link)?.[1] || (/^[a-f0-9]{24}$/i.test(link) ? link : '');
-        const group = /filterGroup=([a-f0-9]{24})/i.exec(link)?.[1] || '';
-        return { title: healthTitle.value.trim(), dashboardId: id, filterGroup: id ? group : '', messagesChart: healthChart.value.trim() };
-      })(),
+      healthProjects: healthProjects.value(),
       pmSpace: pmSpace.value.trim() || 'Enchanted Inn',
       // Commas only: a sprint name has spaces in it.
       pmPlanHidden: [...new Set(pmPlanHidden.value.split(',').map(p => p.trim()).filter(Boolean))],
