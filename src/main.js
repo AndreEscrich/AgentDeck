@@ -444,6 +444,16 @@ app.whenReady().then(() => {
   ipcMain.handle('pm:split', (_e, key) => pmTasks.splitInfo(key));
   // Agent Hub's own sign-in to Tactile PM and the Tickets view (pmclient.js).
   pmClient.setup(app.getPath('userData'));
+  // Project health (health.js): player support from Tactile BI, with warnings.
+  const health = require('./health');
+  health.setup(app.getPath('userData'), getConfig, summary => send('health:update', summary));
+  const healthCall = fn => Promise.resolve().then(fn).catch(err => ({ error: err.message, notConnected: !!err.notConnected }));
+  ipcMain.handle('health:summary', () => health.summary());
+  ipcMain.handle('health:check', (_e, force) => healthCall(() => health.check(!!force)));
+  ipcMain.handle('health:seen', () => health.markSeen());
+  ipcMain.handle('health:connect', () => healthCall(() => health.connect()));
+  ipcMain.handle('health:disconnect', () => health.disconnect());
+  ipcMain.handle('health:digestFolder', (_e, folders) => health.digestFolder(Array.isArray(folders) ? folders.map(String) : []));
   // PM notifications (pmnotify.js): the Hub's Tickets button and the bell in
   // the Tickets view show them.
   pmNotify.setup(app.getPath('userData'), summary => send('pm:notifications', summary));

@@ -383,7 +383,7 @@ function rememberPipeline(sessionId, profile) {
 
 function renderPipelineButton() {
   const button = $('composer-pipeline');
-  const startsAgent = !['agent', 'history', 'branches', 'gallery', 'tickets'].includes(state.current?.kind);
+  const startsAgent = !['agent', 'history', 'branches', 'gallery', 'tickets', 'health'].includes(state.current?.kind);
   $('composer-pipeline-row').classList.toggle('hidden', !pipelineEnabled() || !startsAgent);
   if (!pipelineEnabled()) return;
   const d = ensureDraft();
@@ -636,7 +636,7 @@ function makeChatView() {
 
 // The pipeline profile the next agent from the Hub runs ('' for none).
 function shownPipeline() {
-  return ['agent', 'history', 'branches', 'gallery', 'tickets'].includes(state.current?.kind) ? '' : draftPipeline(ensureDraft());
+  return ['agent', 'history', 'branches', 'gallery', 'tickets', 'health'].includes(state.current?.kind) ? '' : draftPipeline(ensureDraft());
 }
 
 function renderSettingsButton() {
@@ -940,7 +940,7 @@ function show(kind, id) {
   document.getElementById('close-selected')?.classList.toggle('hidden', kind !== 'hub' || hub.selected.size < 2);
   // Back on the Hub: an update that waited for it can come now.
   if (kind === 'hub') setTimeout(offerUpdate, 400);
-  $('back-to-hub').classList.toggle('hidden', !['agent', 'history', 'branches', 'gallery', 'tickets'].includes(kind));
+  $('back-to-hub').classList.toggle('hidden', !['agent', 'history', 'branches', 'gallery', 'tickets', 'health'].includes(kind));
   // An agent opened from the Tickets view goes back there (see
   // openAgentFromTicket), until you go somewhere else than that agent.
   if (!['agent', 'history'].includes(kind)) state.fromTickets = null;
@@ -952,7 +952,7 @@ function show(kind, id) {
   // The Hub also has the message box: a message there starts a new agent.
   const startsAgent = !['agent', 'history'].includes(kind);
   // The Branches view and the Gallery have no message box.
-  $('composer').classList.toggle('hidden', kind === 'branches' || kind === 'gallery' || kind === 'tickets');
+  $('composer').classList.toggle('hidden', kind === 'branches' || kind === 'gallery' || kind === 'tickets' || kind === 'health');
   $('composer-folder').classList.toggle('hidden', !startsAgent);
   $('composer-group').classList.toggle('hidden', !startsAgent);
   $('composer-fork').classList.toggle('hidden', !startsAgent);
@@ -986,6 +986,10 @@ function show(kind, id) {
     const projects = svnProjectList(state.config || {});
     setHeader('Branch diff', `${(state.config?.svnServer || '').replace(/\/+$/, '')}/${!projects.length ? '*' : projects.length > 1 ? `{${projects.join(',')}}` : projects[0]}/branches`, null);
     branchesView.open(JSON.stringify([projects, state.config?.svnBranchFilter || [], !!state.config?.githubBranches]));
+  } else if (kind === 'health') {
+    healthView.view.classList.remove('hidden');
+    setHeader('Project health', 'Player support', null);
+    healthView.open();
   } else if (kind === 'tickets') {
     ticketsView.view.classList.remove('hidden');
     setHeader('Tickets', 'Tactile PM', null);
@@ -1428,6 +1432,35 @@ const ticketsView = new TicketsView({
   },
 });
 hub.onOpenTickets = () => { sfx('open'); show('tickets'); };
+
+// Project health (health.js): the warnings' red count on the Hub's heartbeat
+// button, and the view.
+const healthView = new HealthView({
+  // Digest with an agent: the game project's UserSupportDigest skill, on the
+  // Hub's message box in that folder, ready to send.
+  onDigest: async () => {
+    const folders = [ensureDraft().folder, ...[...state.agents.values()].map(a => a.cwd), ...[...state.parked.values()].map(p => p.cwd), state.config.gamesFolder, state.config.home];
+    const folder = await window.deck.healthDigestFolder([...new Set(folders.filter(Boolean))]);
+    if (!folder) { toast('No game project with the UserSupportDigest skill found in your agents\' folders. Open an agent in the game\'s folder first.'); return; }
+    show('hub');
+    ensureDraft().folder = folder;
+    renderDraftButtons();
+    const input = $('input');
+    input.value = '/UserSupportDigest digest the player support messages of the last 3 days: which ones are real bugs, checked against the code, and which are worth a ticket';
+    input.dispatchEvent(new Event('input'));
+    input.focus();
+    flashComposerNote?.('The support digest is ready for an agent in ' + shortPath(folder) + ': send it to start.');
+  },
+});
+const showHealth = summary => {
+  if (!summary) return;
+  hub.setHealthUnread(summary.unseen || 0);
+  healthView.update(summary);
+};
+healthView.onSeen = showHealth;
+window.deck.healthSummary().then(showHealth).catch(() => {});
+window.deck.onHealthUpdate(showHealth);
+hub.onOpenHealth = () => { sfx('open'); show('health'); };
 // A click on a PM ticket link anywhere in the app (render.js) opens the
 // ticket's panel: over everything, or in the Tickets view when you are there. Without the app's PM sign-in, PM's
 // page opens in the browser as before.
@@ -6839,7 +6872,7 @@ document.addEventListener('keydown', e => {
   }
   // Esc leaves an agent (or a saved session, a new agent, or the branch
   // diff view) for the Hub. The Stop button in the top bar stops a running turn.
-  if (e.key === 'Escape' && !e.popupWasOpen && ['agent', 'history', 'new', 'branches', 'gallery', 'tickets'].includes(state.current?.kind) && !document.querySelector('.gallery-preview')) {
+  if (e.key === 'Escape' && !e.popupWasOpen && ['agent', 'history', 'new', 'branches', 'gallery', 'tickets', 'health'].includes(state.current?.kind) && !document.querySelector('.gallery-preview')) {
     e.preventDefault();
     backToHub();
   }

@@ -196,7 +196,16 @@ class Hub {
     // the branch diff, the Gallery, Tickets and Usage together.
     const nav = el('nav', 'hub-nav');
     this.settingsBtn.classList.add('hub-nav-settings');
-    nav.append(this.settingsBtn, this.branchesBtn, this.galleryBtn, this.ticketsBtn, this.usageTab);
+    // Project health (renderer/health.js): a heartbeat, with a red count of
+    // warnings you have not seen.
+    this.healthBtn = el('button', 'hub-settings-btn hub-branches-btn hub-health-btn');
+    this.healthBtn.type = 'button';
+    this.healthBtn.title = 'Project health: player support and what needs your attention';
+    this.healthBtn.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#e5604d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg>';
+    this.healthBtn.onclick = () => { this.rail.classList.remove('open'); this.onOpenHealth?.(); };
+    this.healthBadge = el('span', 'hub-badge hidden');
+    this.healthBtn.append(this.healthBadge);
+    nav.append(this.settingsBtn, this.branchesBtn, this.galleryBtn, this.ticketsBtn, this.healthBtn, this.usageTab);
     this.rail.append(nav, this.usage, this.settingsMenu);
     // A button opens its card, or closes it when it is already open.
     const showPanel = this.showPanel = panel => {
@@ -229,6 +238,13 @@ class Hub {
     container.addEventListener('pointerdown', e => this.marquee(e), true);
     new ResizeObserver(() => requestAnimationFrame(() => this.fitToHeight())).observe(container);
     this.setUsage(null);
+  }
+
+  // The red count on the Project health button: warnings you have not seen.
+  setHealthUnread(n) {
+    this.healthBadge.textContent = n > 99 ? '99+' : String(n || '');
+    this.healthBadge.classList.toggle('hidden', !n);
+    this.healthBtn.title = n ? `Project health: ${n} new warning${n === 1 ? '' : 's'} that need your attention` : 'Project health: player support and what needs your attention';
   }
 
   // The red count on the Tickets button: unread PM notifications.
