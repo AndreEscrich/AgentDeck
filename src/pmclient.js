@@ -486,9 +486,11 @@ async function readTasks(keys, subtasksOf = []) {
 const optionCache = new Map();   // project key -> { at, value }
 // What the panel's fields can be set to: epics, open sprints, teams,
 // components, custom fields and statuses of a project. Kept 10 minutes.
-async function options(project) {
+// fresh: read PM again even within the 10 minutes (the Tickets view asks for
+// it when it opens and on ↻, so a sprint that just started shows as current).
+async function options(project, fresh = false) {
   const hit = optionCache.get(project);
-  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.value;
+  if (!fresh && hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.value;
   const list = (name, args) => callTool(name, { projectId: project, ...args }).then(r => (Array.isArray(r) ? r : r?.items || [])).catch(() => []);
   const [epics, sprints, teams, components, fields, sts] = await Promise.all([
     list('pm_list_epics'), list('pm_list_sprints', { status: 'open' }), list('pm_list_teams'),

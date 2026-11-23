@@ -8,9 +8,10 @@
 // both change it in PM at once. Each side has its own search, sorting (a
 // click on a column's name; by default stories first, then bugs, each
 // newest first) and type filter, kept between runs.
-// The upcoming sprint: the first planned (not active) sprint whose name
-// starts with one of Settings → Tactile PM → Sprints (any, when empty); a
-// picker when there are several. The tickets are All tickets' list.
+// The upcoming sprint: the planned (not active) sprint with the lowest
+// number above the running one, among those whose name starts with one of
+// Settings → Tactile PM → Sprints (any, when empty); a picker when there are
+// several. The tickets are All tickets' list.
 // The methods join TicketsView.
 
 (() => {
@@ -59,7 +60,7 @@
     if (plan.sprintsLoading) return;
     plan.sprintsLoading = true;
     const projects = [...new Set((this.data.all?.items || []).map(t => t.project).filter(Boolean))];
-    const lists = await Promise.all(projects.map(p => window.deck.pmOptions(p).then(o => [p, o?.sprints || []]).catch(() => [p, []])));
+    const lists = await Promise.all(projects.map(p => this.optionsFor(p).then(o => [p, o?.sprints || []]).catch(() => [p, []])));
     const byName = new Map();
     plan.active = [];
     for (const [project, sprints] of lists) for (const s of sprints) {
@@ -71,7 +72,15 @@
     let all = [...byName.values()];
     const followed = all.filter(s => !ps.length || ps.some(p => s.name.toLowerCase().startsWith(p)));
     if (followed.length) all = followed;
-    plan.sprints = all.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    // Old sprints left "planned" (from the move from Jira) are not upcoming:
+    // a planned sprint whose number is not above its board's running sprint
+    // (or, without a board, any running sprint) is dropped, and the lowest
+    // number left comes first.
+    const num = name => Number((/(\d+)\D*$/.exec(name) || /(\d+)/.exec(name) || [])[1]) || 0;
+    const runningOn = board => Math.max(0, ...plan.active.filter(a => !board || !a.boardId || a.boardId === board).map(a => num(a.name)));
+    const ahead = all.filter(s => num(s.name) > runningOn(s.boardId));
+    if (ahead.length) all = ahead;
+    plan.sprints = all.sort((a, b) => num(a.name) - num(b.name) || a.name.localeCompare(b.name, undefined, { numeric: true }));
     plan.sprintsLoading = false;
     if (this.list === 'plan') this.renderPlan();
   };

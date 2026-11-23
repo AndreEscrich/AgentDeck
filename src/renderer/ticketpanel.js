@@ -69,7 +69,7 @@
     if (hit && !hit.error) return hit;
     if (!hit?.loading) {
       this.optionLists.set(project, { loading: true });
-      window.deck.pmOptions(project).then(r => {
+      this.optionsFor(project).then(r => {
         this.optionLists.set(project, r?.error ? { error: r.error } : r);
         if (r?.statuses?.length) this.statusLists.set(project, r.statuses);
         if (this.detailTicket && projectOf(this.detailTicket) === project) this.renderDetail(this.detailTicket, null);

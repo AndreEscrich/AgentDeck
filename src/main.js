@@ -469,7 +469,7 @@ app.whenReady().then(() => {
   ipcMain.handle('pmc:workflows', (_e, project) => pmCall(() => pmClient.workflows(String(project || ''))));
   ipcMain.handle('pmc:remove', (_e, t) => pmCall(() => pmClient.remove({ key: String(t?.key || ''), id: String(t?.id || ''), project: String(t?.project || ''), subtask: !!t?.subtask })));
   ipcMain.handle('pmc:subtasks', (_e, key) => pmCall(() => pmClient.subtasks(String(key || ''))));
-  ipcMain.handle('pmc:options', (_e, project) => pmCall(() => pmClient.options(String(project || ''))));
+  ipcMain.handle('pmc:options', (_e, project, fresh) => pmCall(() => pmClient.options(String(project || ''), !!fresh)));
   ipcMain.handle('pmc:update', (_e, a) => pmWrite(a?.key, () => pmClient.update(a || {})));
   ipcMain.handle('pmc:createTask', (_e, a) => pmCall(() => pmClient.createTask(a || {})));
   ipcMain.handle('pmc:completeSprint', (_e, a) => pmCall(() => pmClient.completeSprint(a || {})));

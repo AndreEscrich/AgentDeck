@@ -255,6 +255,9 @@ class TicketsView {
     const st = await window.deck.pmStatus().catch(() => ({ connected: false }));
     this.setConnected(st);
     if (!st.connected) return;
+    // Sprints change (one ends, the next starts): read them again each time
+    // the view opens, at most once a minute.
+    if (Date.now() - (this.sprintsForgotAt || 0) > 60 * 1000) this.forgetSprints();
     this.show();
     const d = this.data[this.src()];
     if (!d || Date.now() - d.at > 60 * 1000) this.load();
@@ -310,8 +313,28 @@ class TicketsView {
   // The list a tab shows: Sprint planning shows All tickets'.
   src() { return this.list === 'plan' ? 'all' : this.list; }
 
+  // The sprints the view knows (Sprint review's and Sprint planning's lists,
+  // the ticket panel's fields) are read from PM again the next time they are
+  // needed, past the main process's 10-minute keep (optionsFor).
+  forgetSprints() {
+    this.sprintsForgotAt = Date.now();
+    this.reviewList = null;
+    if (this.plan) this.plan.sprints = null;
+    this.optionLists?.clear();
+  }
+
+  // A project's options (sprints, epics, ...), fresh from PM when they were
+  // last read before forgetSprints.
+  optionsFor(project) {
+    this.optionsReadAt ||= {};
+    const fresh = (this.optionsReadAt[project] || 0) < (this.sprintsForgotAt || 0);
+    this.optionsReadAt[project] = Date.now();
+    return window.deck.pmOptions(project, fresh);
+  }
+
   async load(force = false) {
     const list = this.src();
+    if (force) this.forgetSprints();   // ↻ reads the sprints again too
     if (this.loading.has(list) && !force) return;
     this.loading.add(list);
     this.renderWhen();

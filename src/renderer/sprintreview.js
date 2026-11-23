@@ -19,7 +19,7 @@
     if (!this.reviewLoading && this.data.review) {
       this.reviewLoading = true;
       const projects = [...new Set(this.data.review.items.map(t => t.project).filter(Boolean))];
-      Promise.all(projects.map(p => window.deck.pmOptions(p).then(o => o?.sprints || []).catch(() => []))).then(lists => {
+      Promise.all(projects.map(p => this.optionsFor(p).then(o => o?.sprints || []).catch(() => []))).then(lists => {
         const byName = new Map();
         lists.forEach((list, i) => { for (const s of list) if (!byName.has(s.name)) byName.set(s.name, { ...s, project: projects[i] }); });
         // And any sprint the tickets name that PM's list missed.
