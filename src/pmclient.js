@@ -633,10 +633,23 @@ async function attach({ project, projectId, id, paths }) {
 const commentTarget = ({ key, id, project, subtask }) => (subtask && id ? { subtaskId: id, projectId: project } : { key });
 async function comments(a) {
   const r = await callTool('pm_list_comments', commentTarget(a));
-  return (Array.isArray(r) ? r : r?.items || []).map(c => ({
+  const list = (Array.isArray(r) ? r : r?.items || []).map(c => ({
     id: c._id || c.id, author: c.authorName || c.author || '', authorEmail: String(c.authorEmail || '').toLowerCase(), mine: !!auth?.email && String(c.authorEmail || '').toLowerCase() === auth.email.toLowerCase(),
     content: c.content || '', at: c.createdAt || '', edited: !!(c.updatedAt && c.createdAt && c.updatedAt > c.createdAt), parentId: c.parentCommentId || null, deleted: !!c.deletedAt,
   }));
+  // The comments' images and videos (<img|video data-media-id>): PM's
+  // short-lived links (about a day), read in one call per 100, so the panel
+  // shows and plays them. Without links they stay "open in PM".
+  const ids = [...new Set(list.flatMap(c => [...c.content.matchAll(/data-media-id="([a-f\d]{24})"/g)].map(m => m[1])))];
+  const links = new Map();
+  if (ids.length && a.project) {
+    for (let i = 0; i < ids.length; i += 100) {
+      const m = await callTool('pm_get_media_download_url', { projectId: a.project, mediaIds: ids.slice(i, i + 100) }).catch(() => null);
+      for (const x of m?.media || []) if (x.previewUrl) links.set(x.mediaId, { id: x.mediaId, name: x.fileName, type: x.contentType, url: x.previewUrl });
+    }
+  }
+  for (const c of list) c.media = [...c.content.matchAll(/data-media-id="([a-f\d]{24})"/g)].map(m => links.get(m[1])).filter(Boolean);
+  return list;
 }
 
 // Your own comments only (PM refuses others'). PM takes the new text as

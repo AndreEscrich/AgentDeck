@@ -556,8 +556,8 @@
     return this.panelSection('description', '', body, tabs, edit);
   };
 
-  // PM's HTML, cleaned, with its images as PM's short-lived links (videos
-  // open in PM).
+  // PM's HTML, cleaned, with its images and videos as PM's short-lived links
+  // (a description's, or a comment's: t.media); without a link they open in PM.
   P.description = function (t, html = t.description) {
     const div = el('div', 'tp-desc msg-text');
     div.innerHTML = DOMPurify.sanitize(html, { ADD_TAGS: ['video'], ADD_ATTR: ['data-media-id', 'data-file-name', 'target'] });
@@ -807,7 +807,7 @@
       const when = c.at ? new Date(c.at) : null;
       head.append(avatar(c.author), el('span', 'tp-comment-author', c.author || 'Someone'), el('span', 'tp-comment-time', (when ? when.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '') + (c.edited ? ' · edited' : '')));
       if (c.mine) head.append(this.commentTools(t, c, target, row));
-      row.append(head, this.editingComment === c.id ? this.commentEditor(t, c, target) : this.description(t, c.content));
+      row.append(head, this.editingComment === c.id ? this.commentEditor(t, c, target) : this.description(c.media?.length ? { ...t, media: [...(t.media || []), ...c.media] } : t, c.content));
       body.append(row);
     }
     const write = document.createElement('textarea');
