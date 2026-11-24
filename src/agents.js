@@ -132,7 +132,15 @@ const PM_COMMENT_PROMPT = [
   'No file lists, code names, explanations of the cause, headings or background, unless the user asks for them.',
 ].join(' ');
 
-const SYSTEM_PROMPT = `${ANSWER_PROMPT}\n\n${EFFICIENCY_PROMPT}\n\n${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}\n\n${RUN_PROMPT}\n\n${MILESTONE_PROMPT}\n\n${ART_PROMPT}\n\n${PM_COMMENT_PROMPT}`;
+// A PM subtask is often a line or two: the why, the acceptance criteria and
+// the screenshots are on its story, so the agent reads the story as well.
+const PM_SUBTASK_PROMPT = [
+  'When you read a Tactile PM item to work on it and pm_get_task says it is a subtask (itemType subtask, with a parentTaskId), also read its parent story before you start:',
+  'pm_get_task with taskId set to the parentTaskId and the subtask\'s projectId. Read the story\'s description, its screenshots and videos (pm_read_task_media) and the comments that matter, because the subtask is one part of the story and often leaves out the why and the acceptance criteria.',
+  'Work only on what the subtask asks; the story is background.',
+].join(' ');
+
+const SYSTEM_PROMPT = `${ANSWER_PROMPT}\n\n${EFFICIENCY_PROMPT}\n\n${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}\n\n${RUN_PROMPT}\n\n${MILESTONE_PROMPT}\n\n${ART_PROMPT}\n\n${PM_SUBTASK_PROMPT}\n\n${PM_COMMENT_PROMPT}`;
 
 // The Unity bridge of the project an agent works in (com.tactilegames.unity-mcp,
 // Library/McpServer), wherever in the repository it works: a project's
