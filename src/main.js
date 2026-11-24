@@ -97,6 +97,7 @@ const DEFAULT_CONFIG = {
   suggestFollowUps: true,               // after a task, suggest the messages you will likely send next
   svnServer: 'svn+ssh://svn@tactile.build',   // the Branches view reads <svnServer>/<project>/branches
   svnProjects: ['MergeTavern'],         // empty: every project on the server (older settings: svnProject, one project)
+  pmSpace: 'Enchanted Inn',
   pmPlanHidden: [],                     // Sprint planning's person picker leaves these people out
   pmSprintPrefixes: [],                 // the ticket panel's Sprint field lists only sprints whose names start with one of these (all when empty)
   svnBranchFilter: [],                  // only branches whose names start with one of these (all when empty)
