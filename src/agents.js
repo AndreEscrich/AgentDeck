@@ -140,7 +140,15 @@ const PM_SUBTASK_PROMPT = [
   'Work only on what the subtask asks; the story is background.',
 ].join(' ');
 
-const SYSTEM_PROMPT = `${ANSWER_PROMPT}\n\n${EFFICIENCY_PROMPT}\n\n${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}\n\n${RUN_PROMPT}\n\n${MILESTONE_PROMPT}\n\n${ART_PROMPT}\n\n${PM_SUBTASK_PROMPT}\n\n${PM_COMMENT_PROMPT}`;
+// PM keeps an assignee as an id and a name, and the board shows the name.
+// assigneeId alone saves the id with no name, so the board shows the ticket
+// as unassigned; assignee (a name or email) fills in both.
+const PM_ASSIGN_PROMPT = [
+  'When you assign a Tactile PM task or subtask (pm_update_task, pm_update_subtask, pm_create_task, pm_create_subtask, pm_bulk_create_tasks), always set the person with the assignee or assignee2 field, as their email (or their name), never with assigneeId or assignee2Id: an id alone saves no name, and PM\'s board then shows the ticket as unassigned.',
+  'For "me" or "the user", use the email pm_whoami returns. Afterwards read the item again with pm_get_task and check that assignee is the person\'s name; if it is empty, set it again by email.',
+].join(' ');
+
+const SYSTEM_PROMPT = `${ANSWER_PROMPT}\n\n${EFFICIENCY_PROMPT}\n\n${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}\n\n${RUN_PROMPT}\n\n${MILESTONE_PROMPT}\n\n${ART_PROMPT}\n\n${PM_SUBTASK_PROMPT}\n\n${PM_ASSIGN_PROMPT}\n\n${PM_COMMENT_PROMPT}`;
 
 // The Unity bridge of the project an agent works in (com.tactilegames.unity-mcp,
 // Library/McpServer), wherever in the repository it works: a project's
