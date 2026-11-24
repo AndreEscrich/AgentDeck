@@ -966,8 +966,10 @@ function show(kind, id) {
     loadSession(a.view, a.sessionId, a.cwd, a.transcript);
     renderChatTicket(a);
     playSessionWhenOpen(a);
-    // Finished while you were not looking: show its output from the start.
-    if (a.unread && a.status === 'idle' && !a.view.place?.away) revealLatest(a.view, a.transcript);
+    // Finished (or stopped with an error) while you were not looking: show
+    // its new output from the start, also when you had left the chat
+    // scrolled up. A question or permission waiting for you is at the bottom.
+    if (a.unread && (a.status === 'idle' || a.status === 'error')) revealLatest(a.view, a.transcript);
     else placeChat(a.view);
     a.unread = false;
     setHeader(headerTitle(a), a.cwd, a);
