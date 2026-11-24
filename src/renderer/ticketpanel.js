@@ -560,6 +560,14 @@
   // (a description's, or a comment's: t.media); without a link they open in PM.
   P.description = function (t, html = t.description) {
     const div = el('div', 'tp-desc msg-text');
+    // Agents and PM's API often save plain text (lines split by \n), which PM's
+    // page shows line by line; HTML ignores \n, so turn the lines into <br>.
+    // Text with block tags (<p>, <ul>, …) is real HTML and stays as it is.
+    html = String(html || '');
+    if (!/<(p|div|ul|ol|li|br|h[1-6]|pre|table|blockquote)\b/i.test(html)) {
+      if (!/<[a-z]/i.test(html)) html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      html = html.replace(/\r?\n/g, '<br>');
+    }
     div.innerHTML = DOMPurify.sanitize(html, { ADD_TAGS: ['video'], ADD_ATTR: ['data-media-id', 'data-file-name', 'target'] });
     // Other tickets named in the text (M2S-3627, or a PM link) become ticket
     // cards, like in a chat: a click opens that ticket here.
