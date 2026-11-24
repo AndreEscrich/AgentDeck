@@ -1078,14 +1078,14 @@ const tableWatch = new ResizeObserver(entries => {
 // "**What I changed.** …", "**What I couldn't check.** …") or with small
 // headings reads as one block of text. Each part becomes a box of its own,
 // coloured by what it is about, and the boxes go in a fixed order: what
-// changed, then what was wrong, then everything else (checks, notes, next
+// was wrong, then what changed, then everything else (checks, notes, next
 // steps). Text before the first part stays on top. Only an answer with two
 // or more parts, one of them about a change or a problem, is split.
 const PART_TODO = /you need to|for you to|your (next )?(steps|turn)|what you (should|can|have to)|to do for you|action items?|next steps for you/i;
 const PART_OTHER = /couldn'?t|could not|not (yet )?(checked|tested|verified)|unchecked|next|left to|still|todo|to do|open question|risk|note|other|also|observ|caveat|verify|test/i;
 const PART_CHANGE = /chang|fix|what i did|implement|solution|added|updated|edited|the patch/i;
 const PART_PROBLEM = /bug|problem|wrong|cause|why|issue|broke|broken|happen|fail|symptom|what was/i;
-const PART_KINDS = { change: { order: 0, icon: '✓' }, problem: { order: 1, icon: '!' }, other: { order: 2, icon: '•' }, todo: { order: 3, icon: '☐' } };
+const PART_KINDS = { problem: { order: 0, icon: '!' }, change: { order: 1, icon: '✓' }, other: { order: 2, icon: '•' }, todo: { order: 3, icon: '☐' } };
 function partKind(lead) {
   if (PART_TODO.test(lead)) return 'todo';
   if (PART_CHANGE.test(lead) && !PART_OTHER.test(lead)) return 'change';
