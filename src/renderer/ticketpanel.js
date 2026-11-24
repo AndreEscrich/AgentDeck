@@ -98,17 +98,26 @@
     return [...count].sort((a, b) => b[1] - a[1])[0]?.[0] || this.email || 'Agent Hub';
   };
 
-  // Attachments and comments, read when a ticket opens: key -> { items, loading, error }.
+  // Attachments and comments, read when a ticket opens: key -> { items,
+  // loading, error, at }. A list read before the ticket last opened is read
+  // again (an agent or PM's web page may have added files or comments since);
+  // the panel shows the old list until the new one arrives.
   P.panelList = function (store, key, read) {
     this[store] ||= new Map();
     const d = this[store].get(key);
+    const fetch = () => read().then(r => {
+      const old = this[store].get(key);
+      this[store].set(key, Array.isArray(r) ? { items: r, at: Date.now() } : old?.items ? { ...old, refreshing: false } : { error: r?.error || 'PM sent nothing.', at: Date.now() });
+      if (this.detailTicket?.key === key) this.renderDetail(this.detailTicket, null);
+    });
     if (!d) {
       this[store].set(key, { loading: true });
-      read().then(r => {
-        this[store].set(key, Array.isArray(r) ? { items: r } : { error: r?.error || 'PM sent nothing.' });
-        if (this.detailTicket?.key === key) this.renderDetail(this.detailTicket, null);
-      });
+      fetch();
       return { loading: true };
+    }
+    if (!d.loading && !d.refreshing && (d.at || 0) < (this.panelOpenedAt || 0)) {
+      this[store].set(key, { ...d, refreshing: true });
+      fetch();
     }
     return d;
   };
@@ -195,7 +204,7 @@
     if (t.isEpic) return this.renderEpic(t, error);
     const same = this.detailTicket?.key === t.key;
     const scroll = same ? this.detail.scrollTop : 0;
-    if (!same) { this.panelError = null; this.editing = null; this.editingComment = null; this.news = null; this.descTab = 'description'; this.deleting = null; }
+    if (!same) { this.panelOpenedAt = Date.now(); this.panelError = null; this.editing = null; this.editingComment = null; this.news = null; this.descTab = 'description'; this.deleting = null; }
     this.newsOf(t);
     this.detailTicket = t;
     const box = el('div', 'tp' + (this.panelBusy ? ' busy' : ''));
@@ -670,7 +679,7 @@
       this.renderDetail(t, null);
       const r = await window.deck.pmAttach({ key: t.key, project, projectId: t.projectId, id: t.id, paths }).catch(err => ({ error: String(err?.message || err) }));
       this.uploading = null;
-      if (Array.isArray(r)) this.attachLists.set(t.key, { items: r });
+      if (Array.isArray(r)) this.attachLists.set(t.key, { items: r, at: Date.now() });
       else if (r?.error) this.panelError = r.error;
       if (this.detailTicket?.key === t.key) this.renderDetail(this.detailTicket, null);
     };
@@ -812,7 +821,7 @@
       if (!text) return;
       send.disabled = write.disabled = true;
       const r = await window.deck.pmAddComment({ ...target, content: text, authorName: this.myName() }).catch(err => ({ error: String(err?.message || err) }));
-      if (Array.isArray(r)) this.commentLists.set(t.key, { items: r });
+      if (Array.isArray(r)) this.commentLists.set(t.key, { items: r, at: Date.now() });
       else this.panelError = r?.error || 'PM did not answer.';
       if (this.detailTicket?.key === t.key) this.renderDetail(this.detailTicket, null);
     };
@@ -905,7 +914,7 @@
   // The comments as PM has them after a change, or PM's error.
   P.afterComments = function (t, r) {
     if (r?.notConnected) return this.setConnected({ connected: false });
-    if (Array.isArray(r)) { this.commentLists.set(t.key, { items: r }); this.panelError = null; }
+    if (Array.isArray(r)) { this.commentLists.set(t.key, { items: r, at: Date.now() }); this.panelError = null; }
     else this.panelError = r?.error || 'PM did not answer.';
     if (this.detailTicket?.key === t.key) this.renderDetail(this.detailTicket, null);
   };
