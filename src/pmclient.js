@@ -417,6 +417,9 @@ async function ticket(key) {
     epicId: t.epicId || '', sprintId: t.sprintId || '', teamId: t.teamId || '', team: t.fieldNames?.teamId || '',
     componentIds: t.componentIds || [], customFields: t.customFields || {}, typeId: t.taskTypeDefinitionId || '',
     parentId: t.parentTaskId || '', watchers: (t.watchers || []).length,
+    // A subtask has no custom fields: its story's (Branch, Testable revision)
+    // show in its panel, read only.
+    parentCustomFields: parent?.customFields || null,
     // A ticket's images and videos: a list, or { media: [...] } (subtasks).
     media: (Array.isArray(t.inlineMedia) ? t.inlineMedia : t.inlineMedia?.media || []).map(m => ({ id: m.mediaId, name: m.fileName, type: m.contentType, url: m.previewUrl })),
     subtasks: subtask ? [] : await slimSubtasks(subs, base.project),

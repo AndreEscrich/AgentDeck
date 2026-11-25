@@ -1106,6 +1106,15 @@
     field('Priority', prio);
     // Components, Estimate, Story Points and Found in are not shown (the team
     // does not use them here); PM keeps whatever they hold.
+    // A subtask: its story's Branch and Revision, read only (subtasks have no
+    // custom fields; agents put them on the story).
+    if (t.subtask && o && t.parentCustomFields) {
+      const val = f => { const v = f && (t.parentCustomFields[f.id] ?? t.parentCustomFields[f.name]); return Array.isArray(v) ? v.join(', ') : String(v ?? ''); };
+      const branch = (o.fields || []).find(f => /^branch$/i.test(f.name.trim()));
+      const revision = (o.fields || []).find(f => /revision/i.test(f.name));
+      const ro = (label, v) => { const x = el('div', 'tp-readonly', v || '—'); x.title = `On the story ${t.parentKey}: subtasks have no ${label} field of their own`; return fieldEl(`${label} · story`, x); };
+      if (branch || revision) pair(ro('Branch', val(branch)), ro('Revision', val(revision)));
+    }
     if (!t.subtask && o) {
       const teams = (o.teams || []).map(x => [x.id, x.name]);
       field('Team', select(t.teamId, teams, v => this.saveFields(t, { team: v })));

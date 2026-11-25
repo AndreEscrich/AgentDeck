@@ -14,9 +14,10 @@
 //   IMPORTANT: THIS CHANGES THE INPUT OF ALL BOARDS      (only when needed)
 //   • What else the change touches, and what to test there.
 //
-//   BUILD                                                 (when known)
-//   • Branch, revision, or "not committed yet".
 //
+// The branch and revision are never in a comment: they go in the ticket's
+// Branch and Testable revision fields (PM_STATUS_PROMPT in agents.js), where
+// the ticket panel and PM's board show them.
 // The instructions (PROMPT) go in every agent's system prompt (agents.js).
 // Before an agent's pm_create_comment or pm_update_comment runs, Claude Code
 // asks Agent Hub through a PreToolUse hook; check() reads the comment, and a
@@ -32,9 +33,6 @@ const EXAMPLE = [
   '',
   'IMPORTANT: THIS CHANGES THE INPUT OF ALL BOARDS',
   '• The drag and drop input is shared by every board, so please test dragging on the main board, the Digging Board, Piece Obtain and Expedition.',
-  '',
-  'BUILD',
-  '• Branch matias_WinterDiggingBoard, r788336 (not in trunk yet).',
 ].join('\n');
 
 const PROMPT = [
@@ -42,7 +40,7 @@ const PROMPT = [
   'sections, each an ALL CAPS heading on its own line followed by lines that start with "• ", with an empty line between sections.',
   'FIX (what changed, in plain words as a player or tester sees it), then HOW TO CHECK (where to go and what to do in the game: screen, steps, cheat if there is one),',
   'then, only when the change reaches beyond the ticket (shared code, other screens or boards), a section headed "IMPORTANT: " plus what it changes, in capitals, with what else QA must test,',
-  'and last, when you know it, BUILD (the branch and revision, or "not committed yet"). For a comment that is not about a change (a question, an answer, a status note), use one fitting heading such as QUESTION or NOTE, with bullets under it.',
+  'Do not write the branch or the revision in the comment: they go in the ticket\'s Branch and Testable revision fields, not in comments or the description. For a comment that is not about a change (a question, an answer, a status note), use one fitting heading such as QUESTION or NOTE, with bullets under it.',
   'Keep each bullet to one or two short sentences. No file lists, code names or explanations of the cause unless the user asks for them. When the user dictates a comment, keep their words but put them in this layout.',
   'Agent Hub checks the layout before the comment is posted and refuses one that does not follow it. Example:\n' + EXAMPLE,
 ].join(' ');
@@ -66,6 +64,8 @@ function check(content) {
   const empty = lines.find((l, i) => isHeading(l) && (i === lines.length - 1 || isHeading(lines[i + 1])));
   if (empty) return `The heading "${empty}" has no "• " lines under it.`;
   const heads = lines.filter(isHeading);
+  const build = heads.find(h => /^(BUILD|BRANCH|REVISION|TESTABLE REVISION)\b/.test(h));
+  if (build) return `Leave out the ${build} section: the branch and revision go in the ticket's Branch and Testable revision fields (pm_update_task customFields; on the parent story for a subtask), not in a comment.`;
   if (heads.includes('FIX') && !heads.includes('HOW TO CHECK')) return 'A FIX comment needs a HOW TO CHECK section that says where and how QA can check the change in the game.';
   return null;
 }
