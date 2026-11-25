@@ -126,11 +126,10 @@ const ANSWER_PROMPT = [
 
 // A comment an agent posts on a Tactile PM ticket is read by QA, who go and
 // check the fix: so it is a few lines, not a report.
-const PM_COMMENT_PROMPT = [
-  'When you post a comment on a Tactile PM ticket (pm_create_comment), QA reads it to go and check the fix. Keep it extremely short and direct, at most about 4 lines:',
-  'what was fixed (one line, in plain words as a player or tester sees it), where and how to check it in the game (screen, steps, cheat if there is one), and the build or revision it is in, or "not committed yet".',
-  'No file lists, code names, explanations of the cause, headings or background, unless the user asks for them.',
-].join(' ');
+// The layout of agents' comments on PM tickets (FIX, HOW TO CHECK, …), which
+// Agent Hub also checks before a comment is posted (pmcommentformat.js).
+const pmCommentFormat = require('./pmcommentformat');
+const PM_COMMENT_PROMPT = pmCommentFormat.PROMPT;
 
 // A PM subtask is often a line or two: the why, the acceptance criteria and
 // the screenshots are on its story, so the agent reads the story as well.
@@ -280,14 +279,19 @@ class AgentManager {
       }
       if (agent.sessionId) agent.engine.bindSession(agent.sessionId);
       // The hooks go with "initialize", before your first message.
-      proc.stdin.write(JSON.stringify({ type: 'control_request', request_id: `pipeline-init-${id}`, request: { subtype: 'initialize', hooks: PipelineEngine.hooks() } }) + '\n');
+      const hooks = PipelineEngine.hooks();
+      hooks.PreToolUse = [...(hooks.PreToolUse || []), pmCommentFormat.HOOK];
+      proc.stdin.write(JSON.stringify({ type: 'control_request', request_id: `pipeline-init-${id}`, request: { subtype: 'initialize', hooks } }) + '\n');
     } else if (typeof lane === 'string' && lane) {
       // An agent of a ticket run (ticketrun.js): before it changes a file,
       // Claude Code asks the file locks (filelocks.js), and waits.
       agent.lane = lane;
       proc.stdin.write(JSON.stringify({ type: 'control_request', request_id: `lane-init-${id}`, request: { subtype: 'initialize', hooks: {
-        PreToolUse: [{ matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash', hookCallbackIds: ['lane-lock'] }],
+        PreToolUse: [{ matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash', hookCallbackIds: ['lane-lock'] }, pmCommentFormat.HOOK],
       } } }) + '\n');
+    } else {
+      // Every other agent: only the check of its PM comments' layout.
+      proc.stdin.write(JSON.stringify({ type: 'control_request', request_id: `init-${id}`, request: { subtype: 'initialize', hooks: { PreToolUse: [pmCommentFormat.HOOK] } } }) + '\n');
     }
 
     let buffer = '';
@@ -385,6 +389,15 @@ class AgentManager {
       agent.pending.add(msg.request_id);
       this.setStatus(agent, 'waiting');
       this.send('agent:permission', agent.id, { requestId: msg.request_id, ...msg.request });
+      return;
+    }
+    // A comment on a PM ticket: posted only in the layout QA reads
+    // (pmcommentformat.js); otherwise refused, with why, and the agent writes
+    // it again.
+    if (msg.request?.subtype === 'hook_callback' && msg.request.callback_id === 'pm-comment') {
+      let response = {};
+      try { response = pmCommentFormat.hookAnswer(msg.request.input || {}); } catch (err) { console.error('pm-comment hook', err); }
+      this.writeJson(agent, { type: 'control_response', response: { subtype: 'success', request_id: msg.request_id, response } });
       return;
     }
     // A pipeline governor's hooks: its run decides (pipelinerun.js). An
