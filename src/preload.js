@@ -160,6 +160,7 @@ contextBridge.exposeInMainWorld('deck', {
   pmAttachmentLinks: args => ipcRenderer.invoke('pmc:attachmentLinks', args),
   pmAttach: args => ipcRenderer.invoke('pmc:attach', args),
   pmComments: args => ipcRenderer.invoke('pmc:comments', args),
+  pmHistory: args => ipcRenderer.invoke('pmc:history', args),
   pmAddComment: args => ipcRenderer.invoke('pmc:addComment', args),
   pmEditComment: args => ipcRenderer.invoke('pmc:editComment', args),
   pmDeleteComment: args => ipcRenderer.invoke('pmc:deleteComment', args),

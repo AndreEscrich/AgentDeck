@@ -648,8 +648,90 @@ async function comments(a) {
       for (const x of m?.media || []) if (x.previewUrl) links.set(x.mediaId, { id: x.mediaId, name: x.fileName, type: x.contentType, url: x.previewUrl });
     }
   }
+  for (const c of list) if (c.author && c.authorEmail && !c.author.includes('@')) nameByEmail.set(c.authorEmail, c.author);
   for (const c of list) c.media = [...c.content.matchAll(/data-media-id="([a-f\d]{24})"/g)].map(m => links.get(m[1])).filter(Boolean);
   return list;
+}
+
+// A ticket's history: PM's web page reads it from PM's REST API
+// (/api/pm/audit-logs), which takes the same sign-in as the MCP server. Each
+// entry says who changed what and when, with the new values only, so the old
+// value of a field comes from the entry before it (each entry carries the
+// ticket as it was after the change). Ids become names through the project's
+// statuses, sprints, teams, epics, components and custom fields.
+const HISTORY_API = 'https://pm.tactilews.com/api/pm/audit-logs';
+const HISTORY_LABELS = {
+  title: 'Title', description: 'Description', statusId: 'Status', assignee: 'Assignee', assignee2: 'Assignee 2',
+  sprintId: 'Sprint', teamId: 'Team', epicId: 'Epic', priority: 'Priority', severity: 'Severity', storyPoints: 'Story points',
+  estimate: 'Estimate', businessValue: 'Business value', componentIds: 'Components', labelIds: 'Labels', tags: 'Tags',
+  dueDate: 'Due date', type: 'Type', taskTypeDefinitionId: 'Type', boardId: 'Board', isArchived: 'Archived', parentTaskId: 'Story',
+};
+// The twins of a field above (assigneeId beside assignee) and the board's own
+// bookkeeping, which PM's page does not show either.
+const HISTORY_SKIP = new Set(['_id', 'createdAt', 'updatedAt', 'projectId', 'spaceId', 'key', 'sequenceNumber', 'order', 'rank', 'columnId', 'status',
+  'authorId', 'assigneeId', 'assigneeType', 'assignee2Id', 'assignee2Type', 'lastStatusTransition', 'doneAt', 'statusChangedAt', 'descriptionVersion',
+  'watchers', 'unwatchedBy', 'externalUpdatedAt']);
+const nameByEmail = new Map();   // email -> the name PM shows, learned from comments
+
+async function history({ project, id, subtask }) {
+  const url = `${HISTORY_API}?entityType=${subtask ? 'subtask' : 'task'}&entityId=${encodeURIComponent(id)}&limit=200`;
+  const get = async () => electron.net.fetch(url, { headers: { authorization: `Bearer ${await accessToken()}`, accept: 'application/json' } });
+  let res = await get();
+  if (res.status === 401) { auth.expiresAt = 0; res = await get(); }
+  const text = await res.text();
+  if (!res.ok) throw new Error(`PM answered ${res.status}: ${text.slice(0, 200)}`);
+  const items = (JSON.parse(text)?.items || []).slice().sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+  const o = await options(project).catch(() => null);
+  const names = new Map();
+  for (const list of [o?.statuses, o?.sprints, o?.teams, o?.components, o?.epics]) for (const x of list || []) names.set(x.id, x.key ? `${x.key} ${x.name}` : x.name);
+  const fieldName = new Map((o?.fields || []).map(f => [f.id, f.name]));
+  const who = email => {
+    if (!email) return 'PM';
+    if (!email.includes('@')) return email === 'automation' ? 'Automation' : email;
+    const e = email.toLowerCase();
+    if (nameByEmail.has(e)) return nameByEmail.get(e);
+    const n = personName(e);
+    if (n !== e) return n;
+    // Not known yet: the email's first part, or the full name of someone in
+    // the ticket (an assignee) whose first name it is.
+    const guess = e.split('@')[0].split(/[._-]/).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
+    return people.find(p => p.split(' ')[0].toLowerCase() === guess.split(' ')[0].toLowerCase()) || guess;
+  };
+  const people = [...new Set(items.flatMap(it => [it.snapshot?.assignee, it.snapshot?.assignee2, it.changes?.assignee, it.changes?.assignee2]))]
+    .filter(n => typeof n === 'string' && n.includes(' ') && !n.includes('@'));
+  const show = (field, v) => {
+    if (v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length)) return '';
+    if (Array.isArray(v)) return v.map(x => show(field, x)).join(', ');
+    if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+    if (typeof v === 'object') return JSON.stringify(v);
+    if (field === 'estimate') return `${v} min`;
+    if (typeof v === 'string' && names.has(v)) return names.get(v);
+    if (/Id$|Ids$/.test(field) && /^[a-f\d]{24}$/.test(String(v))) return field === 'sprintId' ? 'a closed sprint' : 'another one';
+    return String(v);
+  };
+  const out = [];
+  let before = null;
+  for (const it of items) {
+    const changes = [];
+    if (it.action === 'update') {
+      for (const [k, v] of Object.entries(it.changes || {})) {
+        if (HISTORY_SKIP.has(k)) continue;
+        if (k === 'customFields') {
+          for (const [f, fv] of Object.entries(v || {})) changes.push({ field: fieldName.get(f) || 'A custom field', from: show('', before?.customFields?.[f]), to: show('', fv) });
+          continue;
+        }
+        if (k === 'description') { changes.push({ field: 'Description', edited: true }); continue; }
+        const person = k === 'assignee' || k === 'assignee2';
+        const val = x => (person && typeof x === 'string' && x.includes('@') ? who(x) : show(k, x));
+        const from = val(before?.[k]), to = val(v);
+        if (from !== to) changes.push({ field: HISTORY_LABELS[k] || k, from, to });   // an email that became the same name is no change
+      }
+    }
+    if (it.snapshot) before = it.snapshot;
+    if (it.action === 'update' && !changes.length) continue;
+    out.push({ id: it._id, at: it.createdAt || '', who: who(it.userEmail), action: it.action || 'update', changes });
+  }
+  return out.reverse();
 }
 
 // Your own comments only (PM refuses others'). PM takes the new text as
@@ -729,4 +811,4 @@ async function workflows(project) {
 }
 
 module.exports = { setup, status, connect, disconnect, callTool, tickets, ticket, readTasks, statuses, subtasks, setStatus,
-  options, update, createTask, startSprint, completeSprint, createSubtask, attachments, openAttachment, attach, attachmentLinks, comments, addComment, editComment, deleteComment, personName, workflows, remove };
+  options, update, createTask, startSprint, completeSprint, createSubtask, attachments, openAttachment, attach, attachmentLinks, comments, history, addComment, editComment, deleteComment, personName, workflows, remove };

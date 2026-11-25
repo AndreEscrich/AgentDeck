@@ -491,7 +491,7 @@
   P.panelDescription = function (t) {
     const canAttach = !!t.id && t.description !== undefined;
     const files = canAttach ? this.panelList('attachLists', t.key, () => window.deck.pmAttachments({ project: projectOf(t), id: t.id })) : null;
-    const tab = canAttach && this.descTab === 'attachments' ? 'attachments' : 'description';
+    const tab = canAttach && ['attachments', 'history'].includes(this.descTab) ? this.descTab : 'description';
     const tabs = el('div', 'tp-tabs');
     const tabButton = (id, label, count = null) => {
       const b = el('button', 'tp-tab' + (tab === id ? ' on' : ''));
@@ -502,7 +502,12 @@
       return b;
     };
     tabs.append(tabButton('description', 'Description'));
-    if (canAttach) tabs.append(tabButton('attachments', 'Attachments', files?.items ? files.items.length : '…'));
+    if (canAttach) tabs.append(tabButton('attachments', 'Attachments', files?.items ? files.items.length : '…'), tabButton('history', 'History'));
+    if (tab === 'history') {
+      const body = el('div', 'tp-section-body');
+      body.append(this.panelHistory(t));
+      return this.panelSection('description', '', body, tabs);
+    }
     if (tab === 'attachments') {
       const body = el('div', 'tp-section-body');
       body.append(this.panelAttachments(t, { inTab: true }));
@@ -554,6 +559,37 @@
       }
     }
     return this.panelSection('description', '', body, tabs, edit);
+  };
+
+  // History: who changed what and when, newest first, as PM's own page
+  // lists it (pmclient.history reads PM's audit log). Read again each time
+  // the ticket opens, like the attachments and comments.
+  P.panelHistory = function (t) {
+    const box = el('div', 'tp-history');
+    const d = this.panelList('historyLists', t.key, () => window.deck.pmHistory({ project: projectOf(t), id: t.id, subtask: !!t.subtask }));
+    if (d.error) { box.append(el('div', 'tickets-error', d.error)); return box; }
+    if (!d.items) { box.append(el('div', 'tp-label', 'Reading the history from PM…')); return box; }
+    if (!d.items.length) { box.append(el('div', 'tp-label', 'No changes yet.')); return box; }
+    for (const h of d.items) {
+      const row = el('div', 'tp-hist');
+      const head = el('div', 'tp-hist-head');
+      const when = el('span', 'tp-hist-when', h.at ? timeAgoText(Date.parse(h.at)) : '');
+      if (h.at) when.title = new Date(h.at).toLocaleString();
+      head.append(el('span', 'tp-hist-who', h.who), el('span', 'tp-hist-what', h.action === 'create' ? 'created the ticket' : h.action === 'delete' ? 'deleted the ticket' : h.action === 'update' ? 'changed' : h.action), when);
+      row.append(head);
+      for (const c of h.changes || []) {
+        const line = el('div', 'tp-hist-change');
+        line.append(el('span', 'tp-hist-field', c.field));
+        if (c.edited) line.append(el('span', 'tp-hist-to', 'edited'));
+        else {
+          if (c.from) line.append(el('span', 'tp-hist-from', c.from), el('span', 'tp-hist-arrow', '→'));
+          line.append(el('span', 'tp-hist-to', c.to || 'none'));
+        }
+        row.append(line);
+      }
+      box.append(row);
+    }
+    return box;
   };
 
   // PM's HTML, cleaned, with its images and videos as PM's short-lived links
