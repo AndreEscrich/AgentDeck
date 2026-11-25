@@ -268,7 +268,8 @@ class HealthView {
     const since = new Date(Date.now() - days * 864e5).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
     // One scale for all their lines (the busiest day of any of them), so a
     // big crash stands out against the small ones.
-    this.dayMax = Math.max(1, ...[...(c.exceptions || []), ...(c.groups || [])].flatMap(x => x.trend?.devices || []));
+    // 25 at least, so small ones still have a visible curve.
+    this.dayMax = Math.max(25, ...[...(c.exceptions || []), ...(c.groups || [])].flatMap(x => x.trend?.devices || []));
     box.append(
       this.crashList(p, 'Unity exceptions', c.exceptions, 'C# exceptions nobody caught, by the method that threw. The game goes on, but that code stopped. Most devices first.', 'exceptions', days),
       this.crashList(p, 'Handled errors', c.errors, 'Errors the game reports on purpose without crashing, most players first.', 'errors', days),
@@ -312,7 +313,16 @@ class HealthView {
       const num = el('div', 'health-item-n', n.toLocaleString());
       num.title = kind === 'errors' ? `${n} players, ${x.events.toLocaleString()} times` : `${n} devices, ${x.events.toLocaleString()} times`;
       row.append(main, graph, num);
-      if (kind !== 'errors') row.append(this.agentButton(p, { kind: kind === 'crashes' ? 'crash' : 'exception', ...x, rangeDays: days }));
+      if (kind !== 'errors') {
+        const item = { kind: kind === 'crashes' ? 'crash' : 'exception', ...x, rangeDays: days };
+        row.append(this.agentButton(p, item));
+        // A click: its window, with a bigger graph and where it happens.
+        if (x.id) {
+          row.classList.add('clickable');
+          row.title = 'Click for its days in detail, where it happens and its top frame';
+          row.onclick = e => { if (!e.target.closest('button')) this.openCrash(p, item, row); };
+        }
+      }
       else row.append(el('span'));
       card.append(row);
     }
@@ -448,18 +458,19 @@ function loading(text, small = false) {
   return d;
 }
 
-// One crash's devices per day, the last 30 days, as a line on the scale
-// all of the tab's crashes share (max: the busiest day of any of them), so
-// a big crash draws a tall line and a small one stays near the floor. The
-// days of the picked range are brighter; a day at 0.5% of the players or
-// more has a red dot, a spiking last day an amber one. Its tooltip says
-// each of the last days.
-function dayLine(t, days, max = Math.max(1, ...t.devices)) {
+// One crash's devices per day, the last 30 days and today so far, as a
+// smooth filled curve on the scale all of the tab's crashes share (max: the
+// busiest day of any of them, 25 at least), so a big crash draws a tall
+// curve and a small one stays near the floor. The picked range has a faint
+// band behind it; today, still filling, is dashed. A day at 0.5% of the
+// players or more has a red dot, a spiking day an amber one.
+function dayLine(t, days, max = Math.max(25, ...t.devices)) {
   const w = 120, h = 30, n = t.devices.length;
   const x = i => (n === 1 ? w / 2 : i / (n - 1) * (w - 4) + 2);
   const y = v => h - 2 - Math.min(1, v / max) * (h - 4);
-  const pts = t.devices.map((v, i) => `${x(i).toFixed(2)},${y(v).toFixed(2)}`);
-  const from = Math.max(0, n - Math.max(1, days) - 1);   // the range, from the day before it
+  const pts = t.devices.map((v, i) => [x(i), y(v)]);
+  const full = t.today ? n - 1 : n;                        // the full days
+  const from = Math.max(0, full - Math.max(1, days));
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
   svg.setAttribute('class', 'health-days');
@@ -467,18 +478,239 @@ function dayLine(t, days, max = Math.max(1, ...t.devices)) {
   let dots = '';
   t.devices.forEach((v, i) => {
     if (t.hot && t.shareAt === t.dates[i]) dots += `<circle class="hot" cx="${x(i).toFixed(2)}" cy="${y(v).toFixed(2)}" r="2.3"/>`;
-    else if (t.spiking && i === n - 1) dots += `<circle class="spike" cx="${x(i).toFixed(2)}" cy="${y(v).toFixed(2)}" r="2.3"/>`;
+    else if (t.spiking && i >= n - 2 && v === Math.max(t.devices[n - 1], t.devices[n - 2])) dots += `<circle class="spike" cx="${x(i).toFixed(2)}" cy="${y(v).toFixed(2)}" r="2.3"/>`;
   });
-  svg.innerHTML = `<polygon class="area ${level}" points="${x(0).toFixed(2)},${h - 2} ${pts.join(' ')} ${x(n - 1).toFixed(2)},${h - 2}"/>`
+  const line = smoothPath(pts.slice(0, full));
+  svg.innerHTML = `<rect class="band" x="${(x(from) - 1.5).toFixed(2)}" y="0" width="${(x(n - 1) - x(from) + 3).toFixed(2)}" height="${h}"/>`
+    + `<path class="area ${level}" d="${smoothPath(pts)} L${x(n - 1).toFixed(2)},${h - 2} L${x(0).toFixed(2)},${h - 2} Z"/>`
     + `<line class="floor" x1="0" x2="${w}" y1="${h - 1.5}" y2="${h - 1.5}"/>`
-    + `<polyline class="old" points="${pts.slice(0, from + 1).join(' ')}"/>`
-    + `<polyline class="${level}" points="${pts.slice(from).join(' ')}"/>` + dots;
+    + `<path class="line ${level}" d="${line}"/>`
+    + (t.today ? `<path class="line ${level} today" d="${smoothPath(pts.slice(full - 1))}"/>` : '') + dots;
   const wrap = el('div', 'health-days-wrap');
   wrap.append(svg);
-  const fmt = d => new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-  wrap.title = `Devices per day, the last ${n} days (${fmt(t.dates[0])} – ${fmt(t.dates[n - 1])}), on the same scale as the others (top: ${max}):\n`
-    + t.dates.slice(-7).map((d, i) => `${fmt(d)}: ${t.devices[n - 7 + i]}`).join('\n')
-    + (t.share ? `\nPeak in this range: ${pctText(t.share)} of the day's players.` : '');
+  const fmt = (d, i) => (t.today && i === n - 1 ? 'today so far' : new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }));
+  wrap.title = `Devices per day, the last 30 days and today (top of the scale: ${max}, the same for all):\n`
+    + t.dates.slice(-7).map((d, i) => `${fmt(d, n - 7 + i)}: ${t.devices[n - 7 + i]}`).join('\n')
+    + (t.share ? `\nPeak in this range: ${pctText(t.share)} of the day's players.` : '')
+    + '\nClick for more.';
+  return wrap;
+}
+
+// A smooth line through points ([x, y], x growing) that never overshoots
+// them (monotone cubic: a peak stays a peak, the floor stays the floor).
+function smoothPath(pts) {
+  const n = pts.length;
+  if (!n) return '';
+  if (n === 1) return `M${pts[0][0]},${pts[0][1]}`;
+  const dx = [], m = [], tan = new Array(n).fill(0);
+  for (let i = 0; i < n - 1; i++) { dx[i] = pts[i + 1][0] - pts[i][0]; m[i] = dx[i] ? (pts[i + 1][1] - pts[i][1]) / dx[i] : 0; }
+  tan[0] = m[0]; tan[n - 1] = m[n - 2];
+  for (let i = 1; i < n - 1; i++) tan[i] = m[i - 1] * m[i] <= 0 ? 0 : (m[i - 1] + m[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (!m[i]) { tan[i] = 0; tan[i + 1] = 0; continue; }
+    const a = tan[i] / m[i], b = tan[i + 1] / m[i], q = a * a + b * b;
+    if (q > 9) { const k = 3 / Math.sqrt(q); tan[i] = k * a * m[i]; tan[i + 1] = k * b * m[i]; }
+  }
+  let d = `M${pts[0][0].toFixed(2)},${pts[0][1].toFixed(2)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const [x0, y0] = pts[i], [x1, y1] = pts[i + 1], h3 = dx[i] / 3;
+    d += ` C${(x0 + h3).toFixed(2)},${(y0 + tan[i] * h3).toFixed(2)} ${(x1 - h3).toFixed(2)},${(y1 - tan[i + 1] * h3).toFixed(2)} ${x1.toFixed(2)},${y1.toFixed(2)}`;
+  }
+  return d;
+}
+
+// ---------- one crash in detail ----------
+
+// Its window: it grows out of its row, like a ticket. Its days as a big
+// chart (devices and events, the last 30 days and today), where it happens
+// (app versions, OS versions, device models, countries) and its top frame
+// as Embrace has it, with its crash group id to find the whole stack in
+// Embrace (its BigQuery export has only that first frame).
+HealthView.prototype.openCrash = async function (p, x, row) {
+  if (this.view.querySelector('.health-crash-shade')) return;
+  const shade = el('div', 'review-shade top health-crash-shade');
+  const box = el('div', 'review-confirm health-crash');
+  const close = async () => {
+    document.removeEventListener('keydown', onKey, true);
+    window.uiSound?.('close');
+    const r = await morphClose(box, row, { backdrop: shade });
+    r?.done?.();
+    shade.remove();
+  };
+  const onKey = e => { if (isBackKey(e)) { e.preventDefault(); e.stopImmediatePropagation(); close(); } };
+  document.addEventListener('keydown', onKey, true);
+  shade.onmousedown = e => { if (e.target === shade) close(); };
+  const head = el('div', 'health-crash-head');
+  const title = el('div', 'health-crash-title');
+  title.append(el('span', 'health-crash-kind', x.kind === 'exception' ? 'Unity exception' : x.type === 'Out of memory' ? 'Out of memory' : 'Native crash'), el('h3', null, x.what));
+  const shut = el('button', 'icon tp-close', '✕');
+  shut.type = 'button';
+  shut.title = 'Close (Esc)';
+  shut.onclick = close;
+  head.append(title, this.agentButton(p, x), shut);
+  const full = el('div', 'health-crash-full', x.method || x.frame || x.what);
+  const body = el('div', 'health-crash-body');
+  body.append(loading('Reading its days and where it happens from Tactile BI…'));
+  box.append(head, full, body);
+  shade.append(box);
+  this.view.append(shade);
+  window.uiSound?.('open');
+  morphOpen(box, row, { backdrop: shade });
+
+  const d = await window.deck.healthCrash(p.id, x.id).catch(e => ({ error: String(e?.message || e) }));
+  if (!box.isConnected) return;
+  if (d?.error) { body.replaceChildren(el('div', 'tp-error', d.error)); return; }
+  body.replaceChildren();
+  // The days: the last 30 and today, every day (0 on a day without it).
+  const now = Date.now(), DAY = 864e5;
+  const dates = [];
+  for (let i = 30; i >= 0; i--) dates.push(new Date(now - i * DAY).toISOString().slice(0, 10));
+  const by = new Map(d.days.map(r => [r.key, r]));
+  const devices = dates.map(k => by.get(k)?.devices || 0), events = dates.map(k => by.get(k)?.events || 0);
+  const tot = (list, k) => list.reduce((a, r) => a + r[k], 0);
+  const stats = el('div', 'health-crash-stats');
+  const stat = (n, label) => { const t = el('div', 'health-crash-stat'); t.append(el('b', null, n), el('span', null, label)); return t; };
+  const peak = Math.max(...devices);
+  const peakAt = dates[devices.indexOf(peak)];
+  const players = d.dau[peakAt] || d.dau[dates[dates.length - 2]] || 0;
+  stats.append(stat(tot(d.days, 'devices').toLocaleString(), 'devices, 30 days'), stat(tot(d.days, 'events').toLocaleString(), 'times'),
+    stat(devices[devices.length - 1].toLocaleString(), 'devices today so far'),
+    stat(peak.toLocaleString(), `on its worst day (${new Date(peakAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })})`),
+    ...(players ? [stat(pctText(peak / players), 'of that day\'s players')] : []));
+  body.append(stats, bigChart(d));
+  // Where it happens.
+  const grid = el('div', 'health-crash-grid');
+  const part = (label, list) => {
+    const card = el('div', 'health-crash-part');
+    card.append(el('div', 'health-section-label', label));
+    if (!list.length) { card.append(el('div', 'gallery-note', 'Nothing.')); return card; }
+    const max = Math.max(1, ...list.map(r => r.devices));
+    for (const r of list) {
+      const line = el('div', 'health-crash-row');
+      const bar = el('span', 'health-crash-bar');
+      const fill = el('span'); fill.style.width = `${Math.max(3, r.devices / max * 100)}%`;
+      bar.append(fill);
+      line.append(el('span', 'health-crash-key', r.key), bar, el('span', 'health-crash-n', r.devices.toLocaleString()));
+      line.title = `${r.key}: ${r.devices} devices, ${r.events} times`;
+      card.append(line);
+    }
+    return card;
+  };
+  grid.append(part('App versions', d.version), part('OS versions', d.os), part('Devices', d.device), part('Countries', d.country));
+  body.append(grid);
+  // The top frame, and the way to the whole stack.
+  const frame = el('div', 'health-crash-frame');
+  frame.append(el('div', 'health-section-label', 'Stack trace'));
+  const f = d.frame[0] || {};
+  const lines = [['Method', f.method], ['File', f.file && f.file !== '<Unknown File>' ? f.file : ''], ['Line', f.line], ['Symbol', f.symbol], ['Module', f.module],
+    ['Message', f.message], ['Type', f.type || f.errorType], ['Stack', f.stackTraceType]].filter(([, v]) => v);
+  const code = el('div', 'health-crash-code');
+  code.append(el('div', 'health-crash-code-top', `at ${f.method || f.symbol || f.module || x.what}${f.file && f.file !== '<Unknown File>' ? ` (${f.file}${f.line ? ':' + f.line : ''})` : ''}`));
+  for (const [k, v] of lines) { const r2 = el('div', 'health-crash-kv'); r2.append(el('span', null, k), el('code', null, String(v))); code.append(r2); }
+  frame.append(code);
+  if (d.frame.length > 1) frame.append(el('div', 'health-card-note', `${d.frame.length} different top frames in this group; the one on the most devices.`));
+  const gid = el('div', 'health-crash-id');
+  const copy = el('button', 'tp-link', 'Copy');
+  copy.type = 'button';
+  copy.onclick = () => { window.deck.copyText?.(x.id) ?? navigator.clipboard.writeText(x.id); copy.textContent = 'Copied'; setTimeout(() => { copy.textContent = 'Copy'; }, 1200); };
+  gid.append(el('span', null, 'Embrace crash group'), el('code', null, x.id), copy);
+  frame.append(gid, el('div', 'health-card-note', 'Embrace\'s export to BigQuery keeps only this first frame of the stack, never the rest. The whole stack trace is in Embrace: search this crash group id there.'));
+  body.append(frame);
+};
+
+// A crash's devices, big: a smooth filled curve per app version (the four
+// on the most devices, the rest together), by hour over the last 48 hours
+// (in your time) or by day over the last 30 days and today. Dashed lines
+// across; hover an hour or a day for its numbers.
+const VERSION_COLORS = ['#e8c547', '#3fb6a0', '#c061cb', '#5a8de0', '#9a8f80'];
+function bigChart(d) {
+  const wrap = el('div', 'health-big-wrap');
+  const top = el('div', 'health-big-top');
+  const modes = el('div', 'health-ranges');
+  let mode = d.hourv.length ? 'hours' : 'days';
+  const chart = el('div');
+  const legend = el('div', 'health-big-legend');
+  const draw = () => {
+    for (const b of modes.children) b.classList.toggle('on', b.dataset.mode === mode);
+    const hourly = mode === 'hours';
+    // The slots: the last 48 hours (UTC keys, shown in your time), or the
+    // last 30 days and today.
+    const keys = [], now = Date.now();
+    if (hourly) for (let i = 47; i >= 0; i--) keys.push(new Date(now - i * 3600e3).toISOString().slice(0, 13));
+    else for (let i = 30; i >= 0; i--) keys.push(new Date(now - i * 864e5).toISOString().slice(0, 10));
+    const rows = hourly ? d.hourv : d.dayv;
+    const total = new Map();
+    for (const r of rows) total.set(r.version, (total.get(r.version) || 0) + r.devices);
+    const ranked = [...total].sort((a, b) => b[1] - a[1]).map(([v]) => v);
+    const shown = ranked.slice(0, 4);
+    const series = [...shown, ...(ranked.length > 4 ? ['Other versions'] : [])];
+    const val = new Map(series.map(v => [v, keys.map(() => 0)]));
+    const at = new Map(keys.map((k, i) => [k, i]));
+    for (const r of rows) {
+      const i = at.get(r.key);
+      if (i === undefined) continue;
+      const v = shown.includes(r.version) ? r.version : 'Other versions';
+      val.get(v)[i] += r.devices;
+    }
+    const w = 860, h = 210, l = 34, b = 22, t = 10, r = 12, n = keys.length;
+    const max = Math.max(5, ...series.flatMap(v => val.get(v)));
+    const nice = max <= 10 ? Math.ceil(max / 2) * 2 : Math.ceil(max / 5) * 5;
+    const X = i => l + i / (n - 1) * (w - l - r);
+    const Y = v => t + (1 - v / nice) * (h - t - b);
+    let g = '';
+    for (let k = 0; k <= 5; k++) {
+      const v = nice * k / 5;
+      g += `<line class="grid${k ? '' : ' base'}" x1="${l}" x2="${w - r}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/><text class="axis" x="${l - 6}" y="${(Y(v) + 3.5).toFixed(1)}" text-anchor="end">${Math.round(v * 10) / 10}</text>`;
+    }
+    const label = (k, i) => {
+      const dt = hourly ? new Date(k + ':00:00Z') : new Date(k);
+      if (hourly) {
+        if (dt.getHours() === 0) return dt.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+        return dt.getHours() % 6 === 0 ? dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '';
+      }
+      return i === n - 1 ? 'today' : i % 5 === 0 ? dt.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '';
+    };
+    keys.forEach((k, i) => { const s2 = label(k, i); if (s2) g += `<text class="axis" x="${X(i).toFixed(1)}" y="${h - 6}" text-anchor="middle">${s2}</text>`; });
+    // The biggest behind, the smaller in front.
+    [...series].reverse().forEach(v => {
+      const c = VERSION_COLORS[series.indexOf(v)] || VERSION_COLORS[4];
+      const pts = val.get(v).map((y, i) => [X(i), Y(y)]);
+      const line = smoothPath(pts);
+      g += `<path d="${line} L${X(n - 1).toFixed(1)},${Y(0).toFixed(1)} L${X(0).toFixed(1)},${Y(0).toFixed(1)} Z" fill="${c}" fill-opacity="0.22"/><path d="${line}" fill="none" stroke="${c}" stroke-width="1.6" stroke-linejoin="round"/>`;
+    });
+    // Hover: one strip per slot, its numbers.
+    const slot = (w - l - r) / (n - 1);
+    keys.forEach((k, i) => {
+      const dt = hourly ? new Date(k + ':00:00Z') : new Date(k);
+      const when = hourly ? `${dt.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}, ${dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`
+        : i === n - 1 ? 'Today so far' : dt.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+      const parts = series.map(v => [v, val.get(v)[i]]).filter(([, c]) => c);
+      const sum = parts.reduce((a, [, c]) => a + c, 0);
+      g += `<g class="slot"><rect x="${(X(i) - slot / 2).toFixed(1)}" y="${t}" width="${slot.toFixed(1)}" height="${h - t - b}"/><title>${when}: ${sum} devices${parts.length ? '\n' + parts.map(([v, c]) => `${v}: ${c}`).join('\n') : ''}</title></g>`;
+    });
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    svg.setAttribute('class', 'health-big');
+    svg.innerHTML = g;
+    chart.replaceChildren(svg);
+    legend.replaceChildren(...series.map((v, i) => {
+      const k = el('span', 'k');
+      k.style.setProperty('--c', VERSION_COLORS[i] || VERSION_COLORS[4]);
+      k.textContent = `${v} · ${(v === 'Other versions' ? ranked.slice(4).reduce((a, x) => a + total.get(x), 0) : total.get(v)).toLocaleString()}`;
+      return k;
+    }), el('span', 'health-big-note', hourly ? 'Devices per hour, in your time' : 'Devices per day; today is still filling'));
+    if (!series.length) legend.replaceChildren(el('span', 'health-big-note', hourly ? 'None in the last 48 hours.' : 'None in the last 30 days.'));
+  };
+  for (const [m, label] of [['hours', 'Last 48 hours'], ['days', '30 days']]) {
+    const bt = el('button', 'health-range', label);
+    bt.type = 'button';
+    bt.dataset.mode = m;
+    bt.onclick = () => { mode = m; draw(); };
+    modes.append(bt);
+  }
+  top.append(el('span', 'health-section-label', 'Devices by app version'), modes);
+  wrap.append(top, chart, legend);
+  draw();
   return wrap;
 }
 

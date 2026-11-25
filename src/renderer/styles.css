@@ -4473,14 +4473,14 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .gallery-refresh.spinning { animation: health-spin 0.9s linear infinite; opacity: 0.8; }
 .health-days-wrap { width: 124px; height: 30px; }
 .health-days { display: block; width: 100%; height: 100%; }
-.health-days polyline { fill: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-.health-days polyline.old { stroke: color-mix(in srgb, var(--text) 28%, transparent); }
-.health-days polyline.now { stroke: var(--accent); }
-.health-days polyline.spike { stroke: #f0a030; }
-.health-days polyline.hot { stroke: #e5493a; }
-.health-days .area { stroke: none; fill: color-mix(in srgb, var(--accent) 12%, transparent); }
-.health-days .area.spike { fill: color-mix(in srgb, #f0a030 14%, transparent); }
-.health-days .area.hot { fill: color-mix(in srgb, #e5493a 16%, transparent); }
+.health-days .line { fill: none; stroke-width: 1.4; stroke-linejoin: round; stroke-linecap: round; }
+.health-days .band { fill: color-mix(in srgb, var(--text) 5%, transparent); }
+.health-days .line.now { stroke: var(--accent); }
+.health-days .line.spike { stroke: #f0a030; }
+.health-days .line.hot { stroke: #e5493a; }
+.health-days .area { stroke: none; fill: color-mix(in srgb, var(--accent) 22%, transparent); }
+.health-days .area.spike { fill: color-mix(in srgb, #f0a030 24%, transparent); }
+.health-days .area.hot { fill: color-mix(in srgb, #e5493a 26%, transparent); }
 .health-days .floor { stroke: color-mix(in srgb, var(--text) 10%, transparent); stroke-width: 1; }
 .health-days circle.hot { fill: #e5493a; }
 .health-days circle.spike { fill: #f0a030; }
@@ -4491,3 +4491,44 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .health-item.hot { box-shadow: inset 3px 0 0 #e5493a; }
 .health-item .health-agent { justify-self: end; }
 .health > .health-card + .health-card { margin-top: 14px; }
+/* Project health: today dashed in each crash's line; a crash's window (renderer/health.js openCrash). */
+.health-days .line.today { stroke-dasharray: 2 2; }
+.health-item.clickable { cursor: pointer; }
+.health-crash { width: min(920px, calc(100% - 48px)); display: flex; flex-direction: column; gap: 12px; }
+.health-crash-head { display: flex; align-items: flex-start; gap: 12px; }
+.health-crash-title { flex: 1; min-width: 0; }
+.health-crash-title h3 { margin: 2px 0 0; font-family: var(--mono); font-size: 16px; word-break: break-all; }
+.health-crash-kind { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+.health-crash-full { font-family: var(--mono); font-size: 12px; color: var(--text-faint); word-break: break-all; margin-top: -6px; }
+.health-crash-stats { display: flex; flex-wrap: wrap; gap: 8px; }
+.health-crash-stat { display: flex; flex-direction: column; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); background: #14100c; min-width: 110px; }
+.health-crash-stat b { font-size: 18px; color: var(--text); }
+.health-crash-stat span { font-size: 11.5px; color: var(--text-dim); }
+.health-big-wrap { padding: 10px 12px 8px; border-radius: 10px; border: 1px solid var(--border); background: #14100c; }
+.health-big { display: block; width: 100%; height: auto; }
+.health-big .grid { stroke: color-mix(in srgb, var(--text) 10%, transparent); stroke-width: 1; stroke-dasharray: 3 4; }
+.health-big .grid.base { stroke-dasharray: none; stroke: color-mix(in srgb, var(--text) 18%, transparent); }
+.health-big .axis { fill: var(--text-faint); font-size: 10.5px; font-family: var(--font); }
+.health-big .slot rect { fill: transparent; }
+.health-big .slot:hover rect { fill: color-mix(in srgb, var(--text) 6%, transparent); }
+.health-big-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.health-big-top .health-section-label { margin: 0; }
+.health-big-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 4px; font-size: 11.5px; color: var(--text-dim); }
+.health-big-legend .k::before { content: ''; display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; border-radius: 3px; background: color-mix(in srgb, var(--c) 35%, transparent); border: 1.5px solid var(--c); }
+.health-big-note { margin-left: auto; color: var(--text-faint); font-size: 11px; }
+.health-crash-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 1000px) { .health-crash-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.health-crash-part { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: #14100c; min-width: 0; }
+.health-crash-row { display: grid; grid-template-columns: minmax(0, 1fr) 46px 30px; gap: 6px; align-items: center; font-size: 12px; padding: 2px 0; }
+.health-crash-key { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); }
+.health-crash-bar { height: 5px; border-radius: 99px; background: color-mix(in srgb, var(--text) 8%, transparent); overflow: hidden; }
+.health-crash-bar > span { display: block; height: 100%; background: color-mix(in srgb, var(--accent) 70%, transparent); }
+.health-crash-n { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
+.health-crash-frame { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: #14100c; display: flex; flex-direction: column; gap: 6px; }
+.health-crash-code { font-family: var(--mono); font-size: 12px; background: var(--code-bg); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; overflow-x: auto; }
+.health-crash-code-top { color: #f0b050; margin-bottom: 4px; word-break: break-all; }
+.health-crash-kv { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 8px; }
+.health-crash-kv span { color: var(--text-faint); }
+.health-crash-kv code { color: var(--text); word-break: break-all; }
+.health-crash-id { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-dim); }
+.health-crash-id code { font-family: var(--mono); color: var(--text); }

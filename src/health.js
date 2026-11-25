@@ -326,10 +326,10 @@ async function chartRows(p, chartId, force, days = null) {
   return (q.rows || []).map(r => Object.fromEntries(q.columns.map((c, i) => [c.name, r[i]])));
 }
 
-// Each crash group's devices and events per day, the last 31 full days
-// (today is left out: still filling), for these group ids: one query on
-// the dashboard's crash table, that reads only those days (a few MB). Kept
-// for a few hours. Resolves with { id: [{ date, devices, events }] }.
+// Each crash group's devices and events per day, the last 31 days and
+// today so far (a crash taking off today must show), for these group ids:
+// one query on the dashboard's crash table, that reads only those days (a
+// few MB). Kept an hour. Resolves with { id: [{ date, devices, events }] }.
 async function crashTrends(p, groupIds, force = false) {
   const ids = await crashCharts(p);
   if (!ids.table) return {};
@@ -337,11 +337,11 @@ async function crashTrends(p, groupIds, force = false) {
   if (!want.length) return {};
   state.trends ||= {};
   const hit = state.trends[p.id];
-  const fresh = hit && Date.now() - hit.at < CRASH_RUN_EVERY && new Date(hit.at).toDateString() === new Date().toDateString();
+  const fresh = hit && Date.now() - hit.at < 60 * 60 * 1000 && new Date(hit.at).toDateString() === new Date().toDateString();
   if (!force && fresh && want.every(id => id in hit.byId)) return hit.byId;
   const sql = `SELECT crashGroupId AS id, CAST(partitionDate AS STRING) AS date, COUNT(*) AS events, COUNT(DISTINCT deviceId) AS devices
 FROM \`${ids.table}\`
-WHERE partitionDate >= DATE_SUB(CURRENT_DATE(), INTERVAL 31 DAY) AND partitionDate < CURRENT_DATE()
+WHERE partitionDate >= DATE_SUB(CURRENT_DATE(), INTERVAL 31 DAY) AND partitionDate <= CURRENT_DATE()
   AND crashGroupId IN (${want.map(x => `'${x}'`).join(', ')})
 GROUP BY 1, 2`;
   const r = await bi.callTool('bi_run_sql_preview', { sql, previewLimit: 10000 });
@@ -355,23 +355,28 @@ GROUP BY 1, 2`;
 }
 
 // The trend of one crash for the view: its devices on each of the last 30
-// full days (0 on a day without it), its peak share of the day's players
-// in the last `days` days, and whether it is spiking (the last day at least
-// twice its usual, and at least 10 devices).
+// full days and today so far (0 on a day without it; the last one is
+// today), its peak share of the day's players in the last `days` days and
+// today (today's against yesterday's players: today has none yet), and
+// whether it is spiking (yesterday or today at least twice its usual, and
+// at least 10 devices).
 const SHARE_RED = 0.005;
 function trendOf(rows, dau, days, now = Date.now()) {
   if (!rows) return null;
   const byDate = new Map(rows.map(r => [r.date, r]));
   const dates = [];
-  for (let i = 30; i >= 1; i--) dates.push(new Date(now - i * DAY).toISOString().slice(0, 10));
+  for (let i = 30; i >= 0; i--) dates.push(new Date(now - i * DAY).toISOString().slice(0, 10));
   const devices = dates.map(d => byDate.get(d)?.devices || 0);
-  const shares = dates.map((d, i) => (dau[d] ? devices[i] / dau[d] : 0));
-  const recent = shares.slice(-Math.max(1, days));
+  const events = dates.map(d => byDate.get(d)?.events || 0);
+  const n = dates.length;
+  const players = d => dau[d] || dau[dates[n - 2]] || 0;
+  const shares = dates.map((d, i) => (players(d) ? devices[i] / players(d) : 0));
+  const recent = shares.slice(-(Math.max(1, days) + 1));
   const peak = Math.max(0, ...recent);
-  const peakAt = dates[shares.length - recent.length + recent.indexOf(peak)];
-  const last = devices[devices.length - 1];
-  const usual = median(devices.slice(-15, -1));
-  return { dates, devices, share: peak, shareAt: peakAt, lastShare: shares[shares.length - 1], hot: peak >= SHARE_RED, spiking: last >= 10 && last >= Math.max(1, usual) * 2 };
+  const peakAt = dates[n - recent.length + recent.indexOf(peak)];
+  const last = Math.max(devices[n - 1], devices[n - 2]);
+  const usual = median(devices.slice(-16, -2));
+  return { dates, devices, events, today: true, share: peak, shareAt: peakAt, players: players(peakAt), lastShare: shares[n - 1], hot: peak >= SHARE_RED, spiking: last >= 10 && last >= Math.max(1, usual) * 2 };
 }
 
 async function readCrashes(p, force) {
@@ -612,13 +617,52 @@ async function hotWarnings(p, crashes, force) {
     if (t.hot) {
       crashes.warnings.push({ id: `hot:${x.id}:${t.shareAt}`, level: 'high', tab: 'crashes', item: x,
         title: `${name} hits ${pct(t.share)} of players`,
-        text: `${t.devices[t.dates.indexOf(t.shareAt)].toLocaleString()} devices on ${day(t.shareAt)}, of ${(crashes.dau[t.shareAt] || 0).toLocaleString()} players that day.` });
+        text: `${t.devices[t.dates.indexOf(t.shareAt)].toLocaleString()} devices ${t.shareAt === t.dates[t.dates.length - 1] ? 'today so far' : `on ${day(t.shareAt)}`}, of about ${(t.players || 0).toLocaleString()} daily players.` });
     } else if (t.spiking) {
       crashes.warnings.push({ id: `spikeitem:${x.id}:${t.dates[t.dates.length - 1]}`, level: 'medium', tab: 'crashes', item: x,
         title: `${name} is spiking`,
-        text: `${t.devices[t.devices.length - 1].toLocaleString()} devices on ${day(t.dates[t.dates.length - 1])}, usually about ${Math.round(median(t.devices.slice(-15, -1)))} a day.` });
+        text: `${t.devices[t.devices.length - 1].toLocaleString()} devices today so far, ${t.devices[t.devices.length - 2].toLocaleString()} yesterday; usually about ${Math.round(median(t.devices.slice(-16, -2)))} a day.` });
     }
   }
+}
+
+// One crash or exception in detail, for its window in the view: its days
+// (the last 30 and today: devices and events), and where it happens (app
+// versions, OS versions, device models, countries), and its top frame as
+// Embrace has it (method, file, line, symbol, module, message, type).
+// Embrace's export has only that first frame, never the whole stack. One
+// query on the crash table, for that group and those days (a few MB).
+async function crashDetail(projectId, groupId) {
+  const p = projects().find(x => x.id === projectId);
+  if (!p) throw new Error('That project is not in the list any more.');
+  if (!/^[A-Za-z0-9]{8,64}$/.test(groupId || '')) throw new Error('This one has no Embrace crash group id.');
+  const ids = await crashCharts(p);
+  if (!ids.table) throw new Error('The dashboard\'s crash table was not found.');
+  const sql = `WITH c AS (SELECT * FROM \`${ids.table}\` WHERE partitionDate >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY) AND crashGroupId = '${groupId}')
+SELECT 'day' AS part, CAST(partitionDate AS STRING) AS k, CAST(NULL AS STRING) AS v, COUNT(*) AS events, COUNT(DISTINCT deviceId) AS devices FROM c GROUP BY 2
+UNION ALL SELECT 'dayv', CAST(partitionDate AS STRING), IFNULL(appVersion, '?'), COUNT(*), COUNT(DISTINCT deviceId) FROM c GROUP BY 2, 3
+UNION ALL SELECT 'hourv', FORMAT_TIMESTAMP('%Y-%m-%dT%H', occurredAt), IFNULL(appVersion, '?'), COUNT(*), COUNT(DISTINCT deviceId) FROM c WHERE occurredAt >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 49 HOUR) GROUP BY 2, 3
+UNION ALL SELECT 'version', IFNULL(appVersion, '?'), NULL, COUNT(*), COUNT(DISTINCT deviceId) FROM c GROUP BY 2
+UNION ALL SELECT 'os', CONCAT(IF(platform = 'apple', 'iOS ', 'Android '), IFNULL(osVersion, '?')), NULL, COUNT(*), COUNT(DISTINCT deviceId) FROM c GROUP BY 2
+UNION ALL SELECT 'device', TRIM(CONCAT(IFNULL(deviceManufacturer, ''), ' ', IFNULL(deviceModel, '?'))), NULL, COUNT(*), COUNT(DISTINCT deviceId) FROM c GROUP BY 2
+UNION ALL SELECT 'country', IFNULL(country, '?'), NULL, COUNT(*), COUNT(DISTINCT deviceId) FROM c GROUP BY 2
+UNION ALL SELECT 'frame', TO_JSON_STRING(STRUCT(method, file, line, symbol, module, message, type, errorType, stackTraceType, eventName)), NULL, COUNT(*), COUNT(DISTINCT deviceId) FROM c GROUP BY 2`;
+  const r = await bi.callTool('bi_run_sql_preview', { sql, previewLimit: 2000 });
+  const col = Object.fromEntries((r?.columns || []).map((c, i) => [c.name, i]));
+  // By day and by hour (UTC, the last 48), each per app version.
+  const out = { days: [], dayv: [], hourv: [], version: [], os: [], device: [], country: [], frame: [] };
+  for (const row of r?.rows || []) {
+    const part = row[col.part];
+    const item = { key: row[col.k], events: Number(row[col.events]) || 0, devices: Number(row[col.devices]) || 0 };
+    if (part === 'day') out.days.push(item);
+    else if (part === 'dayv' || part === 'hourv') out[part].push({ ...item, version: row[col.v] });
+    else if (part === 'frame') { try { out.frame.push({ ...JSON.parse(item.key), events: item.events, devices: item.devices }); } catch { /* skip */ } }
+    else out[part]?.push(item);
+  }
+  out.days.sort((a, b) => a.key.localeCompare(b.key));
+  for (const k of ['version', 'os', 'device', 'country', 'frame']) out[k] = out[k].sort((a, b) => b.devices - a.devices || b.events - a.events).slice(0, 10);
+  out.dau = state.reports[p.id]?.crashes?.dau || {};
+  return out;
 }
 
 function markSeen() {
@@ -663,4 +707,4 @@ function digestFolder(folders) {
   return null;
 }
 
-module.exports = { setup, summary, check, markSeen, connect, disconnect, digestFolder, analyse, analyseCrashes, rangeLists, resolve, findDashboards };
+module.exports = { setup, summary, check, markSeen, connect, disconnect, digestFolder, analyse, analyseCrashes, rangeLists, crashDetail, resolve, findDashboards };
