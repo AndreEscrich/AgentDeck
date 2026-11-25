@@ -25,6 +25,8 @@ const MEDIA_PROMPT = [
   'Paths can be absolute or relative to your working folder.',
   'Images (png, jpg, gif, webp, tga, psd, psb, exr, tif) show as pictures; videos (mp4, webm, mov) show as players.',
   'Whenever you create or change a texture, image or video, show it this way.',
+  'When you show the user a video, show only the video: no picture of its frames next to it (a contact sheet, a grid or strip of frames, or single frames taken from it).',
+  'You may make such a picture to look at a video yourself, because you cannot watch it, but it is for you only: do not put it in your message, unless the user asks for frames.',
 ].join(' ');
 
 // Tells every agent that the app already shows its code changes, so its
