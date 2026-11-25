@@ -129,17 +129,11 @@ const ANSWER_PROMPT = [
 // A comment an agent posts on a Tactile PM ticket is read by QA, who go and
 // check the fix: so it is a few lines, not a report.
 const PM_COMMENT_PROMPT = [
-  'When you post or edit a comment on a Tactile PM ticket (pm_create_comment, pm_update_comment), QA reads it to go and check the change. Write it as HTML in the PM editor\'s format:',
-  'an H2 revision heading, a bold builds link, an "info" callout for Changes and a "tip" callout for Testing notes, with one bold bullet per item. Escape &, < and > in the text. Use exactly this template:',
-  '<h2><strong>Revision <REV>:</strong></h2><p><strong>Builds: </strong><a target="_blank" rel="noopener noreferrer nofollow" href="https://tactile.build/builds?revision=<REV>"><strong>https://tactile.build/builds?revision=<REV></strong></a></p><div data-component="info"><div class="callout-title" data-placeholder="Add a title"><strong>Changes</strong></div><div class="callout-body"><ul><li><p><strong><change 1></strong></p></li><li><p><strong><change 2></strong></p></li></ul></div></div><div data-component="tip"><div class="callout-title" data-placeholder="Add a title"><strong>Testing notes</strong></div><div class="callout-body"><ul><li><p><strong><what QA should check></strong></p></li></ul></div></div><p></p>',
-  'When there is something important QA must know (e.g. the change touches shared code, other screens or other games, or needs a setup step before testing), add it in a yellow Warning callout after Testing notes: <div data-component="warning"><div class="callout-title" data-placeholder="Add a title"><strong>Warning</strong></div><div class="callout-body"><ul><li><p><strong><what QA must know></strong></p></li></ul></div></div>. Leave the Warning callout out when there is nothing of that kind.',
-  'When the change is not committed yet, do not post the comment: ask the user what to do.',
-  'Changes: one short bullet per user-visible or QA-relevant change, written for QA rather than developers; no class names, file paths or code unless QA needs them to find something; merge small related changes into one bullet and skip pure refactors and test-only changes.',
-  'For a fix of an issue QA reported (e.g. a subtask titled "issue 1: …"), write "Fixed issue N: " plus how it behaves now, without repeating the full issue title or the subtask key.',
-  'Testing notes: one to three short bullets saying what to check and where in the game, plus what should stay unchanged if there is a regression risk; base them on the ticket\'s acceptance criteria.',
-  'Keep it short. If you already have a comment on the ticket for the same revision, update it with pm_update_comment instead of adding another.',
+  'Before you post or edit a comment about a change on a Tactile PM ticket (pm_create_comment, pm_update_comment), load the agent-hub:pm-comment skill and follow it: QA reads that comment to go and check the change.',
   'A comment that is not about a change (a question, an answer, a status note) is a short paragraph or two in <p> tags.',
 ].join(' ');
+
+const PLUGIN_DIR = require('path').join(__dirname, '..', 'plugins', 'agent-hub');
 
 // A PM subtask is often a line or two: the why, the acceptance criteria and
 // the screenshots are on its story, so the agent reads the story as well.
@@ -213,6 +207,7 @@ function claudeArgs(config, { cwd, resumeId, forkSession, resumeSessionAt, permi
     '--permission-prompt-tool', 'stdio',
     // Without this flag the CLI refuses a later switch to bypass mode.
     '--allow-dangerously-skip-permissions',
+    '--plugin-dir', PLUGIN_DIR,
     // Tactile's knowledge in Cortex, through its knowledge-retriever helper (knowledge.js).
     '--append-system-prompt', [SYSTEM_PROMPT, knowledge.knowledgePrompt(config, cwd, { helper: !!retriever }), require('./gallery').galleryPrompt(config), governed ? pipeline.governorPrompt(run) : ''].filter(Boolean).join('\n\n'),
     ...(Object.keys(agents).length ? ['--agents', JSON.stringify(agents)] : []),

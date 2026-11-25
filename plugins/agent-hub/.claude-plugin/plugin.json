@@ -1,0 +1,8 @@
+{
+  "name": "agent-hub",
+  "version": "1.0.0",
+  "description": "Skills Agent Hub gives every agent it starts",
+  "author": {
+    "name": "Agent Hub"
+  }
+}
