@@ -1471,9 +1471,17 @@ const healthView = new HealthView({
       ? `an unhandled C# exception thrown in ${x.method || x.what} (${x.platforms || 'Android and iOS'})`
       : `a native ${x.type === 'Out of memory' ? 'out-of-memory kill' : 'crash'} on ${x.platform || 'mobile'}${x.signal ? ` (${x.signal})` : ''}, top stack frame ${x.frame || x.what}`;
     const input = $('input');
+    // Its devices per day (health.js crashTrends), the last two weeks, so the
+    // agent can tie a start or a spike to a release.
+    const t = x.trend;
+    const days = t ? t.dates.slice(-14).map((d, i) => `${d.slice(5)}: ${t.devices[t.devices.length - 14 + i]}`).join(', ') : '';
+    const span = x.rangeDays ? (x.rangeDays === 1 ? 'the last full day' : `the last ${x.rangeDays} days`) : 'the last 30 days';
     input.value = `Find the cause of this ${x.kind === 'exception' ? 'Unity exception' : 'crash'} in the live ${project.name}: ${where}. `
-      + `Embrace reports it on ${x.devices} devices, ${x.events} times in the last 30 days${when ? ` (${when})` : ''}${x.versions?.length ? `, in versions ${x.versions.join(', ')}` : ''}. `
-      + `${x.id ? `Embrace crash group id: ${x.id}. ` : ''}The numbers come from the "${x.kind === 'exception' ? 'Top Unity exceptions' : 'Top crash groups'}" chart of the Tactile BI dashboard ${project.dashboardUrl}. `
+      + `Embrace reports it on ${x.devices} devices, ${x.events} times in ${span}${when ? ` (${when})` : ''}${x.versions?.length ? `, in versions ${x.versions.join(', ')}` : ''}. `
+      + `${days ? `Devices per day (month-day: devices): ${days}${t.share ? `; at most ${Math.round(t.share * 10000) / 100}% of a day's players` : ''}. ` : ''}`
+      + `${x.id ? `Embrace crash group id: ${x.id}. ` : ''}`
+      + `There is no full stack trace here: the BI data has only ${x.kind === 'exception' ? 'the C# method that threw (no exception type or message)' : 'the top stack frame and the signal'}. If you need the rest, say so and I can paste the stack from Embrace (search the crash group id). `
+      + `The numbers come from the "${x.kind === 'exception' ? 'Top Unity exceptions' : 'Top crash groups'}" chart of the Tactile BI dashboard ${project.dashboardUrl}. `
       + `Find where and why it happens in this project's code (and in its history, for when it started), say how sure you are, and propose a fix. Do not change any code until I say so.`;
     input.dispatchEvent(new Event('input'));
     input.focus();

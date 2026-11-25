@@ -4412,7 +4412,8 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .health-project-pick { font-size: 12px; padding: 3px 10px; }
 .health-project-status:empty { display: none; }
 .health-tabs { align-self: flex-start; }
-.health-tab-count { margin-left: 6px; padding: 0 6px; border-radius: 99px; background: #e5493a; color: #fff; font-size: 10.5px; font-weight: 700; }
+.health-tab-count { margin-left: 6px; padding: 0 6px; border-radius: 99px; background: #f0a030; color: #1d1813; font-size: 10.5px; font-weight: 700; }
+.health-tab-count.high { background: #e5493a; color: #fff; }
 /* The new layout: Needs attention, the numbers at a glance, then the parts. */
 .health-more { align-self: flex-start; margin-left: 4px; }
 .health-ranges { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: color-mix(in srgb, var(--text) 7%, transparent); margin-left: 8px; }
@@ -4429,24 +4430,24 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .health-glance-group { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 @media (max-width: 1100px) { .health-glance { grid-template-columns: minmax(0, 1fr); } }
 .health-stat { position: relative; overflow: hidden; }
-.health-stat.worse .health-stat-sub { color: #f08a6a; }
+.health-stat.worse .health-stat-sub { color: #f0b050; }
 .health-stat.better .health-stat-sub { color: #7fdc9f; }
-.health-stat.worse { border-color: color-mix(in srgb, #e5493a 40%, var(--border)); }
+.health-stat.worse { border-color: color-mix(in srgb, #f0a030 40%, var(--border)); }
 .health-spark { display: block; width: 100%; height: 26px; margin-top: 6px; color: color-mix(in srgb, var(--accent) 80%, transparent); }
-.health-stat.worse .health-spark { color: #f08a6a; }
+.health-stat.worse .health-spark { color: #f0b050; }
 .health-parts { align-self: flex-start; margin-top: 4px; }
 .health-crash-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
 @media (max-width: 1100px) { .health-crash-cols { grid-template-columns: minmax(0, 1fr); } }
 .health-card-note { font-size: 12px; color: var(--text-faint); margin: -4px 0 6px; line-height: 1.4; }
-.health-item { display: grid; grid-template-columns: minmax(0, 1fr) 70px 44px auto; gap: 10px; align-items: center; padding: 7px 6px; border-radius: 8px; }
+.health-item { display: grid; grid-template-columns: minmax(0, 1fr) 124px 50px 104px; gap: 10px; align-items: center; padding: 7px 6px; border-radius: 8px; }
 .health-item:hover { background: var(--bg-hover); }
 .health-item.health-spot { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .health-item-main { min-width: 0; }
 .health-item-name { font-family: var(--mono); font-size: 12.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .health-item-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 2px; font-size: 11.5px; color: var(--text-faint); }
-.health-new { padding: 0 7px; border-radius: 99px; background: #e5493a; color: #fff; font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; }
+.health-new { padding: 0 7px; border-radius: 99px; background: #f0a030; color: #1d1813; font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; }
 .health-item-bar { height: 6px; border-radius: 99px; background: color-mix(in srgb, var(--text) 8%, transparent); overflow: hidden; }
-.health-item-bar > span { display: block; height: 100%; border-radius: 99px; background: color-mix(in srgb, #e5493a 75%, transparent); }
+.health-item-bar > span { display: block; height: 100%; border-radius: 99px; background: color-mix(in srgb, var(--accent) 70%, transparent); }
 .health-item-n { text-align: right; font-weight: 600; font-size: 13px; color: var(--text); }
 .health-agent { font-size: 11.5px; padding: 3px 9px; white-space: nowrap; opacity: 0; }
 .health-item:hover .health-agent, .health-warning .health-agent, .health-item.health-spot .health-agent { opacity: 1; }
@@ -4463,3 +4464,23 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .tp-media-name { display: flex; justify-content: space-between; gap: 8px; padding: 4px 8px 6px; font-size: 12px; color: var(--text-dim); }
 .tp-media-name span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Project health (renderer/health.js): what is being read, each crash's days, its share of players. */
+.health-spinner { display: inline-block; width: 13px; height: 13px; flex-shrink: 0; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent); border-top-color: var(--accent); animation: health-spin 0.8s linear infinite; vertical-align: -2px; margin-right: 7px; }
+@keyframes health-spin { to { transform: rotate(360deg); } }
+.health-loading { display: flex; align-items: center; gap: 2px; padding: 22px 16px; border-radius: 12px; border: 1px dashed var(--border); color: var(--text-dim); font-size: 13px; justify-content: center; }
+.health-loading.small { padding: 8px 12px; border: none; justify-content: flex-start; font-size: 12px; color: var(--text-faint); }
+.health-when { display: inline-flex; align-items: center; }
+.gallery-refresh.spinning { animation: health-spin 0.9s linear infinite; opacity: 0.8; }
+.health-days-wrap { width: 124px; height: 26px; }
+.health-days { display: block; width: 100%; height: 100%; }
+.health-days rect.old { fill: color-mix(in srgb, var(--text) 22%, transparent); }
+.health-days rect.now { fill: color-mix(in srgb, var(--accent) 85%, transparent); }
+.health-days rect.spike { fill: #f0a030; }
+.health-days rect.hot { fill: #e5493a; }
+.health-days-none { font-size: 11px; color: var(--text-faint); text-align: center; }
+.health-share { padding: 0 7px; border-radius: 99px; background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.health-share.hot { background: #e5493a; color: #fff; font-weight: 700; }
+.health-spiking { padding: 0 7px; border-radius: 99px; background: color-mix(in srgb, #f0a030 22%, transparent); color: #f0b050; font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; }
+.health-item.hot { box-shadow: inset 3px 0 0 #e5493a; }
+.health-item .health-agent { justify-self: end; }
+.health > .health-card + .health-card { margin-top: 14px; }
