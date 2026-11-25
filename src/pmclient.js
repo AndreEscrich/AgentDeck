@@ -477,6 +477,24 @@ async function setStatus({ key, id, project, statusId, subtask }) {
   return { statusId, status: st.name, category: st.category, color: st.color, textColor: st.text, done: st.category === 'done' };
 }
 
+// An agent starts on a ticket: a ticket in To Do or Needs Fixes goes to In
+// Progress (the project's In Progress status). Any other status stays: the
+// ticket is already being worked on, in QA or done. { changed, from, to }.
+async function startWork({ key }) {
+  const t = await callTool('pm_get_task', { key });
+  if (!t?._id) throw new Error(`${key} was not found.`);
+  const project = (t.key || key).split('-')[0];
+  const list = await statuses(project);
+  const now = list.find(s => s.id === t.statusId);
+  if (!now || !(now.category === 'todo' || /^needs fix/i.test(now.name))) return { changed: false, from: now?.name || '' };
+  const to = list.find(s => s.category === 'in_progress' && /^in progress$/i.test(s.name)) || list.find(s => s.category === 'in_progress');
+  if (!to) return { changed: false, from: now.name };
+  const subtask = t.itemType === 'subtask';
+  if (subtask) await callTool('pm_update_subtask', { projectId: t.projectId, subtaskId: t._id, statusId: to.id });
+  else await callTool('pm_update_task', { projectId: t.projectId, taskId: t._id, statusId: to.id });
+  return { changed: true, from: now.name, to: to.name, subtask };
+}
+
 // The same answer as readPmTasks in agents.js, read directly: { KEY: task }
 // with subtaskCount for the keys in subtasksOf (the ⑂ Split button).
 async function readTasks(keys, subtasksOf = []) {
@@ -822,5 +840,5 @@ async function workflows(project) {
   return value;
 }
 
-module.exports = { setup, status, connect, disconnect, callTool, tickets, ticket, readTasks, statuses, subtasks, setStatus,
+module.exports = { setup, status, connect, disconnect, callTool, tickets, ticket, readTasks, statuses, subtasks, setStatus, startWork,
   options, update, createTask, startSprint, completeSprint, createSubtask, attachments, openAttachment, attach, attachmentLinks, comments, history, addComment, editComment, deleteComment, personName, workflows, remove };

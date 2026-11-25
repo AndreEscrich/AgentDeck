@@ -509,6 +509,7 @@ app.whenReady().then(() => {
   }));
   ipcMain.handle('pmc:comments', (_e, a) => pmCall(() => pmClient.comments(a || {})));
   ipcMain.handle('pmc:history', (_e, a) => pmCall(() => pmClient.history(a || {})));
+  ipcMain.handle('pmc:startWork', (_e, a) => pmWrite(a?.key, () => pmClient.startWork(a || {})));
   ipcMain.handle('pmc:addComment', (_e, a) => pmWrite(a?.key, () => pmClient.addComment(a || {})));
   ipcMain.handle('pmc:editComment', (_e, a) => pmWrite(a?.key, () => pmClient.editComment(a || {})));
   ipcMain.handle('pmc:deleteComment', (_e, a) => pmWrite(a?.key, () => pmClient.deleteComment(a || {})));

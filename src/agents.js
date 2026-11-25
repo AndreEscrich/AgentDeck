@@ -133,6 +133,21 @@ const ANSWER_PROMPT = [
 const pmCommentFormat = require('./pmcommentformat');
 const PM_COMMENT_PROMPT = pmCommentFormat.PROMPT;
 
+// Agents keep the status of the PM ticket they work on up to date: In
+// Progress when they start, For QA (Branch) or For QA (Trunk) after they
+// commit, with the ticket's Branch and Testable revision fields. QA's and
+// the lead's statuses (In QA, Passed Testing, Prepare for Trunk, Done, …)
+// stay theirs. The app moves a ticket to In Progress by itself when you start
+// an agent on it (pmStartWork in app.js); this covers the rest.
+const PM_STATUS_PROMPT = [
+  'When you work on a Tactile PM ticket (a task, bug, story or subtask you were asked to fix, build or look into), keep its status up to date yourself, with pm_update_task, or pm_update_subtask for a subtask, using the status names of the ticket\'s project (pm_list_statuses):',
+  '1. When you start working on it and its status is To Do or Needs Fixes, set it to In Progress. Leave any other status as it is. Do not do this when you only read a ticket to answer a question about it.',
+  '2. After you commit the change for it, set it to For QA: "For QA (Branch)" when the commit went to a branch (an SVN path under /branches/, or a git branch other than main, master or trunk), or "For QA (Trunk)" when it went to trunk (SVN /trunk, or git main or master). Also set the custom fields "Branch" (the branch name, or "trunk") and "Testable revision" (the SVN revision, or the short git commit hash) with customFields; for a subtask, which has no custom fields, set them on its parent story. If the project has no status with that name, use its closest QA status (for example "Ready for QA").',
+  'If you did not commit (the change is only in the working copy, or the user commits it), leave the ticket In Progress and say so.',
+  '3. Never set a status that belongs to QA or the lead: In QA, In QA (Branch), In QA (Trunk), Passed Testing, Paused Testing, Prepare for Trunk, Ready for Release, In Rollout, Done, Live or Halted, and never move a ticket back from one of those, unless the user asks.',
+  'Say in your final message which status you set (for example "M2S-3854: In Progress → For QA (Branch), r788336").',
+].join(' ');
+
 // A PM subtask is often a line or two: the why, the acceptance criteria and
 // the screenshots are on its story, so the agent reads the story as well.
 const PM_SUBTASK_PROMPT = [
@@ -149,7 +164,7 @@ const PM_ASSIGN_PROMPT = [
   'For "me" or "the user", use the email pm_whoami returns. Afterwards read the item again with pm_get_task and check that assignee is the person\'s name; if it is empty, set it again by email.',
 ].join(' ');
 
-const SYSTEM_PROMPT = `${ANSWER_PROMPT}\n\n${EFFICIENCY_PROMPT}\n\n${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}\n\n${RUN_PROMPT}\n\n${MILESTONE_PROMPT}\n\n${ART_PROMPT}\n\n${PM_SUBTASK_PROMPT}\n\n${PM_ASSIGN_PROMPT}\n\n${PM_COMMENT_PROMPT}`;
+const SYSTEM_PROMPT = `${ANSWER_PROMPT}\n\n${EFFICIENCY_PROMPT}\n\n${MEDIA_PROMPT}\n\n${CHANGES_PROMPT}\n\n${EDIT_PROMPT}\n\n${DIFF_PROMPT}\n\n${RUN_PROMPT}\n\n${MILESTONE_PROMPT}\n\n${ART_PROMPT}\n\n${PM_SUBTASK_PROMPT}\n\n${PM_STATUS_PROMPT}\n\n${PM_ASSIGN_PROMPT}\n\n${PM_COMMENT_PROMPT}`;
 
 // The Unity bridge of the project an agent works in (com.tactilegames.unity-mcp,
 // Library/McpServer), wherever in the repository it works: a project's
