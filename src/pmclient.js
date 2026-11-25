@@ -417,6 +417,9 @@ async function ticket(key) {
     epicId: t.epicId || '', sprintId: t.sprintId || '', teamId: t.teamId || '', team: t.fieldNames?.teamId || '',
     componentIds: t.componentIds || [], customFields: t.customFields || {}, typeId: t.taskTypeDefinitionId || '',
     parentId: t.parentTaskId || '', watchers: (t.watchers || []).length,
+    // A subtask has no custom fields: its story's (Branch, Testable revision)
+    // show in its panel, read only.
+    parentCustomFields: parent?.customFields || null,
     // A ticket's images and videos: a list, or { media: [...] } (subtasks).
     media: (Array.isArray(t.inlineMedia) ? t.inlineMedia : t.inlineMedia?.media || []).map(m => ({ id: m.mediaId, name: m.fileName, type: m.contentType, url: m.previewUrl })),
     subtasks: subtask ? [] : await slimSubtasks(subs, base.project),
@@ -475,6 +478,24 @@ async function setStatus({ key, id, project, statusId, subtask }) {
   if (subtask) await callTool('pm_update_subtask', { projectId: project, subtaskId: id, statusId });
   else await callTool('pm_update_task', { projectId: project, taskId: id, statusId });
   return { statusId, status: st.name, category: st.category, color: st.color, textColor: st.text, done: st.category === 'done' };
+}
+
+// An agent starts on a ticket: a ticket in To Do or Needs Fixes goes to In
+// Progress (the project's In Progress status). Any other status stays: the
+// ticket is already being worked on, in QA or done. { changed, from, to }.
+async function startWork({ key }) {
+  const t = await callTool('pm_get_task', { key });
+  if (!t?._id) throw new Error(`${key} was not found.`);
+  const project = (t.key || key).split('-')[0];
+  const list = await statuses(project);
+  const now = list.find(s => s.id === t.statusId);
+  if (!now || !(now.category === 'todo' || /^needs fix/i.test(now.name))) return { changed: false, from: now?.name || '' };
+  const to = list.find(s => s.category === 'in_progress' && /^in progress$/i.test(s.name)) || list.find(s => s.category === 'in_progress');
+  if (!to) return { changed: false, from: now.name };
+  const subtask = t.itemType === 'subtask';
+  if (subtask) await callTool('pm_update_subtask', { projectId: t.projectId, subtaskId: t._id, statusId: to.id });
+  else await callTool('pm_update_task', { projectId: t.projectId, taskId: t._id, statusId: to.id });
+  return { changed: true, from: now.name, to: to.name, subtask };
 }
 
 // The same answer as readPmTasks in agents.js, read directly: { KEY: task }
@@ -822,5 +843,5 @@ async function workflows(project) {
   return value;
 }
 
-module.exports = { setup, status, connect, disconnect, callTool, tickets, ticket, readTasks, statuses, subtasks, setStatus,
+module.exports = { setup, status, connect, disconnect, callTool, tickets, ticket, readTasks, statuses, subtasks, setStatus, startWork,
   options, update, createTask, startSprint, completeSprint, createSubtask, attachments, openAttachment, attach, attachmentLinks, comments, history, addComment, editComment, deleteComment, personName, workflows, remove };

@@ -3910,6 +3910,7 @@ input.tp-title-input::selection { background: color-mix(in srgb, var(--accent) 3
 .tp-comment-author { font-weight: 600; color: var(--text); }
 .tp-comment-time { color: var(--text-faint); font-size: 11.5px; }
 .tp-comment .tp-desc { background: none; padding: 0 0 0 30px; }
+.tp-readonly { padding: 6px 10px; border-radius: 8px; font-size: 13px; color: var(--text-dim); background: color-mix(in srgb, var(--text) 4%, transparent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* History tab: one entry per change, newest first. */
 .tp-history { display: flex; flex-direction: column; gap: 2px; }
 .tp-hist { padding: 8px 10px; border-radius: 8px; }

@@ -4319,6 +4319,15 @@ async function startAgent({ cwd, prompt, permissionMode, verify, choice, resume,
   // The Tactile PM ticket your first message linked: a card on its tile and
   // at the top of its chat, like a ticket run's agents have.
   if (pmTicket && !lane) agent.pmTicket = pmTicket;
+  // A new agent on a ticket that is still To Do (or Needs Fixes): the ticket
+  // goes to In Progress now, with the app's PM sign-in, so the board shows
+  // someone works on it. The agent is told the same (PM_STATUS_PROMPT in
+  // agents.js) and moves it on to QA after it commits.
+  if (pmTicket && !resume) {
+    window.deck.pmStartWork({ key: pmTicket }).then(r => {
+      if (r?.changed) agent.transcript.note(`${pmTicket} moved from ${r.from} to ${r.to} in PM.`);
+    }).catch(() => {});
+  }
   if (parkedPrs.length) agent.prs = parkedPrs;
   // An agent of a ticket run (ticketrun.js): the run names it after its subtask.
   // One that runs again on a run's saved session is part of that run again.
