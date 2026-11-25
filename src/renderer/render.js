@@ -506,6 +506,20 @@ function pmCard(href, key) {
   return a;
 }
 
+const PR_URL = /https?:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)/gi;
+const PR_REF = /(?<![\w./:-])([\w.-]+)\/([\w.-]+)#(\d+)\b/g;
+const PR_MENTION = /\b(?:PR|pull request)\s*#?\s*(\d+)\b/gi;
+function prsOf(agent) {
+  const all = [...(agent?.prs || []), ...(agent?.transcript?.prs || [])];
+  return all.filter((p, i) => all.findIndex(q => q.url.toLowerCase() === p.url.toLowerCase()) === i);
+}
+const githubRepos = new Map();
+function githubRepoOf(cwd) {
+  if (!cwd || !window.deck?.githubRepo) return Promise.resolve(null);
+  if (!githubRepos.has(cwd)) githubRepos.set(cwd, window.deck.githubRepo(cwd).catch(() => null));
+  return githubRepos.get(cwd);
+}
+
 // ---------- Tactile PM task keys in plain text ----------
 
 // An agent often names a PM task by its key alone ("Story M2S-3460 is
@@ -2603,6 +2617,7 @@ class Transcript {
       this.startTurn();
       prompt.turn = this.turn;
       this.addSlashSkill(this.turn, texts.join('\n'));
+      for (const t of texts) if (!/^Agent Hub checked your changes/.test(t)) this.notePrText(t);
     }
     if (Array.isArray(content)) {
       for (const block of content) {
@@ -2731,6 +2746,7 @@ class Transcript {
         // Everything the agent said during the task (for the group's notes:
         // what failed and what worked is often said along the way).
         (turn.texts ||= []).push(block.text);
+        this.notePrText(block.text);
         this.addStep(node, block.text.split('\n')[0].slice(0, 120));
         this.liveStep = block.text.split('\n').find(l => l.trim())?.replace(/[*_`#>]/g, '').trim().slice(0, 140) || this.liveStep;
       } else if (block.type === 'thinking' && block.thinking) {
@@ -2937,9 +2953,25 @@ class Transcript {
     const opens = /create_pull_request$/i.test(tool.name)
       || (['Bash', 'PowerShell'].includes(tool.name) && /\bgh\s+pr\s+create\b/.test(tool.input?.command || ''));
     if (!opens) return;
-    const m = [...resultText(block.content).matchAll(/https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/(\d+)/g)].pop();
-    if (!m) return;
-    this.pr = { url: m[0], number: Number(m[1]) };
+    const m = [...resultText(block.content).matchAll(PR_URL)].pop();
+    if (m) this.addPr(m[1], m[2], m[3]);
+  }
+
+  notePrText(text) {
+    for (const m of text.matchAll(PR_URL)) this.addPr(m[1], m[2], m[3]);
+    for (const m of text.matchAll(PR_REF)) this.addPr(m[1], m[2], m[3]);
+    const bare = [...text.matchAll(PR_MENTION)].map(m => m[1]);
+    if (!bare.length) return;
+    githubRepoOf(this.cwd).then(repo => {
+      if (repo) for (const n of bare) this.addPr(repo.owner, repo.name, n);
+    });
+  }
+
+  addPr(owner, repo, number) {
+    const url = `https://github.com/${owner}/${repo}/pull/${number}`;
+    this.prs ||= [];
+    if (this.prs.some(p => p.url.toLowerCase() === url.toLowerCase())) return;
+    this.prs.push({ url, repo, number: Number(number) });
     this.onUpdate?.();
   }
 

@@ -1778,6 +1778,8 @@ audio.chat-media { width: 100%; max-width: 420px; height: 40px; background: tran
 .tile-pr .pr-icon { flex-shrink: 0; color: #3fb950; }
 .tile-pr .jira-key { font-size: 11px; color: #3fb950; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile-pr:hover { border-color: #3fb950; }
+button.tile-pr { font-family: inherit; }
+.tile-pr .pr-caret { font-size: 9px; color: #3fb950; flex-shrink: 0; }
 .chat-ticket { max-width: var(--chat-width); margin: 0 auto; padding: 16px 24px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .chat-ticket-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); }
 .chat-ticket .jira-card { min-width: 0; max-width: 100%; }

@@ -373,4 +373,13 @@ async function changesSince(cwd, snap) {
   return repoChanges(cwd, snap);
 }
 
-module.exports = { snapshot, quickSnapshot, changesSince, fileAt };
+function githubRepo(cwd) {
+  return new Promise(resolve => {
+    execFile('git', ['-C', cwd, 'remote', 'get-url', 'origin'], { timeout: 5000 }, (err, out) => {
+      const m = !err && /github\.com[:/]([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?\s*$/i.exec(String(out));
+      resolve(m ? { owner: m[1], name: m[2] } : null);
+    });
+  });
+}
+
+module.exports = { snapshot, quickSnapshot, changesSince, fileAt, githubRepo };
