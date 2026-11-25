@@ -133,7 +133,7 @@ const PM_COMMENT_PROMPT = [
   'A comment that is not about a change (a question, an answer, a status note) is a short paragraph or two in <p> tags.',
 ].join(' ');
 
-const PLUGIN_DIR = require('path').join(__dirname, '..', 'plugins', 'agent-hub');
+const hubPlugin = require('./hubplugin');
 
 // A PM subtask is often a line or two: the why, the acceptance criteria and
 // the screenshots are on its story, so the agent reads the story as well.
@@ -207,7 +207,7 @@ function claudeArgs(config, { cwd, resumeId, forkSession, resumeSessionAt, permi
     '--permission-prompt-tool', 'stdio',
     // Without this flag the CLI refuses a later switch to bypass mode.
     '--allow-dangerously-skip-permissions',
-    '--plugin-dir', PLUGIN_DIR,
+    '--plugin-dir', hubPlugin.pluginDir(),
     // Tactile's knowledge in Cortex, through its knowledge-retriever helper (knowledge.js).
     '--append-system-prompt', [SYSTEM_PROMPT, knowledge.knowledgePrompt(config, cwd, { helper: !!retriever }), require('./gallery').galleryPrompt(config), governed ? pipeline.governorPrompt(run) : ''].filter(Boolean).join('\n\n'),
     ...(Object.keys(agents).length ? ['--agents', JSON.stringify(agents)] : []),
