@@ -597,7 +597,7 @@ function openSettings(config, { onSaved } = {}) {
       el('div', 'settings-hint', 'The account the Tickets view reads PM with. It is separate from the PM connector your agents use: signing in or out here does not change it.'),
       pmAccountPanel()),
     section('PM comments',
-      el('div', 'settings-hint', 'Agents follow the pm-comment skill when they comment on a PM ticket about a change. Customize makes your own copy of it and opens it in your editor; agents started after you save it use your copy, and Agent Hub updates leave it alone.'),
+      el('div', 'settings-hint', `Agents follow the pm-comment skill when they comment on a PM ticket about a change. Customize makes your own copy of it and shows it in ${window.deck.platform === 'win32' ? 'Explorer' : 'Finder'}; agents started after you save it use your copy, and Agent Hub updates leave it alone.`),
       pmCommentSkillPanel()),
     section('Tickets',
       settingsField('Space for All tickets', 'The PM space whose open tickets the Tickets view\'s All tickets lists, whoever has them (its name, like Enchanted Inn, or its key)', pmSpace),

@@ -697,7 +697,7 @@ app.whenReady().then(() => {
   ipcMain.handle('pmSkill:status', () => require('./hubplugin').status());
   ipcMain.handle('pmSkill:customize', () => {
     const st = require('./hubplugin').customize();
-    shell.openPath(st.file);
+    shell.showItemInFolder(st.file);
     return st;
   });
   ipcMain.handle('pmSkill:reset', () => require('./hubplugin').reset());
