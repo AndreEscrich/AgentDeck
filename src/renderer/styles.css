@@ -1770,10 +1770,10 @@ audio.chat-media { width: 100%; max-width: 420px; height: 40px; background: tran
 .tile-ticket .jira-key { font-size: 11px; flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The tile's title already names the subtask: the card shows only its key. */
 .tile-ticket .jira-summary, .tile-ticket .jira-status { display: none; }
-.tile-links { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
+.tile-links { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; min-width: 0; max-width: 100%; overflow: hidden; }
 .tile-links:empty { display: none; }
-.tile-links .tile-ticket { margin: 0; }
-.tile-pr.jira-card { font-size: 12px; gap: 5px; padding: 2px 8px 2px 6px; margin: 0; min-width: 0; max-width: 100%; box-sizing: border-box; overflow: hidden; }
+.tile-links .tile-ticket { margin: 0; flex: 0 1 auto; }
+.tile-pr.jira-card { flex: 0 1 auto; font-size: 12px; gap: 5px; padding: 2px 8px 2px 6px; margin: 0; min-width: 0; max-width: 100%; box-sizing: border-box; overflow: hidden; }
 .tile-pr .pr-icon { flex-shrink: 0; color: #3fb950; }
 .tile-pr .jira-key { font-size: 11px; color: #3fb950; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile-pr:hover { border-color: #3fb950; }
