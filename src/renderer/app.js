@@ -2051,6 +2051,7 @@ function hubInfo(a) {
     // Stopped before it was done (see restartAgent).
     stopped: !!a.stopped,
     pmTicket: a.pmTicket || undefined,
+    pr: a.transcript?.pr || a.pr || undefined,
   };
 }
 
@@ -2079,6 +2080,7 @@ function parkedItem(p) {
     // Part of a ticket run (ticketrun.js): it stays in the run's box.
     lane: ticketRuns.laneOfSession(p.sessionId),
     pmTicket: p.pmTicket || null,
+    pr: p.pr || null,
     transcript: { stepCount: 0, tokens: p.lastTurn?.usage || null, turnStartedAt: null, lastTurn: p.lastTurn },
   };
 }
@@ -4263,6 +4265,7 @@ async function startAgent({ cwd, prompt, permissionMode, verify, choice, resume,
   transcript.onEditPrompt = (index, text, opts) => rewindTo(transcript, index, text, opts);
   // A resumed agent keeps the PM ticket it started from (its tile's card).
   if (resume && !pmTicket) pmTicket = state.parked.get(resume.session.id)?.pmTicket || null;
+  const parkedPr = resume ? state.parked.get(resume.session.id)?.pr || null : null;
   if (resume) {
     state.history.delete(resume.session.id);
     state.parked.delete(resume.session.id);
@@ -4294,6 +4297,7 @@ async function startAgent({ cwd, prompt, permissionMode, verify, choice, resume,
   // The Tactile PM ticket your first message linked: a card on its tile and
   // at the top of its chat, like a ticket run's agents have.
   if (pmTicket && !lane) agent.pmTicket = pmTicket;
+  if (parkedPr) agent.pr = parkedPr;
   // An agent of a ticket run (ticketrun.js): the run names it after its subtask.
   // One that runs again on a run's saved session is part of that run again.
   if (!lane && resume?.session?.id) lane = ticketRuns.laneOfSession(resume.session.id);

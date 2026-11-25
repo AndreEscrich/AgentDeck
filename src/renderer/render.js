@@ -2880,6 +2880,7 @@ class Transcript {
       }
     }
     if (!block.is_error) learnFromPmTool(tool, block.content);
+    this.notePullRequest(tool, block);
     // A tool that makes a file on its own (a Unity recorder, a screenshot
     // tool) often only names the file in its result. Shell output is left
     // out: an `ls` there would list other agents' files too.
@@ -2932,6 +2933,16 @@ class Transcript {
 
   // Remembers which tool calls are still running, and since when the agent
   // has been waiting for Unity.
+  notePullRequest(tool, block) {
+    const opens = /create_pull_request$/i.test(tool.name)
+      || (['Bash', 'PowerShell'].includes(tool.name) && /\bgh\s+pr\s+create\b/.test(tool.input?.command || ''));
+    if (!opens) return;
+    const m = [...resultText(block.content).matchAll(/https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/(\d+)/g)].pop();
+    if (!m) return;
+    this.pr = { url: m[0], number: Number(m[1]) };
+    this.onUpdate?.();
+  }
+
   trackTool(turn, block) {
     const summary = toolSummary(block.name, block.input || {});
     turn.openTools = turn.openTools || new Map();

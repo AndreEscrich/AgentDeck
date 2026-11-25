@@ -646,7 +646,8 @@ class Hub {
     const model = el('span', 'hub-model hidden');
     // Another working agent changes the same file (see noteClashes in app.js).
     const clash = el('div', 'hub-clash hidden');
-    info.append(title, step, statusRow, model, clash);
+    const links = el('div', 'tile-links');
+    info.append(title, links, step, statusRow, model, clash);
 
     // Stopped before it was done: continue its task (restartAgent in app.js).
     const restart = el('button', 'tile-restart', '↻');
@@ -655,7 +656,7 @@ class Hub {
     // The background jobs it waits for circle the tank (paintOrbit).
     const orbit = el('div', 'tank-orbit');
     tile.append(remove, stop, restart, tank, orbit, info);
-    return { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, badge, title, step, statusDot, statusText, timer, model, clash, orbit, stale } };
+    return { el: tile, status: null, fresh: true, level: 0, arrival, parts: { liquid, icon, badge, title, links, step, statusDot, statusText, timer, model, clash, orbit, stale } };
   }
 
   // The liquid level: low while starting, climbing with the step count while
@@ -776,8 +777,19 @@ class Hub {
       if (ticket.title) card.querySelector('.jira-summary').textContent = ticket.title;
       if (ticket.parent) card.title = `Open ${ticket.key} in Tactile PM (a subtask of ${ticket.parent})`;
       ticketCard.appendChild(card);
-      parts.title.after(ticketCard);
+      parts.links.prepend(ticketCard);
     } else if (!ticket && ticketCard) ticketCard.remove();
+    const pr = agent.transcript?.pr || agent.pr || null;
+    let prCard = tile.querySelector(':scope .tile-pr');
+    if (pr && prCard?.getAttribute('href') !== pr.url) {
+      prCard?.remove();
+      prCard = el('a', 'jira-card pr-card tile-pr');
+      prCard.href = pr.url;
+      prCard.title = `Open pull request #${pr.number} on GitHub\n${pr.url.replace(/^https:\/\/github\.com\//, '')}`;
+      prCard.innerHTML = '<svg class="pr-icon" viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z"/></svg>';
+      prCard.append(el('span', 'jira-key', `PR#${pr.number}`));
+      parts.links.append(prCard);
+    } else if (!pr && prCard) prCard.remove();
     // Thinking (no tool running): slow bubbles that gather at the surface.
     tile.classList.toggle('thinking', agent.status === 'working' && agent.transcript?.liveStep === 'Thinking…');
     tile.classList.toggle('unread', !!agent.unread);
