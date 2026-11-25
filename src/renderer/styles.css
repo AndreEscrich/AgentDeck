@@ -1354,6 +1354,13 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
 .side-row.hidden { display: none; }
 .side-label { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); padding: 4px 6px 0; }
 .composer-side.beside .side-row + .side-row { border-top: 1px solid #3d3329; margin-top: 2px; padding-top: 2px; }
+/* Beside the box, each option is one line (label, then its value), so the
+   panel is no taller than the message box and stays out of the Hub's rows. */
+.composer-side.beside { padding: 4px 6px; gap: 0; }
+.composer-side.beside .side-row { flex-direction: row; align-items: center; gap: 4px; }
+.composer-side.beside .side-label { flex-shrink: 0; padding: 0 2px 0 4px; font-size: 9.5px; }
+.composer-side.beside .model-btn { padding: 3px 5px; font-size: 12.5px; margin-left: auto; }
+.composer-side.beside .side-row > :last-child { min-width: 0; margin-left: auto; }
 .composer-side .model-btn { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .composer-side .side-row.changed .model-btn { color: var(--busy); }
 .composer-side.inline { flex-shrink: 0; align-items: center; }
