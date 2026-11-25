@@ -103,6 +103,10 @@
 .jira-status[data-category="indeterminate"] { background: #dbe7fb; color: #1d4f9e; }
 .jira-status[data-category="done"] { background: #d9f1e3; color: #1d6b40; }
 .pm-card .jira-key { color: #c25e14; }
+.tile-pr[data-state="open"] { --pr: #1a7f37; }
+.tile-pr[data-state="failing"] { --pr: #9a6700; }
+.tile-pr[data-state="closed"] { --pr: #cf222e; }
+.tile-pr[data-state="merged"] { --pr: #8250df; }
 .msg-user .jira-card { background: rgba(255, 255, 255, 0.6); }
 
 /* Activity */

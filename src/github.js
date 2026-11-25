@@ -52,6 +52,14 @@ async function api(apiPath) {
 
 const firstLine = s => String(s || '').split('\n')[0].trim();
 
+async function ciOf(base, sha) {
+  const [checks, status] = await Promise.all([api(`${base}/commits/${sha}/check-runs?per_page=100`), api(`${base}/commits/${sha}/status`)]);
+  const runs = checks?.check_runs || [];
+  if (runs.some(r => ['failure', 'timed_out', 'action_required'].includes(r.conclusion)) || ['failure', 'error'].includes(status?.state)) return 'failure';
+  if (runs.some(r => r.status !== 'completed') || (status?.statuses?.length && status.state === 'pending')) return 'pending';
+  return runs.length || status?.statuses?.length ? 'success' : null;
+}
+
 async function lookup(what) {
   if (!what || !NAME.test(what.owner || '') || !NAME.test(what.repo || '')) return null;
   const base = `repos/${what.owner}/${what.repo}`;
@@ -63,7 +71,8 @@ async function lookup(what) {
       if (!p) return null;
       const state = p.merged_at ? 'merged' : p.state === 'closed' ? 'closed' : p.draft ? 'draft' : 'open';
       return { title: p.title, state, label: { merged: 'Merged', closed: 'Closed', draft: 'Draft', open: 'Open' }[state],
-        detail: p.additions != null ? `+${p.additions} −${p.deletions}` : '', author: p.user?.login || '' };
+        detail: p.additions != null ? `+${p.additions} −${p.deletions}` : '', author: p.user?.login || '',
+        ci: ['open', 'draft'].includes(state) && p.head?.sha ? await ciOf(base, p.head.sha) : null };
     }
     case 'issue': {
       if (!/^\d+$/.test(id)) return null;

@@ -39,6 +39,31 @@ const HUB_STATUS_TEXT = {
 // TactileSVN's button: a folder with a branch line.
 const TSVN_ICON = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 4.5v8a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3h-4a1 1 0 0 0-1 1.5z"/><circle cx="6" cy="9.2" r="1.1"/><circle cx="10.5" cy="9.2" r="1.1"/><path d="M7.1 9.2h2.3"/></svg>';
 
+const PR_OPEN_PATH = 'M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z';
+const PR_PATHS = {
+  open: PR_OPEN_PATH,
+  failing: PR_OPEN_PATH,
+  closed: 'M3.25 1A2.25 2.25 0 0 1 4 5.372v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.251 2.251 0 0 1 3.25 1Zm9.5 5.5a.75.75 0 0 1 .75.75v3.378a2.251 2.251 0 1 1-1.5 0V7.25a.75.75 0 0 1 .75-.75Zm-2.03-5.273a.75.75 0 0 1 1.06 0l.97.97.97-.97a.748.748 0 0 1 1.265.332.75.75 0 0 1-.205.729l-.97.97.97.97a.751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018l-.97-.97-.97.97a.749.749 0 0 1-1.275-.326.749.749 0 0 1 .215-.734l.97-.97-.97-.97a.75.75 0 0 1 0-1.06ZM2.5 3.25a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0ZM3.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm9.5 0a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z',
+  merged: 'M5.45 5.154A4.25 4.25 0 0 0 9.25 7.5h1.378a2.251 2.251 0 1 1 0 1.5H9.25A5.734 5.734 0 0 1 5 7.123v3.505a2.25 2.25 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.95-.218ZM4.25 13.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm8.5-4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5ZM5 3.25a.75.75 0 1 0 0 .001Z',
+};
+const PR_LABELS = { open: 'Open', failing: 'CI failed', closed: 'Closed', merged: 'Merged' };
+const PR_URGENCY = ['failing', 'open', 'merged', 'closed'];
+const prStates = new Map();
+
+function prIcon(state) {
+  return `<svg class="pr-icon" viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="${PR_PATHS[state] || PR_OPEN_PATH}"/></svg>`;
+}
+
+function prStateOf(pr) {
+  const m = /github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)/i.exec(pr.url);
+  if (!m || !window.deck?.githubLookup) return Promise.resolve(null);
+  return window.deck.githubLookup({ kind: 'pull', owner: m[1], repo: m[2], id: m[3] }).then(info => {
+    const state = !info ? null : info.state === 'merged' ? 'merged' : info.state === 'closed' ? 'closed' : info.ci === 'failure' ? 'failing' : 'open';
+    if (state) prStates.set(pr.url, state);
+    return state;
+  }).catch(() => null);
+}
+
 const BUBBLE_COUNT = 7;
 const BURST_COUNT = 14;
 
@@ -787,25 +812,26 @@ class Hub {
       const one = prs.length === 1;
       prCard = el(one ? 'a' : 'button', 'jira-card pr-card tile-pr');
       prCard.dataset.prs = prKey;
-      prCard.innerHTML = '<svg class="pr-icon" viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z"/></svg>';
+      prCard.prs = prs;
+      prCard.innerHTML = prIcon('open');
       if (one) {
         prCard.href = prs[0].url;
-        prCard.title = `Open ${prs[0].repo} #${prs[0].number} on GitHub`;
-        prCard.append(el('span', 'jira-key', `PR#${prs[0].number}`));
+        prCard.append(el('span', 'jira-key', `#${prs[0].number}`));
       } else {
         prCard.type = 'button';
-        prCard.title = `Pull requests in this chat:\n${prs.map(p => `${p.repo} #${p.number}`).join('\n')}`;
         prCard.append(el('span', 'jira-key', `${prs.length} PRs`), el('span', 'pr-caret', '▾'));
         prCard.onclick = async e => {
           e.stopPropagation();
           const picked = await window.deck.popupMenu([
             { label: 'Open on GitHub', enabled: false },
-            ...prs.map(p => ({ id: p.url, label: `${p.repo} #${p.number}` })),
+            ...prs.map(p => ({ id: p.url, label: `${p.repo} #${p.number}${prStates.has(p.url) ? ` · ${PR_LABELS[prStates.get(p.url)]}` : ''}` })),
           ]);
           if (picked) window.open(picked, '_blank');
         };
       }
+      this.paintPrCard(prCard);
       parts.links.append(prCard);
+      this.refreshPrCard(prCard);
     } else if (!prs.length && prCard) prCard.remove();
     // Thinking (no tool running): slow bubbles that gather at the surface.
     tile.classList.toggle('thinking', agent.status === 'working' && agent.transcript?.liveStep === 'Thinking…');
@@ -2053,6 +2079,21 @@ class Hub {
   }
 
   // Only the timers change every second.
+  paintPrCard(card) {
+    const prs = card.prs;
+    const known = prs.map(p => prStates.get(p.url)).filter(Boolean);
+    const state = PR_URGENCY.find(s => known.includes(s)) || null;
+    if (state) card.dataset.state = state;
+    else delete card.dataset.state;
+    card.querySelector('.pr-icon').outerHTML = prIcon(state || 'open');
+    const line = p => `${p.repo} #${p.number}${prStates.has(p.url) ? ` · ${PR_LABELS[prStates.get(p.url)]}` : ''}`;
+    card.title = prs.length === 1 ? `${line(prs[0])}\nOpen on GitHub` : `Pull requests in this chat:\n${prs.map(line).join('\n')}`;
+  }
+
+  refreshPrCard(card) {
+    Promise.all(card.prs.map(prStateOf)).then(() => { if (card.isConnected) this.paintPrCard(card); });
+  }
+
   tick(agents) {
     for (const agent of agents) {
       const entry = this.tiles.get(agent.id);
@@ -2063,6 +2104,7 @@ class Hub {
     if (minute !== this.usageMinute) {
       this.usageMinute = minute;
       this.renderUsage();
+      if (minute % 2 === 0) for (const card of this.container.querySelectorAll('.tile-pr')) this.refreshPrCard(card);
       if (!this.frozen && !this.replaying && !this.drag && !this.holding) {
         const currentId = this.latest?.[1] ?? null;
         for (const agent of agents) {
