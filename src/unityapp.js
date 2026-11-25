@@ -58,7 +58,7 @@ async function status(cwd) {
   const root = unityRoot(cwd);
   if (!root) return { unity: false };
   const open = (await editors()).find(e => same(e.project, root));
-  return { unity: true, root, running: !!open, pid: open?.pid || null, version: projectVersion(root) };
+  return { unity: true, editor: 'Unity', root, running: !!open, pid: open?.pid || null, version: projectVersion(root) };
 }
 
 function projectVersion(root) {
@@ -121,4 +121,4 @@ async function open(cwd) {
   }
 }
 
-module.exports = { status, open, editors };
+module.exports = { status, open, editors, focus };
