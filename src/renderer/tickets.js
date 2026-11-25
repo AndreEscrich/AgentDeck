@@ -159,8 +159,18 @@ class TicketsView {
     // Which statuses show (To do, In progress, Done): a click on one hides
     // or shows those tickets and subtasks. Remembered.
     // And single statuses hidden on their own (In QA but not In Progress), by name.
-    try { this.hiddenNames = new Set(JSON.parse(localStorage.getItem('pmTicketHiddenStatuses') || '[]')); } catch { this.hiddenNames = new Set(); }
-    try { this.statusShow = new Set(JSON.parse(localStorage.getItem('pmTicketStatusShow') || 'null') || ['todo', 'in_progress', 'done']); } catch { this.statusShow = new Set(['todo', 'in_progress', 'done']); }
+    // Two filters, each used only where you change it: the lists' (listFilter)
+    // and the ticket panel's subtasks' (panelFilter, every status until you
+    // change it there). Hiding Done in the Sprint list leaves a ticket's
+    // done subtasks in its panel.
+    const loadFilter = (showKey, hiddenKey) => {
+      const f = { showKey, hiddenKey };
+      try { f.hiddenNames = new Set(JSON.parse(localStorage.getItem(hiddenKey) || '[]')); } catch { f.hiddenNames = new Set(); }
+      try { f.statusShow = new Set(JSON.parse(localStorage.getItem(showKey) || 'null') || ['todo', 'in_progress', 'done']); } catch { f.statusShow = new Set(['todo', 'in_progress', 'done']); }
+      return f;
+    };
+    this.listFilter = loadFilter('pmTicketStatusShow', 'pmTicketHiddenStatuses');
+    this.panelFilter = loadFilter('pmPanelStatusShow', 'pmPanelHiddenStatuses');
     try { this.foldedEpics = new Set(JSON.parse(localStorage.getItem('pmTicketFoldedEpics') || '[]')); } catch { this.foldedEpics = new Set(); }
     this.when = el('span', 'tickets-when');
     const refresh = el('button', 'icon gallery-refresh', '↻');
@@ -456,19 +466,20 @@ class TicketsView {
 
   // ---------- the filters ----------
 
-  filtering() { return this.statusShow.size < 3 || this.hiddenNames.size > 0; }
+  // f: the lists' filter (listFilter) or the ticket panel's (panelFilter).
+  filtering(f = this.listFilter) { return f.statusShow.size < 3 || f.hiddenNames.size > 0; }
 
-  saveStatusFilter() {
+  saveStatusFilter(f = this.listFilter) {
     try {
-      localStorage.setItem('pmTicketStatusShow', JSON.stringify([...this.statusShow]));
-      localStorage.setItem('pmTicketHiddenStatuses', JSON.stringify([...this.hiddenNames]));
+      localStorage.setItem(f.showKey, JSON.stringify([...f.statusShow]));
+      localStorage.setItem(f.hiddenKey, JSON.stringify([...f.hiddenNames]));
     } catch { /* this run only */ }
   }
 
-  resetStatusFilter() {
-    this.statusShow = new Set(['todo', 'in_progress', 'done']);
-    this.hiddenNames = new Set();
-    this.saveStatusFilter();
+  resetStatusFilter(f = this.listFilter) {
+    f.statusShow = new Set(['todo', 'in_progress', 'done']);
+    f.hiddenNames = new Set();
+    this.saveStatusFilter(f);
   }
 
   // Every status the filter can offer for these tickets: the statuses of
@@ -492,12 +503,12 @@ class TicketsView {
   // items = the subtasks and no type.
   // The filters. only: one column's (status, type, assignee, sprint, title),
   // from the funnel in its header; without, every one (the subtasks' filter).
-  fillFilterMenu(menu, { items = this.items(), types: withTypes = true, only = null } = {}) {
+  fillFilterMenu(menu, { items = this.items(), types: withTypes = true, only = null, filter: f = this.listFilter } = {}) {
     menu.replaceChildren();
     menu.classList.add('tickets-filter-menu');
     const redo = () => {
       if (this.menu !== menu) return;
-      this.fillFilterMenu(menu, { items, types: withTypes, only });
+      this.fillFilterMenu(menu, { items, types: withTypes, only, filter: f });
       this.renderList();
       this.renderFilterBtn();
       if (this.detailTicket && this.selected === this.detailTicket.key) this.renderDetail(this.detailTicket, null);
@@ -534,15 +545,15 @@ class TicketsView {
       }
       return;
     }
-    const known = part('status') ? this.knownStatuses(items, () => { if (this.menu === menu) this.fillFilterMenu(menu, { items, types: withTypes, only }); }) : new Map();
+    const known = part('status') ? this.knownStatuses(items, () => { if (this.menu === menu) this.fillFilterMenu(menu, { items, types: withTypes, only, filter: f }); }) : new Map();
     const count = new Map();
     for (const t of items) count.set(String(t.status || '').toLowerCase(), (count.get(String(t.status || '').toLowerCase()) || 0) + 1);
     const catOf = t => (t.category in { todo: 1, in_progress: 1, done: 1 } ? t.category : 'todo');
     if (part('status')) menu.append(el('div', 'tickets-status-group', 'Status'));
     for (const [cat, label] of part('status') ? [['todo', 'To do'], ['in_progress', 'In progress'], ['done', 'Done']] : []) {
       const names = [...known.entries()].filter(([, v]) => v.category === cat);
-      const catOn = this.statusShow.has(cat);
-      const shownNames = names.filter(([k]) => !this.hiddenNames.has(k));
+      const catOn = f.statusShow.has(cat);
+      const shownNames = names.filter(([k]) => !f.hiddenNames.has(k));
       const full = catOn && shownNames.length === names.length;
       const part = catOn && !full;
       const b = el('button', `tickets-status-item tickets-check tickets-check-cat status-${cat}` + (full ? ' ticked' : part ? ' partly' : ''));
@@ -550,16 +561,16 @@ class TicketsView {
       b.append(el('span', 'tickets-check-box', full ? '✓' : part ? '–' : ''), el('span', null, label), el('span', 'gallery-cat-count', String(items.filter(t => catOf(t) === cat).length)));
       b.title = full ? `Hide every ${label.toLowerCase()} status` : `Show every ${label.toLowerCase()} status`;
       b.onclick = () => {
-        if (full) this.statusShow.delete(cat);
-        else { this.statusShow.add(cat); for (const [k] of names) this.hiddenNames.delete(k); }
-        this.saveStatusFilter();
+        if (full) f.statusShow.delete(cat);
+        else { f.statusShow.add(cat); for (const [k] of names) f.hiddenNames.delete(k); }
+        this.saveStatusFilter(f);
         redo();
       };
       menu.append(b);
       // Its statuses one by one, when the group has more than one.
       if (names.length < 2) continue;
       for (const [k, v] of names) {
-        const on = catOn && !this.hiddenNames.has(k);
+        const on = catOn && !f.hiddenNames.has(k);
         const n = count.get(k) || 0;
         const row = el('button', `tickets-status-item tickets-check tickets-check-name status-${cat}` + (on ? ' ticked' : '') + (n ? '' : ' none-here'));
         row.type = 'button';
@@ -567,13 +578,13 @@ class TicketsView {
         row.onclick = () => {
           if (!catOn) {
             // The group was hidden: show just this one of it.
-            this.statusShow.add(cat);
-            for (const [o] of names) if (o !== k) this.hiddenNames.add(o); else this.hiddenNames.delete(o);
-          } else if (on) this.hiddenNames.add(k);
-          else this.hiddenNames.delete(k);
+            f.statusShow.add(cat);
+            for (const [o] of names) if (o !== k) f.hiddenNames.add(o); else f.hiddenNames.delete(o);
+          } else if (on) f.hiddenNames.add(k);
+          else f.hiddenNames.delete(k);
           // Every status of the group hidden: the group is off.
-          if (names.every(([o]) => this.hiddenNames.has(o))) { this.statusShow.delete(cat); for (const [o] of names) this.hiddenNames.delete(o); }
-          this.saveStatusFilter();
+          if (names.every(([o]) => f.hiddenNames.has(o))) { f.statusShow.delete(cat); for (const [o] of names) f.hiddenNames.delete(o); }
+          this.saveStatusFilter(f);
           redo();
         };
         menu.append(row);
@@ -610,12 +621,12 @@ class TicketsView {
         menu.append(b);
       }
     }
-    const on = { status: this.filtering(), type: withTypes && this.type, assignee: ['all', 'review'].includes(this.list) && this.who !== null };
+    const on = { status: this.filtering(f), type: withTypes && this.type, assignee: ['all', 'review'].includes(this.list) && this.who !== null };
     if (only ? on[only] : Object.values(on).some(Boolean)) {
       const reset = el('button', 'tp-link tickets-filter-reset', only ? 'Show all' : 'Show everything');
       reset.type = 'button';
       reset.onclick = () => {
-        if (part('status')) this.resetStatusFilter();
+        if (part('status')) this.resetStatusFilter(f);
         if (part('type')) this.type = null;
         if (part('assignee')) this.who = null;
         redo();
@@ -626,18 +637,18 @@ class TicketsView {
 
   renderFilterBtn() {
     const hidden = [];
-    for (const [cat, label] of [['todo', 'to do'], ['in_progress', 'in progress'], ['done', 'done']]) if (!this.statusShow.has(cat)) hidden.push(label);
+    for (const [cat, label] of [['todo', 'to do'], ['in_progress', 'in progress'], ['done', 'done']]) if (!this.listFilter.statusShow.has(cat)) hidden.push(label);
     const known = this.knownStatuses(this.items());
-    for (const k of this.hiddenNames) hidden.push(known.get(k)?.name || k);
+    for (const k of this.listFilter.hiddenNames) hidden.push(known.get(k)?.name || k);
     const whose = this.list === 'all' && this.who !== null ? (this.who ? `only ${this.who}'s` : 'only unassigned') : '';
     const active = hidden.length || this.type || whose;
     this.filterBtn.classList.toggle('active', !!active);
     this.filterBtn.title = active ? `Filters: ${[whose, this.type ? `only ${this.type}` : '', hidden.length ? `hiding ${hidden.join(', ')}` : ''].filter(Boolean).join('; ')}` : 'Filters';
   }
 
-  shows(t) {
+  shows(t, f = this.listFilter) {
     const cat = t.category in { todo: 1, in_progress: 1, done: 1 } ? t.category : 'todo';
-    return this.statusShow.has(cat) && !this.hiddenNames.has(String(t.status || '').toLowerCase());
+    return f.statusShow.has(cat) && !f.hiddenNames.has(String(t.status || '').toLowerCase());
   }
 
   renderTypes() {

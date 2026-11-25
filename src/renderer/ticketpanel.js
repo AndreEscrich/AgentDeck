@@ -753,13 +753,14 @@
     const subs = t.subtasks || [];
     const list = el('div', 'tp-subs');
     let hiddenNote = null;
-    // The same status filter as the list (hiding Done hides done subtasks
-    // in both).
-    const filter = el('button', 'icon tickets-filter-btn tp-filter' + (this.filtering() ? ' active' : ''));
+    // The panel's own status filter (panelFilter): the lists' filter does not
+    // reach here, and this one does not reach the lists.
+    const pf = this.panelFilter;
+    const filter = el('button', 'icon tickets-filter-btn tp-filter' + (this.filtering(pf) ? ' active' : ''));
     filter.type = 'button';
     filter.innerHTML = FUNNEL;
-    filter.title = this.filtering() ? 'Filters: some statuses are hidden' : 'Filter the subtasks by status';
-    filter.onclick = () => this.openMenu(filter, 'subfilters:' + t.key, menu => this.fillFilterMenu(menu, { items: t.subtasks || [], types: false }));
+    filter.title = this.filtering(pf) ? 'Filters: some statuses are hidden' : 'Filter the subtasks by status';
+    filter.onclick = () => this.openMenu(filter, 'subfilters:' + t.key, menu => this.fillFilterMenu(menu, { items: t.subtasks || [], types: false, filter: pf }));
     if (subs.length) {
       const done = subs.filter(s => s.done).length;
       const pct = Math.round(done * 100 / subs.length);
@@ -770,7 +771,7 @@
       track.append(fill);
       bar.append(track, el('span', 'tp-progress-text', `${pct}% Done`));
       body.append(bar);
-      const shown = subs.filter(s => this.shows(s));
+      const shown = subs.filter(s => this.shows(s, pf));
       for (const s of shown) {
         const row = el('div', 'tp-sub' + (s.done ? ' done' : ''));
         if (this.news?.subs.has(s.key)) this.markNew(row, 's:' + s.key);
@@ -787,9 +788,7 @@
         hiddenNote = el('button', 'tp-link tp-hidden-note', `${n} subtask${n === 1 ? '' : 's'} hidden by the status filter · Show all`);
         hiddenNote.type = 'button';
         hiddenNote.onclick = () => {
-          this.resetStatusFilter();
-          this.renderList();
-          this.renderFilterBtn();
+          this.resetStatusFilter(pf);
           this.renderDetail(t, null);
         };
       }
