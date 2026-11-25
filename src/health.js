@@ -450,15 +450,18 @@ function analyseCrashes(c, now = Date.now()) {
 }
 
 // The crash lists for a shorter range (1, 3 or 7 days), read when the view
-// asks for them: the dashboard's charts with its date filter set to that many
-// days (BI's cached rows, run again when they are older than 6 hours).
-// "new" still comes from the 30-day read.
+// asks for them: the dashboard's charts with its date filter set to one day
+// more, because the filter counts today as the first day ("1" is today only,
+// from midnight): 2 days cover the last 24 hours. BI's cached rows, run again
+// when they are older than 6 hours. The charts read only those days of their
+// date-partitioned tables, so a short range is a small query. "new" still
+// comes from the 30-day read.
 async function rangeLists(projectId, days) {
   const p = projects().find(x => x.id === projectId);
   if (!p) throw new Error('That project is not in the list any more.');
   const ids = await crashCharts(p);
   if (!ids.groups && !ids.exceptions) return null;
-  const read = id => (id ? chartRows(p, id, false, days).catch(() => []) : Promise.resolve([]));
+  const read = id => (id ? chartRows(p, id, false, days + 1).catch(() => []) : Promise.resolve([]));
   const [groups, exceptions, errors] = [await read(ids.groups), await read(ids.exceptions), await read(ids.errors)];
   save();
   const r = state.reports[p.id]?.crashes;

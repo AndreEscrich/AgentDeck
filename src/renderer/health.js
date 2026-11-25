@@ -301,7 +301,7 @@ class HealthView {
     };
     const cols = el('div', 'health-crash-cols');
     cols.append(
-      list('Crashes', c.groups, `Native crashes that closed the game in the ${days === 1 ? 'last full day' : `last ${days} days`}, by crash group, most devices first. ANRs and out-of-memory kills have no stack, so they are only in the numbers above.`, 'crashes'),
+      list('Crashes', c.groups, `Native crashes that closed the game since ${new Date(Date.now() - days * 864e5).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} (today included), by crash group, most devices first. ANRs and out-of-memory kills have no stack, so they are only in the numbers above.`, 'crashes'),
       list('Unity exceptions', c.exceptions, 'C# exceptions nobody caught, by the method that threw. The game goes on, but that code stopped.', 'exceptions'));
     box.append(cols, list('Handled errors', c.errors, 'Errors the game reports on purpose without crashing, most players first.', 'errors'));
   }
