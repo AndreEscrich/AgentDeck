@@ -128,10 +128,12 @@ const ANSWER_PROMPT = [
 
 // A comment an agent posts on a Tactile PM ticket is read by QA, who go and
 // check the fix: so it is a few lines, not a report.
-// The layout of agents' comments on PM tickets (FIX, HOW TO CHECK, …), which
-// Agent Hub also checks before a comment is posted (pmcommentformat.js).
-const pmCommentFormat = require('./pmcommentformat');
-const PM_COMMENT_PROMPT = pmCommentFormat.PROMPT;
+const PM_COMMENT_PROMPT = [
+  'Before you post or edit a comment about a change on a Tactile PM ticket (pm_create_comment, pm_update_comment), load the agent-hub:pm-comment skill and follow it: QA reads that comment to go and check the change.',
+  'A comment that is not about a change (a question, an answer, a status note) is a short paragraph or two in <p> tags.',
+].join(' ');
+
+const hubPlugin = require('./hubplugin');
 
 // Agents keep the status of the PM ticket they work on up to date: In
 // Progress when they start, For QA (Branch) or For QA (Trunk) after they
@@ -143,7 +145,7 @@ const PM_STATUS_PROMPT = [
   'When you work on a Tactile PM ticket (a task, bug, story or subtask you were asked to fix, build or look into), keep its status up to date yourself, with pm_update_task, or pm_update_subtask for a subtask, using the status names of the ticket\'s project (pm_list_statuses):',
   '1. When you start working on it and its status is To Do or Needs Fixes, set it to In Progress. Leave any other status as it is. Do not do this when you only read a ticket to answer a question about it.',
   '2. After you commit the change for it, set it to For QA: "For QA (Branch)" when the commit went to a branch (an SVN path under /branches/, or a git branch other than main, master or trunk), or "For QA (Trunk)" when it went to trunk (SVN /trunk, or git main or master). If the project has no status with that name, use its closest QA status (for example "Ready for QA").',
-  'In the same update, set the custom fields "Branch" (the branch name, or "trunk") and "Testable revision" (the revision of that commit: the SVN revision number, or the short git commit hash) with customFields, so QA tests the build that has the change; for a subtask, which has no custom fields, set them on its parent story. The branch and revision go only in these fields: never write them in a comment or in the ticket\'s description.',
+  'In the same update, set the custom fields "Branch" (the branch name, or "trunk") and "Testable revision" (the revision of that commit: the SVN revision number, or the short git commit hash) with customFields, so QA tests the build that has the change; for a subtask, which has no custom fields, set them on its parent story. Do not write the branch or revision into the ticket\'s description; a comment about the change follows the agent-hub:pm-comment skill.',
   'Do this after every commit for the ticket, also when its status does not change (a second commit, or a fix after QA): Branch and Testable revision always name your latest commit. Read the revision from the commit\'s own output (svn commit prints "Committed revision N"; git commit prints the hash), never guess it. Then read the ticket again with pm_get_task and check the status and both fields.',
   'If you did not commit (the change is only in the working copy, or the user commits it), leave the ticket In Progress and say so.',
   '3. Never set a status that belongs to QA or the lead: In QA, In QA (Branch), In QA (Trunk), Passed Testing, Paused Testing, Prepare for Trunk, Ready for Release, In Rollout, Done, Live or Halted, and never move a ticket back from one of those, unless the user asks.',
@@ -222,6 +224,7 @@ function claudeArgs(config, { cwd, resumeId, forkSession, resumeSessionAt, permi
     '--permission-prompt-tool', 'stdio',
     // Without this flag the CLI refuses a later switch to bypass mode.
     '--allow-dangerously-skip-permissions',
+    '--plugin-dir', hubPlugin.pluginDir(),
     // Tactile's knowledge in Cortex, through its knowledge-retriever helper (knowledge.js).
     '--append-system-prompt', [SYSTEM_PROMPT, knowledge.knowledgePrompt(config, cwd, { helper: !!retriever }), require('./gallery').galleryPrompt(config), governed ? pipeline.governorPrompt(run) : ''].filter(Boolean).join('\n\n'),
     ...(Object.keys(agents).length ? ['--agents', JSON.stringify(agents)] : []),
@@ -298,19 +301,14 @@ class AgentManager {
       }
       if (agent.sessionId) agent.engine.bindSession(agent.sessionId);
       // The hooks go with "initialize", before your first message.
-      const hooks = PipelineEngine.hooks();
-      hooks.PreToolUse = [...(hooks.PreToolUse || []), pmCommentFormat.HOOK];
-      proc.stdin.write(JSON.stringify({ type: 'control_request', request_id: `pipeline-init-${id}`, request: { subtype: 'initialize', hooks } }) + '\n');
+      proc.stdin.write(JSON.stringify({ type: 'control_request', request_id: `pipeline-init-${id}`, request: { subtype: 'initialize', hooks: PipelineEngine.hooks() } }) + '\n');
     } else if (typeof lane === 'string' && lane) {
       // An agent of a ticket run (ticketrun.js): before it changes a file,
       // Claude Code asks the file locks (filelocks.js), and waits.
       agent.lane = lane;
       proc.stdin.write(JSON.stringify({ type: 'control_request', request_id: `lane-init-${id}`, request: { subtype: 'initialize', hooks: {
-        PreToolUse: [{ matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash', hookCallbackIds: ['lane-lock'] }, pmCommentFormat.HOOK],
+        PreToolUse: [{ matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash', hookCallbackIds: ['lane-lock'] }],
       } } }) + '\n');
-    } else {
-      // Every other agent: only the check of its PM comments' layout.
-      proc.stdin.write(JSON.stringify({ type: 'control_request', request_id: `init-${id}`, request: { subtype: 'initialize', hooks: { PreToolUse: [pmCommentFormat.HOOK] } } }) + '\n');
     }
 
     let buffer = '';
@@ -408,15 +406,6 @@ class AgentManager {
       agent.pending.add(msg.request_id);
       this.setStatus(agent, 'waiting');
       this.send('agent:permission', agent.id, { requestId: msg.request_id, ...msg.request });
-      return;
-    }
-    // A comment on a PM ticket: posted only in the layout QA reads
-    // (pmcommentformat.js); otherwise refused, with why, and the agent writes
-    // it again.
-    if (msg.request?.subtype === 'hook_callback' && msg.request.callback_id === 'pm-comment') {
-      let response = {};
-      try { response = pmCommentFormat.hookAnswer(msg.request.input || {}); } catch (err) { console.error('pm-comment hook', err); }
-      this.writeJson(agent, { type: 'control_response', response: { subtype: 'success', request_id: msg.request_id, response } });
       return;
     }
     // A pipeline governor's hooks: its run decides (pipelinerun.js). An
