@@ -458,6 +458,7 @@ app.whenReady().then(() => {
   const healthCall = fn => Promise.resolve().then(fn).catch(err => ({ error: err.message, notConnected: !!err.notConnected }));
   ipcMain.handle('health:summary', () => health.summary());
   ipcMain.handle('health:check', (_e, force) => healthCall(() => health.check(!!force)));
+  ipcMain.handle('health:range', (_e, projectId, days) => healthCall(() => health.rangeLists(String(projectId || ''), [1, 3, 7].includes(days) ? days : 1)));
   ipcMain.handle('health:seen', () => health.markSeen());
   ipcMain.handle('health:connect', () => healthCall(() => health.connect()));
   ipcMain.handle('health:disconnect', () => health.disconnect());

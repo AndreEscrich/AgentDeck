@@ -145,6 +145,7 @@ contextBridge.exposeInMainWorld('deck', {
   pmOptions: (project, fresh) => ipcRenderer.invoke('pmc:options', project, !!fresh),
   healthSummary: () => ipcRenderer.invoke('health:summary'),
   healthCheck: force => ipcRenderer.invoke('health:check', !!force),
+  healthRange: (projectId, days) => ipcRenderer.invoke('health:range', projectId, days),
   healthSeen: () => ipcRenderer.invoke('health:seen'),
   healthConnect: () => ipcRenderer.invoke('health:connect'),
   healthDisconnect: () => ipcRenderer.invoke('health:disconnect'),

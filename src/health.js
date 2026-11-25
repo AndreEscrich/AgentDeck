@@ -174,6 +174,29 @@ async function findDashboards() {
   return [...(health?.dashboards || []), ...(support?.dashboards || [])].filter(d => !seen.has(d._id) && seen.add(d._id)).map(d => ({ id: d._id, title: d.title, updatedAt: d.updatedAt }));
 }
 
+// The support numbers for one of the view's ranges (1, 3 or 7 days): the
+// messages in it against the same time just before, by topic, and its
+// conversations. A log with only dates counts a message at the end of its
+// day, so "the last 24 hours" covers today and yesterday.
+function supportRange(messages, days, now = Date.now()) {
+  const span = days * DAY;
+  const t = m => (/^\d{4}-\d{2}-\d{2}$/.test(String(m.at)) ? Date.parse(m.at) + DAY - 1 : Date.parse(m.at) || 0);
+  const inNow = messages.filter(m => t(m) > now - span);
+  const inBefore = messages.filter(m => t(m) > now - 2 * span && t(m) <= now - span);
+  const count = (list, key) => list.reduce((map, m) => map.set(key(m), (map.get(key(m)) || 0) + 1), new Map());
+  const a = count(inNow, m => m.topic), b = count(inBefore, m => m.topic);
+  const topics = [...new Set([...a.keys(), ...b.keys()])].map(name => ({ name, week: a.get(name) || 0, before: b.get(name) || 0 }))
+    .sort((x, y) => y.week - x.week || y.before - x.before);
+  const byConv = new Map();
+  for (const m of [...inNow].sort((x, y) => t(x) - t(y))) {
+    if (!byConv.has(m.conversation)) byConv.set(m.conversation, []);
+    byConv.get(m.conversation).push(m);
+  }
+  const recent = [...byConv.entries()].map(([id, list]) => ({ id, messages: list, at: list[list.length - 1].at, topic: list[list.length - 1].topic, unhappy: list.some(m => /neg/i.test(m.tone)) }))
+    .sort((x, y) => (x.at < y.at ? 1 : -1)).slice(0, 60);
+  return { days, stats: { messages: inNow.length, before: inBefore.length, players: new Set(inNow.map(m => m.conversation)).size, unhappy: inNow.filter(m => /neg/i.test(m.tone)).length }, topics, recent };
+}
+
 // The numbers and the warnings from the messages.
 function analyse(messages, now = Date.now()) {
   const t = m => Date.parse(m.at) || 0;
@@ -231,6 +254,7 @@ function analyse(messages, now = Date.now()) {
     stats: { day: last24.length, week: last7.length, before: prev7.length, conversations: conversations(last7), unhappy: negative(last7), total: messages.length,
       dateOnly: messages.length > 0 && messages.every(m => /^\d{4}-\d{2}-\d{2}$/.test(String(m.at))) },
     topics, warnings, recent,
+    byRange: Object.fromEntries([1, 3, 7].map(n => [n, supportRange(messages, n, now)])),
   };
 }
 
@@ -267,11 +291,12 @@ async function crashCharts(p) {
 
 // One chart's rows as objects ({ column: value }), its default view (the
 // dashboard's own range, 30 days), run again first when that is old.
-async function chartRows(p, chartId, force) {
+async function chartRows(p, chartId, force, days = null) {
   const args = { chartId };
   if (p.filterGroup) args.activeFilterGroupId = p.filterGroup;
+  if (days) args.filterOverrides = { daterange: String(days) };
   state.lastRun ||= {};
-  const key = `${p.id}:${chartId}`;
+  const key = `${p.id}:${chartId}${days ? `:${days}` : ''}`;
   const run = async () => {
     await bi.callTool('bi_run_chart', { ...args, dashboardId: p.dashboardId });
     state.lastRun[key] = Date.now();
@@ -313,6 +338,37 @@ const shortFrame = f => {
   return s.replace(/\(.*\)$/s, '').replace(/^-\[|\]$/g, '').replace(/^.*::(?=[^:]+::[^:]+$)/, '').slice(0, 90);
 };
 
+// The crash groups, Unity exceptions and handled errors of a chart read,
+// as the view shows them. isNew: first seen in the last 14 days. firstSeen
+// (group id → date) comes from the 30-day read when this read is shorter,
+// because in a shorter read every group starts inside it.
+function listsOf(c, now = Date.now(), firstSeen = null) {
+  const num = v => Number(v) || 0;
+  const days = d => (now - Date.parse(d)) / DAY;
+  const first = r => firstSeen?.get(r.crash_group_id) || r.first_seen || '';
+  // Crash groups: the ANR and out-of-memory rows without a stack are the
+  // rates already, so they are left out here. The same group can show as a
+  // crash and as out of memory: kept once.
+  const seen = new Set();
+  const groups = (c.groups || []).filter(r => !(r.type !== 'Crash' && (!r.top_frame || r.top_frame === '(no frame)')))
+    .filter(r => { const k = r.crash_group_id || `${r.type}${r.signal}${r.top_frame}`; if (seen.has(k)) return false; seen.add(k); return true; })
+    .map(r => ({ type: r.type, platform: r.platform || '', what: shortFrame(r.top_frame) || r.signal || 'Unknown native crash', signal: r.signal || '', frame: r.top_frame || '',
+      events: num(r.events), devices: num(r.devices), versions: String(r.latest_versions || '').split(',').filter(Boolean), first: first(r), last: r.last_seen || '',
+      id: r.crash_group_id || '', isNew: days(first(r)) <= 14 }));
+  const exceptions = (c.exceptions || []).map(r => ({ what: shortMethod(r.method), method: r.method || '', platforms: r.platforms || '', events: num(r.exceptions), devices: num(r.devices),
+    versions: String(r.latest_versions || '').split(',').filter(Boolean), first: first(r), last: r.last_seen || '', id: r.crash_group_id || '', isNew: days(first(r)) <= 14 }));
+  // Handled errors: the same error comes from two sources (clientError and
+  // Embrace's log of it): kept once, with the most players.
+  const errs = new Map();
+  for (const r of c.errors || []) {
+    const name = String(r.error || '').replace(/^ClientErrorEvent - /, '');
+    const cur = errs.get(name);
+    if (!cur || num(r.players) > cur.players) errs.set(name, { what: name, players: num(r.players), events: num(r.events), versions: String(r.latest_versions || '').split(',').filter(Boolean), last: r.last_seen || '' });
+  }
+  const errors = [...errs.values()].sort((a, b) => b.players - a.players);
+  return { groups, exceptions, errors };
+}
+
 // The numbers and the warnings from the crash charts.
 function analyseCrashes(c, now = Date.now()) {
   const num = v => Number(v) || 0;
@@ -324,26 +380,7 @@ function analyseCrashes(c, now = Date.now()) {
     const r = byType.get(t);
     return { type: t, per1k: num(r.per_1k_dau), before: num(r.per_1k_dau_previous_period), change: num(r.change_vs_previous), events: num(r.events), devices: num(r.devices_affected), line: daily.get(t) || [] };
   });
-  // Crash groups: the ANR and out-of-memory rows without a stack are the
-  // rates above already, so they are left out here. The same group can show
-  // as a crash and as out of memory: kept once.
-  const seen = new Set();
-  const groups = c.groups.filter(r => !(r.type !== 'Crash' && (!r.top_frame || r.top_frame === '(no frame)')))
-    .filter(r => { const k = r.crash_group_id || `${r.type}${r.signal}${r.top_frame}`; if (seen.has(k)) return false; seen.add(k); return true; })
-    .map(r => ({ type: r.type, platform: r.platform || '', what: shortFrame(r.top_frame) || r.signal || 'Unknown native crash', signal: r.signal || '', frame: r.top_frame || '',
-      events: num(r.events), devices: num(r.devices), versions: String(r.latest_versions || '').split(',').filter(Boolean), first: r.first_seen || '', last: r.last_seen || '',
-      id: r.crash_group_id || '', isNew: days(r.first_seen) <= 14 }));
-  const exceptions = c.exceptions.map(r => ({ what: shortMethod(r.method), method: r.method || '', platforms: r.platforms || '', events: num(r.exceptions), devices: num(r.devices),
-    versions: String(r.latest_versions || '').split(',').filter(Boolean), first: r.first_seen || '', last: r.last_seen || '', id: r.crash_group_id || '', isNew: days(r.first_seen) <= 14 }));
-  // Handled errors: the same error comes from two sources (clientError and
-  // Embrace's log of it): kept once, with the most players.
-  const errs = new Map();
-  for (const r of c.errors) {
-    const name = String(r.error || '').replace(/^ClientErrorEvent - /, '');
-    const cur = errs.get(name);
-    if (!cur || num(r.players) > cur.players) errs.set(name, { what: name, players: num(r.players), events: num(r.events), versions: String(r.latest_versions || '').split(',').filter(Boolean), last: r.last_seen || '' });
-  }
-  const errors = [...errs.values()].sort((a, b) => b.players - a.players);
+  const { groups, exceptions, errors } = listsOf(c, now);
   // Versions: the rates of the newest ones against the others.
   const vrows = c.versions.map(r => ({ version: r.version, type: r.type, per1k: num(r.per_1k_dau), events: num(r.events) }));
   const versionList = [...new Set(vrows.map(r => r.version))];
@@ -394,8 +431,40 @@ function analyseCrashes(c, now = Date.now()) {
     if (e.isNew && e.devices >= 25) warnings.push({ id: `newexc:${e.id || e.method}`, level: e.devices >= 100 ? 'high' : 'medium', tab: 'crashes', item: { kind: 'exception', ...e },
       title: `New exception in ${e.what}`, text: `${e.devices} devices since ${new Date(e.first).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}${e.versions[0] ? `, latest ${e.versions[0]}` : ''}.` });
   }
-  return { rates, groups: groups.slice(0, 25), exceptions: exceptions.slice(0, 25), errors: errors.slice(0, 10), analysis: c.analysis || null, warnings,
+  // The rates for the view's ranges (1, 3 and 7 days), from the daily rows:
+  // the last N full days against the N days before.
+  const byRange = {};
+  for (const n of [1, 3, 7]) {
+    byRange[n] = CRASH_TYPES.map(t => {
+      const rows = c.daily.filter(r => r.type === t).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      if (rows.length < n) return null;
+      const sum = list => { const ev = list.reduce((x, r) => x + num(r.events), 0), dau = list.reduce((x, r) => x + num(r.dau), 0); return { ev, rate: dau ? ev / dau * 1000 : 0 }; };
+      const cur = sum(rows.slice(-n)), before = rows.length >= 2 * n ? sum(rows.slice(-2 * n, -n)) : null;
+      const r2 = x => Math.round(x * 100) / 100;
+      return { type: t, per1k: r2(cur.rate), before: before ? r2(before.rate) : null, change: before?.rate ? cur.rate / before.rate - 1 : 0, events: cur.ev, devices: null,
+        line: (daily.get(t) || []).slice(-Math.max(7, 2 * n)), until: rows[rows.length - 1].date };
+    }).filter(Boolean);
+  }
+  return { rates, byRange, groups: groups.slice(0, 25), exceptions: exceptions.slice(0, 25), errors: errors.slice(0, 10), analysis: c.analysis || null, warnings,
     versions: newest.map(v => ({ version: v, rates: Object.fromEntries(CRASH_TYPES.map(t => [t, vrows.find(r => r.version === v && r.type === t)?.per1k ?? null])) })) };
+}
+
+// The crash lists for a shorter range (1, 3 or 7 days), read when the view
+// asks for them: the dashboard's charts with its date filter set to that many
+// days (BI's cached rows, run again when they are older than 6 hours).
+// "new" still comes from the 30-day read.
+async function rangeLists(projectId, days) {
+  const p = projects().find(x => x.id === projectId);
+  if (!p) throw new Error('That project is not in the list any more.');
+  const ids = await crashCharts(p);
+  if (!ids.groups && !ids.exceptions) return null;
+  const read = id => (id ? chartRows(p, id, false, days).catch(() => []) : Promise.resolve([]));
+  const [groups, exceptions, errors] = [await read(ids.groups), await read(ids.exceptions), await read(ids.errors)];
+  save();
+  const r = state.reports[p.id]?.crashes;
+  const firstSeen = new Map([...(r?.groups || []), ...(r?.exceptions || [])].filter(x => x.id).map(x => [x.id, x.first]));
+  const out = listsOf({ groups, exceptions, errors }, Date.now(), firstSeen);
+  return { days, groups: out.groups.slice(0, 25), exceptions: out.exceptions.slice(0, 25), errors: out.errors.slice(0, 10) };
 }
 
 // One look at every project. Resolves with the summary.
@@ -479,4 +548,4 @@ function digestFolder(folders) {
   return null;
 }
 
-module.exports = { setup, summary, check, markSeen, connect, disconnect, digestFolder, analyse, analyseCrashes, resolve, findDashboards };
+module.exports = { setup, summary, check, markSeen, connect, disconnect, digestFolder, analyse, analyseCrashes, rangeLists, resolve, findDashboards };
