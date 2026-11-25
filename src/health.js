@@ -326,31 +326,49 @@ async function chartRows(p, chartId, force, days = null) {
   return (q.rows || []).map(r => Object.fromEntries(q.columns.map((c, i) => [c.name, r[i]])));
 }
 
-// Each crash group's devices and events per day, the last 31 days and
-// today so far (a crash taking off today must show), for these group ids:
-// one query on the dashboard's crash table, that reads only those days (a
-// few MB). Kept an hour. Resolves with { id: [{ date, devices, events }] }.
+// For these crash group ids, one query on the dashboard's crash table (it
+// reads only the last 31 days: a few MB), kept an hour:
+//  - days: devices and events per day, the last 31 days and today so far
+//    (a crash taking off today must show);
+//  - hours: per hour (UTC), the last 72 hours, for the 24-hour and 3-day
+//    views;
+//  - ranges: the devices (players) and events (cases) of exactly the last
+//    24 hours, 3 days and 7 days, so the view's numbers are those, not the
+//    dashboard's calendar days.
+// Resolves with { id: { days: [{ date, devices, events }], hours: [{ hour,
+// devices, events }], ranges: { 1|3|7: { devices, events } } } }.
 async function crashTrends(p, groupIds, force = false) {
   const ids = await crashCharts(p);
   if (!ids.table) return {};
   const want = [...new Set(groupIds)].filter(x => /^[A-Za-z0-9]{8,64}$/.test(x || '')).slice(0, 150);
   if (!want.length) return {};
   state.trends ||= {};
-  const hit = state.trends[p.id];
+  const hit = state.trends[p.id]?.v === 2 ? state.trends[p.id] : null;
   const fresh = hit && Date.now() - hit.at < 60 * 60 * 1000 && new Date(hit.at).toDateString() === new Date().toDateString();
   if (!force && fresh && want.every(id => id in hit.byId)) return hit.byId;
-  const sql = `SELECT crashGroupId AS id, CAST(partitionDate AS STRING) AS date, COUNT(*) AS events, COUNT(DISTINCT deviceId) AS devices
-FROM \`${ids.table}\`
-WHERE partitionDate >= DATE_SUB(CURRENT_DATE(), INTERVAL 31 DAY) AND partitionDate <= CURRENT_DATE()
-  AND crashGroupId IN (${want.map(x => `'${x}'`).join(', ')})
-GROUP BY 1, 2`;
+  const within = h => `occurredAt >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL ${h} HOUR)`;
+  const sql = `WITH c AS (SELECT crashGroupId AS id, partitionDate, occurredAt, deviceId FROM \`${ids.table}\`
+  WHERE partitionDate >= DATE_SUB(CURRENT_DATE(), INTERVAL 31 DAY) AND crashGroupId IN (${want.map(x => `'${x}'`).join(', ')}))
+SELECT 'd' AS kind, id, CAST(partitionDate AS STRING) AS k, COUNT(*) AS events, COUNT(DISTINCT deviceId) AS devices FROM c GROUP BY 2, 3
+UNION ALL SELECT 'h', id, FORMAT_TIMESTAMP('%Y-%m-%dT%H', occurredAt), COUNT(*), COUNT(DISTINCT deviceId) FROM c WHERE ${within(72)} GROUP BY 2, 3
+UNION ALL SELECT 'r1', id, NULL, COUNT(*), COUNT(DISTINCT deviceId) FROM c WHERE ${within(24)} GROUP BY 2
+UNION ALL SELECT 'r3', id, NULL, COUNT(*), COUNT(DISTINCT deviceId) FROM c WHERE ${within(72)} GROUP BY 2
+UNION ALL SELECT 'r7', id, NULL, COUNT(*), COUNT(DISTINCT deviceId) FROM c WHERE ${within(168)} GROUP BY 2`;
   const r = await bi.callTool('bi_run_sql_preview', { sql, previewLimit: 10000 });
   const col = Object.fromEntries((r?.columns || []).map((c, i) => [c.name, i]));
   const byId = fresh ? { ...hit.byId } : {};
-  for (const id of want) byId[id] = [];
-  for (const row of r?.rows || []) byId[row[col.id]]?.push({ date: row[col.date], devices: Number(row[col.devices]) || 0, events: Number(row[col.events]) || 0 });
-  for (const id of want) byId[id].sort((a, b) => a.date.localeCompare(b.date));
-  state.trends[p.id] = { at: Date.now(), byId };
+  for (const id of want) byId[id] = { days: [], hours: [], ranges: { 1: { devices: 0, events: 0 }, 3: { devices: 0, events: 0 }, 7: { devices: 0, events: 0 } } };
+  for (const row of r?.rows || []) {
+    const x = byId[row[col.id]];
+    if (!x) continue;
+    const v = { devices: Number(row[col.devices]) || 0, events: Number(row[col.events]) || 0 };
+    const kind = row[col.kind];
+    if (kind === 'd') x.days.push({ date: row[col.k], ...v });
+    else if (kind === 'h') x.hours.push({ hour: row[col.k], ...v });
+    else x.ranges[kind.slice(1)] = v;
+  }
+  for (const id of want) { byId[id].days.sort((a, b) => a.date.localeCompare(b.date)); byId[id].hours.sort((a, b) => a.hour.localeCompare(b.hour)); }
+  state.trends[p.id] = { v: 2, at: Date.now(), byId };
   return byId;
 }
 
@@ -361,8 +379,9 @@ GROUP BY 1, 2`;
 // whether it is spiking (yesterday or today at least twice its usual, and
 // at least 10 devices).
 const SHARE_RED = 0.005;
-function trendOf(rows, dau, days, now = Date.now()) {
-  if (!rows) return null;
+function trendOf(rec, dau, days, now = Date.now()) {
+  if (!rec) return null;
+  const rows = rec.days || [];
   const byDate = new Map(rows.map(r => [r.date, r]));
   const dates = [];
   for (let i = 30; i >= 0; i--) dates.push(new Date(now - i * DAY).toISOString().slice(0, 10));
@@ -376,7 +395,19 @@ function trendOf(rows, dau, days, now = Date.now()) {
   const peakAt = dates[n - recent.length + recent.indexOf(peak)];
   const last = Math.max(devices[n - 1], devices[n - 2]);
   const usual = median(devices.slice(-16, -2));
-  return { dates, devices, events, today: true, share: peak, shareAt: peakAt, players: players(peakAt), lastShare: shares[n - 1], hot: peak >= SHARE_RED, spiking: last >= 10 && last >= Math.max(1, usual) * 2 };
+  // The last 72 hours, hour by hour (UTC keys up to this hour).
+  const byHour = new Map((rec.hours || []).map(r => [r.hour, r]));
+  const hourKeys = [];
+  for (let i = 71; i >= 0; i--) hourKeys.push(new Date(now - i * 3600e3).toISOString().slice(0, 13));
+  const hours = hourKeys.map(k => byHour.get(k)?.devices || 0);
+  // This range exactly: its players (devices) and cases (events), and its
+  // players against the daily players of those days (about: a player can
+  // be counted once over several days).
+  const range = rec.ranges?.[days] || null;
+  const daily = dates.slice(-(days + 1), -1).map(d => dau[d]).filter(Boolean);
+  const avgDau = daily.length ? daily.reduce((a, b) => a + b, 0) / daily.length : players(dates[n - 2]);
+  return { dates, devices, events, today: true, hourKeys, hours, range, rangeShare: range && avgDau ? range.devices / avgDau : 0,
+    share: peak, shareAt: peakAt, players: players(peakAt), lastShare: shares[n - 1], hot: peak >= SHARE_RED, spiking: last >= 10 && last >= Math.max(1, usual) * 2 };
 }
 
 async function readCrashes(p, force) {
@@ -546,7 +577,14 @@ async function rangeLists(projectId, days) {
   try {
     const trends = await crashTrends(p, [...lists.groups, ...lists.exceptions].map(x => x.id));
     const dau = r?.dau || {};
-    for (const x of [...lists.groups, ...lists.exceptions]) x.trend = trendOf(trends[x.id], dau, days);
+    for (const x of [...lists.groups, ...lists.exceptions]) {
+      x.trend = trendOf(trends[x.id], dau, days);
+      // Exactly the last 24 hours (3, 7 days): not the dashboard's calendar days.
+      if (x.trend?.range) { x.devices = x.trend.range.devices; x.events = x.trend.range.events; }
+    }
+    const inRange = x => !x.trend?.range || x.devices > 0;
+    lists.groups = lists.groups.filter(inRange).sort((a, b) => b.devices - a.devices || b.events - a.events);
+    lists.exceptions = lists.exceptions.filter(inRange).sort((a, b) => b.devices - a.devices || b.events - a.events);
     save();
   } catch (err) { lists.trendError = err.message; }
   return lists;

@@ -4532,3 +4532,7 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .health-crash-kv code { color: var(--text); word-break: break-all; }
 .health-crash-id { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-dim); }
 .health-crash-id code { font-family: var(--mono); color: var(--text); }
+/* Project health: a crash opened in place, under its row. */
+.health-crash-open { overflow: hidden; margin: 2px 0 10px 6px; padding: 10px 12px 12px; border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); display: flex; flex-direction: column; gap: 10px; }
+.health-item.open { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.health-split { color: var(--text-dim); font-variant-numeric: tabular-nums; }

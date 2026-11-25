@@ -266,10 +266,6 @@ class HealthView {
     if (now.data.trendError) box.append(el('div', 'health-card-note', `The days of each crash could not be read: ${now.data.trendError}`));
     c = { ...c, ...now.data };
     const since = new Date(Date.now() - days * 864e5).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-    // One scale for all their lines (the busiest day of any of them), so a
-    // big crash stands out against the small ones.
-    // 25 at least, so small ones still have a visible curve.
-    this.dayMax = Math.max(25, ...[...(c.exceptions || []), ...(c.groups || [])].flatMap(x => x.trend?.devices || []));
     box.append(
       this.crashList(p, 'Unity exceptions', c.exceptions, 'C# exceptions nobody caught, by the method that threw. The game goes on, but that code stopped. Most devices first.', 'exceptions', days),
       this.crashList(p, 'Handled errors', c.errors, 'Errors the game reports on purpose without crashing, most players first.', 'errors', days),
@@ -291,16 +287,20 @@ class HealthView {
       const main = el('div', 'health-item-main');
       const name = el('div', 'health-item-name', x.what);
       name.title = x.method || x.frame || x.what;
+      // Under it: whether it is new, and the players it hit (their share of
+      // the daily players) and how many times, apart, because one player can
+      // hit it many times.
       const meta = el('div', 'health-item-meta');
-      if (t?.hot) meta.append(el('span', 'health-share hot', `${pctText(t.share)} of players`));
-      if (t?.spiking) meta.append(el('span', 'health-spiking', 'spiking'));
       if (x.isNew) meta.append(el('span', 'health-new', 'new'));
-      if (x.platform || x.platforms) meta.append(el('span', 'health-chip', x.platform || x.platforms.replace(',', ' · ')));
-      if (x.signal && x.signal !== x.what) meta.append(el('span', 'health-chip', x.signal));
-      if (x.versions?.length) meta.append(el('span', null, `latest ${x.versions[0]}`));
-      if (x.first) meta.append(el('span', null, `since ${new Date(x.first).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`));
-      else if (x.last) meta.append(el('span', null, `last ${new Date(x.last).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`));
-      if (t && !t.hot && t.share > 0) meta.append(el('span', 'health-share', `${pctText(t.share)} of players`));
+      if (kind !== 'errors') {
+        const pl = x.devices || 0, cases = x.events || 0;
+        if (t?.rangeShare || t?.hot) {
+          const share = el('span', 'health-share' + (t.hot ? ' hot' : ''), `${pctText(t.rangeShare || 0)} of players`);
+          share.title = t.hot ? `At most ${pctText(t.share)} of a day's players in this time: over 0.5%.` : 'Its players against the daily players of this time (about).';
+          meta.append(share);
+        }
+        meta.append(el('span', 'health-split', `${pl.toLocaleString()} player${pl === 1 ? '' : 's'} · ${cases.toLocaleString()} case${cases === 1 ? '' : 's'}`));
+      } else meta.append(el('span', 'health-split', `${(x.players || 0).toLocaleString()} players · ${(x.events || 0).toLocaleString()} cases`));
       main.append(name, meta);
       // Its days (crashes and exceptions); a bar for the handled errors.
       let graph;
@@ -308,7 +308,7 @@ class HealthView {
         graph = el('div', 'health-item-bar');
         const fill = el('span'); fill.style.width = `${Math.max(2, (x.players || 0) / max * 100)}%`;
         graph.append(fill);
-      } else graph = t ? dayLine(t, days, this.dayMax) : el('div', 'health-days-none', x.id ? '' : 'no group id');
+      } else graph = t ? dayLine(t, days) : el('div', 'health-days-none', x.id ? '' : 'no group id');
       const n = x.devices ?? x.players ?? 0;
       const num = el('div', 'health-item-n', n.toLocaleString());
       num.title = kind === 'errors' ? `${n} players, ${x.events.toLocaleString()} times` : `${n} devices, ${x.events.toLocaleString()} times`;
@@ -316,11 +316,33 @@ class HealthView {
       if (kind !== 'errors') {
         const item = { kind: kind === 'crashes' ? 'crash' : 'exception', ...x, rangeDays: days };
         row.append(this.agentButton(p, item));
-        // A click: its window, with a bigger graph and where it happens.
+        // A click opens it in place, under its row: its graph by app version,
+        // where it happens and its top frame. Another click closes it.
         if (x.id) {
+          const key = `${p.id}:${x.id}`;
+          this.openCrashes ||= new Set();
           row.classList.add('clickable');
-          row.title = 'Click for its days in detail, where it happens and its top frame';
-          row.onclick = e => { if (!e.target.closest('button')) this.openCrash(p, item, row); };
+          row.title = 'Click to see it in detail';
+          row.onclick = e => {
+            if (e.target.closest('button')) return;
+            const open = this.openCrashes.has(key);
+            const next = row.nextElementSibling?.classList.contains('health-crash-open') ? row.nextElementSibling : null;
+            if (open) {
+              this.openCrashes.delete(key);
+              row.classList.remove('open');
+              if (next) slideClosed(next);
+            } else {
+              this.openCrashes.add(key);
+              row.classList.add('open');
+              const d = this.crashDetail(p, item);
+              row.after(d);
+              slideOpen(d);
+            }
+            window.uiSound?.(open ? 'tickDown' : 'tick');
+          };
+          card.append(row);
+          if (this.openCrashes.has(key)) { row.classList.add('open'); card.append(this.crashDetail(p, item)); }
+          continue;
         }
       }
       else row.append(el('span'));
@@ -458,42 +480,51 @@ function loading(text, small = false) {
   return d;
 }
 
-// One crash's devices per day, the last 30 days and today so far, as a
-// smooth filled curve on the scale all of the tab's crashes share (max: the
-// busiest day of any of them, 25 at least), so a big crash draws a tall
-// curve and a small one stays near the floor. The picked range has a faint
-// band behind it; today, still filling, is dashed. A day at 0.5% of the
-// players or more has a red dot, a spiking day an amber one.
-function dayLine(t, days, max = Math.max(25, ...t.devices)) {
-  const w = 120, h = 30, n = t.devices.length;
+// One crash's devices over the picked range, as a smooth filled curve: by
+// hour for the last 24 hours and 3 days, by day for 7 days (and today so
+// far, dashed). Its own scale, 25 at the top unless it goes higher, so a
+// small one looks small and a big one fills it. A day at 0.5% of the
+// players or more has a red dot.
+function dayLine(t, days) {
+  const hourly = days <= 3 && t.hours?.length;
+  const vals = hourly ? t.hours.slice(-days * 24) : t.devices.slice(-(days + 1));
+  const keys = hourly ? t.hourKeys.slice(-days * 24) : t.dates.slice(-(days + 1));
+  const max = Math.max(25, ...vals);
+  const w = 120, h = 30, n = vals.length;
   const x = i => (n === 1 ? w / 2 : i / (n - 1) * (w - 4) + 2);
   const y = v => h - 2 - Math.min(1, v / max) * (h - 4);
-  const pts = t.devices.map((v, i) => [x(i), y(v)]);
-  const full = t.today ? n - 1 : n;                        // the full days
-  const from = Math.max(0, full - Math.max(1, days));
+  const pts = vals.map((v, i) => [x(i), y(v)]);
+  const full = hourly ? n : n - 1;   // by day, the last one is today: dashed
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
   svg.setAttribute('class', 'health-days');
   const level = t.hot ? 'hot' : t.spiking ? 'spike' : 'now';
   let dots = '';
-  t.devices.forEach((v, i) => {
-    if (t.hot && t.shareAt === t.dates[i]) dots += `<circle class="hot" cx="${x(i).toFixed(2)}" cy="${y(v).toFixed(2)}" r="2.3"/>`;
-    else if (t.spiking && i >= n - 2 && v === Math.max(t.devices[n - 1], t.devices[n - 2])) dots += `<circle class="spike" cx="${x(i).toFixed(2)}" cy="${y(v).toFixed(2)}" r="2.3"/>`;
-  });
-  const line = smoothPath(pts.slice(0, full));
-  svg.innerHTML = `<rect class="band" x="${(x(from) - 1.5).toFixed(2)}" y="0" width="${(x(n - 1) - x(from) + 3).toFixed(2)}" height="${h}"/>`
-    + `<path class="area ${level}" d="${smoothPath(pts)} L${x(n - 1).toFixed(2)},${h - 2} L${x(0).toFixed(2)},${h - 2} Z"/>`
+  if (!hourly && t.hot) keys.forEach((k, i) => { if (k === t.shareAt) dots += `<circle class="hot" cx="${x(i).toFixed(2)}" cy="${y(vals[i]).toFixed(2)}" r="2.3"/>`; });
+  svg.innerHTML = `<path class="area ${level}" d="${smoothPath(pts)} L${x(n - 1).toFixed(2)},${h - 2} L${x(0).toFixed(2)},${h - 2} Z"/>`
     + `<line class="floor" x1="0" x2="${w}" y1="${h - 1.5}" y2="${h - 1.5}"/>`
-    + `<path class="line ${level}" d="${line}"/>`
-    + (t.today ? `<path class="line ${level} today" d="${smoothPath(pts.slice(full - 1))}"/>` : '') + dots;
+    + `<path class="line ${level}" d="${smoothPath(pts.slice(0, full))}"/>`
+    + (full < n ? `<path class="line ${level} today" d="${smoothPath(pts.slice(full - 1))}"/>` : '') + dots;
   const wrap = el('div', 'health-days-wrap');
   wrap.append(svg);
-  const fmt = (d, i) => (t.today && i === n - 1 ? 'today so far' : new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }));
-  wrap.title = `Devices per day, the last 30 days and today (top of the scale: ${max}, the same for all):\n`
-    + t.dates.slice(-7).map((d, i) => `${fmt(d, n - 7 + i)}: ${t.devices[n - 7 + i]}`).join('\n')
-    + (t.share ? `\nPeak in this range: ${pctText(t.share)} of the day's players.` : '')
-    + '\nClick for more.';
+  const sum = vals.reduce((a, b) => a + b, 0);
+  wrap.title = hourly
+    ? `Players per hour, the last ${days === 1 ? '24 hours' : '3 days'} (top of the scale: ${max}). Busiest hour: ${Math.max(...vals)}.`
+    : `Players per day, the last 7 days and today so far (top of the scale: ${max}):\n` + keys.map((k, i) => `${i === n - 1 ? 'today' : new Date(k).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}: ${vals[i]}`).join('\n');
+  if (!sum) wrap.title = 'None in this time.';
   return wrap;
+}
+
+// Opening and closing a crash in place: its height grows from nothing (or
+// back), pushing what is below.
+function slideOpen(elm) {
+  const h = elm.scrollHeight;
+  elm.animate([{ height: '0px', opacity: 0 }, { height: h + 'px', opacity: 1 }], { duration: 260, easing: 'cubic-bezier(.35,0,.15,1)' });
+}
+function slideClosed(elm) {
+  const a = elm.animate([{ height: elm.offsetHeight + 'px', opacity: 1 }, { height: '0px', opacity: 0 }], { duration: 200, easing: 'ease-in', fill: 'forwards' });
+  a.finished.catch(() => {}).then(() => elm.remove());
+  setTimeout(() => elm.remove(), 260);
 }
 
 // A smooth line through points ([x, y], x growing) that never overshoots
@@ -521,101 +552,77 @@ function smoothPath(pts) {
 
 // ---------- one crash in detail ----------
 
-// Its window: it grows out of its row, like a ticket. Its days as a big
-// chart (devices and events, the last 30 days and today), where it happens
-// (app versions, OS versions, device models, countries) and its top frame
-// as Embrace has it, with its crash group id to find the whole stack in
-// Embrace (its BigQuery export has only that first frame).
-HealthView.prototype.openCrash = async function (p, x, row) {
-  if (this.view.querySelector('.health-crash-shade')) return;
-  const shade = el('div', 'review-shade top health-crash-shade');
-  const box = el('div', 'review-confirm health-crash');
-  const close = async () => {
-    document.removeEventListener('keydown', onKey, true);
-    window.uiSound?.('close');
-    const r = await morphClose(box, row, { backdrop: shade });
-    r?.done?.();
-    shade.remove();
+// A crash opened in place, under its row: its players by app version as a
+// big chart (by hour, the last 48 hours, or by day, 30 days), where it
+// happens (app versions, OS versions, device models, countries) and its top
+// frame as Embrace has it, with its crash group id to find the whole stack
+// in Embrace (its BigQuery export has only that first frame). Read once
+// (kept for this run); a spinner until then.
+HealthView.prototype.crashDetail = function (p, x) {
+  const box = el('div', 'health-crash-open');
+  this.details ||= new Map();
+  const key = `${p.id}:${x.id}`;
+  const fill = d => {
+    box.replaceChildren();
+    if (d?.error) { box.append(el('div', 'tp-error', d.error)); return; }
+    box.append(el('div', 'health-crash-full', x.method || x.frame || x.what), bigChart(d));
+    // Where it happens.
+    const grid = el('div', 'health-crash-grid');
+    const part = (label, list) => {
+      const card = el('div', 'health-crash-part');
+      card.append(el('div', 'health-section-label', label));
+      if (!list.length) { card.append(el('div', 'gallery-note', 'Nothing.')); return card; }
+      const max = Math.max(1, ...list.map(r => r.devices));
+      for (const r of list) {
+        const line = el('div', 'health-crash-row');
+        const bar = el('span', 'health-crash-bar');
+        const f = el('span'); f.style.width = `${Math.max(3, r.devices / max * 100)}%`;
+        bar.append(f);
+        line.append(el('span', 'health-crash-key', r.key), bar, el('span', 'health-crash-n', r.devices.toLocaleString()));
+        line.title = `${r.key}: ${r.devices} players, ${r.events} cases`;
+        card.append(line);
+      }
+      return card;
+    };
+    grid.append(part('App versions', d.version), part('OS versions', d.os), part('Devices', d.device), part('Countries', d.country));
+    box.append(grid);
+    // The top frame, and the way to the whole stack.
+    const frame = el('div', 'health-crash-frame');
+    frame.append(el('div', 'health-section-label', 'Stack trace'));
+    const fr = d.frame[0] || {};
+    const lines = [['Method', fr.method], ['File', fr.file && fr.file !== '<Unknown File>' ? fr.file : ''], ['Line', fr.line], ['Symbol', fr.symbol], ['Module', fr.module],
+      ['Message', fr.message], ['Type', fr.type || fr.errorType], ['Stack', fr.stackTraceType]].filter(([, v]) => v);
+    const code = el('div', 'health-crash-code');
+    code.append(el('div', 'health-crash-code-top', `at ${fr.method || fr.symbol || fr.module || x.what}${fr.file && fr.file !== '<Unknown File>' ? ` (${fr.file}${fr.line ? ':' + fr.line : ''})` : ''}`));
+    for (const [k, v] of lines) { const r2 = el('div', 'health-crash-kv'); r2.append(el('span', null, k), el('code', null, String(v))); code.append(r2); }
+    frame.append(code);
+    if (d.frame.length > 1) frame.append(el('div', 'health-card-note', `${d.frame.length} different top frames in this group; the one on the most players.`));
+    const gid = el('div', 'health-crash-id');
+    const copy = el('button', 'tp-link', 'Copy');
+    copy.type = 'button';
+    copy.onclick = () => { window.deck.copyText?.(x.id); copy.textContent = 'Copied'; setTimeout(() => { copy.textContent = 'Copy'; }, 1200); };
+    gid.append(el('span', null, 'Embrace crash group'), el('code', null, x.id), copy);
+    frame.append(gid, el('div', 'health-card-note', 'Embrace\'s export to BigQuery keeps only this first frame of the stack, never the rest. The whole stack trace is in Embrace: search this crash group id there.'));
+    box.append(frame);
   };
-  const onKey = e => { if (isBackKey(e)) { e.preventDefault(); e.stopImmediatePropagation(); close(); } };
-  document.addEventListener('keydown', onKey, true);
-  shade.onmousedown = e => { if (e.target === shade) close(); };
-  const head = el('div', 'health-crash-head');
-  const title = el('div', 'health-crash-title');
-  title.append(el('span', 'health-crash-kind', x.kind === 'exception' ? 'Unity exception' : x.type === 'Out of memory' ? 'Out of memory' : 'Native crash'), el('h3', null, x.what));
-  const shut = el('button', 'icon tp-close', '✕');
-  shut.type = 'button';
-  shut.title = 'Close (Esc)';
-  shut.onclick = close;
-  head.append(title, this.agentButton(p, x), shut);
-  const full = el('div', 'health-crash-full', x.method || x.frame || x.what);
-  const body = el('div', 'health-crash-body');
-  body.append(loading('Reading its days and where it happens from Tactile BI…'));
-  box.append(head, full, body);
-  shade.append(box);
-  this.view.append(shade);
-  window.uiSound?.('open');
-  morphOpen(box, row, { backdrop: shade });
-
-  const d = await window.deck.healthCrash(p.id, x.id).catch(e => ({ error: String(e?.message || e) }));
-  if (!box.isConnected) return;
-  if (d?.error) { body.replaceChildren(el('div', 'tp-error', d.error)); return; }
-  body.replaceChildren();
-  // The days: the last 30 and today, every day (0 on a day without it).
-  const now = Date.now(), DAY = 864e5;
-  const dates = [];
-  for (let i = 30; i >= 0; i--) dates.push(new Date(now - i * DAY).toISOString().slice(0, 10));
-  const by = new Map(d.days.map(r => [r.key, r]));
-  const devices = dates.map(k => by.get(k)?.devices || 0), events = dates.map(k => by.get(k)?.events || 0);
-  const tot = (list, k) => list.reduce((a, r) => a + r[k], 0);
-  const stats = el('div', 'health-crash-stats');
-  const stat = (n, label) => { const t = el('div', 'health-crash-stat'); t.append(el('b', null, n), el('span', null, label)); return t; };
-  const peak = Math.max(...devices);
-  const peakAt = dates[devices.indexOf(peak)];
-  const players = d.dau[peakAt] || d.dau[dates[dates.length - 2]] || 0;
-  stats.append(stat(tot(d.days, 'devices').toLocaleString(), 'devices, 30 days'), stat(tot(d.days, 'events').toLocaleString(), 'times'),
-    stat(devices[devices.length - 1].toLocaleString(), 'devices today so far'),
-    stat(peak.toLocaleString(), `on its worst day (${new Date(peakAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })})`),
-    ...(players ? [stat(pctText(peak / players), 'of that day\'s players')] : []));
-  body.append(stats, bigChart(d));
-  // Where it happens.
-  const grid = el('div', 'health-crash-grid');
-  const part = (label, list) => {
-    const card = el('div', 'health-crash-part');
-    card.append(el('div', 'health-section-label', label));
-    if (!list.length) { card.append(el('div', 'gallery-note', 'Nothing.')); return card; }
-    const max = Math.max(1, ...list.map(r => r.devices));
-    for (const r of list) {
-      const line = el('div', 'health-crash-row');
-      const bar = el('span', 'health-crash-bar');
-      const fill = el('span'); fill.style.width = `${Math.max(3, r.devices / max * 100)}%`;
-      bar.append(fill);
-      line.append(el('span', 'health-crash-key', r.key), bar, el('span', 'health-crash-n', r.devices.toLocaleString()));
-      line.title = `${r.key}: ${r.devices} devices, ${r.events} times`;
-      card.append(line);
+  const got = this.details.get(key);
+  if (got?.data) fill(got.data);
+  else {
+    box.append(loading('Reading it from Tactile BI…', true));
+    if (!got) {
+      const job = window.deck.healthCrash(p.id, x.id).catch(e => ({ error: String(e?.message || e) }));
+      this.details.set(key, { job });
     }
-    return card;
-  };
-  grid.append(part('App versions', d.version), part('OS versions', d.os), part('Devices', d.device), part('Countries', d.country));
-  body.append(grid);
-  // The top frame, and the way to the whole stack.
-  const frame = el('div', 'health-crash-frame');
-  frame.append(el('div', 'health-section-label', 'Stack trace'));
-  const f = d.frame[0] || {};
-  const lines = [['Method', f.method], ['File', f.file && f.file !== '<Unknown File>' ? f.file : ''], ['Line', f.line], ['Symbol', f.symbol], ['Module', f.module],
-    ['Message', f.message], ['Type', f.type || f.errorType], ['Stack', f.stackTraceType]].filter(([, v]) => v);
-  const code = el('div', 'health-crash-code');
-  code.append(el('div', 'health-crash-code-top', `at ${f.method || f.symbol || f.module || x.what}${f.file && f.file !== '<Unknown File>' ? ` (${f.file}${f.line ? ':' + f.line : ''})` : ''}`));
-  for (const [k, v] of lines) { const r2 = el('div', 'health-crash-kv'); r2.append(el('span', null, k), el('code', null, String(v))); code.append(r2); }
-  frame.append(code);
-  if (d.frame.length > 1) frame.append(el('div', 'health-card-note', `${d.frame.length} different top frames in this group; the one on the most devices.`));
-  const gid = el('div', 'health-crash-id');
-  const copy = el('button', 'tp-link', 'Copy');
-  copy.type = 'button';
-  copy.onclick = () => { window.deck.copyText?.(x.id) ?? navigator.clipboard.writeText(x.id); copy.textContent = 'Copied'; setTimeout(() => { copy.textContent = 'Copy'; }, 1200); };
-  gid.append(el('span', null, 'Embrace crash group'), el('code', null, x.id), copy);
-  frame.append(gid, el('div', 'health-card-note', 'Embrace\'s export to BigQuery keeps only this first frame of the stack, never the rest. The whole stack trace is in Embrace: search this crash group id there.'));
-  body.append(frame);
+    this.details.get(key).job.then(d => {
+      if (!d?.error) this.details.set(key, { data: d });
+      else this.details.delete(key);
+      if (!box.isConnected) return;
+      const from = box.offsetHeight;
+      fill(d);
+      box.animate([{ height: from + 'px' }, { height: box.scrollHeight + 'px' }], { duration: 220, easing: 'cubic-bezier(.35,0,.15,1)' });
+    });
+  }
+  return box;
 };
 
 // A crash's devices, big: a smooth filled curve per app version (the four
