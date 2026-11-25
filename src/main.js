@@ -358,6 +358,7 @@ function watchSessions() {
 // Tests set AGENTDECK_USER_DATA to a folder of their own, so they never
 // touch your real settings, groups and Hub.
 app.setPath('userData', process.env.AGENTDECK_USER_DATA || path.join(app.getPath('appData'), 'agentdeck'));
+require('./hubplugin').setUserDataDir(app.getPath('userData'));
 
 // Windows groups taskbar buttons and shows notifications by this id. It keeps
 // the old name, so Windows treats the renamed app as the same app.
@@ -694,6 +695,14 @@ app.whenReady().then(() => {
   ipcMain.handle('slash:list', (_e, cwd) => require('./slashcommands').list(cwd));
   // A file the diagram shows but the task did not change: open it in your editor.
   ipcMain.handle('file:open', (_e, p) => (typeof p === 'string' && fs.existsSync(p) ? shell.openPath(p) : 'Not found'));
+  ipcMain.handle('pmSkill:status', () => require('./hubplugin').status());
+  ipcMain.handle('pmSkill:customize', () => require('./hubplugin').customize());
+  ipcMain.handle('pmSkill:reveal', () => {
+    const st = require('./hubplugin').status();
+    if (st.custom) shell.showItemInFolder(st.file);
+    return st;
+  });
+  ipcMain.handle('pmSkill:reset', () => require('./hubplugin').reset());
   // Show in Explorer / Finder, in the right-click menus of a session and of a changed file.
   ipcMain.handle('file:reveal', (_e, p, cwd) => revealInFolder(p, cwd));
   ipcMain.handle('cs:namespaces',(_e, paths) => Promise.all((Array.isArray(paths) ? paths : []).slice(0, 500).map(async p => {
