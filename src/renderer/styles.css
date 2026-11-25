@@ -1322,6 +1322,7 @@ body.grabbing, body.grabbing * { cursor: grabbing !important; user-select: none;
   .hub-status .dot { display: none; }
   .hub-title { overflow-wrap: anywhere; }
   .tank-badge { width: 18px; height: 18px; font-size: 11px; top: 5px; right: 5px; }
+  .tile-links .tile-pr.jira-card { gap: 3px; padding: 2px 5px 2px 4px; }
 }
 
 /* Finished, and not opened since: the tank glows and breathes until you open
@@ -1770,6 +1771,20 @@ audio.chat-media { width: 100%; max-width: 420px; height: 40px; background: tran
 .tile-ticket .jira-key { font-size: 11px; flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The tile's title already names the subtask: the card shows only its key. */
 .tile-ticket .jira-summary, .tile-ticket .jira-status { display: none; }
+.tile-links { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; max-width: 100%; }
+.tile-links:empty { display: none; }
+.tile-links .tile-ticket { margin: 0; }
+.tile-pr.jira-card { font-size: 12px; gap: 5px; padding: 2px 8px 2px 6px; margin: 0; min-width: 0; max-width: 100%; box-sizing: border-box; overflow: hidden; }
+.tile-pr { --pr: var(--text-faint); }
+.tile-pr[data-state="open"] { --pr: #3fb950; }
+.tile-pr[data-state="failing"] { --pr: #d29922; }
+.tile-pr[data-state="closed"] { --pr: #f85149; }
+.tile-pr[data-state="merged"] { --pr: #a371f7; }
+.tile-pr .pr-icon { flex-shrink: 0; color: var(--pr); }
+.tile-pr .jira-key { font-size: 11px; color: var(--pr); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile-pr:hover { border-color: var(--pr); }
+button.tile-pr { font-family: inherit; }
+.tile-pr .pr-caret { font-size: 9px; color: var(--pr); flex-shrink: 0; }
 .chat-ticket { max-width: var(--chat-width); margin: 0 auto; padding: 16px 24px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .chat-ticket-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); }
 .chat-ticket .jira-card { min-width: 0; max-width: 100%; }
