@@ -990,7 +990,7 @@ function show(kind, id) {
     branchesView.open(JSON.stringify([projects, state.config?.svnBranchFilter || [], !!state.config?.githubBranches]));
   } else if (kind === 'health') {
     healthView.view.classList.remove('hidden');
-    setHeader('Project health', 'Player support', null);
+    setHeader('Project health', 'Crashes & player support', null);
     healthView.open();
   } else if (kind === 'tickets') {
     ticketsView.view.classList.remove('hidden');
@@ -1457,6 +1457,27 @@ const healthView = new HealthView({
     input.dispatchEvent(new Event('input'));
     input.focus();
     flashComposerNote?.(`The ${project.name} support digest is ready for an agent${folder ? ' in ' + shortPath(folder) : ''}: send it to start.`);
+  },
+  // One crash or Unity exception from the dashboard: an agent looks for its
+  // cause in the game's code. The prompt goes in the message box, where you
+  // can change it before you send it.
+  onInvestigate: (project, x) => {
+    const folder = project.folder || ensureDraft().folder;
+    show('hub');
+    if (folder) ensureDraft().folder = folder;
+    renderDraftButtons();
+    const when = [x.first && `first seen ${x.first}`, x.last && `last seen ${x.last}`].filter(Boolean).join(', ');
+    const where = x.kind === 'exception'
+      ? `an unhandled C# exception thrown in ${x.method || x.what} (${x.platforms || 'Android and iOS'})`
+      : `a native ${x.type === 'Out of memory' ? 'out-of-memory kill' : 'crash'} on ${x.platform || 'mobile'}${x.signal ? ` (${x.signal})` : ''}, top stack frame ${x.frame || x.what}`;
+    const input = $('input');
+    input.value = `Find the cause of this ${x.kind === 'exception' ? 'Unity exception' : 'crash'} in the live ${project.name}: ${where}. `
+      + `Embrace reports it on ${x.devices} devices, ${x.events} times in the last 30 days${when ? ` (${when})` : ''}${x.versions?.length ? `, in versions ${x.versions.join(', ')}` : ''}. `
+      + `${x.id ? `Embrace crash group id: ${x.id}. ` : ''}The numbers come from the "${x.kind === 'exception' ? 'Top Unity exceptions' : 'Top crash groups'}" chart of the Tactile BI dashboard ${project.dashboardUrl}. `
+      + `Find where and why it happens in this project's code (and in its history, for when it started), say how sure you are, and propose a fix. Do not change any code until I say so.`;
+    input.dispatchEvent(new Event('input'));
+    input.focus();
+    flashComposerNote?.(`The ${x.kind === 'exception' ? 'exception' : 'crash'} is ready for an agent${folder ? ' in ' + shortPath(folder) : ''}: send it to start.`);
   },
   onSettings: () => {
     showSettings();

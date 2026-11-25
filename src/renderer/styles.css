@@ -4412,6 +4412,41 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .health-project-status:empty { display: none; }
 .health-tabs { align-self: flex-start; }
 .health-tab-count { margin-left: 6px; padding: 0 6px; border-radius: 99px; background: #e5493a; color: #fff; font-size: 10.5px; font-weight: 700; }
+/* The new layout: Needs attention, the numbers at a glance, then the parts. */
+.health-more { align-self: flex-start; margin-left: 4px; }
+.health-section-label { font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); margin: 2px 0 2px 2px; }
+.health-warning { align-items: center; }
+.health-warning-text { flex: 1; min-width: 0; }
+.health-warning-tag { flex-shrink: 0; font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 1px 8px; border-radius: 99px;
+  color: var(--text-dim); background: color-mix(in srgb, var(--text) 9%, transparent); }
+.health-glance { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.health-glance-group { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+@media (max-width: 1100px) { .health-glance { grid-template-columns: minmax(0, 1fr); } }
+.health-stat { position: relative; overflow: hidden; }
+.health-stat.worse .health-stat-sub { color: #f08a6a; }
+.health-stat.better .health-stat-sub { color: #7fdc9f; }
+.health-stat.worse { border-color: color-mix(in srgb, #e5493a 40%, var(--border)); }
+.health-spark { display: block; width: 100%; height: 26px; margin-top: 6px; color: color-mix(in srgb, var(--accent) 80%, transparent); }
+.health-stat.worse .health-spark { color: #f08a6a; }
+.health-parts { align-self: flex-start; margin-top: 4px; }
+.health-crash-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 1100px) { .health-crash-cols { grid-template-columns: minmax(0, 1fr); } }
+.health-card-note { font-size: 12px; color: var(--text-faint); margin: -4px 0 6px; line-height: 1.4; }
+.health-item { display: grid; grid-template-columns: minmax(0, 1fr) 70px 44px auto; gap: 10px; align-items: center; padding: 7px 6px; border-radius: 8px; }
+.health-item:hover { background: var(--bg-hover); }
+.health-item.health-spot { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.health-item-main { min-width: 0; }
+.health-item-name { font-family: var(--mono); font-size: 12.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.health-item-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 2px; font-size: 11.5px; color: var(--text-faint); }
+.health-new { padding: 0 7px; border-radius: 99px; background: #e5493a; color: #fff; font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; }
+.health-item-bar { height: 6px; border-radius: 99px; background: color-mix(in srgb, var(--text) 8%, transparent); overflow: hidden; }
+.health-item-bar > span { display: block; height: 100%; border-radius: 99px; background: color-mix(in srgb, #e5493a 75%, transparent); }
+.health-item-n { text-align: right; font-weight: 600; font-size: 13px; color: var(--text); }
+.health-agent { font-size: 11.5px; padding: 3px 9px; white-space: nowrap; opacity: 0; }
+.health-item:hover .health-agent, .health-warning .health-agent, .health-item.health-spot .health-agent { opacity: 1; }
+.health-analysis .msg-text { font-size: 13px; }
+.health-analysis .msg-text h2 { font-size: 14px; margin: 10px 0 4px; border: none; padding: 0; }
+.health-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 14px; border-radius: 12px; border: 1px dashed var(--border); }
 .tp-attach.in-tab { min-height: 140px; border: 1.5px dashed color-mix(in srgb, var(--text-faint) 45%, transparent); padding: 10px 12px; margin: 0; }
 .tp-attach.in-tab.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .tp-media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin: 4px 0 8px; }

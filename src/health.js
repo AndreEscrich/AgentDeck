@@ -1,28 +1,33 @@
-// Project health (the heartbeat button on the Hub's left side): checks that
-// tell you when something in the live game needs your attention. The first
-// one is player support.
+// Project health (the heartbeat button on the Hub's left side): what in the
+// live game needs your attention, from a Tactile BI project health
+// dashboard: crashes and exceptions, and player support.
 //
-// Player support has a list of projects (Settings → Project health), each a
-// Tactile BI dashboard with a message log: one row per player message, with
-// its topic, tone, English text and conversation (Enchanted Inn's, Morten's
-// "User Support Messages", is the first one until you change the list).
-// Adding one only takes the dashboard's link: the app finds the message log
-// chart itself (resolve). It reads them through the app's own Tactile BI
-// sign-in (src/mcpclient.js), so no model reads them and it costs no tokens:
+// Each project (Settings → Project health) is a Tactile BI dashboard.
+// Enchanted Inn's "Project Health" dashboard is the first one until you
+// change the list. Adding one only takes the dashboard's link: the app finds
+// its charts itself, by their titles (crashCharts, resolve). It reads them
+// through the app's own Tactile BI sign-in (src/mcpclient.js), so no model
+// reads them and it costs no tokens:
 //
-//  - every 30 minutes it reads the chart's cached rows (free);
-//  - at most every 3 hours it asks BI to run the chart again first, so new
-//    messages come in (a small BigQuery query, refused by BI above its cost
-//    cap);
-//  - it counts the messages per topic, this week against last week, and
-//    raises a warning for: a topic that grows fast, a day with far more
-//    messages than usual, several players with the same complaint in the
-//    last 3 days, and mostly unhappy messages.
+//  - every 30 minutes it reads the charts' cached rows (free);
+//  - every few hours it asks BI to run them again first, so new data comes in
+//    (small BigQuery queries, refused by BI above its cost cap);
+//  - from the crash charts (Embrace's crashes, ANRs, out-of-memory kills,
+//    Unity exceptions and handled errors, per 1,000 daily players) it raises
+//    a warning for: a rate that grows against the period before, a day with
+//    far more than usual, an app version with far more than the others, and
+//    a new crash or exception that already hits many devices;
+//  - from the support message log (one row per player message, with its
+//    topic, tone, English text and conversation) it raises a warning for: a
+//    topic that grows fast, a day with far more messages than usual, several
+//    players with the same complaint in the last 3 days, and mostly unhappy
+//    messages. The dashboard's written analysis of the messages (a text
+//    chart Claude keeps up to date) shows too.
 //
 // Warnings you have not looked at show as a red count on the button; opening
 // the view marks them seen (kept in health.json in the settings folder). The
-// deeper digest (which messages are real bugs, checked against the code) is
-// an agent with the game project's UserSupportDigest skill, started from the
+// deeper look is an agent: on the support messages with the game project's
+// UserSupportDigest skill, or on one crash or exception, started from the
 // view.
 
 const fs = require('fs');
@@ -31,14 +36,16 @@ const { makeClient } = require('./mcpclient');
 
 const bi = makeClient({ server: 'https://bi-mcp.tactilews.com', name: 'bi', label: 'Tactile BI' });
 
-// The list until you change it: Enchanted Inn's support dashboard.
+// The list until you change it: Enchanted Inn's project health dashboard
+// (crashes and player support).
 const DEFAULT_PROJECTS = [{
   id: 'ei', name: 'Enchanted Inn',
-  dashboardId: '6b03de6c242cddc2eec4407d', filterGroup: '6b03de6c242cddc2eec4407c', chartId: '6b03e160242cddc2eec440a3',
+  dashboardId: '6b06d906d5aa60cf42fd3829', filterGroup: '', chartId: '6b06d9d6e82664c3b1e2d899',
 }];
 const DAYS = '30';
 const READ_EVERY = 30 * 60 * 1000;
 const RUN_EVERY = 3 * 60 * 60 * 1000;
+const CRASH_RUN_EVERY = 6 * 60 * 60 * 1000;   // the crash charts change once a day (today is left out)
 const DAY = 24 * 60 * 60 * 1000;
 
 let file = null;
@@ -84,7 +91,7 @@ function projects() {
 const dashboardUrl = p => `https://bi.tactilews.com/dashboards/${p.dashboardId}${p.filterGroup ? `?filterGroup=${p.filterGroup}` : ''}`;
 
 function summary() {
-  const list = projects().map(p => ({ id: p.id, name: p.name, folder: p.folder || '', dashboardUrl: dashboardUrl(p), chartId: p.chartId, report: state.reports[p.id] || null }));
+  const list = projects().map(p => ({ id: p.id, name: p.name, folder: p.folder || '', dashboardUrl: dashboardUrl(p), chartId: p.chartId, dashboardId: p.dashboardId, report: state.reports[p.id] || null }));
   const unseen = list.reduce((n, p) => n + (p.report?.warnings || []).filter(w => !state.seen.includes(w.id)).length, 0);
   return { connected: bi.status().connected, email: bi.status().email, projects: list, unseen };
 }
@@ -152,18 +159,19 @@ async function resolve(link) {
       return {
         id: 'p' + dashboardId.slice(-8), dashboardId, filterGroup, chartId: c.chartId, chartTitle: c.title,
         // "Enchanted Inn – User Support Messages" → "Enchanted Inn".
-        name: title.split(/\s+[–—-]\s+/)[0].trim() || title, dashboardTitle: title, messages: messages.length,
+        name: title.split(/\s+[–—-]\s+/)[0].replace(/\s+project health$/i, '').trim() || title, dashboardTitle: title, messages: messages.length,
       };
     } catch { /* not a message log: the next one */ }
   }
   throw new Error(`"${st?.title || 'That dashboard'}" has no message log chart: a table with one row per message (a text column like message_en and a time column like sent_at).`);
 }
 
-// Support dashboards to pick from: Tactile BI's dashboards whose title says
-// support.
+// Dashboards to pick from: Tactile BI's dashboards whose title says health
+// (crashes and support) or support.
 async function findDashboards() {
-  const r = await bi.callTool('bi_list_dashboards', { search: 'support', limit: 30 });
-  return (r?.dashboards || []).map(d => ({ id: d._id, title: d.title, updatedAt: d.updatedAt }));
+  const [health, support] = await Promise.all(['health', 'support'].map(search => bi.callTool('bi_list_dashboards', { search, limit: 30 }).catch(() => null)));
+  const seen = new Set();
+  return [...(health?.dashboards || []), ...(support?.dashboards || [])].filter(d => !seen.has(d._id) && seen.add(d._id)).map(d => ({ id: d._id, title: d.title, updatedAt: d.updatedAt }));
 }
 
 // The numbers and the warnings from the messages.
@@ -218,9 +226,176 @@ function analyse(messages, now = Date.now()) {
   const recent = [...byConv.entries()].map(([id, list]) => ({ id, messages: list, at: list[list.length - 1].at, topic: list[list.length - 1].topic, unhappy: list.some(m => /neg/i.test(m.tone)) }))
     .sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 40);
   return {
-    stats: { day: last24.length, week: last7.length, before: prev7.length, conversations: conversations(last7), unhappy: negative(last7), total: messages.length },
+    // A log with only the day of each message (message_date) has no hours:
+    // the view then says "today" and shows dates instead of "3 h ago".
+    stats: { day: last24.length, week: last7.length, before: prev7.length, conversations: conversations(last7), unhappy: negative(last7), total: messages.length,
+      dateOnly: messages.length > 0 && messages.every(m => /^\d{4}-\d{2}-\d{2}$/.test(String(m.at))) },
     topics, warnings, recent,
   };
+}
+
+// ---------- crashes ----------
+
+// The crash charts of a dashboard, found by their titles (Enchanted Inn's
+// Project Health names): { stability, daily, versions, groups, exceptions,
+// errors, analysis }. Read again once a day, so a renamed or added chart
+// comes in.
+const CRASH_TITLES = {
+  stability: c => c.chartType === 'table' && /stability/i.test(c.title),
+  daily: c => /^daily events per/i.test(c.title),
+  versions: c => /by app version/i.test(c.title) && !/^daily/i.test(c.title),
+  groups: c => /top crash groups/i.test(c.title),
+  exceptions: c => /top unity exceptions/i.test(c.title),
+  errors: c => /top handled errors/i.test(c.title),
+  analysis: c => c.chartType === 'text' && /sentiment analysis/i.test(c.title) && !/refresh|how to/i.test(c.title),
+};
+async function crashCharts(p) {
+  state.charts ||= {};
+  const hit = state.charts[p.dashboardId];
+  if (hit && Date.now() - hit.at < DAY) return hit.ids;
+  const st = await bi.callTool('bi_get_dashboard_structure', { dashboardId: p.dashboardId });
+  const charts = [];
+  for (const tab of st?.tabs || []) {
+    for (const c of tab.unsectionedCharts || []) charts.push(c);
+    for (const sec of tab.sections || []) charts.push(...(sec.charts || []));
+  }
+  const ids = {};
+  for (const [key, match] of Object.entries(CRASH_TITLES)) ids[key] = charts.find(match)?.chartId || '';
+  state.charts[p.dashboardId] = { at: Date.now(), ids };
+  return ids;
+}
+
+// One chart's rows as objects ({ column: value }), its default view (the
+// dashboard's own range, 30 days), run again first when that is old.
+async function chartRows(p, chartId, force) {
+  const args = { chartId };
+  if (p.filterGroup) args.activeFilterGroupId = p.filterGroup;
+  state.lastRun ||= {};
+  const key = `${p.id}:${chartId}`;
+  const run = async () => {
+    await bi.callTool('bi_run_chart', { ...args, dashboardId: p.dashboardId });
+    state.lastRun[key] = Date.now();
+  };
+  if (force || Date.now() - (state.lastRun[key] || 0) > CRASH_RUN_EVERY) await run().catch(() => {});
+  let data = await bi.callTool('bi_get_chart_data', args);
+  if (data?.cached === false) { await run(); data = await bi.callTool('bi_get_chart_data', args); }
+  const q = data?.queryResults?.[0];
+  if (!q?.columns) return [];
+  return (q.rows || []).map(r => Object.fromEntries(q.columns.map((c, i) => [c.name, r[i]])));
+}
+
+async function readCrashes(p, force) {
+  const ids = await crashCharts(p);
+  if (!ids.stability) return null;   // a support-only dashboard
+  const read = id => (id ? chartRows(p, id, force).catch(() => []) : Promise.resolve([]));
+  const [stability, daily, versions, groups, exceptions, errors] = [
+    await read(ids.stability), await read(ids.daily), await read(ids.versions), await read(ids.groups), await read(ids.exceptions), await read(ids.errors)];
+  let analysis = null;
+  if (ids.analysis) {
+    const c = await bi.callTool('bi_get_chart', { chartId: ids.analysis }).catch(() => null);
+    if (c?.config?.text?.content) analysis = { text: c.config.text.content, at: c.updatedAt || '' };
+  }
+  return { stability, daily, versions, groups, exceptions, errors, analysis };
+}
+
+const CRASH_TYPES = ['Crash', 'ANR', 'Out of memory', 'Unity exception'];
+const TYPE_WORDS = { Crash: 'crashes', ANR: 'ANRs (app not responding)', 'Out of memory': 'out-of-memory kills', 'Unity exception': 'Unity exceptions' };
+const median = xs => { const a = xs.filter(x => Number.isFinite(x)).sort((x, y) => x - y); return a.length ? a[Math.floor(a.length / 2)] : 0; };
+// TactileModules.MergeGameUI.BoardInput.HideHover → BoardInput.HideHover;
+// a compiler-made name (Foo+<Bar>d__9.MoveNext) → Foo.Bar.
+const shortMethod = m => {
+  const s = String(m || '').replace(/\+<([^>]+)>d__\d+\.MoveNext$/, '.$1').replace(/\.\.ctor$/, '.constructor');
+  return s.split('.').slice(-2).join('.') || s;
+};
+const shortFrame = f => {
+  const s = String(f || '');
+  if (!s || s === '(no frame)') return '';
+  return s.replace(/\(.*\)$/s, '').replace(/^-\[|\]$/g, '').replace(/^.*::(?=[^:]+::[^:]+$)/, '').slice(0, 90);
+};
+
+// The numbers and the warnings from the crash charts.
+function analyseCrashes(c, now = Date.now()) {
+  const num = v => Number(v) || 0;
+  const days = d => (now - Date.parse(d)) / DAY;
+  // The rates, with the last 30 days of each as a line.
+  const byType = new Map(c.stability.map(r => [r.type, r]));
+  const daily = new Map(CRASH_TYPES.map(t => [t, c.daily.filter(r => r.type === t).sort((a, b) => String(a.date).localeCompare(String(b.date))).map(r => num(r.per_1k_dau))]));
+  const rates = CRASH_TYPES.filter(t => byType.has(t)).map(t => {
+    const r = byType.get(t);
+    return { type: t, per1k: num(r.per_1k_dau), before: num(r.per_1k_dau_previous_period), change: num(r.change_vs_previous), events: num(r.events), devices: num(r.devices_affected), line: daily.get(t) || [] };
+  });
+  // Crash groups: the ANR and out-of-memory rows without a stack are the
+  // rates above already, so they are left out here. The same group can show
+  // as a crash and as out of memory: kept once.
+  const seen = new Set();
+  const groups = c.groups.filter(r => !(r.type !== 'Crash' && (!r.top_frame || r.top_frame === '(no frame)')))
+    .filter(r => { const k = r.crash_group_id || `${r.type}${r.signal}${r.top_frame}`; if (seen.has(k)) return false; seen.add(k); return true; })
+    .map(r => ({ type: r.type, platform: r.platform || '', what: shortFrame(r.top_frame) || r.signal || 'Unknown native crash', signal: r.signal || '', frame: r.top_frame || '',
+      events: num(r.events), devices: num(r.devices), versions: String(r.latest_versions || '').split(',').filter(Boolean), first: r.first_seen || '', last: r.last_seen || '',
+      id: r.crash_group_id || '', isNew: days(r.first_seen) <= 14 }));
+  const exceptions = c.exceptions.map(r => ({ what: shortMethod(r.method), method: r.method || '', platforms: r.platforms || '', events: num(r.exceptions), devices: num(r.devices),
+    versions: String(r.latest_versions || '').split(',').filter(Boolean), first: r.first_seen || '', last: r.last_seen || '', id: r.crash_group_id || '', isNew: days(r.first_seen) <= 14 }));
+  // Handled errors: the same error comes from two sources (clientError and
+  // Embrace's log of it): kept once, with the most players.
+  const errs = new Map();
+  for (const r of c.errors) {
+    const name = String(r.error || '').replace(/^ClientErrorEvent - /, '');
+    const cur = errs.get(name);
+    if (!cur || num(r.players) > cur.players) errs.set(name, { what: name, players: num(r.players), events: num(r.events), versions: String(r.latest_versions || '').split(',').filter(Boolean), last: r.last_seen || '' });
+  }
+  const errors = [...errs.values()].sort((a, b) => b.players - a.players);
+  // Versions: the rates of the newest ones against the others.
+  const vrows = c.versions.map(r => ({ version: r.version, type: r.type, per1k: num(r.per_1k_dau), events: num(r.events) }));
+  const versionList = [...new Set(vrows.map(r => r.version))];
+  const newest = versionList.slice(-3);
+
+  const warnings = [];
+  const week = Math.floor(now / (7 * DAY));
+  const fmt = x => (x >= 10 ? Math.round(x) : Math.round(x * 100) / 100);
+  // A rate that grows against the period before.
+  for (const r of rates) {
+    if (r.change >= 0.25 && r.events >= 30) {
+      const big = r.change >= 0.5 && r.type !== 'Out of memory';
+      warnings.push({ id: `rate:${r.type}:${week}`, level: big ? 'high' : 'medium', tab: 'crashes',
+        title: `${TYPE_WORDS[r.type][0].toUpperCase() + TYPE_WORDS[r.type].slice(1)} up ${Math.round(r.change * 100)}%`,
+        text: `${fmt(r.per1k)} per 1,000 daily players in the last 30 days, against ${fmt(r.before)} the 30 days before. ${r.devices.toLocaleString()} devices hit.` });
+    }
+  }
+  // A day with far more than usual (yesterday: today is still filling).
+  for (const t of CRASH_TYPES) {
+    const line = daily.get(t) || [];
+    if (line.length < 8) continue;
+    const last = line[line.length - 1], usual = median(line.slice(-15, -1));
+    const lastRow = c.daily.filter(r => r.type === t).sort((a, b) => String(a.date).localeCompare(String(b.date))).pop();
+    if (usual > 0 && last >= usual * 2 && num(lastRow?.events) >= 20) {
+      warnings.push({ id: `spike:${t}:${lastRow.date}`, level: 'high', tab: 'crashes',
+        title: `${TYPE_WORDS[t][0].toUpperCase() + TYPE_WORDS[t].slice(1)} jumped on ${new Date(lastRow.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`,
+        text: `${fmt(last)} per 1,000 daily players, usually about ${fmt(usual)}. ${num(lastRow.events)} that day.` });
+    }
+  }
+  // An app version with far more than the others.
+  for (const v of newest) {
+    for (const t of CRASH_TYPES) {
+      const row = vrows.find(r => r.version === v && r.type === t);
+      const others = median(vrows.filter(r => r.version !== v && r.type === t).map(r => r.per1k));
+      if (row && others > 0 && row.per1k >= others * 2.5 && row.events >= 30) {
+        warnings.push({ id: `version:${v}:${t}`, level: row.per1k >= others * 5 ? 'high' : 'medium', tab: 'crashes',
+          title: `${v} has ${Math.round(row.per1k / others)}× the usual ${TYPE_WORDS[t]}`,
+          text: `${fmt(row.per1k)} per 1,000 daily players on ${v}, about ${fmt(others)} on the other versions. ${row.events} in the last 30 days.` });
+      }
+    }
+  }
+  // A new crash or exception that already hits many devices.
+  for (const g of groups) {
+    if (g.isNew && g.devices >= 25) warnings.push({ id: `newcrash:${g.id || g.what}`, level: g.devices >= 100 ? 'high' : 'medium', tab: 'crashes', item: { kind: 'crash', ...g },
+      title: `New crash: ${g.what}`, text: `${g.devices} devices since ${new Date(g.first).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} (${g.platform}${g.versions[0] ? `, latest ${g.versions[0]}` : ''}).` });
+  }
+  for (const e of exceptions) {
+    if (e.isNew && e.devices >= 25) warnings.push({ id: `newexc:${e.id || e.method}`, level: e.devices >= 100 ? 'high' : 'medium', tab: 'crashes', item: { kind: 'exception', ...e },
+      title: `New exception in ${e.what}`, text: `${e.devices} devices since ${new Date(e.first).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}${e.versions[0] ? `, latest ${e.versions[0]}` : ''}.` });
+  }
+  return { rates, groups: groups.slice(0, 25), exceptions: exceptions.slice(0, 25), errors: errors.slice(0, 10), analysis: c.analysis || null, warnings,
+    versions: newest.map(v => ({ version: v, rates: Object.fromEntries(CRASH_TYPES.map(t => [t, vrows.find(r => r.version === v && r.type === t)?.per1k ?? null])) })) };
 }
 
 // One look at every project. Resolves with the summary.
@@ -232,9 +407,20 @@ function check(force = false) {
       try {
         const messages = await readRows(p, force);
         const report = analyse(messages);
+        for (const w of report.warnings) w.tab = 'support';
+        // Crashes, when the dashboard has them. A failure there leaves the
+        // support part as it is, with the error.
+        let crashes = null, crashError = null;
+        try {
+          const c = await readCrashes(p, force);
+          if (c) crashes = analyseCrashes(c);
+        } catch (err) { if (err.notConnected) throw err; crashError = err.message; }
+        const order = { high: 0, medium: 1 };
+        report.warnings = [...(crashes?.warnings || []), ...report.warnings].sort((a, b) => order[a.level] - order[b.level]);
+        if (crashes) delete crashes.warnings;
         // Each warning belongs to its project (seen per project).
         for (const w of report.warnings) w.id = `${p.id}:${w.id}`;
-        state.reports[p.id] = { at: Date.now(), ...report, error: null };
+        state.reports[p.id] = { at: Date.now(), ...report, crashes, crashError, error: null };
       } catch (err) {
         if (err.notConnected) { state.reports = {}; break; }
         state.reports[p.id] = { ...(state.reports[p.id] || {}), error: err.message, errorAt: Date.now() };
@@ -293,4 +479,4 @@ function digestFolder(folders) {
   return null;
 }
 
-module.exports = { setup, summary, check, markSeen, connect, disconnect, digestFolder, analyse, resolve, findDashboards };
+module.exports = { setup, summary, check, markSeen, connect, disconnect, digestFolder, analyse, analyseCrashes, resolve, findDashboards };

@@ -78,7 +78,7 @@ const PLAN_NAMES = { pro: 'Pro', max: 'Max', team: 'Team', enterprise: 'Enterpri
 // Project health's projects (health.js projects): a row each, with its name,
 // its dashboard and the digest's folder. Adding one: paste a dashboard link
 // (the app finds its message log chart, health.js resolve) or pick one of
-// Tactile BI's support dashboards. value() is the list to save.
+// Tactile BI's project health and support dashboards. value() is the list to save.
 function healthProjectsEditor() {
   const box = el('div', 'health-projects');
   const list = el('div', 'health-project-list');
@@ -122,7 +122,7 @@ function healthProjectsEditor() {
   addBtn.type = 'button';
   addBtn.onclick = async () => { if (input.value.trim() && await add(input.value.trim())) input.value = ''; };
   input.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); addBtn.onclick(); } };
-  const find = el('button', null, 'Find support dashboards');
+  const find = el('button', null, 'Find health dashboards');
   find.type = 'button';
   const found = el('div', 'health-project-found');
   find.onclick = async () => {
@@ -627,12 +627,12 @@ function openSettings(config, { onSaved } = {}) {
       settingsField('Drive folder', 'The Google Drive link of your game\'s art folder. Each folder in it is a category of the Gallery (the picture button on the Hub\'s left side). The app reads it through Google Drive for desktop', galleryUrl),
       settingsField('Folder on this computer', 'Only when the app cannot find the Drive folder, or for a folder that is not on Drive. Empty: found from the Drive link', galleryFolderRow))]],
     ['health', 'Project health', [section(null,
-      settingsField('Project health', 'The heartbeat button on the Hub\'s left side: player support from Tactile BI, with warnings and a red count when something needs your attention. Off: the button goes and the app stops reading Tactile BI', featureHealth)),
+      settingsField('Project health', 'The heartbeat button on the Hub\'s left side: crashes and player support from Tactile BI, with warnings and a red count when something needs your attention. Off: the button goes and the app stops reading Tactile BI', featureHealth)),
     section('Account',
       el('div', 'settings-hint', 'The account Project health reads Tactile BI with (the app\'s own sign-in: no tokens). It is separate from the Tactile BI connector your agents use.'),
       biAccountPanel()),
     section('Projects',
-      el('div', 'settings-hint', 'Each project is a Tactile BI dashboard with a player support message log. Paste a dashboard\'s link and Agent Hub finds its message log by itself, or pick one of the support dashboards Tactile BI has. Folder: where the digest agent works (empty: a folder with the UserSupportDigest skill, or the one under the message box).'),
+      el('div', 'settings-hint', 'Each project is a Tactile BI project health dashboard: a player support message log, and crash charts when it has them (like Enchanted Inn\'s Project Health). Paste a dashboard\'s link and Agent Hub finds its charts by itself, or pick one of the health and support dashboards Tactile BI has. Folder: where the agents from this view work (empty: a folder with the UserSupportDigest skill, or the one under the message box).'),
       healthProjects.element)]],
     ['advanced', 'Advanced', [
       section('Claude Code',
