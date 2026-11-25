@@ -266,6 +266,9 @@ class HealthView {
     if (now.data.trendError) box.append(el('div', 'health-card-note', `The days of each crash could not be read: ${now.data.trendError}`));
     c = { ...c, ...now.data };
     const since = new Date(Date.now() - days * 864e5).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    // One scale for all their lines (the busiest day of any of them), so a
+    // big crash stands out against the small ones.
+    this.dayMax = Math.max(1, ...[...(c.exceptions || []), ...(c.groups || [])].flatMap(x => x.trend?.devices || []));
     box.append(
       this.crashList(p, 'Unity exceptions', c.exceptions, 'C# exceptions nobody caught, by the method that threw. The game goes on, but that code stopped. Most devices first.', 'exceptions', days),
       this.crashList(p, 'Handled errors', c.errors, 'Errors the game reports on purpose without crashing, most players first.', 'errors', days),
@@ -304,7 +307,7 @@ class HealthView {
         graph = el('div', 'health-item-bar');
         const fill = el('span'); fill.style.width = `${Math.max(2, (x.players || 0) / max * 100)}%`;
         graph.append(fill);
-      } else graph = t ? dayBars(t, days) : el('div', 'health-days-none', x.id ? '' : 'no group id');
+      } else graph = t ? dayLine(t, days, this.dayMax) : el('div', 'health-days-none', x.id ? '' : 'no group id');
       const n = x.devices ?? x.players ?? 0;
       const num = el('div', 'health-item-n', n.toLocaleString());
       num.title = kind === 'errors' ? `${n} players, ${x.events.toLocaleString()} times` : `${n} devices, ${x.events.toLocaleString()} times`;
@@ -445,28 +448,35 @@ function loading(text, small = false) {
   return d;
 }
 
-// One crash's devices per day, the last 30 days, as small bars: the days of
-// the picked range brighter, a spiking last day amber, a day at 0.5% of the
-// players or more red. Its tooltip says each of the last days.
-function dayBars(t, days) {
-  const w = 120, h = 26, n = t.devices.length, max = Math.max(1, ...t.devices);
-  const bw = w / n;
+// One crash's devices per day, the last 30 days, as a line on the scale
+// all of the tab's crashes share (max: the busiest day of any of them), so
+// a big crash draws a tall line and a small one stays near the floor. The
+// days of the picked range are brighter; a day at 0.5% of the players or
+// more has a red dot, a spiking last day an amber one. Its tooltip says
+// each of the last days.
+function dayLine(t, days, max = Math.max(1, ...t.devices)) {
+  const w = 120, h = 30, n = t.devices.length;
+  const x = i => (n === 1 ? w / 2 : i / (n - 1) * (w - 4) + 2);
+  const y = v => h - 2 - Math.min(1, v / max) * (h - 4);
+  const pts = t.devices.map((v, i) => `${x(i).toFixed(2)},${y(v).toFixed(2)}`);
+  const from = Math.max(0, n - Math.max(1, days) - 1);   // the range, from the day before it
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-  svg.setAttribute('preserveAspectRatio', 'none');
   svg.setAttribute('class', 'health-days');
-  let bars = '';
+  const level = t.hot ? 'hot' : t.spiking ? 'spike' : 'now';
+  let dots = '';
   t.devices.forEach((v, i) => {
-    const bh = v ? Math.max(1.5, v / max * (h - 2)) : 0.8;
-    const recent = i >= n - days;
-    const cls = t.dates && t.shareAt === t.dates[i] && t.hot ? 'hot' : recent && i === n - 1 && t.spiking ? 'spike' : recent ? 'now' : 'old';
-    bars += `<rect class="${cls}" x="${(i * bw + 0.4).toFixed(2)}" y="${(h - bh).toFixed(2)}" width="${Math.max(0.6, bw - 0.8).toFixed(2)}" height="${bh.toFixed(2)}" rx="0.6"/>`;
+    if (t.hot && t.shareAt === t.dates[i]) dots += `<circle class="hot" cx="${x(i).toFixed(2)}" cy="${y(v).toFixed(2)}" r="2.3"/>`;
+    else if (t.spiking && i === n - 1) dots += `<circle class="spike" cx="${x(i).toFixed(2)}" cy="${y(v).toFixed(2)}" r="2.3"/>`;
   });
-  svg.innerHTML = bars;
+  svg.innerHTML = `<polygon class="area ${level}" points="${x(0).toFixed(2)},${h - 2} ${pts.join(' ')} ${x(n - 1).toFixed(2)},${h - 2}"/>`
+    + `<line class="floor" x1="0" x2="${w}" y1="${h - 1.5}" y2="${h - 1.5}"/>`
+    + `<polyline class="old" points="${pts.slice(0, from + 1).join(' ')}"/>`
+    + `<polyline class="${level}" points="${pts.slice(from).join(' ')}"/>` + dots;
   const wrap = el('div', 'health-days-wrap');
   wrap.append(svg);
   const fmt = d => new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-  wrap.title = `Devices per day, the last ${n} days (${fmt(t.dates[0])} – ${fmt(t.dates[n - 1])}):\n`
+  wrap.title = `Devices per day, the last ${n} days (${fmt(t.dates[0])} – ${fmt(t.dates[n - 1])}), on the same scale as the others (top: ${max}):\n`
     + t.dates.slice(-7).map((d, i) => `${fmt(d)}: ${t.devices[n - 7 + i]}`).join('\n')
     + (t.share ? `\nPeak in this range: ${pctText(t.share)} of the day's players.` : '');
   return wrap;
