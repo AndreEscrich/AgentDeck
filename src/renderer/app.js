@@ -895,10 +895,11 @@ function flyTicketToComposer(t, chip) {
   });
 }
 
-function flashComposerNote(text) {
-  const note = el('div', 'composer-flash', text);
+// ms: how long it stays (longer for something to read before sending).
+function flashComposerNote(text, ms = 3500, cls = '') {
+  const note = el('div', `composer-flash ${cls}`.trim(), text);
   document.querySelector('.composer-box').appendChild(note);
-  setTimeout(() => note.remove(), 3500);
+  setTimeout(() => note.remove(), ms);
 }
 
 // ---------- one message box per view ----------
@@ -1480,12 +1481,17 @@ const healthView = new HealthView({
       + `Embrace reports it on ${x.devices} devices, ${x.events} times in ${span}${when ? ` (${when})` : ''}${x.versions?.length ? `, in versions ${x.versions.join(', ')}` : ''}. `
       + `${days ? `Devices per day (month-day: devices): ${days}${t.share ? `; at most ${Math.round(t.share * 10000) / 100}% of a day's players` : ''}. ` : ''}`
       + `${x.id ? `Embrace crash group id: ${x.id}. ` : ''}`
-      + `There is no full stack trace here: the BI data has only ${x.kind === 'exception' ? 'the C# method that threw (no exception type or message)' : 'the top stack frame and the signal'}. If you need the rest, say so and I can paste the stack from Embrace (search the crash group id). `
+      + `Tactile BI has no stack trace and no ${x.kind === 'exception' ? 'exception type or message' : 'crash type beyond the signal'} for it: only ${x.kind === 'exception' ? 'the C# method that threw' : 'the top stack frame'}. If the stack from Embrace is pasted below, start from it; if not, work from the method and say where the missing stack leaves you guessing. `
       + `The numbers come from the "${x.kind === 'exception' ? 'Top Unity exceptions' : 'Top crash groups'}" chart of the Tactile BI dashboard ${project.dashboardUrl}. `
-      + `Find where and why it happens in this project's code (and in its history, for when it started), say how sure you are, and propose a fix. Do not change any code until I say so.`;
+      + `Find where and why it happens in this project's code (and in its history, for when it started), say how sure you are, and propose a fix. Do not change any code until I say so.`
+      // A place for the stack from Embrace, the cursor in it.
+      + `\n\nStack trace from Embrace (optional, paste it here):\n`;
     input.dispatchEvent(new Event('input'));
     input.focus();
-    flashComposerNote?.(`The ${x.kind === 'exception' ? 'exception' : 'crash'} is ready for an agent${folder ? ' in ' + shortPath(folder) : ''}: send it to start.`);
+    input.setSelectionRange?.(input.value.length, input.value.length);
+    input.scrollTop = input.scrollHeight;
+    // Said plainly before you send: BI has no stack or crash type, Embrace has.
+    flashComposerNote?.(`Ready for an agent${folder ? ' in ' + shortPath(folder) : ''}. Tactile BI has no stack trace or ${x.kind === 'exception' ? 'exception type' : 'crash type'} for this ${x.kind === 'exception' ? 'exception' : 'crash'}: copy it from Embrace and paste it at the end for a much better investigation, or send it as it is.`, 12000, 'composer-flash-long');
   },
   onSettings: () => {
     showSettings();
