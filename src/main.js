@@ -722,8 +722,11 @@ app.whenReady().then(() => {
   ipcMain.handle('setup:unity', (_e, cwd) => require('./setupcheck').unityBridge(getConfig(), cwd));
   ipcMain.handle('setup:writeMcpJson', (_e, root) => require('./setupcheck').writeMcpJson(root));
   // The Unity Editor for a folder: open or not, and focus or start it.
-  ipcMain.handle('unity:status', (_e, cwd) => require('./unityapp').status(cwd));
-  ipcMain.handle('unity:open', (_e, cwd) => require('./unityapp').open(cwd));
+  ipcMain.handle('unity:status', async (_e, cwd) => {
+    const unity = await require('./unityapp').status(cwd);
+    return unity.unity ? unity : require('./gameengineapp').status(cwd);
+  });
+  ipcMain.handle('unity:open', (_e, cwd) => (require('./unityapp').status(cwd).then(s => s.unity ? require('./unityapp') : require('./gameengineapp'))).then(m => m.open(cwd)));
   ipcMain.handle('tsvn:status', (_e, cwd) => require('./tactilesvn').status(cwd));
   ipcMain.handle('tsvn:open', (_e, cwd) => require('./tactilesvn').open(cwd));
   ipcMain.handle('window:titleDoubleClick', () => {

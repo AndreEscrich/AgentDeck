@@ -1372,13 +1372,13 @@ class Hub {
     this.unityStates = states;
     // The repository's button opens the first of its folders that is a Unity project.
     for (const sec of this.repos.values()) {
-      sec.cwd = (sec.cwds || []).find(c => states.get(c)?.unity) || null;
+      sec.cwd = (sec.cwds || []).find(c => states.get(c)?.editor) || null;
       const st = sec.cwd ? states.get(sec.cwd) : null;
-      sec.unity.classList.toggle('hidden', !st?.unity);
-      if (!st?.unity) continue;
-      sec.unity.innerHTML = `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M8 1.5 14 5v6l-6 3.5L2 11V5z"/><path d="M8 8v6.5M8 8l6-3M8 8 2 5"/></svg><span>${st.running ? 'Focus Unity' : 'Open Unity'}</span>`;
+      sec.unity.classList.toggle('hidden', !st?.editor);
+      if (!st?.editor) continue;
+      sec.unity.innerHTML = `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M8 1.5 14 5v6l-6 3.5L2 11V5z"/><path d="M8 8v6.5M8 8l6-3M8 8 2 5"/></svg><span>${st.running ? 'Focus' : 'Open'} ${st.editor}</span>`;
       sec.unity.classList.toggle('running', !!st.running);
-      sec.unity.title = st.running ? 'Bring this project\'s Unity Editor to the front' : `Open this project in Unity${st.version ? ' ' + st.version : ''}`;
+      sec.unity.title = st.running ? `Bring this project's ${st.editor} editor to the front` : `Open this project in the ${st.editor} editor${st.version ? ' ' + st.version : ''}`;
     }
   }
 
