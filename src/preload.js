@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld('deck', {
   pmSkillStatus: () => ipcRenderer.invoke('pmSkill:status'),
   pmSkillCustomize: () => ipcRenderer.invoke('pmSkill:customize'),
   pmSkillReset: () => ipcRenderer.invoke('pmSkill:reset'),
+  pmSkillReveal: () => ipcRenderer.invoke('pmSkill:reveal'),
   // p may be relative to cwd. revealLabel is its name in the menus.
   revealFile: (p, cwd) => ipcRenderer.invoke('file:reveal', p, cwd),
   revealLabel: process.platform === 'darwin' ? 'Show in Finder' : 'Show in Explorer',

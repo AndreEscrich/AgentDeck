@@ -695,9 +695,10 @@ app.whenReady().then(() => {
   // A file the diagram shows but the task did not change: open it in your editor.
   ipcMain.handle('file:open', (_e, p) => (typeof p === 'string' && fs.existsSync(p) ? shell.openPath(p) : 'Not found'));
   ipcMain.handle('pmSkill:status', () => require('./hubplugin').status());
-  ipcMain.handle('pmSkill:customize', () => {
-    const st = require('./hubplugin').customize();
-    shell.showItemInFolder(st.file);
+  ipcMain.handle('pmSkill:customize', () => require('./hubplugin').customize());
+  ipcMain.handle('pmSkill:reveal', () => {
+    const st = require('./hubplugin').status();
+    if (st.custom) shell.showItemInFolder(st.file);
     return st;
   });
   ipcMain.handle('pmSkill:reset', () => require('./hubplugin').reset());

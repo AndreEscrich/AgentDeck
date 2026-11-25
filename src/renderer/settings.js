@@ -199,7 +199,7 @@ function pmCommentSkillPanel() {
     box.replaceChildren();
     if (st.custom) {
       box.append(el('span', 'pm-account-email', st.bundledChanged ? 'Agents use your copy. The built-in skill has changed since you made it' : 'Agents use your copy'));
-      box.append(button('Edit', () => window.deck.openFile(st.file)));
+      box.append(button('Edit', () => window.deck.pmSkillReveal()));
       box.append(button('Reset to default', () => window.deck.pmSkillReset()));
     } else {
       box.append(el('span', 'pm-account-email', 'Agents use the built-in skill'));
@@ -597,7 +597,7 @@ function openSettings(config, { onSaved } = {}) {
       el('div', 'settings-hint', 'The account the Tickets view reads PM with. It is separate from the PM connector your agents use: signing in or out here does not change it.'),
       pmAccountPanel()),
     section('PM comments',
-      el('div', 'settings-hint', `Agents follow the pm-comment skill when they comment on a PM ticket about a change. Customize makes your own copy of it and shows it in ${window.deck.platform === 'win32' ? 'Explorer' : 'Finder'}; agents started after you save it use your copy, and Agent Hub updates leave it alone.`),
+      el('div', 'settings-hint', `Agents follow the pm-comment skill when they comment on a PM ticket about a change. Customize makes your own copy of it, and Edit shows it in ${window.deck.platform === 'win32' ? 'Explorer' : 'Finder'}; agents started after you save it use your copy, and Agent Hub updates leave it alone.`),
       pmCommentSkillPanel()),
     section('Tickets',
       settingsField('Space for All tickets', 'The PM space whose open tickets the Tickets view\'s All tickets lists, whoever has them (its name, like Enchanted Inn, or its key)', pmSpace),
