@@ -27,7 +27,6 @@
     Low: ['#4c9aff', up('M6 9l6 6 6-6')],
     Lowest: ['#4c9aff', up('M6 7l6 5 6-5') + up('M6 13l6 5 6-5')],
   };
-  const PENCIL = '<svg width="14" height="14" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></svg>';
   const FILE = '<svg width="14" height="14" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><path d="M14 3v4h4" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>';
 
   function priorityIcon(p) {
@@ -458,12 +457,10 @@
     }
     const h = el('h2', 'tp-title');
     h.appendChild(t.title ? ticketTitle(t.title) : document.createTextNode(shortKey(t.key)));
-    const edit = el('button', 'icon tp-pencil');
-    edit.type = 'button';
-    edit.innerHTML = PENCIL;
-    edit.title = 'Edit the title';
-    edit.onclick = () => { this.editing = 'title'; this.renderDetail(t, null); };
-    row.append(h, edit);
+    // A double-click on the title edits it (no pencil button).
+    h.title = 'Double-click to edit the title';
+    h.ondblclick = e => { if (e.target.closest('a, button')) return; window.getSelection()?.removeAllRanges(); this.editing = 'title'; this.renderDetail(t, null); };
+    row.append(h);
     return row;
   };
 
@@ -514,12 +511,7 @@
       return this.panelSection('description', '', body, tabs);
     }
     const body = el('div', 'tp-section-body');
-    const edit = el('button', 'icon tp-pencil');
-    edit.type = 'button';
-    edit.innerHTML = PENCIL;
-    edit.title = 'Edit the description';
     if (this.editing === 'description') {
-      edit.classList.add('hidden');
       const bar = el('div', 'tp-editbar');
       for (const [cmd, label, title] of [['bold', 'B', 'Bold'], ['italic', 'I', 'Italic'], ['insertUnorderedList', '•', 'List'], ['insertOrderedList', '1.', 'Numbered list']]) {
         const b = el('button', 'tp-editbtn', label);
@@ -550,15 +542,20 @@
       body.append(bar, box, actions);
       requestAnimationFrame(() => box.focus());
     } else {
-      edit.onclick = () => { this.editing = 'description'; this.renderDetail(t, null); };
-      if (t.description) body.append(this.description(t));
-      else {
+      // A double-click on the description edits it (no pencil button); one
+      // on a link, a ticket card, a picture or a video does what it does.
+      const startEdit = () => { window.getSelection()?.removeAllRanges(); this.editing = 'description'; this.renderDetail(t, null); };
+      if (t.description) {
+        const desc = this.description(t);
+        desc.ondblclick = e => { if (!e.target.closest('a, button, img, video, .ticket-card, .pm-key')) startEdit(); };
+        body.append(desc);
+      } else {
         const empty = el('div', 'tp-desc tp-empty', 'Add a description…');
-        empty.onclick = edit.onclick;
+        empty.onclick = startEdit;
         body.append(empty);
       }
     }
-    return this.panelSection('description', '', body, tabs, edit);
+    return this.panelSection('description', '', body, tabs);
   };
 
   // History: who changed what and when, newest first, as PM's own page
