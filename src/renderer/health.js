@@ -93,19 +93,13 @@ class HealthView {
     // The range the numbers, lists, topics and conversations cover (24 hours
     // until you pick another; remembered). The warnings keep their own.
     if (this.range === undefined) { try { this.range = Number(localStorage.getItem('healthRange')) || 1; } catch { this.range = 1; } }
+    if (![1, 3, 7].includes(this.range)) this.range = 1;
     const ranges = el('div', 'health-ranges');
-    for (const [days, label] of [[0, '1h'], [1, '24h'], [3, '3 days'], [7, '7 days']]) {
+    for (const [days, label] of [[1, '24h'], [3, '3 days'], [7, '7 days']]) {
       const b = el('button', 'health-range' + (this.range === days ? ' on' : ''), label);
       b.type = 'button';
-      if (!days) {
-        // The dashboard counts crashes per day and dates its messages without
-        // the hour, so an hour cannot be told apart.
-        b.disabled = true;
-        b.title = 'Not with this dashboard: its crash numbers are per day and its messages have dates without the hour, so the shortest range is 24 hours';
-      } else {
-        b.title = days === 1 ? 'The last 24 hours (for crashes: the last full day, because today is still filling)' : `The last ${days} days`;
-        b.onclick = () => { this.range = days; try { localStorage.setItem('healthRange', String(days)); } catch { /* this run only */ } this.render(); };
-      }
+      b.title = days === 1 ? 'The last 24 hours (for crashes: the last full day, because today is still filling)' : `The last ${days} days`;
+      b.onclick = () => { this.range = days; try { localStorage.setItem('healthRange', String(days)); } catch { /* this run only */ } this.render(); };
       ranges.append(b);
     }
     head.append(ranges);

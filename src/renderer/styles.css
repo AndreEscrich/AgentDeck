@@ -4417,9 +4417,8 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .health-more { align-self: flex-start; margin-left: 4px; }
 .health-ranges { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: color-mix(in srgb, var(--text) 7%, transparent); margin-left: 8px; }
 .health-range { border: none; background: none; padding: 4px 11px; border-radius: 7px; font-size: 12.5px; color: var(--text-dim); cursor: pointer; }
-.health-range:hover:not(:disabled) { color: var(--text); background: var(--bg-hover); }
+.health-range:hover { color: var(--text); background: var(--bg-hover); }
 .health-range.on { background: var(--bg-panel); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); }
-.health-range:disabled { opacity: 0.4; cursor: not-allowed; }
 .health-stat.topic .health-stat-sub { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .health-section-label { font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); margin: 2px 0 2px 2px; }
 .health-warning { align-items: center; }
