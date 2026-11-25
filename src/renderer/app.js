@@ -3544,11 +3544,11 @@ function renderUnityButton() {
   const st = cwd ? unityStates.get(cwd) : null;
   renderTactileSvnButton(cwd);
   const b = $('composer-unity');
-  b.classList.toggle('hidden', !st?.unity);
-  if (!st?.unity) return;
-  b.innerHTML = `${UNITY_ICON}<span>${st.running ? 'Focus Unity' : 'Open Unity'}</span>`;
+  b.classList.toggle('hidden', !st?.editor);
+  if (!st?.editor) return;
+  b.innerHTML = `${UNITY_ICON}<span>${st.running ? 'Focus' : 'Open'} ${st.editor}</span>`;
   b.classList.toggle('running', !!st.running);
-  b.title = st.running ? 'Bring this project\'s Unity Editor to the front' : `Open this project in Unity${st.version ? ' ' + st.version : ''}`;
+  b.title = st.running ? `Bring this project's ${st.editor} editor to the front` : `Open this project in the ${st.editor} editor${st.version ? ' ' + st.version : ''}`;
   b.dataset.cwd = cwd;
 }
 // TactileSVN: the folder's working copy opens there, or its window comes to
@@ -3573,9 +3573,10 @@ async function openTactileSvn(cwd) {
 async function openUnity(cwd) {
   if (!cwd) return;
   sfx('open');
+  const name = unityStates.get(cwd)?.editor || 'Unity';
   const r = await window.deck.openUnity(cwd).catch(err => ({ ok: false, message: String(err?.message || err) }));
-  if (!r.ok) { sfx('refuse'); toast(r.message || 'Could not open Unity.'); return; }
-  if (r.action === 'opened') toast(`Opening Unity ${r.version || ''}… it takes a moment to load the project.`);
+  if (!r.ok) { sfx('refuse'); toast(r.message || `Could not open ${name}.`); return; }
+  if (r.action === 'opened') toast(`Opening ${name}${r.version ? ' ' + r.version : ''}… it takes a moment to load the project.`);
   setTimeout(refreshUnity, r.action === 'opened' ? 8000 : 1500);
 }
 hub.onOpenUnity = openUnity;
