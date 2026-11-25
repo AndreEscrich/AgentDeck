@@ -225,6 +225,7 @@ class TicketsView {
     this.selected = null;
     this.detailTicket = null;  // the ticket the details show
     this.expanded = new Set(); // Stories whose subtasks show below them
+    this.viaSeen = new Set();  // Stories of your subtasks, opened once already
     this.subs = new Map();     // key -> { items, loading, error }
     this.statusLists = new Map(); // project -> its statuses
     this.loading = new Set();
@@ -347,7 +348,7 @@ class TicketsView {
       if (!this.data[list]) this.listBox.replaceChildren(el('div', 'gallery-note tickets-error', r.error));
       return;
     }
-    this.data[list] = { items: r.items, total: r.total, note: r.note || '', at: Date.now() };
+    this.data[list] = { items: r.items, total: r.total, note: r.note || '', me: r.me || '', at: Date.now() };
     try { localStorage.setItem('pmTicketLists', JSON.stringify(this.data)); } catch { /* shown anyway */ }
     if (list === this.src()) this.show();
   }
@@ -772,6 +773,9 @@ class TicketsView {
     {
       let last = null;
       for (const t of list) {
+        // A story you are only in through a subtask opens by itself the
+        // first time, so your subtask shows; you can close it as usual.
+        if (t.viaSubtask && !this.viaSeen.has(t.key)) { this.viaSeen.add(t.key); this.expanded.add(t.key); if (!this.subs.get(t.key)) this.loadSubs(t.key); }
         last = this.row(t);
         body.appendChild(last);
         if (this.expanded.has(t.key)) {
@@ -847,7 +851,7 @@ class TicketsView {
 
   row(t) {
     const story = isStory(t);
-    const tr = el('tr', 'tickets-row' + (this.selected === t.key ? ' selected' : '') + (t.category === 'done' ? ' done' : '') + (story ? ' story' : ''));
+    const tr = el('tr', 'tickets-row' + (this.selected === t.key ? ' selected' : '') + (t.category === 'done' ? ' done' : '') + (story ? ' story' : '') + (t.viaSubtask ? ' via-subtask' : ''));
     tr.dataset.key = t.key;
     const cell = (cls, ...kids) => { const td = el('td', cls); td.append(...kids); return td; };
     const key = cell('col-key');
@@ -869,6 +873,8 @@ class TicketsView {
     const text = ticketTitle(t.title, 'tickets-title-link');
     text.onclick = e => { e.stopPropagation(); this.select(t); };
     const title = cell('col-title', was?.title !== undefined ? this.morph(text, ticketTitle(was.title, 'tickets-title-link')) : text);
+    // Someone else's story, here because one of its subtasks is yours.
+    if (t.viaSubtask) title.prepend(el('span', 'tickets-via', `${t.assignee ? t.assignee.split(' ')[0] + "'s" : 'Unassigned'} story`));
     const status = this.statusButton(t);
     tr.append(
       key,
@@ -882,6 +888,7 @@ class TicketsView {
       if (this.list !== 'review') tr.append(cell('col-sprint', was?.sprint !== undefined ? this.morph(sprint, el('span', null, was.sprint)) : sprint));
     }
     tr.title = story ? `${t.title}\n(the title opens the ticket; the rest of the row shows or hides the subtasks)` : t.title;
+    if (t.viaSubtask) tr.title = `${t.title}\n${t.assignee ? t.assignee + ' has this story' : 'Nobody has this story'}; it is here because you have a subtask in it, shown below it.`;
     if (story) tr.onclick = e => { if (!e.target.closest('a, button')) this.toggleSubs(t); };
     return tr;
   }
@@ -899,7 +906,9 @@ class TicketsView {
     if (!d || (d.loading && !d.items)) return note('Reading the subtasks…');
     if (d.error && !d.items) return note(d.error);
     if (!d.items.length) return [];
-    const items = d.items.filter(s => this.shows(s));
+    // Under a story you are only in through a subtask: just your subtasks.
+    const me = parent.viaSubtask && this.list === 'sprint' ? this.data.sprint?.me : '';
+    const items = d.items.filter(s => this.shows(s) && (!me || s.assigneeId === me));
     if (!items.length) return note(`All ${d.items.length} subtasks are hidden by the status filter.`);
     return items.map(s => {
       const tr = el('tr', 'tickets-row tickets-subrow' + (this.selected === s.key ? ' selected' : '') + (s.done ? ' done' : ''));

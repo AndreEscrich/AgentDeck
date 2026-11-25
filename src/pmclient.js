@@ -306,6 +306,9 @@ const LIST_TQL = {
   all: 'statusCategory != done ORDER BY updatedAt DESC',
   // Sprint review: every ticket of the open sprints, done ones too, whoever has it.
   review: 'sprint IN openSprints() ORDER BY updatedAt DESC',
+  // Stories in the open sprints where one of your subtasks is (PM's search
+  // never returns subtasks themselves). PM wants the projects named for it.
+  subtasks: 'subtask.assignee = currentUser() AND sprint IN openSprints() ORDER BY updatedAt DESC',
 };
 
 // The projects of a PM space (Settings → Tactile PM, Enchanted
@@ -343,13 +346,22 @@ async function spaceTickets(space, tql = LIST_TQL.all) {
 async function tickets(list, { space } = {}) {
   if (list === 'all') return spaceTickets(space);
   if (list === 'review') return spaceTickets(space, LIST_TQL.review);
-  const r = await callTool('pm_search_tasks', { tql: LIST_TQL.sprint, ...LIST_FIELDS });
+  const [r, viaSubs] = await Promise.all([
+    callTool('pm_search_tasks', { tql: LIST_TQL.sprint, ...LIST_FIELDS }),
+    projectsOfSpace(space).then(projectIds => callTool('pm_search_tasks', { tql: LIST_TQL.subtasks, projectIds, ...LIST_FIELDS })).catch(() => null),
+  ]);
   (r.items || []).forEach(learn);
   // These are all yours, so their assignee id is yours: your sign-in email
   // (the reporter of your tickets) gets your name too.
-  const mine = (r.items || []).find(t => t.assigneeId)?.assigneeId;
-  if (mine && auth?.email) emailById.set(mine, auth.email.toLowerCase());
-  return { items: (r.items || []).map(slim), total: r.total || 0 };
+  let me = (r.items || []).find(t => t.assigneeId)?.assigneeId || '';
+  if (me && auth?.email) emailById.set(me, auth.email.toLowerCase());
+  if (!me && auth?.email) for (const [id, e] of emailById) if (e === auth.email.toLowerCase()) me = id;
+  // A story someone else has, where you have a subtask: it shows too, marked
+  // (viaSubtask), so the view can show it as the parent of your subtasks.
+  const keys = new Set((r.items || []).map(t => t.key));
+  const extra = (viaSubs?.items || []).filter(t => !keys.has(t.key));
+  extra.forEach(learn);
+  return { items: [...(r.items || []).map(slim), ...extra.map(t => ({ ...slim(t), viaSubtask: true }))], total: (r.total || 0) + extra.length, me };
 }
 
 // One ticket in full: its description (HTML), epic, links and subtasks.
