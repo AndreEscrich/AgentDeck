@@ -1229,16 +1229,19 @@ function fileChips(answer, card, files) {
     node.title = `${f.path}\nOpen its changes`;
     node.onclick = e => { e.preventDefault(); card.openFile?.(f); };
   };
+  // Only the answer's own text: not inside any Changes card (an answer can
+  // hold several, such as a git diff's card next to the task's own) or any
+  // SVG, where a <span> around a class diagram box's name hides the name.
   // A name written as inline code: the code element itself becomes the link.
   for (const code of answer.querySelectorAll('code')) {
-    if (card.contains(code) || code.closest('pre')) continue;
+    if (code.closest('pre, .changes')) continue;
     const f = byName.get(code.textContent.trim().split('/').pop());
     if (f) link(code, f);
   }
   const walker = document.createTreeWalker(answer, NodeFilter.SHOW_TEXT);
   const hits = [];
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-    if (card.contains(n) || n.parentElement.closest('pre, code, a, button, .answer-file-link')) continue;
+    if (n.parentElement.closest('pre, code, a, button, svg, .changes, .answer-file-link')) continue;
     re.lastIndex = 0;
     if (re.test(n.nodeValue)) hits.push(n);
   }
