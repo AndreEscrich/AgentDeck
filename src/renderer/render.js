@@ -3312,12 +3312,19 @@ class Transcript {
     if (videos) parts.push(`${videos} video${videos === 1 ? '' : 's'}`);
     if (sounds) parts.push(`${sounds} sound${sounds === 1 ? '' : 's'}`);
     card.appendChild(el('div', 'changes-head', parts.join(' · ')));
+    // When the task made a video for review, the pictures next to it are
+    // mostly the agent's own working screenshots. The videos come first and
+    // the pictures stay folded behind a button.
+    const hasVideo = videos > 0 || !!turn.el.querySelector('.msg-text video.chat-media');
+    if (hasVideo) files = [...files].sort((a, b) => (b.kind === 'video') - (a.kind === 'video'));
+    const fold = hasVideo && images > 0;
     const grid = el('div', 'media-grid');
+    const folded = el('div', 'media-grid media-folded');
     for (const f of files) {
       const item = el('figure', 'media-item');
+      (fold && f.kind === 'image' ? folded : grid).appendChild(item);
       const media = mediaElement(f.path, null, this.cwd);
       item.append(media, el('figcaption', null, this.relativePath(f.path)));
-      grid.appendChild(item);
       // A changed image: before and after, with a slider between them.
       if (f.kind === 'image' && window.deck?.mediaBefore) {
         window.deck.mediaBefore(this.cwd, f.path, snap).then(before => {
@@ -3329,7 +3336,17 @@ class Transcript {
         }).catch(() => {});
       }
     }
-    card.appendChild(grid);
+    if (grid.childElementCount) card.appendChild(grid);
+    if (fold) {
+      const label = `${images} image${images === 1 ? '' : 's'} from the task`;
+      const toggle = el('button', 'media-fold', `Show ${label}`);
+      folded.hidden = true;
+      toggle.onclick = () => {
+        folded.hidden = !folded.hidden;
+        toggle.textContent = `${folded.hidden ? 'Show' : 'Hide'} ${label}`;
+      };
+      card.append(toggle, folded);
+    }
     this.pinned(() => {
       turn.el.querySelector('.media-card')?.remove();
       const changes = turn.answer.querySelector(':scope > .changes');

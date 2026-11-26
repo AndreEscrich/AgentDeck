@@ -1470,6 +1470,11 @@ audio.chat-media { width: 100%; max-width: 420px; height: 40px; background: tran
   background: repeating-conic-gradient(#342b22 0% 25%, #2a231c 0% 50%) 0 0 / 16px 16px; }
 .media-item video.chat-media { aspect-ratio: 16 / 9; background: #000; }
 .media-item figcaption { font: 11px var(--mono); color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.media-fold { display: block; margin: 0 12px 12px; padding: 4px 10px; font-size: 12px; color: var(--text-dim); background: transparent; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+.media-fold:hover { color: var(--text); }
+.media-grid + .media-fold { margin-top: -2px; }
+.media-folded { padding-top: 0; }
+.media-folded[hidden] { display: none; }
 .lightbox { position: fixed; inset: 0; z-index: 100; background: rgba(8, 9, 12, 0.92); display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 10px; cursor: zoom-out; }
 .lightbox img { max-width: 92vw; max-height: 86vh; object-fit: contain;
