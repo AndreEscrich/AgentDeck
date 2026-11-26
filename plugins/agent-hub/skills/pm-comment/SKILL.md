@@ -43,14 +43,19 @@ svn log "$(svn info --show-item url | sed -E 's#/Unity$##')" -l 15 -v --search <
 - If a task key was given, read it with the Tactile PM MCP (`pm_get_task`, `pm_list_comments`) for context, acceptance criteria and anything QA has already been asked to test.
 - If the commit bumps a UPM package (`Packages/manifest.json`), describe the package changes too: read the package's git log between the old and new version (e.g. in `Packages/<package>` if embedded, or its GitHub repo via `gh`).
 
-## 3. Check the builds
+## 3. Make sure the builds exist
 
-The builds page is `https://tactile.build/builds?revision=<REV>`.
+The comment links to `https://tactile.build/builds?revision=<REV>`, so that page must have builds for the revision. Use the Tactile build server through the `build-server` skill (its `bs-api` script; read that skill first, and always pipe listings through its formatters):
 
-- The API (`https://api.tactile.build/builds?...`) needs a Bearer token from the browser login and returns 401 otherwise, so don't try to curl it.
-- Use the `claude-in-chrome` skill to open the builds page in my logged-in Chrome session and read which builds exist for the revision (project, platform, status).
-- Mention problems to me **outside** the comment: no builds for the revision yet, failed builds, or builds for a different project than the task's game. Don't put build statuses in the comment itself.
-- If Chrome isn't available, still use the link and tell me the builds weren't checked.
+1. **Find the build server project** for this working copy: list the projects with the `list-projects` skill and pick the one whose SVN or git address matches this working copy's repository (`svn info --show-item repos-root-url`, or `git remote get-url origin`). The **branch** is the working copy's branch as the build server names it (`trunk`, or the folder name under `branches/`).
+2. **Look for builds of the revision:** `GET /builds?projectName=<PROJECT>&revision=<REV>`. If there are builds that are queued, running or finished, use them and don't start new ones.
+3. **If there are none, start them:** `POST /builds` with one inhouse build per platform the project builds (normally Android and iOS):
+   ```json
+   [{ "projectName": "<PROJECT>", "branch": "<BRANCH>", "revision": "<REV>", "platform": "android", "kind": "build", "type": "inhouse" },
+    { "projectName": "<PROJECT>", "branch": "<BRANCH>", "revision": "<REV>", "platform": "ios", "kind": "build", "type": "inhouse" }]
+   ```
+   Start them only once per revision, and only inhouse builds: never release builds, store uploads or other projects.
+4. Tell me **outside** the comment which builds you started (number, platform, link) or found, and any problem: the build server refused (no access, unknown project or branch), a build failed, or `~/.tactile_env` is missing (then follow the `build-server` skill's setup steps and don't start builds). Don't put build statuses in the comment itself; the link stays in the comment either way.
 
 ## 4. Write the comment
 
