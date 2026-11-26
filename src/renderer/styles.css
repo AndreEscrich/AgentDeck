@@ -3910,6 +3910,29 @@ input.tp-title-input::selection { background: color-mix(in srgb, var(--accent) 3
 .tp-comment-author { font-weight: 600; color: var(--text); }
 .tp-comment-time { color: var(--text-faint); font-size: 11.5px; }
 .tp-comment .tp-desc { background: none; padding: 0 0 0 30px; }
+/* PM's editor callouts (<div data-component="info|tip|warning|…">, with a
+   .callout-title and a .callout-body), as PM's page draws them: a coloured
+   box with an icon before the title. The pm-comment skill writes Changes
+   (info), Testing notes (tip) and Warning (warning) this way. */
+.tp-desc [data-component] { --co: #6e7bff; margin: 10px 0; padding: 10px 14px 10px 14px; border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--co) 60%, transparent); background: color-mix(in srgb, var(--co) 30%, transparent); color: color-mix(in srgb, var(--co) 35%, var(--text)); }
+.tp-desc [data-component="tip"], .tp-desc [data-component="success"] { --co: #2fb36b; }
+.tp-desc [data-component="warning"] { --co: #e0a92a; }
+.tp-desc [data-component="danger"], .tp-desc [data-component="error"] { --co: #e5493a; }
+.tp-desc [data-component="note"] { --co: #8a8f98; }
+.tp-desc [data-component] .callout-title { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 4px; color: color-mix(in srgb, var(--co) 45%, var(--text)); }
+.tp-desc [data-component] .callout-title::before { flex-shrink: 0; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%;
+  border: 1.5px solid currentColor; font-size: 11px; font-weight: 800; line-height: 1; content: 'i'; }
+.tp-desc [data-component="tip"] .callout-title::before, .tp-desc [data-component="success"] .callout-title::before { content: '✓'; }
+.tp-desc [data-component="warning"] .callout-title::before, .tp-desc [data-component="danger"] .callout-title::before, .tp-desc [data-component="error"] .callout-title::before { content: '!'; }
+.tp-desc [data-component] .callout-title:empty { display: none; }
+.tp-desc [data-component] .callout-body > :first-child { margin-top: 0; }
+.tp-desc [data-component] .callout-body > :last-child { margin-bottom: 0; }
+.tp-desc [data-component] .callout-body ul { margin: 4px 0; padding-left: 22px; }
+.tp-desc [data-component] .callout-body li { margin: 3px 0; }
+.tp-desc [data-component] .callout-body li::marker { color: currentColor; }
+.tp-desc [data-component] .callout-body p { margin: 0; }
+.tp-desc h2 { border: none; padding: 0; margin: 4px 0 6px; font-size: 1.35em; }
 .tp-readonly { padding: 6px 10px; border-radius: 8px; font-size: 13px; color: var(--text-dim); background: color-mix(in srgb, var(--text) 4%, transparent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* History tab: one entry per change, newest first. */
 .tp-history { display: flex; flex-direction: column; gap: 2px; }
