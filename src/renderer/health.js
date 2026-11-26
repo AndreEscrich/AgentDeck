@@ -3,18 +3,22 @@
 // (src/health.js) from a Tactile BI project health dashboard, with a tab per
 // project (Settings → Project health has the list).
 //
-// Top to bottom, so the most important comes first:
-//  1. Needs attention: the warnings from crashes and player support
-//     together, worst first. A click shows the part it belongs to.
-//  2. The numbers at a glance: the four stability rates (crashes, ANRs,
-//     out-of-memory kills, Unity exceptions, per 1,000 daily players, against
-//     the 30 days before, with a line of the last 30 days) and this week's
-//     support numbers.
-//  3. The details, in two parts: Crashes & exceptions (the crash groups,
-//     Unity exceptions and handled errors that hit the most devices, each
-//     with "Find the cause", which starts an agent on it), and Player support
-//     (Claude's written read of the messages, the topics against last week
-//     and the latest conversations, with "Digest with an agent").
+// Two tabs that never mix: Crashes & exceptions, and Player support. Each
+// has, top to bottom, its own warnings (worst first), its numbers at a
+// glance, then its details:
+//  - Crashes & exceptions, in their order of importance: Unity exceptions
+//    first, then handled errors, then native crashes. Each crash and
+//    exception has its devices per day for the last 30 days as small bars
+//    (the picked range brighter), its share of the day's players, and
+//    "Find the cause", which starts an agent on it.
+//  - Player support: Claude's written read of the messages, the topics
+//    against the time before and the latest conversations.
+//
+// Red only means a real issue: a crash or exception that hits 0.5% of a
+// day's players or more. Everything else worth a look is amber. While
+// something is being read, a spinner says so.
+
+const HEALTH_RANK = { 'Unity exception': 0, ANR: 1, 'Out of memory': 2, Crash: 3 };
 
 class HealthView {
   // onDigest(project): start the support digest agent. onInvestigate(project,
@@ -27,6 +31,7 @@ class HealthView {
     $('views').appendChild(this.view);
     this.summary = null;
     this.open_ = new Set();   // conversations shown in full
+    this.reading = false;     // the dashboard is being read (the refresh spins)
   }
 
   open() {
@@ -80,9 +85,9 @@ class HealthView {
         const b = el('button', 'tickets-tab' + (x.id === p.id ? ' on' : ''));
         b.type = 'button';
         b.append(el('span', null, x.name));
-        const n = x.report?.warnings?.length || 0;
-        if (n) b.append(el('span', 'health-tab-count', String(n)));
-        b.onclick = () => { this.projectId = x.id; this.topic = null; this.part = null; this.spot = null; this.render(); };
+        const ws = x.report?.warnings || [];
+        if (ws.length) b.append(el('span', 'health-tab-count' + (ws.some(w => w.level === 'high') ? ' high' : ''), String(ws.length)));
+        b.onclick = () => { this.projectId = x.id; this.topic = null; this.spot = null; this.render(); };
         tabs.append(b);
       }
       box.append(tabs);
@@ -103,16 +108,20 @@ class HealthView {
       ranges.append(b);
     }
     head.append(ranges);
-    const when = el('span', 'health-when', r?.at ? `Read ${timeAgoText(r.at)}` : 'Reading…');
-    const refresh = el('button', 'icon gallery-refresh', '↻');
+    const when = el('span', 'health-when');
+    if (this.reading || !r?.at) when.append(spinner(), 'Reading…');
+    else when.append(`Read ${timeAgoText(r.at)}`);
+    const refresh = el('button', 'icon gallery-refresh' + (this.reading ? ' spinning' : ''), '↻');
     refresh.type = 'button';
+    refresh.disabled = this.reading;
     refresh.title = 'Read the dashboard again (runs its charts again)';
     refresh.onclick = async () => {
-      refresh.disabled = true;
-      when.textContent = 'Reading…';
+      this.reading = true;
+      this.lists?.clear();
+      this.render();
       const out = await window.deck.healthCheck(true);
-      if (out?.error) { when.textContent = out.error; refresh.disabled = false; return; }
-      this.render(out);
+      this.reading = false;
+      this.render(out?.error ? undefined : out);
     };
     const dash = el('a', 'gallery-action', 'Open dashboard');
     dash.href = p.dashboardUrl || 'https://bi.tactilews.com';
@@ -121,60 +130,99 @@ class HealthView {
     box.append(head);
     if (r?.error) box.append(el('div', 'tp-error', r.error));
     if (!r?.stats) {
-      box.append(el('div', 'gallery-note', 'Reading the dashboard from Tactile BI…'));
+      box.append(loading('Reading the dashboard from Tactile BI…'));
       this.view.replaceChildren(box);
-      if (!r) window.deck.healthCheck(false).then(out => this.render(out));
+      if (!r && !this.firstRead) { this.firstRead = true; window.deck.healthCheck(false).then(out => { this.firstRead = false; this.render(out); }); }
       return;
     }
     const c = r.crashes;
-    // The part shown below: Crashes or Player support. Until you pick one,
-    // the part of the first warning.
-    if (!this.part || (this.part === 'crashes' && !c)) this.part = r.warnings.find(w => w.tab)?.tab === 'support' || !c ? 'support' : 'crashes';
+    // The two parts, as tabs that never mix: Crashes & exceptions first (they
+    // matter most), then Player support. Remembered.
+    if (this.part === undefined) { try { this.part = localStorage.getItem('healthPart') || 'crashes'; } catch { this.part = 'crashes'; } }
+    if (this.part === 'crashes' && !c) this.part = 'support';
+    const warnings = tab => (r.warnings || []).filter(w => (w.tab || 'support') === tab);
+    const parts = el('div', 'tickets-tabs health-parts');
+    const partBtn = (id, label) => {
+      const b = el('button', 'tickets-tab' + (this.part === id ? ' on' : ''));
+      b.type = 'button';
+      b.append(el('span', null, label));
+      const ws = warnings(id);
+      if (ws.length) b.append(el('span', 'health-tab-count' + (ws.some(w => w.level === 'high') ? ' high' : ''), String(ws.length)));
+      b.onclick = () => { this.part = id; try { localStorage.setItem('healthPart', id); } catch { /* this run only */ } this.render(); };
+      return b;
+    };
+    if (c) parts.append(partBtn('crashes', 'Crashes & exceptions'));
+    parts.append(partBtn('support', 'Player support'));
+    box.append(parts);
+    if (this.part === 'crashes' && c) {
+      if (r.crashError) box.append(el('div', 'tp-error', `Crashes: ${r.crashError}`));
+      this.renderWarnings(box, p, warnings('crashes'), 'crashes');
+      this.renderCrashes(box, p, c);
+    } else {
+      this.renderWarnings(box, p, warnings('support'), 'support');
+      this.renderSupport(box, p, r);
+    }
 
-    // 1. What needs your attention, crashes and support together, worst first.
-    if (r.warnings.length) {
-      const list = el('div', 'health-warnings');
-      list.append(el('div', 'health-section-label', `Needs attention · ${r.warnings.length}`));
-      // The worst five; the rest behind "Show more", so the numbers stay in view.
-      const shownW = this.allWarnings ? r.warnings : r.warnings.slice(0, 5);
-      for (const w of shownW) {
-        const card = el('div', `health-warning ${w.level}`);
-        card.append(el('span', 'health-warning-mark', w.level === 'high' ? '!' : '•'));
-        const text = el('div', 'health-warning-text');
-        text.append(el('div', 'health-warning-title', w.title), el('div', 'health-warning-sub', w.text));
-        card.append(text, el('span', 'health-warning-tag ' + (w.tab || 'support'), w.tab === 'crashes' ? 'Crashes' : 'Support'));
-        if (w.item) card.append(this.agentButton(p, w.item));
+    const foot = el('div', 'health-foot');
+    const out = el('button', 'tp-link', `Signed in to Tactile BI${s.email ? ` as ${s.email}` : ''} · Sign out`);
+    out.type = 'button';
+    out.onclick = async () => this.render(await window.deck.healthDisconnect().then(() => window.deck.healthSummary()));
+    foot.append(el('span', null, 'The app reads the dashboard every 30 minutes (free) and runs its charts again every few hours. Crash numbers leave out today, which is still filling.'), out);
+    box.append(foot);
+    const keep = this.view.querySelector('.health')?.scrollTop;
+    this.view.replaceChildren(box);
+    if (keep) box.scrollTop = keep;
+  }
+
+  // One part's warnings, worst first: the worst five, the rest behind "Show more".
+  renderWarnings(box, p, ws, tab) {
+    if (!ws.length) {
+      box.append(el('div', 'health-ok', tab === 'crashes' ? '✓ Nothing unusual in crashes or exceptions right now.' : '✓ Nothing unusual in player support right now.'));
+      return;
+    }
+    const list = el('div', 'health-warnings');
+    list.append(el('div', 'health-section-label', `Needs attention · ${ws.length}`));
+    const all = this.allWarnings === tab;
+    for (const w of all ? ws : ws.slice(0, 5)) {
+      const card = el('div', `health-warning ${w.level}`);
+      card.append(el('span', 'health-warning-mark', w.level === 'high' ? '!' : '•'));
+      const text = el('div', 'health-warning-text');
+      text.append(el('div', 'health-warning-title', w.title), el('div', 'health-warning-sub', w.text));
+      card.append(text);
+      if (w.item) card.append(this.agentButton(p, w.item));
+      if (w.item || w.topic) {
         card.classList.add('clickable');
-        card.title = w.tab === 'crashes' ? 'Show the crashes' : w.topic ? `Show the ${w.topic} conversations` : 'Show the player support';
+        card.title = w.item ? 'Show it in the list below' : `Show the ${w.topic} conversations`;
         card.onclick = e => {
           if (e.target.closest('button')) return;
-          this.part = w.tab === 'crashes' ? 'crashes' : 'support';
           if (w.topic) this.topic = w.topic;
           if (w.item) this.spot = w.item.id || w.item.what;
           this.render();
-          requestAnimationFrame(() => this.view.querySelector('.health-spot, .health-parts')?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+          requestAnimationFrame(() => this.view.querySelector('.health-spot, .health-cols')?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
         };
-        list.append(card);
       }
-      if (r.warnings.length > 5) {
-        const more = el('button', 'tp-link health-more', this.allWarnings ? 'Show fewer' : `Show ${r.warnings.length - 5} more`);
-        more.type = 'button';
-        more.onclick = () => { this.allWarnings = !this.allWarnings; this.render(); };
-        list.append(more);
-      }
-      box.append(list);
-    } else box.append(el('div', 'health-ok', '✓ Nothing unusual in crashes or player support right now.'));
+      list.append(card);
+    }
+    if (ws.length > 5) {
+      const more = el('button', 'tp-link health-more', all ? 'Show fewer' : `Show ${ws.length - 5} more`);
+      more.type = 'button';
+      more.onclick = () => { this.allWarnings = all ? null : tab; this.render(); };
+      list.append(more);
+    }
+    box.append(list);
+  }
 
-    // 2. The numbers at a glance: stability and support side by side.
-    const glance = el('div', 'health-glance');
+  // The crash part: the stability numbers, then Unity exceptions, handled
+  // errors and native crashes, in that order.
+  renderCrashes(box, p, c) {
     const days = this.range || 1;
-    const span = days === 1 ? '24 hours' : `${days} days`;
-    const rates = c?.byRange?.[days] || c?.rates || [];
+    // The numbers at a glance, Unity exceptions first.
+    const rates = [...(c.byRange?.[days] || c.rates || [])].sort((a, b) => (HEALTH_RANK[a.type] ?? 9) - (HEALTH_RANK[b.type] ?? 9));
     if (rates.length) {
       const g = el('div', 'health-glance-group');
       g.append(el('div', 'health-section-label', `Stability · per 1,000 daily players · ${days === 1 ? 'last full day' : `last ${days} days`}`));
       const tiles = el('div', 'health-stats');
-      const names = { Crash: 'Crashes', ANR: 'ANRs', 'Out of memory': 'Out of memory', 'Unity exception': 'Unity exceptions' };
+      const names = { Crash: 'Native crashes', ANR: 'ANRs', 'Out of memory': 'Out of memory', 'Unity exception': 'Unity exceptions' };
       const tips = { Crash: 'The game closed by a native crash', ANR: 'Android: the app stopped answering (per 1,000 Android players)', 'Out of memory': 'The system killed the game for using too much memory (almost all iOS)', 'Unity exception': 'An unhandled C# exception: the game goes on, but the code that threw stopped' };
       for (const x of rates) {
         const ch = Math.round(x.change * 100);
@@ -187,8 +235,133 @@ class HealthView {
         tiles.append(t);
       }
       g.append(tiles);
-      glance.append(g);
+      box.append(g);
     }
+    // The lists for the picked range, read from Tactile BI when first needed
+    // (healthRange), with each one's days; a spinner until then.
+    this.lists ||= new Map();
+    const key = `${p.id}:${days}`;
+    const got = this.lists.get(key);
+    if (!got || (!got.loading && Date.now() - got.at > 30 * 60 * 1000)) {
+      this.lists.set(key, { loading: true, at: Date.now(), data: got?.data || null });
+      window.deck.healthRange(p.id, days).then(r => {
+        this.lists.set(key, { at: Date.now(), data: r && !r.error ? r : got?.data || null, error: r?.error || '' });
+        if (this.range === days && this.part === 'crashes' && !this.view.classList.contains('hidden')) this.render();
+      });
+    }
+    const now = this.lists.get(key);
+    const span = days === 1 ? '24 hours' : `${days} days`;
+    if (now?.error) box.append(el('div', 'tp-error', `Crashes for the last ${span}: ${now.error}`));
+    if (!now?.data) {
+      // Failed: the error above, and a way to try again (no endless spinner).
+      if (now?.error && !now.loading) {
+        const again = el('button', 'tp-link', 'Try again');
+        again.type = 'button';
+        again.onclick = () => { this.lists.delete(key); this.render(); };
+        box.append(again);
+      } else box.append(loading(`Reading the crashes and exceptions of the last ${span} from Tactile BI…`));
+      return;
+    }
+    if (now.loading) box.append(loading(`Reading the last ${span} again…`, true));
+    if (now.data.trendError) box.append(el('div', 'health-card-note', `The days of each crash could not be read: ${now.data.trendError}`));
+    c = { ...c, ...now.data };
+    const since = new Date(Date.now() - days * 864e5).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    box.append(
+      this.crashList(p, 'Unity exceptions', c.exceptions, 'C# exceptions nobody caught, by the method that threw. The game goes on, but that code stopped. Most devices first.', 'exceptions', days),
+      this.crashList(p, 'Handled errors', c.errors, 'Errors the game reports on purpose without crashing, most players first.', 'errors', days),
+      this.crashList(p, 'Native crashes', c.groups, `Native crashes that closed the game since ${since}, by crash group, most devices first. ANRs and out-of-memory kills have no stack, so they are only in the numbers above.`, 'crashes', days));
+  }
+
+  // A list of crashes, exceptions or handled errors: each with its days
+  // (bars), its devices, its share of the day's players and, for crashes
+  // and exceptions, "Find the cause".
+  crashList(p, title, items, note, kind, days) {
+    const card = el('div', 'health-card');
+    card.append(el('h3', null, title), el('div', 'health-card-note', note));
+    if (!items?.length) { card.append(el('div', 'gallery-note', 'None in this time.')); return card; }
+    const all = this.allOf === kind;
+    const max = Math.max(1, ...items.map(x => x.devices || x.players || 0));
+    for (const x of all ? items : items.slice(0, 8)) {
+      const t = x.trend;
+      const row = el('div', 'health-item' + ((x.id || x.what) === this.spot ? ' health-spot' : '') + (t?.hot ? ' hot' : ''));
+      const main = el('div', 'health-item-main');
+      const name = el('div', 'health-item-name', x.what);
+      name.title = x.method || x.frame || x.what;
+      // Under it: whether it is new, and the players it hit (their share of
+      // the daily players) and how many times, apart, because one player can
+      // hit it many times.
+      const meta = el('div', 'health-item-meta');
+      if (x.isNew) meta.append(el('span', 'health-new', 'new'));
+      if (kind !== 'errors') {
+        const pl = x.devices || 0, cases = x.events || 0;
+        if (t?.rangeShare || t?.hot) {
+          const share = el('span', 'health-share' + (t.hot ? ' hot' : ''), `${pctText(t.rangeShare || 0)} of players`);
+          share.title = t.hot ? `At most ${pctText(t.share)} of a day's players in this time: over 0.5%.` : 'Its players against the daily players of this time (about).';
+          meta.append(share);
+        }
+        meta.append(el('span', 'health-split', `${pl.toLocaleString()} player${pl === 1 ? '' : 's'} · ${cases.toLocaleString()} case${cases === 1 ? '' : 's'}`));
+      } else meta.append(el('span', 'health-split', `${(x.players || 0).toLocaleString()} players · ${(x.events || 0).toLocaleString()} cases`));
+      main.append(name, meta);
+      // Its days (crashes and exceptions); a bar for the handled errors.
+      let graph;
+      if (kind === 'errors') {
+        graph = el('div', 'health-item-bar');
+        const fill = el('span'); fill.style.width = `${Math.max(2, (x.players || 0) / max * 100)}%`;
+        graph.append(fill);
+      } else graph = t ? dayLine(t, days) : el('div', 'health-days-none', x.id ? '' : 'no group id');
+      const n = x.devices ?? x.players ?? 0;
+      const num = el('div', 'health-item-n', n.toLocaleString());
+      num.title = kind === 'errors' ? `${n} players, ${x.events.toLocaleString()} times` : `${n} devices, ${x.events.toLocaleString()} times`;
+      row.append(main, graph, num);
+      if (kind !== 'errors') {
+        const item = { kind: kind === 'crashes' ? 'crash' : 'exception', ...x, rangeDays: days };
+        row.append(this.agentButton(p, item));
+        // A click opens it in place, under its row: its graph by app version,
+        // where it happens and its top frame. Another click closes it.
+        if (x.id) {
+          const key = `${p.id}:${x.id}`;
+          this.openCrashes ||= new Set();
+          row.classList.add('clickable');
+          row.title = 'Click to see it in detail';
+          row.onclick = e => {
+            if (e.target.closest('button')) return;
+            const open = this.openCrashes.has(key);
+            const next = row.nextElementSibling?.classList.contains('health-crash-open') ? row.nextElementSibling : null;
+            if (open) {
+              this.openCrashes.delete(key);
+              row.classList.remove('open');
+              if (next) slideClosed(next);
+            } else {
+              this.openCrashes.add(key);
+              row.classList.add('open');
+              const d = this.crashDetail(p, item);
+              row.after(d);
+              slideOpen(d);
+            }
+            window.uiSound?.(open ? 'tickDown' : 'tick');
+          };
+          card.append(row);
+          if (this.openCrashes.has(key)) { row.classList.add('open'); card.append(this.crashDetail(p, item)); }
+          continue;
+        }
+      }
+      else row.append(el('span'));
+      card.append(row);
+    }
+    if (items.length > 8) {
+      const more = el('button', 'tp-link', all ? 'Show fewer' : `Show all ${items.length}`);
+      more.type = 'button';
+      more.onclick = () => { this.allOf = all ? null : kind; this.render(); };
+      card.append(more);
+    }
+    return card;
+  }
+
+  // The support part: its numbers, Claude's written read of the messages,
+  // the topics against the time before and the latest conversations.
+  renderSupport(box, p, r) {
+    const days = this.range || 1;
+    const span = days === 1 ? '24 hours' : `${days} days`;
     const sr = r.byRange?.[days];
     const st = sr?.stats || { messages: r.stats.week, before: r.stats.before, players: r.stats.conversations, unhappy: r.stats.unhappy };
     const change = st.before ? Math.round((st.messages - st.before) / st.before * 100) : null;
@@ -203,106 +376,8 @@ class HealthView {
       tile(st.messages ? `${Math.round(st.unhappy / st.messages * 100)}%` : '–', 'unhappy', `${st.unhappy} messages`, st.messages >= 10 && st.unhappy / st.messages >= 0.5 ? 'worse' : ''));
     if (top) { const t = tile(top.week, 'top topic', top.name); t.classList.add('topic'); stiles.append(t); }
     sg.append(stiles);
-    glance.append(sg);
-    box.append(glance);
+    box.append(sg);
 
-    // 3. The details: Crashes or Player support.
-    const parts = el('div', 'tickets-tabs health-parts');
-    const partBtn = (id, label, n) => {
-      const b = el('button', 'tickets-tab' + (this.part === id ? ' on' : ''));
-      b.type = 'button';
-      b.append(el('span', null, label));
-      if (n) b.append(el('span', 'health-tab-count', String(n)));
-      b.onclick = () => { this.part = id; this.render(); };
-      return b;
-    };
-    const count = tab => r.warnings.filter(w => (w.tab || 'support') === tab).length;
-    if (c) parts.append(partBtn('crashes', 'Crashes & exceptions', count('crashes')));
-    parts.append(partBtn('support', 'Player support', count('support')));
-    box.append(parts);
-    if (r.crashError) box.append(el('div', 'tp-error', `Crashes: ${r.crashError}`));
-    if (this.part === 'crashes' && c) this.renderCrashes(box, p, c);
-    else this.renderSupport(box, p, r);
-
-    const foot = el('div', 'health-foot');
-    const out = el('button', 'tp-link', `Signed in to Tactile BI${s.email ? ` as ${s.email}` : ''} · Sign out`);
-    out.type = 'button';
-    out.onclick = async () => this.render(await window.deck.healthDisconnect().then(() => window.deck.healthSummary()));
-    foot.append(el('span', null, 'The app reads the dashboard every 30 minutes (free) and runs its charts again every few hours. Crash numbers leave out today, which is still filling.'), out);
-    box.append(foot);
-    this.view.replaceChildren(box);
-  }
-
-  // The crash part: the crash groups and Unity exceptions as short lists, the
-  // ones that hit the most devices first, and the handled errors.
-  renderCrashes(box, p, c) {
-    // The lists for the picked range, read from Tactile BI when first needed
-    // (healthRange); until then, a note.
-    const days = this.range || 1;
-    this.lists ||= new Map();
-    const key = `${p.id}:${days}`;
-    const got = this.lists.get(key);
-    if (!got || (!got.loading && Date.now() - got.at > 30 * 60 * 1000)) {
-      this.lists.set(key, { loading: true, at: Date.now(), data: got?.data || null });
-      window.deck.healthRange(p.id, days).then(r => {
-        this.lists.set(key, { at: Date.now(), data: r && !r.error ? r : null, error: r?.error || '' });
-        if (this.range === days && this.part === 'crashes' && !this.view.classList.contains('hidden')) this.render();
-      });
-    }
-    const now = this.lists.get(key);
-    if (now?.error) box.append(el('div', 'tp-error', `Crashes for the last ${days === 1 ? '24 hours' : `${days} days`}: ${now.error}`));
-    if (!now?.data) {
-      box.append(el('div', 'gallery-note', `Reading the crashes of the last ${days === 1 ? '24 hours' : `${days} days`} from Tactile BI…`));
-      return;
-    }
-    c = { ...c, ...now.data };
-    const list = (title, items, note, kind) => {
-      const card = el('div', 'health-card');
-      card.append(el('h3', null, title), el('div', 'health-card-note', note));
-      if (!items.length) { card.append(el('div', 'gallery-note', 'None in this time.')); return card; }
-      const all = this.allOf === kind;
-      const max = Math.max(1, ...items.map(x => x.devices || x.players || 0));
-      for (const x of all ? items : items.slice(0, 8)) {
-        const row = el('div', 'health-item' + ((x.id || x.what) === this.spot ? ' health-spot' : ''));
-        const main = el('div', 'health-item-main');
-        const name = el('div', 'health-item-name', x.what);
-        name.title = x.method || x.frame || x.what;
-        const meta = el('div', 'health-item-meta');
-        if (x.isNew) meta.append(el('span', 'health-new', 'new'));
-        if (x.platform || x.platforms) meta.append(el('span', 'health-chip', x.platform || x.platforms.replace(',', ' · ')));
-        if (x.signal && x.signal !== x.what) meta.append(el('span', 'health-chip', x.signal));
-        if (x.versions?.length) meta.append(el('span', null, `latest ${x.versions[0]}`));
-        if (x.first) meta.append(el('span', null, `since ${new Date(x.first).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`));
-        else if (x.last) meta.append(el('span', null, `last ${new Date(x.last).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`));
-        main.append(name, meta);
-        const n = x.devices ?? x.players ?? 0;
-        const bar = el('div', 'health-item-bar');
-        const fill = el('span'); fill.style.width = `${Math.max(2, n / max * 100)}%`;
-        bar.append(fill);
-        const num = el('div', 'health-item-n', n.toLocaleString());
-        num.title = kind === 'errors' ? `${n} players, ${x.events.toLocaleString()} times` : `${n} devices, ${x.events.toLocaleString()} times`;
-        row.append(main, bar, num);
-        if (kind !== 'errors') row.append(this.agentButton(p, { kind: kind === 'crashes' ? 'crash' : 'exception', ...x }));
-        card.append(row);
-      }
-      if (items.length > 8) {
-        const more = el('button', 'tp-link', all ? 'Show fewer' : `Show all ${items.length}`);
-        more.type = 'button';
-        more.onclick = () => { this.allOf = all ? null : kind; this.render(); };
-        card.append(more);
-      }
-      return card;
-    };
-    const cols = el('div', 'health-crash-cols');
-    cols.append(
-      list('Crashes', c.groups, `Native crashes that closed the game since ${new Date(Date.now() - days * 864e5).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} (today included), by crash group, most devices first. ANRs and out-of-memory kills have no stack, so they are only in the numbers above.`, 'crashes'),
-      list('Unity exceptions', c.exceptions, 'C# exceptions nobody caught, by the method that threw. The game goes on, but that code stopped.', 'exceptions'));
-    box.append(cols, list('Handled errors', c.errors, 'Errors the game reports on purpose without crashing, most players first.', 'errors'));
-  }
-
-  // The support part: Claude's written read of the messages, the topics
-  // against last week and the latest conversations.
-  renderSupport(box, p, r) {
     const c = r.crashes;
     if (c?.analysis?.text) {
       const card = el('div', 'health-card health-analysis' + (this.readOpen ? ' open' : ''));
@@ -327,20 +402,18 @@ class HealthView {
     actions.append(el('span', 'health-card-note', 'An agent can sort the latest messages into real bugs and check them against the code.'), digest);
     box.append(actions);
     // Topics in the picked range against the same time before it.
-    const days = this.range || 1;
-    const span = days === 1 ? '24 hours' : `${days} days`;
-    const sr = r.byRange?.[days] || { topics: r.topics, recent: r.recent };
+    const sr2 = sr || { topics: r.topics, recent: r.recent };
     const topics = el('div', 'health-card');
     topics.append(el('h3', null, `Topics · last ${span} against the ${span} before`));
-    if (!sr.topics.some(t => t.week || t.before)) topics.append(el('div', 'gallery-note', 'No messages in this time.'));
-    const max = Math.max(1, ...sr.topics.map(t => Math.max(t.week, t.before)));
-    for (const tp of sr.topics.slice(0, 10)) {
+    if (!sr2.topics.some(t => t.week || t.before)) topics.append(el('div', 'gallery-note', 'No messages in this time.'));
+    const max = Math.max(1, ...sr2.topics.map(t => Math.max(t.week, t.before)));
+    for (const tp of sr2.topics.slice(0, 10)) {
       const row = el('button', 'health-topic' + (this.topic === tp.name ? ' on' : ''));
       row.type = 'button';
       const bars = el('span', 'health-bars');
-      const now = el('span', 'health-bar now'); now.style.width = `${tp.week / max * 100}%`;
+      const nowBar = el('span', 'health-bar now'); nowBar.style.width = `${tp.week / max * 100}%`;
       const before = el('span', 'health-bar before'); before.style.width = `${tp.before / max * 100}%`;
-      bars.append(now, before);
+      bars.append(nowBar, before);
       const diff = tp.week - tp.before;
       row.append(el('span', 'health-topic-name', tp.name), bars, el('span', 'health-topic-n', `${tp.week}`),
         el('span', 'health-topic-diff ' + (diff > 0 ? 'up' : diff < 0 ? 'down' : ''), diff > 0 ? `+${diff}` : diff < 0 ? `${diff}` : '='));
@@ -348,9 +421,9 @@ class HealthView {
       row.onclick = () => { this.topic = this.topic === tp.name ? null : tp.name; this.render(); };
       topics.append(row);
     }
-    // The latest conversations (3 days), filtered by the picked topic.
+    // The latest conversations, filtered by the picked topic.
     const convs = el('div', 'health-card');
-    const shown = sr.recent.filter(cv => !this.topic || cv.messages.some(m => m.topic === this.topic));
+    const shown = sr2.recent.filter(cv => !this.topic || cv.messages.some(m => m.topic === this.topic));
     const ch = el('h3', null, `Conversations · last ${span}${this.topic ? ` · ${this.topic}` : ''}`);
     if (this.topic) {
       const clear = el('button', 'tp-link', 'Show all');
@@ -363,11 +436,11 @@ class HealthView {
     for (const cv of shown) {
       const open = this.open_.has(cv.id);
       const row = el('div', 'health-conv' + (cv.unhappy ? ' unhappy' : '') + (open ? ' open' : ''));
-      const top = el('div', 'health-conv-top');
+      const top2 = el('div', 'health-conv-top');
       const at = r.stats.dateOnly ? new Date(cv.at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : timeAgoText(Date.parse(cv.at));
-      top.append(el('span', 'health-dot'), el('span', 'health-chip', cv.topic), el('span', 'health-conv-time', at),
+      top2.append(el('span', 'health-dot'), el('span', 'health-chip', cv.topic), el('span', 'health-conv-time', at),
         el('span', 'health-conv-count', cv.messages.length > 1 ? `${cv.messages.length} messages` : ''));
-      row.append(top);
+      row.append(top2);
       for (const m of open ? cv.messages : cv.messages.slice(-1)) row.append(el('div', 'health-msg', m.text));
       row.title = open ? 'Click to show only the latest message' : 'Click to show the whole conversation';
       row.onclick = () => { if (open) this.open_.delete(cv.id); else this.open_.add(cv.id); this.render(); };
@@ -387,6 +460,265 @@ class HealthView {
     b.onclick = e => { e.stopPropagation(); this.onInvestigate?.(p, item); };
     return b;
   }
+}
+
+// "0.62%", "0.05%": a share of the day's players.
+function pctText(x) {
+  const v = x * 100;
+  return `${v >= 1 ? Math.round(v * 10) / 10 : Math.round(v * 100) / 100}%`;
+}
+
+// A spinning circle, for whatever is being read.
+function spinner() {
+  return el('span', 'health-spinner');
+}
+// A line that says what is being read, with the spinner. small: under
+// something already shown.
+function loading(text, small = false) {
+  const d = el('div', 'health-loading' + (small ? ' small' : ''));
+  d.append(spinner(), el('span', null, text));
+  return d;
+}
+
+// One crash's devices over the picked range, as a smooth filled curve: by
+// hour for the last 24 hours and 3 days, by day for 7 days (and today so
+// far, dashed). Its own scale, 25 at the top unless it goes higher, so a
+// small one looks small and a big one fills it. A day at 0.5% of the
+// players or more has a red dot.
+function dayLine(t, days) {
+  const hourly = days <= 3 && t.hours?.length;
+  const vals = hourly ? t.hours.slice(-days * 24) : t.devices.slice(-(days + 1));
+  const keys = hourly ? t.hourKeys.slice(-days * 24) : t.dates.slice(-(days + 1));
+  const max = Math.max(25, ...vals);
+  const w = 120, h = 30, n = vals.length;
+  const x = i => (n === 1 ? w / 2 : i / (n - 1) * (w - 4) + 2);
+  const y = v => h - 2 - Math.min(1, v / max) * (h - 4);
+  const pts = vals.map((v, i) => [x(i), y(v)]);
+  const full = hourly ? n : n - 1;   // by day, the last one is today: dashed
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  svg.setAttribute('class', 'health-days');
+  const level = t.hot ? 'hot' : t.spiking ? 'spike' : 'now';
+  let dots = '';
+  if (!hourly && t.hot) keys.forEach((k, i) => { if (k === t.shareAt) dots += `<circle class="hot" cx="${x(i).toFixed(2)}" cy="${y(vals[i]).toFixed(2)}" r="2.3"/>`; });
+  svg.innerHTML = `<path class="area ${level}" d="${smoothPath(pts)} L${x(n - 1).toFixed(2)},${h - 2} L${x(0).toFixed(2)},${h - 2} Z"/>`
+    + `<line class="floor" x1="0" x2="${w}" y1="${h - 1.5}" y2="${h - 1.5}"/>`
+    + `<path class="line ${level}" d="${smoothPath(pts.slice(0, full))}"/>`
+    + (full < n ? `<path class="line ${level} today" d="${smoothPath(pts.slice(full - 1))}"/>` : '') + dots;
+  const wrap = el('div', 'health-days-wrap');
+  wrap.append(svg);
+  const sum = vals.reduce((a, b) => a + b, 0);
+  wrap.title = hourly
+    ? `Players per hour, the last ${days === 1 ? '24 hours' : '3 days'} (top of the scale: ${max}). Busiest hour: ${Math.max(...vals)}.`
+    : `Players per day, the last 7 days and today so far (top of the scale: ${max}):\n` + keys.map((k, i) => `${i === n - 1 ? 'today' : new Date(k).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}: ${vals[i]}`).join('\n');
+  if (!sum) wrap.title = 'None in this time.';
+  return wrap;
+}
+
+// Opening and closing a crash in place: its height grows from nothing (or
+// back), pushing what is below.
+function slideOpen(elm) {
+  const h = elm.scrollHeight;
+  elm.animate([{ height: '0px', opacity: 0 }, { height: h + 'px', opacity: 1 }], { duration: 260, easing: 'cubic-bezier(.35,0,.15,1)' });
+}
+function slideClosed(elm) {
+  const a = elm.animate([{ height: elm.offsetHeight + 'px', opacity: 1 }, { height: '0px', opacity: 0 }], { duration: 200, easing: 'ease-in', fill: 'forwards' });
+  a.finished.catch(() => {}).then(() => elm.remove());
+  setTimeout(() => elm.remove(), 260);
+}
+
+// A smooth line through points ([x, y], x growing) that never overshoots
+// them (monotone cubic: a peak stays a peak, the floor stays the floor).
+function smoothPath(pts) {
+  const n = pts.length;
+  if (!n) return '';
+  if (n === 1) return `M${pts[0][0]},${pts[0][1]}`;
+  const dx = [], m = [], tan = new Array(n).fill(0);
+  for (let i = 0; i < n - 1; i++) { dx[i] = pts[i + 1][0] - pts[i][0]; m[i] = dx[i] ? (pts[i + 1][1] - pts[i][1]) / dx[i] : 0; }
+  tan[0] = m[0]; tan[n - 1] = m[n - 2];
+  for (let i = 1; i < n - 1; i++) tan[i] = m[i - 1] * m[i] <= 0 ? 0 : (m[i - 1] + m[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (!m[i]) { tan[i] = 0; tan[i + 1] = 0; continue; }
+    const a = tan[i] / m[i], b = tan[i + 1] / m[i], q = a * a + b * b;
+    if (q > 9) { const k = 3 / Math.sqrt(q); tan[i] = k * a * m[i]; tan[i + 1] = k * b * m[i]; }
+  }
+  let d = `M${pts[0][0].toFixed(2)},${pts[0][1].toFixed(2)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const [x0, y0] = pts[i], [x1, y1] = pts[i + 1], h3 = dx[i] / 3;
+    d += ` C${(x0 + h3).toFixed(2)},${(y0 + tan[i] * h3).toFixed(2)} ${(x1 - h3).toFixed(2)},${(y1 - tan[i + 1] * h3).toFixed(2)} ${x1.toFixed(2)},${y1.toFixed(2)}`;
+  }
+  return d;
+}
+
+// ---------- one crash in detail ----------
+
+// A crash opened in place, under its row: its players by app version as a
+// big chart (by hour, the last 48 hours, or by day, 30 days), where it
+// happens (app versions, OS versions, device models, countries) and its top
+// frame as Embrace has it, with its crash group id to find the whole stack
+// in Embrace (its BigQuery export has only that first frame). Read once
+// (kept for this run); a spinner until then.
+HealthView.prototype.crashDetail = function (p, x) {
+  const box = el('div', 'health-crash-open');
+  this.details ||= new Map();
+  const key = `${p.id}:${x.id}`;
+  const fill = d => {
+    box.replaceChildren();
+    if (d?.error) { box.append(el('div', 'tp-error', d.error)); return; }
+    box.append(el('div', 'health-crash-full', x.method || x.frame || x.what), bigChart(d));
+    // Where it happens.
+    const grid = el('div', 'health-crash-grid');
+    const part = (label, list) => {
+      const card = el('div', 'health-crash-part');
+      card.append(el('div', 'health-section-label', label));
+      if (!list.length) { card.append(el('div', 'gallery-note', 'Nothing.')); return card; }
+      const max = Math.max(1, ...list.map(r => r.devices));
+      for (const r of list) {
+        const line = el('div', 'health-crash-row');
+        const bar = el('span', 'health-crash-bar');
+        const f = el('span'); f.style.width = `${Math.max(3, r.devices / max * 100)}%`;
+        bar.append(f);
+        line.append(el('span', 'health-crash-key', r.key), bar, el('span', 'health-crash-n', r.devices.toLocaleString()));
+        line.title = `${r.key}: ${r.devices} players, ${r.events} cases`;
+        card.append(line);
+      }
+      return card;
+    };
+    grid.append(part('App versions', d.version), part('OS versions', d.os), part('Devices', d.device), part('Countries', d.country));
+    box.append(grid);
+    // The top frame, and the way to the whole stack.
+    const frame = el('div', 'health-crash-frame');
+    frame.append(el('div', 'health-section-label', 'Stack trace'));
+    const fr = d.frame[0] || {};
+    const lines = [['Method', fr.method], ['File', fr.file && fr.file !== '<Unknown File>' ? fr.file : ''], ['Line', fr.line], ['Symbol', fr.symbol], ['Module', fr.module],
+      ['Message', fr.message], ['Type', fr.type || fr.errorType], ['Stack', fr.stackTraceType]].filter(([, v]) => v);
+    const code = el('div', 'health-crash-code');
+    code.append(el('div', 'health-crash-code-top', `at ${fr.method || fr.symbol || fr.module || x.what}${fr.file && fr.file !== '<Unknown File>' ? ` (${fr.file}${fr.line ? ':' + fr.line : ''})` : ''}`));
+    for (const [k, v] of lines) { const r2 = el('div', 'health-crash-kv'); r2.append(el('span', null, k), el('code', null, String(v))); code.append(r2); }
+    frame.append(code);
+    if (d.frame.length > 1) frame.append(el('div', 'health-card-note', `${d.frame.length} different top frames in this group; the one on the most players.`));
+    const gid = el('div', 'health-crash-id');
+    const copy = el('button', 'tp-link', 'Copy');
+    copy.type = 'button';
+    copy.onclick = () => { window.deck.copyText?.(x.id); copy.textContent = 'Copied'; setTimeout(() => { copy.textContent = 'Copy'; }, 1200); };
+    gid.append(el('span', null, 'Embrace crash group'), el('code', null, x.id), copy);
+    frame.append(gid, el('div', 'health-card-note', 'Embrace\'s export to BigQuery keeps only this first frame of the stack, never the rest. The whole stack trace is in Embrace: search this crash group id there.'));
+    box.append(frame);
+  };
+  const got = this.details.get(key);
+  if (got?.data) fill(got.data);
+  else {
+    box.append(loading('Reading it from Tactile BI…', true));
+    if (!got) {
+      const job = window.deck.healthCrash(p.id, x.id).catch(e => ({ error: String(e?.message || e) }));
+      this.details.set(key, { job });
+    }
+    this.details.get(key).job.then(d => {
+      if (!d?.error) this.details.set(key, { data: d });
+      else this.details.delete(key);
+      if (!box.isConnected) return;
+      const from = box.offsetHeight;
+      fill(d);
+      box.animate([{ height: from + 'px' }, { height: box.scrollHeight + 'px' }], { duration: 220, easing: 'cubic-bezier(.35,0,.15,1)' });
+    });
+  }
+  return box;
+};
+
+// A crash's devices, big: a smooth filled curve per app version (the four
+// on the most devices, the rest together), by hour over the last 48 hours
+// (in your time) or by day over the last 30 days and today. Dashed lines
+// across; hover an hour or a day for its numbers.
+const VERSION_COLORS = ['#e8c547', '#3fb6a0', '#c061cb', '#5a8de0', '#9a8f80'];
+function bigChart(d) {
+  const wrap = el('div', 'health-big-wrap');
+  const top = el('div', 'health-big-top');
+  const modes = el('div', 'health-ranges');
+  let mode = d.hourv.length ? 'hours' : 'days';
+  const chart = el('div');
+  const legend = el('div', 'health-big-legend');
+  const draw = () => {
+    for (const b of modes.children) b.classList.toggle('on', b.dataset.mode === mode);
+    const hourly = mode === 'hours';
+    // The slots: the last 48 hours (UTC keys, shown in your time), or the
+    // last 30 days and today.
+    const keys = [], now = Date.now();
+    if (hourly) for (let i = 47; i >= 0; i--) keys.push(new Date(now - i * 3600e3).toISOString().slice(0, 13));
+    else for (let i = 30; i >= 0; i--) keys.push(new Date(now - i * 864e5).toISOString().slice(0, 10));
+    const rows = hourly ? d.hourv : d.dayv;
+    const total = new Map();
+    for (const r of rows) total.set(r.version, (total.get(r.version) || 0) + r.devices);
+    const ranked = [...total].sort((a, b) => b[1] - a[1]).map(([v]) => v);
+    const shown = ranked.slice(0, 4);
+    const series = [...shown, ...(ranked.length > 4 ? ['Other versions'] : [])];
+    const val = new Map(series.map(v => [v, keys.map(() => 0)]));
+    const at = new Map(keys.map((k, i) => [k, i]));
+    for (const r of rows) {
+      const i = at.get(r.key);
+      if (i === undefined) continue;
+      const v = shown.includes(r.version) ? r.version : 'Other versions';
+      val.get(v)[i] += r.devices;
+    }
+    const w = 860, h = 210, l = 34, b = 22, t = 10, r = 12, n = keys.length;
+    const max = Math.max(5, ...series.flatMap(v => val.get(v)));
+    const nice = max <= 10 ? Math.ceil(max / 2) * 2 : Math.ceil(max / 5) * 5;
+    const X = i => l + i / (n - 1) * (w - l - r);
+    const Y = v => t + (1 - v / nice) * (h - t - b);
+    let g = '';
+    for (let k = 0; k <= 5; k++) {
+      const v = nice * k / 5;
+      g += `<line class="grid${k ? '' : ' base'}" x1="${l}" x2="${w - r}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/><text class="axis" x="${l - 6}" y="${(Y(v) + 3.5).toFixed(1)}" text-anchor="end">${Math.round(v * 10) / 10}</text>`;
+    }
+    const label = (k, i) => {
+      const dt = hourly ? new Date(k + ':00:00Z') : new Date(k);
+      if (hourly) {
+        if (dt.getHours() === 0) return dt.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+        return dt.getHours() % 6 === 0 ? dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '';
+      }
+      return i === n - 1 ? 'today' : i % 5 === 0 ? dt.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '';
+    };
+    keys.forEach((k, i) => { const s2 = label(k, i); if (s2) g += `<text class="axis" x="${X(i).toFixed(1)}" y="${h - 6}" text-anchor="middle">${s2}</text>`; });
+    // The biggest behind, the smaller in front.
+    [...series].reverse().forEach(v => {
+      const c = VERSION_COLORS[series.indexOf(v)] || VERSION_COLORS[4];
+      const pts = val.get(v).map((y, i) => [X(i), Y(y)]);
+      const line = smoothPath(pts);
+      g += `<path d="${line} L${X(n - 1).toFixed(1)},${Y(0).toFixed(1)} L${X(0).toFixed(1)},${Y(0).toFixed(1)} Z" fill="${c}" fill-opacity="0.22"/><path d="${line}" fill="none" stroke="${c}" stroke-width="1.6" stroke-linejoin="round"/>`;
+    });
+    // Hover: one strip per slot, its numbers.
+    const slot = (w - l - r) / (n - 1);
+    keys.forEach((k, i) => {
+      const dt = hourly ? new Date(k + ':00:00Z') : new Date(k);
+      const when = hourly ? `${dt.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}, ${dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`
+        : i === n - 1 ? 'Today so far' : dt.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+      const parts = series.map(v => [v, val.get(v)[i]]).filter(([, c]) => c);
+      const sum = parts.reduce((a, [, c]) => a + c, 0);
+      g += `<g class="slot"><rect x="${(X(i) - slot / 2).toFixed(1)}" y="${t}" width="${slot.toFixed(1)}" height="${h - t - b}"/><title>${when}: ${sum} devices${parts.length ? '\n' + parts.map(([v, c]) => `${v}: ${c}`).join('\n') : ''}</title></g>`;
+    });
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    svg.setAttribute('class', 'health-big');
+    svg.innerHTML = g;
+    chart.replaceChildren(svg);
+    legend.replaceChildren(...series.map((v, i) => {
+      const k = el('span', 'k');
+      k.style.setProperty('--c', VERSION_COLORS[i] || VERSION_COLORS[4]);
+      k.textContent = `${v} · ${(v === 'Other versions' ? ranked.slice(4).reduce((a, x) => a + total.get(x), 0) : total.get(v)).toLocaleString()}`;
+      return k;
+    }), el('span', 'health-big-note', hourly ? 'Devices per hour, in your time' : 'Devices per day; today is still filling'));
+    if (!series.length) legend.replaceChildren(el('span', 'health-big-note', hourly ? 'None in the last 48 hours.' : 'None in the last 30 days.'));
+  };
+  for (const [m, label] of [['hours', 'Last 48 hours'], ['days', '30 days']]) {
+    const bt = el('button', 'health-range', label);
+    bt.type = 'button';
+    bt.dataset.mode = m;
+    bt.onclick = () => { mode = m; draw(); };
+    modes.append(bt);
+  }
+  top.append(el('span', 'health-section-label', 'Devices by app version'), modes);
+  wrap.append(top, chart, legend);
+  draw();
+  return wrap;
 }
 
 // A small line of a rate over the last 30 days.

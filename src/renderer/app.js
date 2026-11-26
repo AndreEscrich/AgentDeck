@@ -895,10 +895,11 @@ function flyTicketToComposer(t, chip) {
   });
 }
 
-function flashComposerNote(text) {
-  const note = el('div', 'composer-flash', text);
+// ms: how long it stays (longer for something to read before sending).
+function flashComposerNote(text, ms = 3500, cls = '') {
+  const note = el('div', `composer-flash ${cls}`.trim(), text);
   document.querySelector('.composer-box').appendChild(note);
-  setTimeout(() => note.remove(), 3500);
+  setTimeout(() => note.remove(), ms);
 }
 
 // ---------- one message box per view ----------
@@ -1471,13 +1472,26 @@ const healthView = new HealthView({
       ? `an unhandled C# exception thrown in ${x.method || x.what} (${x.platforms || 'Android and iOS'})`
       : `a native ${x.type === 'Out of memory' ? 'out-of-memory kill' : 'crash'} on ${x.platform || 'mobile'}${x.signal ? ` (${x.signal})` : ''}, top stack frame ${x.frame || x.what}`;
     const input = $('input');
+    // Its devices per day (health.js crashTrends), the last two weeks, so the
+    // agent can tie a start or a spike to a release.
+    const t = x.trend;
+    const days = t ? t.dates.slice(-14).map((d, i) => `${d.slice(5)}: ${t.devices[t.devices.length - 14 + i]}`).join(', ') : '';
+    const span = x.rangeDays ? (x.rangeDays === 1 ? 'the last full day' : `the last ${x.rangeDays} days`) : 'the last 30 days';
     input.value = `Find the cause of this ${x.kind === 'exception' ? 'Unity exception' : 'crash'} in the live ${project.name}: ${where}. `
-      + `Embrace reports it on ${x.devices} devices, ${x.events} times in the last 30 days${when ? ` (${when})` : ''}${x.versions?.length ? `, in versions ${x.versions.join(', ')}` : ''}. `
-      + `${x.id ? `Embrace crash group id: ${x.id}. ` : ''}The numbers come from the "${x.kind === 'exception' ? 'Top Unity exceptions' : 'Top crash groups'}" chart of the Tactile BI dashboard ${project.dashboardUrl}. `
-      + `Find where and why it happens in this project's code (and in its history, for when it started), say how sure you are, and propose a fix. Do not change any code until I say so.`;
+      + `Embrace reports it on ${x.devices} devices, ${x.events} times in ${span}${when ? ` (${when})` : ''}${x.versions?.length ? `, in versions ${x.versions.join(', ')}` : ''}. `
+      + `${days ? `Devices per day (month-day: devices): ${days}${t.share ? `; at most ${Math.round(t.share * 10000) / 100}% of a day's players` : ''}. ` : ''}`
+      + `${x.id ? `Embrace crash group id: ${x.id}. ` : ''}`
+      + `Tactile BI has no stack trace and no ${x.kind === 'exception' ? 'exception type or message' : 'crash type beyond the signal'} for it: only ${x.kind === 'exception' ? 'the C# method that threw' : 'the top stack frame'}. If the stack from Embrace is pasted below, start from it; if not, work from the method and say where the missing stack leaves you guessing. `
+      + `The numbers come from the "${x.kind === 'exception' ? 'Top Unity exceptions' : 'Top crash groups'}" chart of the Tactile BI dashboard ${project.dashboardUrl}. `
+      + `Find where and why it happens in this project's code (and in its history, for when it started), say how sure you are, and propose a fix. Do not change any code until I say so.`
+      // A place for the stack from Embrace, the cursor in it.
+      + `\n\nStack trace from Embrace (optional, paste it here):\n`;
     input.dispatchEvent(new Event('input'));
     input.focus();
-    flashComposerNote?.(`The ${x.kind === 'exception' ? 'exception' : 'crash'} is ready for an agent${folder ? ' in ' + shortPath(folder) : ''}: send it to start.`);
+    input.setSelectionRange?.(input.value.length, input.value.length);
+    input.scrollTop = input.scrollHeight;
+    // Said plainly before you send: BI has no stack or crash type, Embrace has.
+    flashComposerNote?.(`Ready for an agent${folder ? ' in ' + shortPath(folder) : ''}. Tactile BI has no stack trace or ${x.kind === 'exception' ? 'exception type' : 'crash type'} for this ${x.kind === 'exception' ? 'exception' : 'crash'}: copy it from Embrace and paste it at the end for a much better investigation, or send it as it is.`, 12000, 'composer-flash-long');
   },
   onSettings: () => {
     showSettings();

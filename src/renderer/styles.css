@@ -2045,6 +2045,8 @@ details.other-files details.change-file > summary { padding-left: 12px; }
   color: var(--text); background: rgba(30, 24, 18, 0.88); border: 2px dashed var(--accent); pointer-events: none; }
 .composer-flash { position: absolute; left: 12px; right: 12px; bottom: calc(100% + 8px); padding: 7px 10px; border-radius: 8px; font-size: 12.5px;
   color: var(--text); background: #2c241c; border: 1px solid #45392c; animation: conn-fade 0.15s ease-out; }
+/* A note to read before sending (Find the cause): amber, a little bigger. */
+.composer-flash.composer-flash-long { padding: 9px 12px; line-height: 1.45; border-color: rgba(240, 160, 48, 0.55); background: #33281a; }
 /* Attached images in your message */
 .msg-images { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .msg-images img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; cursor: zoom-in; border: 1px solid rgba(255, 255, 255, 0.12); }
@@ -4435,7 +4437,8 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .health-project-pick { font-size: 12px; padding: 3px 10px; }
 .health-project-status:empty { display: none; }
 .health-tabs { align-self: flex-start; }
-.health-tab-count { margin-left: 6px; padding: 0 6px; border-radius: 99px; background: #e5493a; color: #fff; font-size: 10.5px; font-weight: 700; }
+.health-tab-count { margin-left: 6px; padding: 0 6px; border-radius: 99px; background: #f0a030; color: #1d1813; font-size: 10.5px; font-weight: 700; }
+.health-tab-count.high { background: #e5493a; color: #fff; }
 /* The new layout: Needs attention, the numbers at a glance, then the parts. */
 .health-more { align-self: flex-start; margin-left: 4px; }
 .health-ranges { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: color-mix(in srgb, var(--text) 7%, transparent); margin-left: 8px; }
@@ -4452,24 +4455,24 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .health-glance-group { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 @media (max-width: 1100px) { .health-glance { grid-template-columns: minmax(0, 1fr); } }
 .health-stat { position: relative; overflow: hidden; }
-.health-stat.worse .health-stat-sub { color: #f08a6a; }
+.health-stat.worse .health-stat-sub { color: #f0b050; }
 .health-stat.better .health-stat-sub { color: #7fdc9f; }
-.health-stat.worse { border-color: color-mix(in srgb, #e5493a 40%, var(--border)); }
+.health-stat.worse { border-color: color-mix(in srgb, #f0a030 40%, var(--border)); }
 .health-spark { display: block; width: 100%; height: 26px; margin-top: 6px; color: color-mix(in srgb, var(--accent) 80%, transparent); }
-.health-stat.worse .health-spark { color: #f08a6a; }
+.health-stat.worse .health-spark { color: #f0b050; }
 .health-parts { align-self: flex-start; margin-top: 4px; }
 .health-crash-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
 @media (max-width: 1100px) { .health-crash-cols { grid-template-columns: minmax(0, 1fr); } }
 .health-card-note { font-size: 12px; color: var(--text-faint); margin: -4px 0 6px; line-height: 1.4; }
-.health-item { display: grid; grid-template-columns: minmax(0, 1fr) 70px 44px auto; gap: 10px; align-items: center; padding: 7px 6px; border-radius: 8px; }
+.health-item { display: grid; grid-template-columns: minmax(0, 1fr) 124px 50px 104px; gap: 10px; align-items: center; padding: 7px 6px; border-radius: 8px; }
 .health-item:hover { background: var(--bg-hover); }
 .health-item.health-spot { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .health-item-main { min-width: 0; }
 .health-item-name { font-family: var(--mono); font-size: 12.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .health-item-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 2px; font-size: 11.5px; color: var(--text-faint); }
-.health-new { padding: 0 7px; border-radius: 99px; background: #e5493a; color: #fff; font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; }
+.health-new { padding: 0 7px; border-radius: 99px; background: #f0a030; color: #1d1813; font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; }
 .health-item-bar { height: 6px; border-radius: 99px; background: color-mix(in srgb, var(--text) 8%, transparent); overflow: hidden; }
-.health-item-bar > span { display: block; height: 100%; border-radius: 99px; background: color-mix(in srgb, #e5493a 75%, transparent); }
+.health-item-bar > span { display: block; height: 100%; border-radius: 99px; background: color-mix(in srgb, var(--accent) 70%, transparent); }
 .health-item-n { text-align: right; font-weight: 600; font-size: 13px; color: var(--text); }
 .health-agent { font-size: 11.5px; padding: 3px 9px; white-space: nowrap; opacity: 0; }
 .health-item:hover .health-agent, .health-warning .health-agent, .health-item.health-spot .health-agent { opacity: 1; }
@@ -4486,3 +4489,75 @@ input.tickets-assist-input:focus { outline: none; border-color: var(--accent); }
 .tp-media-name { display: flex; justify-content: space-between; gap: 8px; padding: 4px 8px 6px; font-size: 12px; color: var(--text-dim); }
 .tp-media-name span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Project health (renderer/health.js): what is being read, each crash's days, its share of players. */
+.health-spinner { display: inline-block; width: 13px; height: 13px; flex-shrink: 0; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent); border-top-color: var(--accent); animation: health-spin 0.8s linear infinite; vertical-align: -2px; margin-right: 7px; }
+@keyframes health-spin { to { transform: rotate(360deg); } }
+.health-loading { display: flex; align-items: center; gap: 2px; padding: 22px 16px; border-radius: 12px; border: 1px dashed var(--border); color: var(--text-dim); font-size: 13px; justify-content: center; }
+.health-loading.small { padding: 8px 12px; border: none; justify-content: flex-start; font-size: 12px; color: var(--text-faint); }
+.health-when { display: inline-flex; align-items: center; }
+.gallery-refresh.spinning { animation: health-spin 0.9s linear infinite; opacity: 0.8; }
+.health-days-wrap { width: 124px; height: 30px; }
+.health-days { display: block; width: 100%; height: 100%; }
+.health-days .line { fill: none; stroke-width: 1.4; stroke-linejoin: round; stroke-linecap: round; }
+.health-days .band { fill: color-mix(in srgb, var(--text) 5%, transparent); }
+.health-days .line.now { stroke: var(--accent); }
+.health-days .line.spike { stroke: #f0a030; }
+.health-days .line.hot { stroke: #e5493a; }
+.health-days .area { stroke: none; fill: color-mix(in srgb, var(--accent) 22%, transparent); }
+.health-days .area.spike { fill: color-mix(in srgb, #f0a030 24%, transparent); }
+.health-days .area.hot { fill: color-mix(in srgb, #e5493a 26%, transparent); }
+.health-days .floor { stroke: color-mix(in srgb, var(--text) 10%, transparent); stroke-width: 1; }
+.health-days circle.hot { fill: #e5493a; }
+.health-days circle.spike { fill: #f0a030; }
+.health-days-none { font-size: 11px; color: var(--text-faint); text-align: center; }
+.health-share { padding: 0 7px; border-radius: 99px; background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.health-share.hot { background: #e5493a; color: #fff; font-weight: 700; }
+.health-spiking { padding: 0 7px; border-radius: 99px; background: color-mix(in srgb, #f0a030 22%, transparent); color: #f0b050; font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; }
+.health-item.hot { box-shadow: inset 3px 0 0 #e5493a; }
+.health-item .health-agent { justify-self: end; }
+.health > .health-card + .health-card { margin-top: 14px; }
+/* Project health: today dashed in each crash's line; a crash's window (renderer/health.js openCrash). */
+.health-days .line.today { stroke-dasharray: 2 2; }
+.health-item.clickable { cursor: pointer; }
+.health-crash { width: min(920px, calc(100% - 48px)); display: flex; flex-direction: column; gap: 12px; }
+.health-crash-head { display: flex; align-items: flex-start; gap: 12px; }
+.health-crash-title { flex: 1; min-width: 0; }
+.health-crash-title h3 { margin: 2px 0 0; font-family: var(--mono); font-size: 16px; word-break: break-all; }
+.health-crash-kind { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+.health-crash-full { font-family: var(--mono); font-size: 12px; color: var(--text-faint); word-break: break-all; margin-top: -6px; }
+.health-crash-stats { display: flex; flex-wrap: wrap; gap: 8px; }
+.health-crash-stat { display: flex; flex-direction: column; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); background: #14100c; min-width: 110px; }
+.health-crash-stat b { font-size: 18px; color: var(--text); }
+.health-crash-stat span { font-size: 11.5px; color: var(--text-dim); }
+.health-big-wrap { padding: 10px 12px 8px; border-radius: 10px; border: 1px solid var(--border); background: #14100c; }
+.health-big { display: block; width: 100%; height: auto; }
+.health-big .grid { stroke: color-mix(in srgb, var(--text) 10%, transparent); stroke-width: 1; stroke-dasharray: 3 4; }
+.health-big .grid.base { stroke-dasharray: none; stroke: color-mix(in srgb, var(--text) 18%, transparent); }
+.health-big .axis { fill: var(--text-faint); font-size: 10.5px; font-family: var(--font); }
+.health-big .slot rect { fill: transparent; }
+.health-big .slot:hover rect { fill: color-mix(in srgb, var(--text) 6%, transparent); }
+.health-big-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.health-big-top .health-section-label { margin: 0; }
+.health-big-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 4px; font-size: 11.5px; color: var(--text-dim); }
+.health-big-legend .k::before { content: ''; display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; border-radius: 3px; background: color-mix(in srgb, var(--c) 35%, transparent); border: 1.5px solid var(--c); }
+.health-big-note { margin-left: auto; color: var(--text-faint); font-size: 11px; }
+.health-crash-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 1000px) { .health-crash-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.health-crash-part { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: #14100c; min-width: 0; }
+.health-crash-row { display: grid; grid-template-columns: minmax(0, 1fr) 46px 30px; gap: 6px; align-items: center; font-size: 12px; padding: 2px 0; }
+.health-crash-key { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); }
+.health-crash-bar { height: 5px; border-radius: 99px; background: color-mix(in srgb, var(--text) 8%, transparent); overflow: hidden; }
+.health-crash-bar > span { display: block; height: 100%; background: color-mix(in srgb, var(--accent) 70%, transparent); }
+.health-crash-n { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
+.health-crash-frame { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: #14100c; display: flex; flex-direction: column; gap: 6px; }
+.health-crash-code { font-family: var(--mono); font-size: 12px; background: var(--code-bg); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; overflow-x: auto; }
+.health-crash-code-top { color: #f0b050; margin-bottom: 4px; word-break: break-all; }
+.health-crash-kv { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 8px; }
+.health-crash-kv span { color: var(--text-faint); }
+.health-crash-kv code { color: var(--text); word-break: break-all; }
+.health-crash-id { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-dim); }
+.health-crash-id code { font-family: var(--mono); color: var(--text); }
+/* Project health: a crash opened in place, under its row. */
+.health-crash-open { overflow: hidden; margin: 2px 0 10px 6px; padding: 10px 12px 12px; border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); display: flex; flex-direction: column; gap: 10px; }
+.health-item.open { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.health-split { color: var(--text-dim); font-variant-numeric: tabular-nums; }

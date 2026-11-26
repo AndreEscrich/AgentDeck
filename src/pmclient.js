@@ -608,15 +608,37 @@ async function completeSprint({ project, sprintId, targetSprintId }) {
 
 // A new subtask goes to the story's assignee (assignee: theirs, read from
 // PM when not given; '' leaves it unassigned).
+// pm_create_subtask does not look a name up: given only "André Escrich
+// González" it keeps that text with no person behind it, and PM shows a
+// stranger of the same name. So the story's person goes with it: its
+// assignee's id and type, exactly as the story has them.
 async function createSubtask({ key, id, project, title, assignee }) {
-  if (assignee === undefined) {
-    const story = await callTool('pm_get_task', { key }).catch(() => null);
-    assignee = story?.assignee || '';
-    id ||= story?._id;
-  }
+  const story = await callTool('pm_get_task', { key }).catch(() => null);
+  if (assignee === undefined) assignee = story?.assignee || '';
+  id ||= story?._id;
   id = await idOf(key, id);
-  await callTool('pm_create_subtask', { projectId: project, taskId: id, title, ...(assignee ? { assignee } : {}) });
+  const who = {};
+  if (assignee) {
+    who.assignee = assignee;
+    const same = story?.assigneeId && (personName(story.assignee, story.assigneeId) === assignee || story.assignee === assignee);
+    const personId = same ? story.assigneeId : idForName(assignee);
+    if (personId) {
+      who.assigneeId = personId;
+      who.assigneeType = (same && story.assigneeType) || 'user';
+      if (same && story.assignee) who.assignee = story.assignee;
+    }
+  }
+  await callTool('pm_create_subtask', { projectId: project, taskId: id, title, ...who });
   return ticket(key);
+}
+
+// The person id behind a name the app has seen on a ticket (learn), or null.
+function idForName(name) {
+  const want = String(name || '').trim().toLowerCase();
+  if (!want) return null;
+  for (const [pid, n] of nameById) if (n.toLowerCase() === want) return pid;
+  for (const [pid, e] of emailById) if (e === want) return pid;
+  return null;
 }
 
 async function attachments({ project, id }) {

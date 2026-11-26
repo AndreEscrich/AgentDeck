@@ -24,7 +24,15 @@
 //    messages. The dashboard's written analysis of the messages (a text
 //    chart Claude keeps up to date) shows too.
 //
-// Warnings you have not looked at show as a red count on the button; opening
+// Red is kept for a real issue: one crash or exception that hits 0.5% of
+// the daily players or more on a day (its devices that day against the
+// day's players). Everything else that is worth a look is amber.
+//
+// Each crash and exception also gets its devices per day for the last 30
+// days (one small query on the dashboard's own crash table, every few
+// hours), so the view can draw it and see one spiking.
+//
+// Red warnings you have not looked at show as a red count on the button; opening
 // the view marks them seen (kept in health.json in the settings folder). The
 // deeper look is an agent: on the support messages with the game project's
 // UserSupportDigest skill, or on one crash or exception, started from the
@@ -92,7 +100,7 @@ const dashboardUrl = p => `https://bi.tactilews.com/dashboards/${p.dashboardId}$
 
 function summary() {
   const list = projects().map(p => ({ id: p.id, name: p.name, folder: p.folder || '', dashboardUrl: dashboardUrl(p), chartId: p.chartId, dashboardId: p.dashboardId, report: state.reports[p.id] || null }));
-  const unseen = list.reduce((n, p) => n + (p.report?.warnings || []).filter(w => !state.seen.includes(w.id)).length, 0);
+  const unseen = list.reduce((n, p) => n + (p.report?.warnings || []).filter(w => w.level === 'high' && !state.seen.includes(w.id)).length, 0);
   return { connected: bi.status().connected, email: bi.status().email, projects: list, unseen };
 }
 
@@ -276,7 +284,7 @@ const CRASH_TITLES = {
 async function crashCharts(p) {
   state.charts ||= {};
   const hit = state.charts[p.dashboardId];
-  if (hit && Date.now() - hit.at < DAY) return hit.ids;
+  if (hit && Date.now() - hit.at < DAY && 'table' in hit.ids) return hit.ids;
   const st = await bi.callTool('bi_get_dashboard_structure', { dashboardId: p.dashboardId });
   const charts = [];
   for (const tab of st?.tabs || []) {
@@ -285,6 +293,15 @@ async function crashCharts(p) {
   }
   const ids = {};
   for (const [key, match] of Object.entries(CRASH_TITLES)) ids[key] = charts.find(match)?.chartId || '';
+  // The BigQuery table the crash groups come from (its query's FROM), for
+  // each crash's days (crashTrends).
+  ids.table = '';
+  try {
+    const chart = ids.groups ? await bi.callTool('bi_get_chart', { chartId: ids.groups }) : null;
+    const q = chart?.queryIds?.[0] ? await bi.callTool('bi_get_query', { queryId: chart.queryIds[0] }) : null;
+    const t = /FROM\s+`([\w-]+\.[\w-]+\.[\w-]+)`/i.exec(q?.query || '')?.[1];
+    if (t) ids.table = t;
+  } catch { /* no days per crash then */ }
   state.charts[p.dashboardId] = { at: Date.now(), ids };
   return ids;
 }
@@ -307,6 +324,90 @@ async function chartRows(p, chartId, force, days = null) {
   const q = data?.queryResults?.[0];
   if (!q?.columns) return [];
   return (q.rows || []).map(r => Object.fromEntries(q.columns.map((c, i) => [c.name, r[i]])));
+}
+
+// For these crash group ids, one query on the dashboard's crash table (it
+// reads only the last 31 days: a few MB), kept an hour:
+//  - days: devices and events per day, the last 31 days and today so far
+//    (a crash taking off today must show);
+//  - hours: per hour (UTC), the last 72 hours, for the 24-hour and 3-day
+//    views;
+//  - ranges: the devices (players) and events (cases) of exactly the last
+//    24 hours, 3 days and 7 days, so the view's numbers are those, not the
+//    dashboard's calendar days.
+// Resolves with { id: { days: [{ date, devices, events }], hours: [{ hour,
+// devices, events }], ranges: { 1|3|7: { devices, events } } } }.
+async function crashTrends(p, groupIds, force = false) {
+  const ids = await crashCharts(p);
+  if (!ids.table) return {};
+  const want = [...new Set(groupIds)].filter(x => /^[A-Za-z0-9]{8,64}$/.test(x || '')).slice(0, 150);
+  if (!want.length) return {};
+  state.trends ||= {};
+  const hit = state.trends[p.id]?.v === 2 ? state.trends[p.id] : null;
+  const fresh = hit && Date.now() - hit.at < 60 * 60 * 1000 && new Date(hit.at).toDateString() === new Date().toDateString();
+  if (!force && fresh && want.every(id => id in hit.byId)) return hit.byId;
+  const within = h => `occurredAt >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL ${h} HOUR)`;
+  const sql = `WITH c AS (SELECT crashGroupId AS id, partitionDate, occurredAt, deviceId FROM \`${ids.table}\`
+  WHERE partitionDate >= DATE_SUB(CURRENT_DATE(), INTERVAL 31 DAY) AND crashGroupId IN (${want.map(x => `'${x}'`).join(', ')}))
+SELECT 'd' AS kind, id, CAST(partitionDate AS STRING) AS k, COUNT(*) AS events, COUNT(DISTINCT deviceId) AS devices FROM c GROUP BY 2, 3
+UNION ALL SELECT 'h', id, FORMAT_TIMESTAMP('%Y-%m-%dT%H', occurredAt), COUNT(*), COUNT(DISTINCT deviceId) FROM c WHERE ${within(72)} GROUP BY 2, 3
+UNION ALL SELECT 'r1', id, NULL, COUNT(*), COUNT(DISTINCT deviceId) FROM c WHERE ${within(24)} GROUP BY 2
+UNION ALL SELECT 'r3', id, NULL, COUNT(*), COUNT(DISTINCT deviceId) FROM c WHERE ${within(72)} GROUP BY 2
+UNION ALL SELECT 'r7', id, NULL, COUNT(*), COUNT(DISTINCT deviceId) FROM c WHERE ${within(168)} GROUP BY 2`;
+  const r = await bi.callTool('bi_run_sql_preview', { sql, previewLimit: 10000 });
+  const col = Object.fromEntries((r?.columns || []).map((c, i) => [c.name, i]));
+  const byId = fresh ? { ...hit.byId } : {};
+  for (const id of want) byId[id] = { days: [], hours: [], ranges: { 1: { devices: 0, events: 0 }, 3: { devices: 0, events: 0 }, 7: { devices: 0, events: 0 } } };
+  for (const row of r?.rows || []) {
+    const x = byId[row[col.id]];
+    if (!x) continue;
+    const v = { devices: Number(row[col.devices]) || 0, events: Number(row[col.events]) || 0 };
+    const kind = row[col.kind];
+    if (kind === 'd') x.days.push({ date: row[col.k], ...v });
+    else if (kind === 'h') x.hours.push({ hour: row[col.k], ...v });
+    else x.ranges[kind.slice(1)] = v;
+  }
+  for (const id of want) { byId[id].days.sort((a, b) => a.date.localeCompare(b.date)); byId[id].hours.sort((a, b) => a.hour.localeCompare(b.hour)); }
+  state.trends[p.id] = { v: 2, at: Date.now(), byId };
+  return byId;
+}
+
+// The trend of one crash for the view: its devices on each of the last 30
+// full days and today so far (0 on a day without it; the last one is
+// today), its peak share of the day's players in the last `days` days and
+// today (today's against yesterday's players: today has none yet), and
+// whether it is spiking (yesterday or today at least twice its usual, and
+// at least 10 devices).
+const SHARE_RED = 0.005;
+function trendOf(rec, dau, days, now = Date.now()) {
+  if (!rec) return null;
+  const rows = rec.days || [];
+  const byDate = new Map(rows.map(r => [r.date, r]));
+  const dates = [];
+  for (let i = 30; i >= 0; i--) dates.push(new Date(now - i * DAY).toISOString().slice(0, 10));
+  const devices = dates.map(d => byDate.get(d)?.devices || 0);
+  const events = dates.map(d => byDate.get(d)?.events || 0);
+  const n = dates.length;
+  const players = d => dau[d] || dau[dates[n - 2]] || 0;
+  const shares = dates.map((d, i) => (players(d) ? devices[i] / players(d) : 0));
+  const recent = shares.slice(-(Math.max(1, days) + 1));
+  const peak = Math.max(0, ...recent);
+  const peakAt = dates[n - recent.length + recent.indexOf(peak)];
+  const last = Math.max(devices[n - 1], devices[n - 2]);
+  const usual = median(devices.slice(-16, -2));
+  // The last 72 hours, hour by hour (UTC keys up to this hour).
+  const byHour = new Map((rec.hours || []).map(r => [r.hour, r]));
+  const hourKeys = [];
+  for (let i = 71; i >= 0; i--) hourKeys.push(new Date(now - i * 3600e3).toISOString().slice(0, 13));
+  const hours = hourKeys.map(k => byHour.get(k)?.devices || 0);
+  // This range exactly: its players (devices) and cases (events), and its
+  // players against the daily players of those days (about: a player can
+  // be counted once over several days).
+  const range = rec.ranges?.[days] || null;
+  const daily = dates.slice(-(days + 1), -1).map(d => dau[d]).filter(Boolean);
+  const avgDau = daily.length ? daily.reduce((a, b) => a + b, 0) / daily.length : players(dates[n - 2]);
+  return { dates, devices, events, today: true, hourKeys, hours, range, rangeShare: range && avgDau ? range.devices / avgDau : 0,
+    share: peak, shareAt: peakAt, players: players(peakAt), lastShare: shares[n - 1], hot: peak >= SHARE_RED, spiking: last >= 10 && last >= Math.max(1, usual) * 2 };
 }
 
 async function readCrashes(p, force) {
@@ -445,7 +546,11 @@ function analyseCrashes(c, now = Date.now()) {
         line: (daily.get(t) || []).slice(-Math.max(7, 2 * n)), until: rows[rows.length - 1].date };
     }).filter(Boolean);
   }
-  return { rates, byRange, groups: groups.slice(0, 25), exceptions: exceptions.slice(0, 25), errors: errors.slice(0, 10), analysis: c.analysis || null, warnings,
+  // The players of each day (the crash rows' DAU, all platforms), for each
+  // crash's share of the day.
+  const dau = {};
+  for (const r of c.daily) if (r.type === 'Crash' && r.dau) dau[String(r.date).slice(0, 10)] = num(r.dau);
+  return { rates, byRange, dau, groups: groups.slice(0, 25), exceptions: exceptions.slice(0, 25), errors: errors.slice(0, 10), analysis: c.analysis || null, warnings,
     versions: newest.map(v => ({ version: v, rates: Object.fromEntries(CRASH_TYPES.map(t => [t, vrows.find(r => r.version === v && r.type === t)?.per1k ?? null])) })) };
 }
 
@@ -467,7 +572,22 @@ async function rangeLists(projectId, days) {
   const r = state.reports[p.id]?.crashes;
   const firstSeen = new Map([...(r?.groups || []), ...(r?.exceptions || [])].filter(x => x.id).map(x => [x.id, x.first]));
   const out = listsOf({ groups, exceptions, errors }, Date.now(), firstSeen);
-  return { days, groups: out.groups.slice(0, 25), exceptions: out.exceptions.slice(0, 25), errors: out.errors.slice(0, 10) };
+  const lists = { days, groups: out.groups.slice(0, 25), exceptions: out.exceptions.slice(0, 25), errors: out.errors.slice(0, 10) };
+  // Each one's days, and its share of the day's players in this range.
+  try {
+    const trends = await crashTrends(p, [...lists.groups, ...lists.exceptions].map(x => x.id));
+    const dau = r?.dau || {};
+    for (const x of [...lists.groups, ...lists.exceptions]) {
+      x.trend = trendOf(trends[x.id], dau, days);
+      // Exactly the last 24 hours (3, 7 days): not the dashboard's calendar days.
+      if (x.trend?.range) { x.devices = x.trend.range.devices; x.events = x.trend.range.events; }
+    }
+    const inRange = x => !x.trend?.range || x.devices > 0;
+    lists.groups = lists.groups.filter(inRange).sort((a, b) => b.devices - a.devices || b.events - a.events);
+    lists.exceptions = lists.exceptions.filter(inRange).sort((a, b) => b.devices - a.devices || b.events - a.events);
+    save();
+  } catch (err) { lists.trendError = err.message; }
+  return lists;
 }
 
 // One look at every project. Resolves with the summary.
@@ -486,9 +606,12 @@ function check(force = false) {
         try {
           const c = await readCrashes(p, force);
           if (c) crashes = analyseCrashes(c);
+          if (crashes) await hotWarnings(p, crashes, force).catch(() => {});
         } catch (err) { if (err.notConnected) throw err; crashError = err.message; }
+        // Support is never red: red is for a crash at 0.5% of players.
+        for (const w of report.warnings) w.level = 'medium';
         const order = { high: 0, medium: 1 };
-        report.warnings = [...(crashes?.warnings || []), ...report.warnings].sort((a, b) => order[a.level] - order[b.level]);
+        report.warnings = [...(crashes?.warnings || []), ...report.warnings].sort((a, b) => order[a.level] - order[b.level] || kindRank(a) - kindRank(b));
         if (crashes) delete crashes.warnings;
         // Each warning belongs to its project (seen per project).
         for (const w of report.warnings) w.id = `${p.id}:${w.id}`;
@@ -507,6 +630,77 @@ function check(force = false) {
     return out;
   })().finally(() => { busy = null; });
   return busy;
+}
+
+// Unity exceptions matter most, then handled errors, ANRs and out-of-memory
+// kills, and native crashes least: the order of the warnings and lists.
+function kindRank(w) {
+  const k = w.item?.kind === 'exception' || /exception/i.test(w.id) ? 0 : w.item?.kind === 'error' ? 1 : /ANR|Out of memory/i.test(w.id) ? 2 : w.tab === 'support' ? 4 : 3;
+  return k;
+}
+
+// The crash warnings, from each crash's days: red for one at 0.5% of a
+// day's players or more in the last 3 days; amber for one spiking. The
+// rest of the crash warnings are amber.
+async function hotWarnings(p, crashes, force) {
+  for (const w of crashes.warnings) w.level = 'medium';
+  const items = [...crashes.exceptions.map(x => ({ kind: 'exception', ...x })), ...crashes.groups.map(x => ({ kind: 'crash', ...x }))];
+  const trends = await crashTrends(p, items.map(x => x.id), force);
+  const pct = x => `${Math.round(x * 1000) / 10}%`;
+  const day = d => new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  for (const x of items) {
+    const t = trendOf(trends[x.id], crashes.dau || {}, 3);
+    if (!t) continue;
+    const name = x.kind === 'exception' ? `Exception in ${x.what}` : `Crash: ${x.what}`;
+    if (t.hot) {
+      crashes.warnings.push({ id: `hot:${x.id}:${t.shareAt}`, level: 'high', tab: 'crashes', item: x,
+        title: `${name} hits ${pct(t.share)} of players`,
+        text: `${t.devices[t.dates.indexOf(t.shareAt)].toLocaleString()} devices ${t.shareAt === t.dates[t.dates.length - 1] ? 'today so far' : `on ${day(t.shareAt)}`}, of about ${(t.players || 0).toLocaleString()} daily players.` });
+    } else if (t.spiking) {
+      crashes.warnings.push({ id: `spikeitem:${x.id}:${t.dates[t.dates.length - 1]}`, level: 'medium', tab: 'crashes', item: x,
+        title: `${name} is spiking`,
+        text: `${t.devices[t.devices.length - 1].toLocaleString()} devices today so far, ${t.devices[t.devices.length - 2].toLocaleString()} yesterday; usually about ${Math.round(median(t.devices.slice(-16, -2)))} a day.` });
+    }
+  }
+}
+
+// One crash or exception in detail, for its window in the view: its days
+// (the last 30 and today: devices and events), and where it happens (app
+// versions, OS versions, device models, countries), and its top frame as
+// Embrace has it (method, file, line, symbol, module, message, type).
+// Embrace's export has only that first frame, never the whole stack. One
+// query on the crash table, for that group and those days (a few MB).
+async function crashDetail(projectId, groupId) {
+  const p = projects().find(x => x.id === projectId);
+  if (!p) throw new Error('That project is not in the list any more.');
+  if (!/^[A-Za-z0-9]{8,64}$/.test(groupId || '')) throw new Error('This one has no Embrace crash group id.');
+  const ids = await crashCharts(p);
+  if (!ids.table) throw new Error('The dashboard\'s crash table was not found.');
+  const sql = `WITH c AS (SELECT * FROM \`${ids.table}\` WHERE partitionDate >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY) AND crashGroupId = '${groupId}')
+SELECT 'day' AS part, CAST(partitionDate AS STRING) AS k, CAST(NULL AS STRING) AS v, COUNT(*) AS events, COUNT(DISTINCT deviceId) AS devices FROM c GROUP BY 2
+UNION ALL SELECT 'dayv', CAST(partitionDate AS STRING), IFNULL(appVersion, '?'), COUNT(*), COUNT(DISTINCT deviceId) FROM c GROUP BY 2, 3
+UNION ALL SELECT 'hourv', FORMAT_TIMESTAMP('%Y-%m-%dT%H', occurredAt), IFNULL(appVersion, '?'), COUNT(*), COUNT(DISTINCT deviceId) FROM c WHERE occurredAt >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 49 HOUR) GROUP BY 2, 3
+UNION ALL SELECT 'version', IFNULL(appVersion, '?'), NULL, COUNT(*), COUNT(DISTINCT deviceId) FROM c GROUP BY 2
+UNION ALL SELECT 'os', CONCAT(IF(platform = 'apple', 'iOS ', 'Android '), IFNULL(osVersion, '?')), NULL, COUNT(*), COUNT(DISTINCT deviceId) FROM c GROUP BY 2
+UNION ALL SELECT 'device', TRIM(CONCAT(IFNULL(deviceManufacturer, ''), ' ', IFNULL(deviceModel, '?'))), NULL, COUNT(*), COUNT(DISTINCT deviceId) FROM c GROUP BY 2
+UNION ALL SELECT 'country', IFNULL(country, '?'), NULL, COUNT(*), COUNT(DISTINCT deviceId) FROM c GROUP BY 2
+UNION ALL SELECT 'frame', TO_JSON_STRING(STRUCT(method, file, line, symbol, module, message, type, errorType, stackTraceType, eventName)), NULL, COUNT(*), COUNT(DISTINCT deviceId) FROM c GROUP BY 2`;
+  const r = await bi.callTool('bi_run_sql_preview', { sql, previewLimit: 2000 });
+  const col = Object.fromEntries((r?.columns || []).map((c, i) => [c.name, i]));
+  // By day and by hour (UTC, the last 48), each per app version.
+  const out = { days: [], dayv: [], hourv: [], version: [], os: [], device: [], country: [], frame: [] };
+  for (const row of r?.rows || []) {
+    const part = row[col.part];
+    const item = { key: row[col.k], events: Number(row[col.events]) || 0, devices: Number(row[col.devices]) || 0 };
+    if (part === 'day') out.days.push(item);
+    else if (part === 'dayv' || part === 'hourv') out[part].push({ ...item, version: row[col.v] });
+    else if (part === 'frame') { try { out.frame.push({ ...JSON.parse(item.key), events: item.events, devices: item.devices }); } catch { /* skip */ } }
+    else out[part]?.push(item);
+  }
+  out.days.sort((a, b) => a.key.localeCompare(b.key));
+  for (const k of ['version', 'os', 'device', 'country', 'frame']) out[k] = out[k].sort((a, b) => b.devices - a.devices || b.events - a.events).slice(0, 10);
+  out.dau = state.reports[p.id]?.crashes?.dau || {};
+  return out;
 }
 
 function markSeen() {
@@ -551,4 +745,4 @@ function digestFolder(folders) {
   return null;
 }
 
-module.exports = { setup, summary, check, markSeen, connect, disconnect, digestFolder, analyse, analyseCrashes, rangeLists, resolve, findDashboards };
+module.exports = { setup, summary, check, markSeen, connect, disconnect, digestFolder, analyse, analyseCrashes, rangeLists, crashDetail, resolve, findDashboards };
