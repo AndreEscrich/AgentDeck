@@ -125,7 +125,11 @@ async function repoChanges(cwd, snap, prefix = '') {
   if (tracked == null) return null;
   const parts = [tracked];
   const before = new Set(snap.untracked);
-  const added = (await untrackedFiles(cwd)).filter(f => !before.has(f)).slice(0, 200);
+  // A repository found after the snapshot (see laterRepoSnapshot) has no list
+  // of its untracked files from before: those written since then count.
+  const since = snap.untrackedSince || 0;
+  const fresh = f => !since || (fs.statSync(path.join(cwd, f), { throwIfNoEntry: false })?.mtimeMs || 0) >= since;
+  const added = (await untrackedFiles(cwd)).filter(f => !before.has(f) && fresh(f)).slice(0, 200);
   for (const file of added) {
     // `git diff --no-index` exits with 1 when the files differ, which they always do here.
     const diff = await git(['diff', '--no-color', '--no-index', ...prefixes, '--', '/dev/null', file], { cwd, allowExitCodes: [0, 1] });
@@ -133,6 +137,25 @@ async function repoChanges(cwd, snap, prefix = '') {
   }
   return parts.join('');
 }
+
+// A nested repository the snapshot does not have: a package embedded (cloned
+// into Packages/) after the snapshot, or a quick snapshot, which skips them.
+// Its HEAD's reflog says which commit it was at when the snapshot was taken,
+// or, when it was cloned later, the commit it was cloned at. Without a time
+// (a snapshot from before snap.at was kept) it is left out, as before.
+async function laterRepoSnapshot(cwd, since) {
+  if (!since) return null;
+  const out = await git(['reflog', '--date=unix', '--format=%H %gd', 'HEAD'], { cwd });
+  const entries = (out || '').trim().split('\n').map(l => /^([0-9a-f]{40}) \S*@\{(\d+)\}/.exec(l)).filter(Boolean)
+    .map(m => ({ hash: m[1], at: Number(m[2]) * 1000 }));
+  if (!entries.length) return null;
+  const base = entries.find(e => e.at <= since) || entries[entries.length - 1];
+  return { kind: 'git', base: base.hash, untracked: [], untrackedSince: since };
+}
+
+// A nested repository shows in the folder's diff as one "file" (a gitlink,
+// mode 160000, "Subproject commit ..."): its files come from its own diff.
+const dropGitlinks = diff => diff.split(/(?=^diff --git )/m).filter(b => !/^(new file |deleted file |old |new |index \S+ )mode 160000|^index \S+ 160000/m.test(b)).join('');
 
 // ---------- kind 2: the app's own repository for a folder ----------
 
@@ -307,9 +330,17 @@ async function folderChanges(cwd, snap) {
   const parts = [];
   if (tree !== snap.tree) {
     const diff = await git(['diff', '--no-color', '--no-ext-diff', '--ignore-cr-at-eol', '--no-renames', snap.tree, tree], { gitDir: snap.dir });
-    if (diff) parts.push(diff);
+    if (diff) parts.push(dropGitlinks(diff));
   }
-  for (const n of snap.nested) {
+  const nested = [...snap.nested];
+  const known = new Set(nested.map(n => n.path));
+  const since = snap.at || snap.since || 0;
+  for (const rel of await nestedRepos(snap.dir, cwd)) {
+    if (known.has(rel)) continue;
+    const later = await laterRepoSnapshot(path.join(cwd, rel), since).catch(() => null);
+    if (later) nested.push({ path: rel, snap: later });
+  }
+  for (const n of nested) {
     const diff = await repoChanges(path.join(cwd, n.path), n.snap, n.path);
     if (diff) parts.push(diff);
   }
