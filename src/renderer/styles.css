@@ -3851,6 +3851,11 @@ input.tp-epic-search { flex-shrink: 0; margin: 2px 2px 6px; padding: 6px 9px; fo
 .tp-sep { color: var(--text-faint); }
 .tp-key { font: 600 12.5px var(--mono); color: var(--text-dim); text-decoration: none; }
 .tp-key:hover { color: var(--text); text-decoration: underline; }
+.tp-copy { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; padding: 2px 4px; border: none; border-radius: 4px; background: transparent; color: var(--text-faint); cursor: pointer; vertical-align: middle; }
+.tp-copy:hover { color: var(--text); background: var(--bg-hover); }
+.tp-copy.copied { color: #7fd18b; }
+.tp-copy-label { font-size: 11px; }
+.tp-copy-label:empty { display: none; }
 .tp-tools { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .tp-tools .gallery-use { padding: 5px 14px; }
 .tp-title-row { display: flex; align-items: center; gap: 8px; margin: 6px 0 4px; }

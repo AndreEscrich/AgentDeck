@@ -371,7 +371,33 @@
     link.dataset.external = '1';
     link.target = '_blank';
     link.title = `Open ${t.key} in PM`;
-    crumbs.append(icon, link);
+    // Copy, to hand the ticket to an agent: a click copies its PM link,
+    // ⇧-click its key.
+    const copy = el('button', 'tp-copy');
+    copy.type = 'button';
+    copy.title = `Copy the link to ${t.key} (⇧-click: copy ${t.key})`;
+    copy.innerHTML = '<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10.5 5.5V3.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
+    const label = el('span', 'tp-copy-label');
+    copy.appendChild(label);
+    // The note stays when the panel redraws meanwhile (comments arrive).
+    const shown = this.copyNote?.key === t.key && this.copyNote.until > Date.now() ? this.copyNote : null;
+    const showNote = note => {
+      label.textContent = note.text;
+      copy.classList.add('copied');
+      setTimeout(() => { if (this.copyNote === note) { copy.classList.remove('copied'); label.textContent = ''; } }, note.until - Date.now());
+    };
+    if (shown) showNote(shown);
+    copy.onclick = e => {
+      e.stopPropagation();
+      const key = e.shiftKey;
+      const text = key ? t.key : pmItemUrl(t.key);
+      const done = () => {
+        this.copyNote = { key: t.key, text: key ? 'Key copied' : 'Link copied', until: Date.now() + 1400 };
+        showNote(this.copyNote);
+      };
+      (window.deck?.copyText ? window.deck.copyText(text) : navigator.clipboard.writeText(text)).then(done, () => {});
+    };
+    crumbs.append(icon, link, copy);
     const tools = el('div', 'tp-tools');
     // An agent already on this ticket: Open agent instead of Start agent.
     const agent = this.agentFor?.(t.key);
