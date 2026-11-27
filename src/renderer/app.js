@@ -6415,8 +6415,24 @@ $('send').onclick = sendFromComposer;
 // right away. They go away with your next message.
 const DEFAULT_PLACEHOLDER = 'Message the agent… (↩ to send, ⇧↩ for a new line)';
 
+// The agent suggests sending its ticket to QA with a line "Ready for QA:
+// M2S-3854 → For QA (Branch)" (PM_STATUS_PROMPT in agents.js); it never moves
+// the ticket itself. That suggestion becomes the first chip, at once, also
+// when suggested follow-ups are turned off.
+function qaFollowUp(answer) {
+  const m = /Ready for QA:?\**\s*\**([A-Z][A-Z0-9]+-\d+)\**\s*(?:→|->)\s*\**([^\n*]+?)\**\s*$/m.exec(answer || '');
+  return m ? `Send ${m[1]} to ${m[2].trim()}` : null;
+}
+
 function loadFollowUps(agent, turn, answer) {
   agent.followUps = null;
+  const qa = qaFollowUp(answer);
+  if (qa) {
+    agent.followUps = [qa];
+    agent.followUpsFor = turn;
+    renderFollowUps();
+    refreshHub();
+  }
   if (state.config.suggestFollowUps === false || !answer?.trim()) return;
   const task = agent.transcript.prompts.filter(p => p.turn === turn).pop()?.text
     || agent.transcript.prompts[agent.transcript.prompts.length - 1]?.text || '';
@@ -6426,7 +6442,7 @@ function loadFollowUps(agent, turn, answer) {
   window.deck.followUps({ task, answer, notes }).then(list => {
     // Only while the agent still waits for you after that same task.
     if (agent.followUpsFor !== turn || agent.status !== 'idle' || !list?.length) return;
-    agent.followUps = list;
+    agent.followUps = qa ? [qa, ...list.filter(l => !/\bQA\b/i.test(l))].slice(0, 3) : list;
     renderFollowUps();
     refreshHub();
   }).catch(() => {});
